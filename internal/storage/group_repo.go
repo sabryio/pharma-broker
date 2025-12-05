@@ -28,6 +28,18 @@ func (r *GroupRepo) Save(ctx context.Context, group *domain.Group) error {
 	return err
 }
 
+// SaveFromSync saves a group from WhatsApp sync (creates if not exists)
+func (r *GroupRepo) SaveFromSync(ctx context.Context, jid, name, description string) error {
+	_, err := r.db.conn.ExecContext(ctx, `
+		INSERT INTO groups (jid, name, description, monitored, added_at, message_count)
+		VALUES (?, ?, ?, FALSE, datetime('now'), 0)
+		ON CONFLICT(jid) DO UPDATE SET
+			name = excluded.name,
+			description = excluded.description
+	`, jid, name, description)
+	return err
+}
+
 func (r *GroupRepo) GetAll(ctx context.Context) ([]*domain.Group, error) {
 	rows, err := r.db.conn.QueryContext(ctx, `
 		SELECT jid, name, description, monitored, added_at, last_message, message_count

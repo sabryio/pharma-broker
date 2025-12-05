@@ -45,6 +45,10 @@ whatsapp:
   # Timeout for WhatsApp operations (fetching groups, etc.)
   operation_timeout: 30s
 
+  # Enable groups from config if specified
+  # monitored_groups:
+  #   - "123456789@g.us"
+
 # ---------------------------------
 # Google Gemini AI (Cloud)
 # ---------------------------------

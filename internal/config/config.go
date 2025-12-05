@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -208,6 +209,9 @@ type ServerConfig struct {
 // Load loads configuration from file, environment, and defaults.
 // Priority order: Environment variables > config file > defaults
 func Load() *Config {
+	// Load .env file if present (ignores error if not found)
+	_ = godotenv.Load()
+
 	v := viper.New()
 
 	// Set config file information

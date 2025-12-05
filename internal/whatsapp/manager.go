@@ -198,6 +198,24 @@ func (m *Manager) GetJoinedGroups(ctx context.Context) ([]*GroupInfo, error) {
 	return result, nil
 }
 
+// SyncGroups fetches all joined groups and saves them using the provided save function
+func (m *Manager) SyncGroups(ctx context.Context, saveFunc func(jid, name, description string) error) error {
+	groups, err := m.GetJoinedGroups(ctx)
+	if err != nil {
+		return fmt.Errorf("get joined groups: %w", err)
+	}
+
+	m.log.Info().Int("count", len(groups)).Msg("Syncing groups to database")
+
+	for _, g := range groups {
+		if err := saveFunc(g.JID, g.Name, g.Description); err != nil {
+			m.log.Warn().Err(err).Str("jid", g.JID).Msg("Failed to save group")
+		}
+	}
+
+	return nil
+}
+
 // handleEvent processes WhatsApp events
 func (m *Manager) handleEvent(evt interface{}) {
 	switch v := evt.(type) {
