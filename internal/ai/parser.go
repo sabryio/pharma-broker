@@ -22,13 +22,12 @@ type SSEBroadcaster interface {
 
 // Parser processes raw messages and creates offers/requests
 type Parser struct {
-	gemini      *GeminiClient
+	aiProvider  AIProvider
 	rawMsgRepo  domain.RawMessageRepository
 	offerRepo   domain.OfferRepository
 	requestRepo domain.RequestRepository
 	matchRepo   domain.MatchRepository
 	log         zerolog.Logger
-	geminiCfg   *config.GeminiConfig
 	parserCfg   *config.ParserConfig
 
 	// Processing
@@ -44,27 +43,25 @@ type Parser struct {
 
 // NewParser creates a new message parser
 func NewParser(
-	gemini *GeminiClient,
+	aiProvider AIProvider,
 	rawMsgRepo domain.RawMessageRepository,
 	offerRepo domain.OfferRepository,
 	requestRepo domain.RequestRepository,
 	matchRepo domain.MatchRepository,
 	msgChan <-chan *domain.RawMessage,
-	geminiCfg *config.GeminiConfig,
 	parserCfg *config.ParserConfig,
 	log zerolog.Logger,
 ) *Parser {
 	return &Parser{
-		gemini:             gemini,
+		aiProvider:         aiProvider,
 		rawMsgRepo:         rawMsgRepo,
 		offerRepo:          offerRepo,
 		requestRepo:        requestRepo,
 		matchRepo:          matchRepo,
 		log:                log.With().Str("component", "parser").Logger(),
-		geminiCfg:          geminiCfg,
 		parserCfg:          parserCfg,
 		msgChan:            msgChan,
-		batchSize:          geminiCfg.MaxMessagesPerRequest,
+		batchSize:          parserCfg.MessageBufferSize / 100, // Reasonable batch size
 		stopChan:           make(chan struct{}),
 		isAutoParseEnabled: func() bool { return true }, // Default: always parse
 	}
@@ -157,9 +154,9 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 	p.log.Info().
 		Str("step", "6_AI_REQUEST").
 		Int("message_count", len(batch)).
-		Msg("🚀 Sending to Gemini AI...")
+		Msg("🚀 Sending to AI provider...")
 
-	results, err := p.gemini.ParseMessages(ctx, batch)
+	results, err := p.aiProvider.ParseMessages(ctx, batch)
 	if err != nil {
 		p.log.Error().
 			Err(err).

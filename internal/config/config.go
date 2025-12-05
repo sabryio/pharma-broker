@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,11 +12,17 @@ import (
 
 // Config holds all application configuration
 type Config struct {
+	// AI provider selection: "gemini" or "docker"
+	AI AIConfig `mapstructure:"ai"`
+
 	// WhatsApp settings for WhatsApp Web connection
 	WhatsApp WhatsAppConfig `mapstructure:"whatsapp"`
 
-	// Gemini AI settings for the language model
+	// Gemini AI settings for the language model (used when ai.provider = "gemini")
 	Gemini GeminiConfig `mapstructure:"gemini"`
+
+	// Docker Model Runner settings (used when ai.provider = "docker")
+	DockerModel DockerModelConfig `mapstructure:"docker_model"`
 
 	// Parser settings for message processing and matching
 	Parser ParserConfig `mapstructure:"parser"`
@@ -28,6 +35,35 @@ type Config struct {
 
 	// Server settings for network configuration
 	Server ServerConfig `mapstructure:"server"`
+}
+
+// AIConfig selects which AI provider to use
+type AIConfig struct {
+	// Provider specifies which AI backend to use.
+	// Options: "gemini" (Google Gemini API), "docker" (Docker Model Runner)
+	// Default: gemini
+	Provider string `mapstructure:"provider"`
+}
+
+// DockerModelConfig configures Docker Model Runner (OpenAI-compatible API)
+type DockerModelConfig struct {
+	// BaseURL is the Docker Model Runner endpoint URL.
+	// When using Compose models, this is auto-injected via LLM_URL environment variable.
+	// Default: http://localhost:12434/engines/llama.cpp/v1
+	BaseURL string `mapstructure:"base_url"`
+
+	// Model is the model identifier (e.g., "ai/qwen3-vl:latest")
+	// When using Compose models, this is auto-injected via LLM_MODEL environment variable.
+	Model string `mapstructure:"model"`
+
+	// MaxRetries is the number of retry attempts for failed API calls.
+	MaxRetries int `mapstructure:"max_retries"`
+
+	// RetryBaseDelay is the initial delay for exponential backoff retries.
+	RetryBaseDelay time.Duration `mapstructure:"retry_base_delay"`
+
+	// RequestTimeout is the maximum time to wait for a response.
+	RequestTimeout time.Duration `mapstructure:"request_timeout"`
 }
 
 // WhatsAppConfig configures the WhatsApp Web connection
@@ -203,9 +239,19 @@ func Load() *Config {
 		return loadFallback()
 	}
 
-	// Override API key from direct env var if not set via viper
+	// Override from direct environment variables (Docker Compose injects these)
 	if cfg.Gemini.APIKey == "" {
 		cfg.Gemini.APIKey = os.Getenv("GEMINI_API_KEY")
+	}
+	if cfg.DockerModel.BaseURL == "" {
+		if url := os.Getenv("LLM_URL"); url != "" {
+			cfg.DockerModel.BaseURL = url
+		}
+	}
+	if cfg.DockerModel.Model == "" {
+		if model := os.Getenv("LLM_MODEL"); model != "" {
+			cfg.DockerModel.Model = model
+		}
 	}
 
 	return cfg
@@ -213,6 +259,16 @@ func Load() *Config {
 
 // setDefaults configures all default values
 func setDefaults(v *viper.Viper) {
+	// AI provider defaults
+	v.SetDefault("ai.provider", "gemini")
+
+	// Docker Model Runner defaults
+	v.SetDefault("docker_model.base_url", "http://localhost:12434/engines/llama.cpp/v1")
+	v.SetDefault("docker_model.model", "ai/qwen3-vl:latest")
+	v.SetDefault("docker_model.max_retries", 3)
+	v.SetDefault("docker_model.retry_base_delay", "1s")
+	v.SetDefault("docker_model.request_timeout", "60s")
+
 	// WhatsApp defaults
 	v.SetDefault("whatsapp.session_dir", "./data/whatsapp")
 	v.SetDefault("whatsapp.reconnect_delay", "5s")
@@ -252,6 +308,16 @@ func setDefaults(v *viper.Viper) {
 // Used when viper fails to load
 func loadFallback() *Config {
 	return &Config{
+		AI: AIConfig{
+			Provider: "gemini",
+		},
+		DockerModel: DockerModelConfig{
+			BaseURL:        "http://localhost:12434/engines/llama.cpp/v1",
+			Model:          "ai/qwen3-vl:latest",
+			MaxRetries:     3,
+			RetryBaseDelay: 1 * time.Second,
+			RequestTimeout: 60 * time.Second,
+		},
 		WhatsApp: WhatsAppConfig{
 			SessionDir:       "./data/whatsapp",
 			ReconnectDelay:   5 * time.Second,
@@ -290,10 +356,22 @@ func loadFallback() *Config {
 	}
 }
 
-// Validate checks required configuration
+// Validate checks required configuration based on selected provider
 func (c *Config) Validate() error {
-	if c.Gemini.APIKey == "" {
-		return ErrMissingAPIKey
+	switch c.AI.Provider {
+	case "gemini":
+		if c.Gemini.APIKey == "" {
+			return ErrMissingAPIKey
+		}
+	case "docker":
+		if c.DockerModel.BaseURL == "" {
+			return errors.New("docker_model.base_url is required when using docker provider")
+		}
+		if c.DockerModel.Model == "" {
+			return errors.New("docker_model.model is required when using docker provider")
+		}
+	default:
+		return fmt.Errorf("unknown AI provider: %s (use 'gemini' or 'docker')", c.AI.Provider)
 	}
 	return nil
 }

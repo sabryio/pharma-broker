@@ -75,6 +75,29 @@ func (r *GroupRepo) IncrementMessageCount(ctx context.Context, jid string) error
 	return err
 }
 
+// EnableFromConfig enables monitoring for groups specified in config.
+// This allows running without frontend by specifying groups in config.yaml.
+func (r *GroupRepo) EnableFromConfig(ctx context.Context, jids []string) (int, error) {
+	if len(jids) == 0 {
+		return 0, nil
+	}
+
+	var enabled int
+	for _, jid := range jids {
+		result, err := r.db.conn.ExecContext(ctx, `
+			UPDATE groups SET monitored = TRUE WHERE jid = ?
+		`, jid)
+		if err != nil {
+			return enabled, err
+		}
+		rows, _ := result.RowsAffected()
+		if rows > 0 {
+			enabled++
+		}
+	}
+	return enabled, nil
+}
+
 func scanGroups(rows *sql.Rows) ([]*domain.Group, error) {
 	var groups []*domain.Group
 	for rows.Next() {

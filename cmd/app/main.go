@@ -58,12 +58,12 @@ func main() {
 	groupRepo := storage.NewGroupRepo(db)
 	statsRepo := storage.NewStatsRepo(db)
 
-	// Initialize Gemini client
-	geminiClient, err := ai.NewGeminiClient(ctx, &cfg.Gemini, log.Logger)
+	// Initialize AI provider (Gemini or Docker Model Runner based on config)
+	aiProvider, err := ai.NewAIProvider(ctx, cfg, log.Logger)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize Gemini client")
+		log.Fatal().Err(err).Str("provider", cfg.AI.Provider).Msg("Failed to initialize AI provider")
 	}
-	log.Info().Str("model", cfg.Gemini.Model).Msg("Gemini client initialized")
+	log.Info().Str("provider", cfg.AI.Provider).Msg("AI provider initialized")
 
 	// Initialize WhatsApp manager
 	waManager, err := whatsapp.NewManager(ctx, &cfg.WhatsApp, log.Logger)
@@ -77,13 +77,12 @@ func main() {
 
 	// Create AI parser
 	parser := ai.NewParser(
-		geminiClient,
+		aiProvider,
 		rawMsgRepo,
 		offerRepo,
 		requestRepo,
 		matchRepo,
 		listener.MessageChannel(),
-		&cfg.Gemini,
 		&cfg.Parser,
 		log.Logger,
 	)

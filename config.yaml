@@ -1,7 +1,35 @@
 # PharmaBroker Configuration
 # ===========================
 # All values can be overridden via environment variables with PB_ prefix
-# Example: PB_GEMINI_API_KEY, PB_SERVER_PORT, PB_PARSER_MATCH_THRESHOLD
+# Example: PB_AI_PROVIDER, PB_GEMINI_API_KEY, PB_PARSER_MATCH_THRESHOLD
+
+# ---------------------------------
+# AI Provider Selection
+# ---------------------------------
+ai:
+  # Which AI backend to use: "gemini" (cloud) or "docker" (local)
+  provider: gemini
+
+# ---------------------------------
+# Docker Model Runner (local AI)
+# ---------------------------------
+# Used when ai.provider = "docker"
+# Docker Model Runner exposes an OpenAI-compatible API
+docker_model:
+  # Endpoint URL (auto-injected via LLM_URL when using Compose models)
+  base_url: http://localhost:12434/engines/llama.cpp/v1
+
+  # Model identifier (auto-injected via LLM_MODEL when using Compose models)
+  model: ai/qwen3-vl:latest
+
+  # Retry attempts for failed API calls
+  max_retries: 3
+
+  # Initial retry delay (doubles each attempt)
+  retry_base_delay: 1s
+
+  # Timeout for API requests (local models can be slower)
+  request_timeout: 60s
 
 # ---------------------------------
 # WhatsApp Web Connection Settings
@@ -17,21 +45,12 @@ whatsapp:
   # Timeout for WhatsApp operations (fetching groups, etc.)
   operation_timeout: 30s
 
-  # Optional: List of specific group JIDs to monitor
-  # If empty, all groups are discovered and can be toggled via API
-  # monitored_groups:
-  #   - "1234567890@g.us"
-
 # ---------------------------------
-# Google Gemini AI Settings
+# Google Gemini AI (Cloud)
 # ---------------------------------
+# Used when ai.provider = "gemini"
 gemini:
-  # API key from Google AI Studio (Required)
-  # Can also set via GEMINI_API_KEY environment variable
-  # api_key: your-api-key-here
-
-  # Model to use for parsing messages
-  # Options: gemini-2.5-flash (fast), gemini-2.5-pro (accurate)
+  # api_key: your-api-key-here  # Or set GEMINI_API_KEY env
   model: gemini-2.5-flash
 
   # Messages per batch API request (efficiency vs token limits)
@@ -106,5 +125,5 @@ server:
   # Main HTTP server port (API + Dashboard)
   port: 8080
 
-  # Health check endpoint port (separate for isolation)
+  # Health check port (for monitoring)
   health_port: 5050

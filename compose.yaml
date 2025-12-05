@@ -1,0 +1,41 @@
+# Docker Compose configuration for PharmaBroker with AI model support
+# Requires Docker Compose v2.38+ for models support
+
+services:
+  pharmabroker:
+    build: .
+    ports:
+      - "8080:8080"     # Main HTTP API + Dashboard
+      - "5050:5050"     # Health check endpoint
+    environment:
+      # AI Provider Selection
+      - PB_AI_PROVIDER=docker              # Use Docker Model Runner
+      # Docker Model Runner (auto-injected by Compose models)
+      # - LLM_URL                          # Auto-set from models binding
+      # - LLM_MODEL                        # Auto-set from models binding
+      # Database
+      - PB_DATABASE_PATH=/data/pharmabroker.db
+      # WhatsApp session
+      - PB_WHATSAPP_SESSION_DIR=/data/whatsapp
+    volumes:
+      - pharmabroker-data:/data
+    models:
+      - llm                                 # Bind to the llm model
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5050/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Local LLM model via Docker Model Runner
+models:
+  llm:
+    model: ai/qwen3-vl:latest
+    context_size: 4096
+    runtime_flags:
+      - "--temp"
+      - "0.1"                               # Low temperature for consistent parsing
+
+volumes:
+  pharmabroker-data:
