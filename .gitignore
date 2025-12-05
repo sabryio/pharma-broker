@@ -14,6 +14,7 @@ pharmabroker
 
 # Dependency directories
 vendor/
+node_modules/
 
 # IDE
 .idea/
@@ -41,10 +42,14 @@ whatsapp.db*
 .DS_Store
 Thumbs.db
 
-# Build output
-dist/
-build/
+# Build output (only at root and in static)
+/dist/
+/build/
+internal/api/static/dist/
 
 # Logs
 *.log
 logs/
+
+# Taskfile checksum
+.task/

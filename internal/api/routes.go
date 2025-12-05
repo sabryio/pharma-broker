@@ -4,11 +4,12 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/rs/zerolog"
 )
 
-//go:embed static/*
+//go:embed static/dist/*
 var staticFiles embed.FS
 
 // NewRouter creates the HTTP router
@@ -31,15 +32,36 @@ func NewRouter(handlers *Handlers, log zerolog.Logger) http.Handler {
 	// SSE endpoint
 	mux.HandleFunc("GET /api/events", handlers.sseHub.ServeHTTP)
 
-	// Static files (dashboard)
-	staticFS, err := fs.Sub(staticFiles, "static")
+	// Static files (dashboard) - with SPA fallback
+	staticFS, err := fs.Sub(staticFiles, "static/dist")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create static file system")
 	}
-	mux.Handle("GET /", http.FileServer(http.FS(staticFS)))
+	mux.Handle("GET /", spaHandler(http.FS(staticFS)))
 
 	// Middleware
 	return corsMiddleware(loggingMiddleware(mux, log))
+}
+
+// spaHandler serves static files and falls back to index.html for SPA routing
+func spaHandler(fsys http.FileSystem) http.Handler {
+	fileServer := http.FileServer(fsys)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// Try to open the file
+		f, err := fsys.Open(path)
+		if err != nil {
+			// If file doesn't exist and it's not an API/static asset, serve index.html
+			if !strings.HasPrefix(path, "/api") && !strings.Contains(path, ".") {
+				r.URL.Path = "/"
+			}
+		} else {
+			f.Close()
+		}
+
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 func loggingMiddleware(next http.Handler, log zerolog.Logger) http.Handler {

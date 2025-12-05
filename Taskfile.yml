@@ -1,0 +1,59 @@
+version: "3"
+
+vars:
+  CLIENT_DIR: internal/api/static/client
+  DIST_DIR: internal/api/static/dist
+
+tasks:
+  default:
+    desc: Build everything
+    cmds:
+      - task: client
+      - task: server
+
+  client:
+    desc: Build the React client
+    dir: "{{.CLIENT_DIR}}"
+    cmds:
+      - bun install
+      - bun run build
+    sources:
+      - "{{.CLIENT_DIR}}/src/**/*"
+      - "{{.CLIENT_DIR}}/package.json"
+      - "{{.CLIENT_DIR}}/vite.config.ts"
+    generates:
+      - "{{.DIST_DIR}}/**/*"
+
+  server:
+    desc: Build the Go server
+    deps: [client]
+    cmds:
+      - go build -o pharmabroker.exe ./cmd/app
+    sources:
+      - "**/*.go"
+      - "{{.DIST_DIR}}/**/*"
+    generates:
+      - pharmabroker.exe
+
+  dev:client:
+    desc: Run React dev server
+    dir: "{{.CLIENT_DIR}}"
+    cmds:
+      - bun --bun run dev
+
+  dev:server:
+    desc: Run Go server
+    cmds:
+      - go run ./cmd/app
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - cmd: powershell -Command "if (Test-Path 'pharmabroker.exe') { Remove-Item -Force 'pharmabroker.exe' }"
+        platforms: [windows]
+      - cmd: powershell -Command "if (Test-Path '{{.DIST_DIR}}') { Remove-Item -Recurse -Force '{{.DIST_DIR}}' }"
+        platforms: [windows]
+      - cmd: rm -f pharmabroker pharmabroker.exe
+        platforms: [linux, darwin]
+      - cmd: rm -rf {{.DIST_DIR}}
+        platforms: [linux, darwin]
