@@ -1,7 +1,14 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   useOffers,
   useRequests,
@@ -9,6 +16,7 @@ import {
   useStats,
   useConfirmMatch,
   useRejectMatch,
+  useGroups,
 } from '@/lib/api'
 import { useSSE } from '@/lib/sse'
 import { OfferCard } from './OfferCard'
@@ -22,6 +30,7 @@ export function Dashboard() {
   const [connected, setConnected] = useState(false)
   const [offersQuery, setOffersQuery] = useState('')
   const [requestsQuery, setRequestsQuery] = useState('')
+  const [selectedGroup, setSelectedGroup] = useState<string>('all')
 
   // SSE for real-time updates
   useSSE(setConnected)
@@ -35,6 +44,30 @@ export function Dashboard() {
   )
   const { data: matches, isLoading: matchesLoading } = useMatches()
   const { data: stats } = useStats()
+  const { data: groups } = useGroups()
+
+  // Filter by group (client-side)
+  const filteredOffers = useMemo(() => {
+    if (!offers) return []
+    if (selectedGroup === 'all') return offers
+    return offers.filter((o) => o.source_group === selectedGroup)
+  }, [offers, selectedGroup])
+
+  const filteredRequests = useMemo(() => {
+    if (!requests) return []
+    if (selectedGroup === 'all') return requests
+    return requests.filter((r) => r.source_group === selectedGroup)
+  }, [requests, selectedGroup])
+
+  const filteredMatches = useMemo(() => {
+    if (!matches) return []
+    if (selectedGroup === 'all') return matches
+    return matches.filter(
+      (m) =>
+        m.offer?.source_group === selectedGroup ||
+        m.request?.source_group === selectedGroup,
+    )
+  }, [matches, selectedGroup])
 
   // Mutations
   const confirmMatch = useConfirmMatch()
@@ -42,6 +75,12 @@ export function Dashboard() {
 
   const handleConfirm = (id: string) => confirmMatch.mutate(id)
   const handleReject = (id: string) => rejectMatch.mutate(id)
+
+  // Group name lookup
+  const getGroupName = (jid: string) => {
+    const group = groups?.find((g) => g.jid === jid)
+    return group?.name || jid
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -55,7 +94,38 @@ export function Dashboard() {
             <span className="text-muted-foreground">Dashboard</span>
           </div>
 
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-6">
+            {/* Group Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Group:</span>
+              <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+                <SelectTrigger className="w-[200px] h-9">
+                  <SelectValue placeholder="All Groups" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <span className="flex items-center gap-2">
+                      🌐 All Groups
+                    </span>
+                  </SelectItem>
+                  {groups
+                    ?.filter((g) => g.monitored)
+                    .map((group) => (
+                      <SelectItem key={group.jid} value={group.jid}>
+                        <span className="flex items-center gap-2">
+                          💬 {group.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {selectedGroup !== 'all' && (
+                <Badge variant="secondary" className="text-xs">
+                  {filteredOffers.length + filteredRequests.length} items
+                </Badge>
+              )}
+            </div>
+
             <div className="flex gap-8">
               <StatItem label="Offers" value={stats?.active_offers ?? '-'} />
               <StatItem
@@ -94,7 +164,14 @@ export function Dashboard() {
         <Card className="flex flex-col overflow-hidden">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">📦 Offers</CardTitle>
+              <CardTitle className="text-base">
+                📦 Offers
+                {selectedGroup !== 'all' && (
+                  <Badge variant="outline" className="ml-2 text-xs">
+                    {filteredOffers.length}
+                  </Badge>
+                )}
+              </CardTitle>
               <Input
                 placeholder="Search..."
                 value={offersQuery}
@@ -109,12 +186,14 @@ export function Dashboard() {
                 Loading...
               </p>
             )}
-            {!offersLoading && (!offers || offers.length === 0) && (
+            {!offersLoading && filteredOffers.length === 0 && (
               <p className="text-muted-foreground text-center py-8">
-                No active offers
+                {selectedGroup !== 'all'
+                  ? `No offers from ${getGroupName(selectedGroup)}`
+                  : 'No active offers'}
               </p>
             )}
-            {offers?.map((offer) => (
+            {filteredOffers.map((offer) => (
               <OfferCard key={offer.id} offer={offer} />
             ))}
           </CardContent>
@@ -124,8 +203,15 @@ export function Dashboard() {
         <Card className="flex flex-col overflow-hidden">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">🎯 Suggested Matches</CardTitle>
-              <Badge variant="secondary">{matches?.length ?? 0}</Badge>
+              <CardTitle className="text-base">
+                🎯 Suggested Matches
+                {selectedGroup !== 'all' && (
+                  <Badge variant="outline" className="ml-2 text-xs">
+                    {filteredMatches.length}
+                  </Badge>
+                )}
+              </CardTitle>
+              <Badge variant="secondary">{filteredMatches.length}</Badge>
             </div>
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto">
@@ -134,12 +220,14 @@ export function Dashboard() {
                 Loading...
               </p>
             )}
-            {!matchesLoading && (!matches || matches.length === 0) && (
+            {!matchesLoading && filteredMatches.length === 0 && (
               <p className="text-muted-foreground text-center py-8">
-                No pending matches
+                {selectedGroup !== 'all'
+                  ? `No matches involving ${getGroupName(selectedGroup)}`
+                  : 'No pending matches'}
               </p>
             )}
-            {matches?.map((match) => (
+            {filteredMatches.map((match) => (
               <MatchCard
                 key={match.id}
                 match={match}
@@ -155,7 +243,14 @@ export function Dashboard() {
         <Card className="flex flex-col overflow-hidden">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">🔍 Requests</CardTitle>
+              <CardTitle className="text-base">
+                🔍 Requests
+                {selectedGroup !== 'all' && (
+                  <Badge variant="outline" className="ml-2 text-xs">
+                    {filteredRequests.length}
+                  </Badge>
+                )}
+              </CardTitle>
               <Input
                 placeholder="Search..."
                 value={requestsQuery}
@@ -170,12 +265,14 @@ export function Dashboard() {
                 Loading...
               </p>
             )}
-            {!requestsLoading && (!requests || requests.length === 0) && (
+            {!requestsLoading && filteredRequests.length === 0 && (
               <p className="text-muted-foreground text-center py-8">
-                No active requests
+                {selectedGroup !== 'all'
+                  ? `No requests from ${getGroupName(selectedGroup)}`
+                  : 'No active requests'}
               </p>
             )}
-            {requests?.map((request) => (
+            {filteredRequests.map((request) => (
               <RequestCard key={request.id} request={request} />
             ))}
           </CardContent>
