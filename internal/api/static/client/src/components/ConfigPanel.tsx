@@ -21,6 +21,7 @@ export function ConfigPanel() {
   const updateConfig = useUpdateConfig()
 
   const [localAutoParse, setLocalAutoParse] = useState(true)
+  const [localSkipOwn, setLocalSkipOwn] = useState(true)
   const [localThreshold, setLocalThreshold] = useState(0.5)
   const [localBatchSize, setLocalBatchSize] = useState(5)
   const [localDelay, setLocalDelay] = useState(5)
@@ -29,6 +30,7 @@ export function ConfigPanel() {
   useEffect(() => {
     if (config) {
       setLocalAutoParse(config.auto_parse_enabled)
+      setLocalSkipOwn(config.skip_own_messages)
       setLocalThreshold(config.match_threshold)
       setLocalBatchSize(config.batch_size)
       setLocalDelay(config.process_delay_seconds)
@@ -38,6 +40,7 @@ export function ConfigPanel() {
   const handleSave = () => {
     updateConfig.mutate({
       auto_parse_enabled: localAutoParse,
+      skip_own_messages: localSkipOwn,
       match_threshold: localThreshold,
       batch_size: localBatchSize,
       process_delay_seconds: localDelay,
@@ -48,6 +51,12 @@ export function ConfigPanel() {
   const handleAutoParseToggle = (enabled: boolean) => {
     setLocalAutoParse(enabled)
     updateConfig.mutate({ auto_parse_enabled: enabled })
+  }
+
+  // Quick toggle for skip own messages (saves immediately)
+  const handleSkipOwnToggle = (enabled: boolean) => {
+    setLocalSkipOwn(enabled)
+    updateConfig.mutate({ skip_own_messages: enabled })
   }
 
   const hasChanges =
@@ -104,6 +113,30 @@ export function ConfigPanel() {
                   id="autoParse"
                   checked={localAutoParse}
                   onCheckedChange={handleAutoParseToggle}
+                  disabled={updateConfig.isPending}
+                />
+              </div>
+            </div>
+
+            {/* Skip Own Messages Toggle */}
+            <div
+              className={`p-4 rounded-lg border-2 ${localSkipOwn ? 'border-blue-500/50 bg-blue-500/10' : 'border-orange-500/50 bg-orange-500/10'}`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="skipOwn" className="text-base font-semibold">
+                    تخطي رسائلي
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {localSkipOwn
+                      ? '⏭️ يتم تجاهل الرسائل المرسلة مني'
+                      : '📨 يتم معالجة رسائلي أيضاً (للاختبار)'}
+                  </p>
+                </div>
+                <Switch
+                  id="skipOwn"
+                  checked={localSkipOwn}
+                  onCheckedChange={handleSkipOwnToggle}
                   disabled={updateConfig.isPending}
                 />
               </div>

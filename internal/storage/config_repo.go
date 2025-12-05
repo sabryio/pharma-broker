@@ -27,6 +27,7 @@ type Config struct {
 // AppConfig represents all configurable settings
 type AppConfig struct {
 	AutoParseEnabled    bool    `json:"auto_parse_enabled"`
+	SkipOwnMessages     bool    `json:"skip_own_messages"`
 	MatchThreshold      float64 `json:"match_threshold"`
 	BatchSize           int     `json:"batch_size"`
 	ProcessDelaySeconds int     `json:"process_delay_seconds"`
@@ -38,6 +39,7 @@ type AppConfig struct {
 func DefaultConfig() *AppConfig {
 	return &AppConfig{
 		AutoParseEnabled:    true, // Parse messages by default
+		SkipOwnMessages:     true, // Skip own messages by default
 		MatchThreshold:      0.5,
 		BatchSize:           5,
 		ProcessDelaySeconds: 5,
@@ -85,6 +87,11 @@ func (r *ConfigRepo) GetAll(ctx context.Context) (*AppConfig, error) {
 			var v bool
 			if json.Unmarshal([]byte(value), &v) == nil {
 				config.AutoParseEnabled = v
+			}
+		case "skip_own_messages":
+			var v bool
+			if json.Unmarshal([]byte(value), &v) == nil {
+				config.SkipOwnMessages = v
 			}
 		case "match_threshold":
 			var v float64

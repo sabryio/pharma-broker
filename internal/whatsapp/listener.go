@@ -2,7 +2,6 @@ package whatsapp
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,12 +12,11 @@ import (
 
 // Listener listens for WhatsApp messages and queues them for processing
 type Listener struct {
-	log        zerolog.Logger
-	rawMsgRepo domain.RawMessageRepository
-	groupRepo  domain.GroupRepository
-	msgChannel chan *domain.RawMessage
-	mu         sync.RWMutex
-	running    bool
+	log                    zerolog.Logger
+	rawMsgRepo             domain.RawMessageRepository
+	groupRepo              domain.GroupRepository
+	msgChannel             chan *domain.RawMessage
+	skipOwnMessagesChecker func() bool // Check if should skip own messages
 }
 
 // NewListener creates a new message listener
@@ -28,11 +26,17 @@ func NewListener(
 	groupRepo domain.GroupRepository,
 ) *Listener {
 	return &Listener{
-		log:        log.With().Str("component", "listener").Logger(),
-		rawMsgRepo: rawMsgRepo,
-		groupRepo:  groupRepo,
-		msgChannel: make(chan *domain.RawMessage, 1000), // Buffer for burst handling
+		log:                    log.With().Str("component", "listener").Logger(),
+		rawMsgRepo:             rawMsgRepo,
+		groupRepo:              groupRepo,
+		msgChannel:             make(chan *domain.RawMessage, 1000), // Buffer for burst handling
+		skipOwnMessagesChecker: func() bool { return true },         // Default: skip own messages
 	}
+}
+
+// SetSkipOwnMessagesChecker sets the function to check if own messages should be skipped
+func (l *Listener) SetSkipOwnMessagesChecker(fn func() bool) {
+	l.skipOwnMessagesChecker = fn
 }
 
 // MessageChannel returns channel that receives raw messages
@@ -42,9 +46,27 @@ func (l *Listener) MessageChannel() <-chan *domain.RawMessage {
 
 // HandleMessage implements EventHandler interface
 func (l *Listener) HandleMessage(msg *IncomingMessage) {
-	// Skip own messages
-	if msg.IsFromMe {
+	// Log every incoming message
+	l.log.Info().
+		Str("step", "1_RECEIVED").
+		Str("group", msg.GroupName).
+		Str("sender", msg.SenderName).
+		Str("content_preview", truncate(msg.Content, 100)).
+		Msg("📥 Message received from WhatsApp")
+
+	// Skip own messages if configured
+	if msg.IsFromMe && l.skipOwnMessagesChecker() {
+		l.log.Debug().
+			Str("step", "1_SKIPPED").
+			Msg("⏭️ Skipping own message (config: skip_own_messages=true)")
 		return
+	}
+
+	if msg.IsFromMe {
+		l.log.Info().
+			Str("step", "1_OWN_MESSAGE").
+			Str("content", msg.Content).
+			Msg("📨 Processing OWN message (config: skip_own_messages=false)")
 	}
 
 	// Check if this group is monitored
@@ -57,9 +79,18 @@ func (l *Listener) HandleMessage(msg *IncomingMessage) {
 		return
 	}
 	if !monitored {
-		l.log.Debug().Str("group", msg.GroupName).Msg("Skipping message from non-monitored group")
+		l.log.Warn().
+			Str("step", "2_NOT_MONITORED").
+			Str("group", msg.GroupName).
+			Str("jid", msg.GroupJID).
+			Msg("⚠️ Group NOT monitored - message ignored")
 		return
 	}
+
+	l.log.Info().
+		Str("step", "2_MONITORED").
+		Str("group", msg.GroupName).
+		Msg("✅ Group is monitored - processing")
 
 	// Create raw message
 	rawMsg := &domain.RawMessage{
@@ -79,6 +110,12 @@ func (l *Listener) HandleMessage(msg *IncomingMessage) {
 		return
 	}
 
+	l.log.Info().
+		Str("step", "3_SAVED").
+		Str("msg_id", rawMsg.ID).
+		Str("group", rawMsg.GroupName).
+		Msg("💾 Message saved to database")
+
 	// Update group stats
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -90,13 +127,13 @@ func (l *Listener) HandleMessage(msg *IncomingMessage) {
 	// Queue for processing
 	select {
 	case l.msgChannel <- rawMsg:
-		l.log.Debug().
+		l.log.Info().
+			Str("step", "4_QUEUED").
 			Str("msg_id", rawMsg.ID).
-			Str("group", rawMsg.GroupName).
-			Str("sender", rawMsg.SenderName).
-			Msg("Message queued for processing")
+			Str("content", rawMsg.Content).
+			Msg("📤 Message queued for AI processing")
 	default:
-		l.log.Warn().Str("msg_id", rawMsg.ID).Msg("Message queue full, dropping message")
+		l.log.Error().Str("msg_id", rawMsg.ID).Msg("❌ Message queue full, dropping message")
 	}
 }
 
@@ -156,4 +193,12 @@ func (l *Listener) SyncGroups(ctx context.Context, groups []*GroupInfo) error {
 		}
 	}
 	return nil
+}
+
+// truncate limits string length for log output
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

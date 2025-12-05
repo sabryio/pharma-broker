@@ -167,12 +167,16 @@ export function OfferCard({
       {/* Match Alert */}
       {isMatch && (
         <div
-          className="mb-3 flex items-center gap-2 text-green-800 text-sm bg-green-100 p-2 rounded border border-green-200 shadow-sm"
+          className="mb-3 flex items-center gap-3 text-green-700 text-sm bg-green-50 px-4 py-2.5 rounded-lg border border-green-300"
           dir="rtl"
         >
-          <span className="text-green-600">⚡</span>
-          <strong className="font-bold">فرصة ممتازة!</strong>
-          <span>يوجد طرف آخر مهتم بهذا الصنف حالياً.</span>
+          <div className="shrink-0 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+            <span className="text-white text-xs font-bold">i</span>
+          </div>
+          <div>
+            <strong className="font-bold text-green-800">فرصة ممتازة!</strong>
+            <span className="mx-1">يوجد طرف آخر مهتم بهذا الصنف حالياً.</span>
+          </div>
         </div>
       )}
 

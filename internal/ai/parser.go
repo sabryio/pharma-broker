@@ -111,16 +111,41 @@ func (p *Parser) processLoop(ctx context.Context) {
 func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 	// Check if auto-parsing is enabled
 	if !p.isAutoParseEnabled() {
-		p.log.Debug().Int("count", len(batch)).Msg("Auto-parse disabled, skipping batch")
+		p.log.Warn().
+			Str("step", "5_AUTO_PARSE_DISABLED").
+			Int("count", len(batch)).
+			Msg("⏸️ Auto-parse disabled, skipping batch")
 		return
 	}
 
-	p.log.Info().Int("count", len(batch)).Msg("Processing message batch")
+	p.log.Info().
+		Str("step", "5_PROCESSING").
+		Int("count", len(batch)).
+		Msg("🤖 Starting AI batch processing")
+
+	// Log each message being processed
+	for i, msg := range batch {
+		p.log.Info().
+			Str("step", "5_BATCH_ITEM").
+			Int("index", i).
+			Str("msg_id", msg.ID).
+			Str("group", msg.GroupName).
+			Str("content", msg.Content).
+			Msg("📝 Message in batch")
+	}
 
 	// Call Gemini API
+	p.log.Info().
+		Str("step", "6_AI_REQUEST").
+		Int("message_count", len(batch)).
+		Msg("🚀 Sending to Gemini AI...")
+
 	results, err := p.gemini.ParseMessages(ctx, batch)
 	if err != nil {
-		p.log.Error().Err(err).Msg("Failed to parse messages with AI")
+		p.log.Error().
+			Err(err).
+			Str("step", "6_AI_ERROR").
+			Msg("❌ AI parsing failed")
 		// Mark all as failed
 		for _, msg := range batch {
 			if err := p.rawMsgRepo.MarkProcessed(ctx, msg.ID, err); err != nil {
@@ -130,18 +155,52 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 		return
 	}
 
+	p.log.Info().
+		Str("step", "7_AI_RESPONSE").
+		Int("result_count", len(results)).
+		Msg("✅ AI response received")
+
 	// Process each result
 	for i, result := range results {
 		msg := batch[i]
 
+		p.log.Info().
+			Str("step", "8_RESULT").
+			Str("msg_id", msg.ID).
+			Int("items_found", len(result.Items)).
+			Str("raw_json", result.RawJSON).
+			Msg("📊 AI result for message")
+
 		if result.Error != "" {
-			p.log.Warn().Str("msg_id", msg.ID).Str("error", result.Error).Msg("AI parsing error")
+			p.log.Warn().
+				Str("step", "8_RESULT_ERROR").
+				Str("msg_id", msg.ID).
+				Str("error", result.Error).
+				Msg("⚠️ AI returned error for message")
 			p.rawMsgRepo.MarkProcessed(ctx, msg.ID, nil)
 			continue
 		}
 
+		if len(result.Items) == 0 {
+			p.log.Warn().
+				Str("step", "8_NO_ITEMS").
+				Str("msg_id", msg.ID).
+				Str("content", msg.Content).
+				Msg("⚠️ AI found NO offers/requests in message")
+		}
+
 		// Create offers and requests from parsed items
 		for _, item := range result.Items {
+			p.log.Info().
+				Str("step", "9_ITEM").
+				Str("type", string(item.Type)).
+				Str("medication", item.Medication).
+				Str("medication_raw", item.MedicationRaw).
+				Int("quantity", item.Quantity).
+				Float64("price", item.Price).
+				Bool("urgent", item.Urgent).
+				Msg("📦 Extracted item from AI")
+
 			switch item.Type {
 			case domain.MessageTypeOffer, domain.MessageTypeBoth:
 				offer := p.createOffer(msg, &item)
@@ -149,9 +208,10 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 					p.log.Error().Err(err).Str("offer_id", offer.ID).Msg("Failed to save offer")
 				} else {
 					p.log.Info().
+						Str("step", "10_OFFER_SAVED").
 						Str("offer_id", offer.ID).
 						Str("medication", offer.Medication).
-						Msg("Created new offer")
+						Msg("✅ Created new OFFER")
 
 					// Find matching requests
 					go p.findMatchesForOffer(context.Background(), offer)
@@ -165,9 +225,10 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 					p.log.Error().Err(err).Str("request_id", request.ID).Msg("Failed to save request")
 				} else {
 					p.log.Info().
+						Str("step", "10_REQUEST_SAVED").
 						Str("request_id", request.ID).
 						Str("medication", request.Medication).
-						Msg("Created new request")
+						Msg("✅ Created new REQUEST")
 
 					// Find matching offers
 					go p.findMatchesForRequest(context.Background(), request)

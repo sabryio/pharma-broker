@@ -99,6 +99,15 @@ func main() {
 		return config.AutoParseEnabled
 	})
 
+	// Wire listener to check skip own messages config
+	listener.SetSkipOwnMessagesChecker(func() bool {
+		config, err := configRepo.GetAll(ctx)
+		if err != nil {
+			return true // Default to skip on error
+		}
+		return config.SkipOwnMessages
+	})
+
 	// Create SSE hub for real-time updates
 	sseHub := api.NewSSEHub()
 
