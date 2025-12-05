@@ -35,6 +35,11 @@ export function MatchCard({
             <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
               Offer
             </p>
+            {offer?.group_name && (
+              <p className="text-[10px] text-muted-foreground mb-1">
+                📍 {offer.group_name}
+              </p>
+            )}
             <p className="font-semibold text-sm">
               {offer?.medication || 'Unknown'}
             </p>
@@ -43,8 +48,13 @@ export function MatchCard({
               {offer?.price || '?'} EGP
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {offer?.source_name}
+              {offer?.source_name || 'Unknown'}
             </p>
+            {offer?.source_phone && (
+              <p className="text-[10px] font-mono text-muted-foreground">
+                {offer.source_phone}
+              </p>
+            )}
           </div>
 
           <span className="text-2xl text-muted-foreground">→</span>
@@ -53,6 +63,11 @@ export function MatchCard({
             <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
               Request
             </p>
+            {request?.group_name && (
+              <p className="text-[10px] text-muted-foreground mb-1">
+                📍 {request.group_name}
+              </p>
+            )}
             <p className="font-semibold text-sm">
               {request?.medication || 'Unknown'}
             </p>
@@ -61,8 +76,13 @@ export function MatchCard({
               {request?.max_price ? `max ${request.max_price} EGP` : ''}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {request?.source_name}
+              {request?.source_name || 'Unknown'}
             </p>
+            {request?.source_phone && (
+              <p className="text-[10px] font-mono text-muted-foreground">
+                {request.source_phone}
+              </p>
+            )}
           </div>
         </div>
 

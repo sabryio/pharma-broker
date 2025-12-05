@@ -1,4 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { timeAgo } from '@/lib/sse'
 import type { Offer } from '@/lib/types'
 
@@ -13,6 +14,13 @@ export function OfferCard({ offer }: OfferCardProps) {
   return (
     <Card className="cursor-pointer hover:border-primary transition-colors">
       <CardContent className="p-4">
+        {/* Group Badge */}
+        {offer.group_name && (
+          <Badge variant="outline" className="mb-2 text-xs">
+            📍 {offer.group_name}
+          </Badge>
+        )}
+
         <div className="flex justify-between items-start mb-2">
           <div>
             <p className="font-semibold">{offer.medication}</p>
@@ -38,7 +46,14 @@ export function OfferCard({ offer }: OfferCardProps) {
           )}
         </div>
         <div className="flex justify-between text-xs text-muted-foreground mt-3">
-          <span>{offer.source_name || offer.source_phone}</span>
+          <div className="flex flex-col">
+            <span>{offer.source_name || 'Unknown'}</span>
+            {offer.source_phone && (
+              <span className="font-mono text-[10px]">
+                {offer.source_phone}
+              </span>
+            )}
+          </div>
           <span>{timeAgo(offer.created_at)}</span>
         </div>
       </CardContent>
