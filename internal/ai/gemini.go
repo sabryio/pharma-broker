@@ -137,15 +137,51 @@ func (c *GeminiClient) ParseMessages(ctx context.Context, messages []*domain.Raw
 		Temperature:        genai.Ptr(float32(0.1)), // Low temperature for consistent parsing
 	}
 
-	// Make API request
-	result, err := c.client.Models.GenerateContent(
-		ctx,
-		c.cfg.Model,
-		genai.Text(prompt),
-		config,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("generate content: %w", err)
+	// Retry configuration
+	const maxRetries = 3
+	baseDelay := time.Second
+
+	var result *genai.GenerateContentResponse
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Make API request
+		result, lastErr = c.client.Models.GenerateContent(
+			ctx,
+			c.cfg.Model,
+			genai.Text(prompt),
+			config,
+		)
+
+		if lastErr == nil {
+			// Success - break out of retry loop
+			break
+		}
+
+		// Log retry attempt
+		c.log.Warn().
+			Err(lastErr).
+			Int("attempt", attempt).
+			Int("max_retries", maxRetries).
+			Msg("Gemini API call failed, retrying...")
+
+		// Don't delay after last attempt
+		if attempt < maxRetries {
+			// Exponential backoff: 1s, 2s, 4s
+			delay := baseDelay * time.Duration(1<<(attempt-1))
+
+			// Check context cancellation before sleeping
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
+			case <-time.After(delay):
+				// Continue to next attempt
+			}
+		}
+	}
+
+	if lastErr != nil {
+		return nil, fmt.Errorf("generate content after %d retries: %w", maxRetries, lastErr)
 	}
 
 	// Get response text

@@ -4,12 +4,21 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"sync"
 	"time"
 )
 
-// ConfigRepo stores and retrieves dynamic configuration
+// Cache TTL for config values
+const configCacheTTL = 30 * time.Second
+
+// ConfigRepo stores and retrieves dynamic configuration with caching
 type ConfigRepo struct {
 	db *DB
+
+	// Cache
+	mu           sync.RWMutex
+	cachedConfig *AppConfig
+	cacheTime    time.Time
 }
 
 // NewConfigRepo creates a new config repository
@@ -57,17 +66,35 @@ func (r *ConfigRepo) Get(ctx context.Context, key string) (string, error) {
 	return value, err
 }
 
-// Set stores a config value
+// Set stores a config value and invalidates cache
 func (r *ConfigRepo) Set(ctx context.Context, key, value string) error {
 	_, err := r.db.conn.ExecContext(ctx, `
 		INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
 	`, key, value, time.Now())
+
+	if err == nil {
+		// Invalidate cache on successful update
+		r.mu.Lock()
+		r.cachedConfig = nil
+		r.mu.Unlock()
+	}
+
 	return err
 }
 
-// GetAll retrieves all config as AppConfig
+// GetAll retrieves all config as AppConfig (with caching)
 func (r *ConfigRepo) GetAll(ctx context.Context) (*AppConfig, error) {
+	// Check cache first
+	r.mu.RLock()
+	if r.cachedConfig != nil && time.Since(r.cacheTime) < configCacheTTL {
+		cached := r.cachedConfig
+		r.mu.RUnlock()
+		return cached, nil
+	}
+	r.mu.RUnlock()
+
+	// Cache miss or expired - fetch from database
 	config := DefaultConfig()
 
 	rows, err := r.db.conn.QueryContext(ctx, "SELECT key, value FROM config")
@@ -114,6 +141,12 @@ func (r *ConfigRepo) GetAll(ctx context.Context) (*AppConfig, error) {
 			config.ResponseFormat = value
 		}
 	}
+
+	// Update cache
+	r.mu.Lock()
+	r.cachedConfig = config
+	r.cacheTime = time.Now()
+	r.mu.Unlock()
 
 	return config, nil
 }

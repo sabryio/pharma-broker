@@ -111,6 +111,9 @@ func main() {
 	// Create SSE hub for real-time updates
 	sseHub := api.NewSSEHub()
 
+	// Wire SSE broadcaster to parser for real-time updates
+	parser.SetSSEBroadcaster(sseHub)
+
 	// Create API handlers
 	handlers := api.NewHandlers(
 		offerRepo,

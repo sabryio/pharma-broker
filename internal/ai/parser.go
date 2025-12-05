@@ -12,6 +12,13 @@ import (
 	"pharmabroker/internal/domain"
 )
 
+// SSEBroadcaster interface for real-time updates
+type SSEBroadcaster interface {
+	BroadcastNewOffer(offerID string, medication string)
+	BroadcastNewRequest(requestID string, medication string)
+	BroadcastNewMatch(matchID string, score float64)
+}
+
 // Parser processes raw messages and creates offers/requests
 type Parser struct {
 	gemini      *GeminiClient
@@ -28,6 +35,9 @@ type Parser struct {
 	stopChan           chan struct{}
 	wg                 sync.WaitGroup
 	isAutoParseEnabled func() bool // Check if auto-parse is enabled
+
+	// Real-time updates
+	sseBroadcaster SSEBroadcaster
 }
 
 // NewParser creates a new message parser
@@ -54,6 +64,11 @@ func NewParser(
 		stopChan:           make(chan struct{}),
 		isAutoParseEnabled: func() bool { return true }, // Default: always parse
 	}
+}
+
+// SetSSEBroadcaster sets the SSE broadcaster for real-time updates
+func (p *Parser) SetSSEBroadcaster(broadcaster SSEBroadcaster) {
+	p.sseBroadcaster = broadcaster
 }
 
 // SetAutoParseChecker sets the function to check if auto-parse is enabled
@@ -213,6 +228,11 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 						Str("medication", offer.Medication).
 						Msg("✅ Created new OFFER")
 
+					// Broadcast to connected clients
+					if p.sseBroadcaster != nil {
+						p.sseBroadcaster.BroadcastNewOffer(offer.ID, offer.Medication)
+					}
+
 					// Find matching requests
 					go p.findMatchesForOffer(context.Background(), offer)
 				}
@@ -229,6 +249,11 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 						Str("request_id", request.ID).
 						Str("medication", request.Medication).
 						Msg("✅ Created new REQUEST")
+
+					// Broadcast to connected clients
+					if p.sseBroadcaster != nil {
+						p.sseBroadcaster.BroadcastNewRequest(request.ID, request.Medication)
+					}
 
 					// Find matching offers
 					go p.findMatchesForRequest(context.Background(), request)
@@ -335,6 +360,10 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 					Str("match_id", match.ID).
 					Float64("score", score).
 					Msg("Created potential match")
+				// Broadcast new match via SSE
+				if p.sseBroadcaster != nil {
+					p.sseBroadcaster.BroadcastNewMatch(match.ID, score)
+				}
 			}
 		}
 	}
@@ -371,6 +400,10 @@ func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Requ
 					Str("match_id", match.ID).
 					Float64("score", score).
 					Msg("Created potential match")
+				// Broadcast new match via SSE
+				if p.sseBroadcaster != nil {
+					p.sseBroadcaster.BroadcastNewMatch(match.ID, score)
+				}
 			}
 		}
 	}

@@ -215,4 +215,14 @@ var migrations = []migration{
 			);
 		`,
 	},
+	{
+		version: 4,
+		sql: `
+			-- Composite indexes for performance optimization
+			-- Optimizes GetActive queries that filter by status and order by created_at
+			CREATE INDEX IF NOT EXISTS idx_offers_status_created ON offers(status, created_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_requests_status_created ON requests(status, created_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_matches_status_created ON matches(status, created_at DESC);
+		`,
+	},
 }
