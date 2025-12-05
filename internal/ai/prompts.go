@@ -1,0 +1,148 @@
+package ai
+
+import (
+	"fmt"
+	"strings"
+
+	"pharmabroker/internal/domain"
+)
+
+// buildParsePrompt creates the prompt for parsing pharmaceutical messages
+func buildParsePrompt(messages []*domain.RawMessage) string {
+	var sb strings.Builder
+
+	sb.WriteString(systemPrompt)
+	sb.WriteString("\n\n")
+	sb.WriteString("=== MESSAGES TO PARSE ===\n\n")
+
+	for i, msg := range messages {
+		sb.WriteString(fmt.Sprintf("--- Message %d ---\n", i))
+		sb.WriteString(fmt.Sprintf("From: %s\n", msg.SenderName))
+		sb.WriteString(fmt.Sprintf("Group: %s\n", msg.GroupName))
+		sb.WriteString(fmt.Sprintf("Content:\n%s\n\n", msg.Content))
+	}
+
+	sb.WriteString("=== END MESSAGES ===\n\n")
+	sb.WriteString(responseFormat)
+
+	return sb.String()
+}
+
+const systemPrompt = `أنت خبير في تحليل رسائل سوق الأدوية المصرية على واتساب.
+مهمتك استخراج عروض الأدوية (OFFER) وطلبات الأدوية (REQUEST) من النصوص العربية غير الرسمية.
+
+You are an expert parser for Egyptian pharmaceutical WhatsApp messages.
+Your task is to extract medication OFFERS and REQUESTS from informal Arabic text.
+
+## Important Rules:
+
+### Language Handling
+- Messages are in Egyptian Arabic dialect (عامية مصرية)
+- Common offer phrases: عندي، متوفر، للبيع، available، متاح، موجود
+- Common request phrases: محتاج، عايز، مطلوب، wanted، need، محتاجين
+- Handle mixed Arabic/English text
+- Handle transliterated drug names (e.g., "أوجمنتين" = Augmentin)
+
+### Medication Extraction
+- Extract brand names and generic names
+- Normalize common misspellings
+- Include dosage forms: tablets, capsules, ampules, syrup, etc.
+- Include strength when mentioned: 500mg, 1g, etc.
+
+### Quantity & Price
+- Extract quantities with units (علبة, شريط, امبول, boxes, strips)
+- Prices in EGP (Egyptian Pounds) - symbols: ج.م، جنيه، EGP, LE
+- Handle ranges (e.g., "من 50 ل 100")
+
+### Message Classification
+- OFFER: Seller has medication available
+- REQUEST: Buyer needs medication
+- BOTH: Message contains both offers and requests (common in "swap" messages)
+- If message is general chat or unclear, return empty items array
+
+### Urgency Detection
+- Mark as urgent if contains: ضروري، عاجل، urgent، ASAP، مستعجل`
+
+const responseFormat = `## Response Format
+
+Return a JSON array with one object per message. Each object has:
+- message_index: 0-based index of the message
+- items: array of extracted items
+- error: optional error message if parsing failed
+
+Each item in items array:
+{
+  "type": "OFFER" | "REQUEST" | "BOTH",
+  "medication": "normalized drug name in English",
+  "medication_raw": "original text as written",
+  "quantity": number or 0 if not specified,
+  "unit": "boxes" | "strips" | "ampules" | "bottles" | null,
+  "price": number or 0 if not specified (for offers),
+  "max_price": number or 0 if not specified (for requests),
+  "currency": "EGP",
+  "expiry_date": "YYYY-MM" if mentioned or null,
+  "batch_number": string if mentioned or null,
+  "urgent": true/false (for requests),
+  "notes": "any additional details"
+}
+
+## Examples
+
+Input message: "عندي اوجمنتين 1 جم ٥ علب ب ٣٠٠ جنيه الواحدة"
+Output:
+{
+  "message_index": 0,
+  "items": [
+    {
+      "type": "OFFER",
+      "medication": "Augmentin 1g",
+      "medication_raw": "اوجمنتين 1 جم",
+      "quantity": 5,
+      "unit": "boxes",
+      "price": 300,
+      "currency": "EGP",
+      "notes": ""
+    }
+  ]
+}
+
+Input message: "محتاج كونكور 5 ضروري"
+Output:
+{
+  "message_index": 0,
+  "items": [
+    {
+      "type": "REQUEST",
+      "medication": "Concor 5mg",
+      "medication_raw": "كونكور 5",
+      "quantity": 0,
+      "unit": null,
+      "max_price": 0,
+      "currency": "EGP",
+      "urgent": true,
+      "notes": ""
+    }
+  ]
+}
+
+Now parse the following messages and return ONLY valid JSON:`
+
+// CommonMedications maps common Arabic drug names to English
+var CommonMedications = map[string]string{
+	"اوجمنتين":    "Augmentin",
+	"كونكور":      "Concor",
+	"كوكسيكام":    "Coxicam",
+	"فلاجيل":      "Flagyl",
+	"زيثروماكس":   "Zithromax",
+	"سيفترياكسون": "Ceftriaxone",
+	"أموكسيسيلين": "Amoxicillin",
+	"كيتولاك":     "Ketorolac",
+	"فولتارين":    "Voltaren",
+	"بروفين":      "Brufen",
+	"باراسيتامول": "Paracetamol",
+	"اسبرين":      "Aspirin",
+	"لوسارتان":    "Losartan",
+	"أملوديبين":   "Amlodipine",
+	"ميتفورمين":   "Metformin",
+	"انسولين":     "Insulin",
+}

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PharmaBroker - Market Dashboard</title>
+    <meta
+      name="description"
+      content="Real-time pharmaceutical market tracking dashboard"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-left">
+          <h1 class="logo">💊 PharmaBroker</h1>
+          <span class="subtitle">Market Dashboard</span>
+        </div>
+        <div class="header-center" id="stats">
+          <div class="stat">
+            <span class="stat-value" id="stat-offers">-</span>
+            <span class="stat-label">Offers</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="stat-requests">-</span>
+            <span class="stat-label">Requests</span>
+          </div>
+          <div class="stat highlight">
+            <span class="stat-value" id="stat-matches">-</span>
+            <span class="stat-label">Pending</span>
+          </div>
+          <div class="stat success">
+            <span class="stat-value" id="stat-confirmed">-</span>
+            <span class="stat-label">Today</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <div class="connection-status" id="connection-status">
+            <span class="status-dot"></span>
+            <span class="status-text">Connecting...</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="main">
+        <!-- Offers Panel -->
+        <section class="panel offers-panel">
+          <div class="panel-header">
+            <h2>📦 Offers</h2>
+            <input
+              type="search"
+              class="search-input"
+              id="offers-search"
+              placeholder="Search medications..."
+            />
+          </div>
+          <div class="panel-content" id="offers-list">
+            <div class="loading">Loading offers...</div>
+          </div>
+        </section>
+
+        <!-- Matches Panel -->
+        <section class="panel matches-panel">
+          <div class="panel-header">
+            <h2>🎯 Suggested Matches</h2>
+            <span class="badge" id="matches-count">0</span>
+          </div>
+          <div class="panel-content" id="matches-list">
+            <div class="empty-state">No pending matches</div>
+          </div>
+        </section>
+
+        <!-- Requests Panel -->
+        <section class="panel requests-panel">
+          <div class="panel-header">
+            <h2>🔍 Requests</h2>
+            <input
+              type="search"
+              class="search-input"
+              id="requests-search"
+              placeholder="Search medications..."
+            />
+          </div>
+          <div class="panel-content" id="requests-list">
+            <div class="loading">Loading requests...</div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Groups Modal -->
+      <div class="modal-overlay" id="groups-modal" style="display: none">
+        <div class="modal">
+          <div class="modal-header">
+            <h2>📋 WhatsApp Groups</h2>
+            <button class="btn-close" onclick="dashboard.closeGroupsModal()">
+              ×
+            </button>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-primary" onclick="dashboard.syncGroups()">
+              🔄 Sync from WhatsApp
+            </button>
+          </div>
+          <div class="modal-content" id="groups-list">
+            <div class="empty-state">
+              Click "Sync" to load your WhatsApp groups
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Groups FAB Button -->
+      <button
+        class="fab"
+        onclick="dashboard.openGroupsModal()"
+        title="Manage Groups"
+      >
+        📋
+      </button>
+
+      <!-- Toast Notifications -->
+      <div class="toast-container" id="toast-container"></div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
