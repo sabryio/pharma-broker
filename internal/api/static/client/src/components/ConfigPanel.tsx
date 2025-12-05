@@ -13,6 +13,7 @@ import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Spinner } from '@/components/ui/spinner'
 import { useConfig, useUpdateConfig } from '@/lib/api'
+import { Settings } from 'lucide-react'
 
 export function ConfigPanel() {
   const [open, setOpen] = useState(false)
@@ -61,17 +62,17 @@ export function ConfigPanel() {
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg border-2 hover:bg-secondary"
+          className="fixed bottom-6 left-6 h-14 w-14 rounded-full shadow-lg border-2 hover:bg-secondary"
           size="icon"
         >
-          <span className="text-xl">⚙️</span>
+          <Settings className="h-6 w-6" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" dir="rtl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="text-2xl">⚙️</span>
-            AI Configuration
+            <Settings className="h-6 w-6" />
+            إعدادات الذكاء الاصطناعي
           </DialogTitle>
         </DialogHeader>
 
@@ -91,12 +92,12 @@ export function ConfigPanel() {
                     htmlFor="autoParse"
                     className="text-base font-semibold"
                   >
-                    Auto-Parse Messages
+                    التحليل التلقائي للرسائل
                   </Label>
                   <p className="text-sm text-muted-foreground">
                     {localAutoParse
-                      ? '✅ Incoming messages are being processed automatically'
-                      : '⏸️ Message processing is paused'}
+                      ? '✅ يتم معالجة الرسائل الواردة تلقائياً'
+                      : '⏸️ معالجة الرسائل متوقفة مؤقتاً'}
                   </p>
                 </div>
                 <Switch
@@ -111,7 +112,7 @@ export function ConfigPanel() {
             {/* Match Threshold */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label htmlFor="threshold">Match Threshold</Label>
+                <Label htmlFor="threshold">نسبة التطابق</Label>
                 <span className="text-sm font-mono bg-secondary px-2 py-1 rounded">
                   {Math.round(localThreshold * 100)}%
                 </span>
@@ -126,14 +127,13 @@ export function ConfigPanel() {
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                Minimum similarity score to suggest a match between offers and
-                requests.
+                أقل نسبة تشابه لاقتراح تطابق بين العروض والطلبات
               </p>
             </div>
 
             {/* Batch Size */}
             <div className="space-y-2">
-              <Label htmlFor="batchSize">Batch Size</Label>
+              <Label htmlFor="batchSize">حجم الدفعة</Label>
               <Input
                 id="batchSize"
                 type="number"
@@ -144,13 +144,13 @@ export function ConfigPanel() {
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">
-                Number of messages to process in a single AI request.
+                عدد الرسائل المعالجة في طلب واحد للذكاء الاصطناعي
               </p>
             </div>
 
             {/* Process Delay */}
             <div className="space-y-2">
-              <Label htmlFor="delay">Process Delay (seconds)</Label>
+              <Label htmlFor="delay">تأخير المعالجة (ثواني)</Label>
               <Input
                 id="delay"
                 type="number"
@@ -161,7 +161,7 @@ export function ConfigPanel() {
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">
-                Time to wait before processing accumulated messages.
+                وقت الانتظار قبل معالجة الرسائل المتراكمة
               </p>
             </div>
 
@@ -169,24 +169,24 @@ export function ConfigPanel() {
             <Button
               onClick={handleSave}
               disabled={!hasChanges || updateConfig.isPending}
-              className="w-full bg-linear-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
+              className="w-full bg-linear-to-l from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
             >
               {updateConfig.isPending ? (
                 <>
-                  <Spinner className="mr-2 h-4 w-4" />
-                  Saving...
+                  <Spinner className="ml-2 h-4 w-4" />
+                  جاري الحفظ...
                 </>
               ) : hasChanges ? (
-                '💾 Save Changes'
+                '💾 حفظ التغييرات'
               ) : (
-                '✓ No Changes'
+                '✓ لا توجد تغييرات'
               )}
             </Button>
 
             {/* Success Message */}
             {updateConfig.isSuccess && (
               <p className="text-center text-sm text-green-500">
-                ✓ Configuration saved successfully!
+                ✓ تم حفظ الإعدادات بنجاح!
               </p>
             )}
           </div>

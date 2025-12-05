@@ -83,29 +83,29 @@ export function Dashboard() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Header Stats */}
+    <div className="flex flex-col h-screen bg-background" dir="rtl">
+      {/* Header */}
       <header className="border-b p-4">
         <div className="flex items-center justify-between max-w-[1800px] mx-auto">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold bg-linear-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-              💊 PharmaBroker
+            <h1 className="text-2xl font-bold bg-linear-to-l from-primary to-primary/60 bg-clip-text text-transparent">
+              💊 فارما بروكر
             </h1>
-            <span className="text-muted-foreground">Dashboard</span>
+            <span className="text-muted-foreground">لوحة التحكم</span>
           </div>
 
           <div className="flex items-center gap-6">
             {/* Group Filter */}
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Group:</span>
+              <span className="text-sm text-muted-foreground">المجموعة:</span>
               <Select value={selectedGroup} onValueChange={setSelectedGroup}>
                 <SelectTrigger className="w-[200px] h-9">
-                  <SelectValue placeholder="All Groups" />
+                  <SelectValue placeholder="كل المجموعات" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
                     <span className="flex items-center gap-2">
-                      🌐 All Groups
+                      🌐 كل المجموعات
                     </span>
                   </SelectItem>
                   {groups
@@ -121,24 +121,21 @@ export function Dashboard() {
               </Select>
               {selectedGroup !== 'all' && (
                 <Badge variant="secondary" className="text-xs">
-                  {filteredOffers.length + filteredRequests.length} items
+                  {filteredOffers.length + filteredRequests.length} عنصر
                 </Badge>
               )}
             </div>
 
             <div className="flex gap-8">
-              <StatItem label="Offers" value={stats?.active_offers ?? '-'} />
+              <StatItem label="العروض" value={stats?.active_offers ?? '-'} />
+              <StatItem label="الطلبات" value={stats?.active_requests ?? '-'} />
               <StatItem
-                label="Requests"
-                value={stats?.active_requests ?? '-'}
-              />
-              <StatItem
-                label="Pending"
+                label="معلق"
                 value={stats?.pending_matches ?? '-'}
                 highlight="warning"
               />
               <StatItem
-                label="Today"
+                label="اليوم"
                 value={stats?.confirmed_today ?? '-'}
                 highlight="success"
               />
@@ -151,7 +148,7 @@ export function Dashboard() {
                 className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}
               />
               <span className="text-sm">
-                {connected ? 'Connected' : 'Connecting...'}
+                {connected ? 'متصل' : 'جاري الاتصال...'}
               </span>
             </div>
           </div>
@@ -165,15 +162,15 @@ export function Dashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">
-                📦 Offers
+                📦 العروض (الراكد)
                 {selectedGroup !== 'all' && (
-                  <Badge variant="outline" className="ml-2 text-xs">
+                  <Badge variant="outline" className="mr-2 text-xs">
                     {filteredOffers.length}
                   </Badge>
                 )}
               </CardTitle>
               <Input
-                placeholder="Search..."
+                placeholder="بحث..."
                 value={offersQuery}
                 onChange={(e) => setOffersQuery(e.target.value)}
                 className="w-40 h-8"
@@ -183,14 +180,14 @@ export function Dashboard() {
           <CardContent className="flex-1 overflow-y-auto space-y-2">
             {offersLoading && (
               <p className="text-muted-foreground text-center py-8">
-                Loading...
+                جاري التحميل...
               </p>
             )}
             {!offersLoading && filteredOffers.length === 0 && (
               <p className="text-muted-foreground text-center py-8">
                 {selectedGroup !== 'all'
-                  ? `No offers from ${getGroupName(selectedGroup)}`
-                  : 'No active offers'}
+                  ? `لا توجد عروض من ${getGroupName(selectedGroup)}`
+                  : 'لا توجد عروض نشطة'}
               </p>
             )}
             {filteredOffers.map((offer) => (
@@ -204,9 +201,9 @@ export function Dashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">
-                🎯 Suggested Matches
+                🎯 التطابقات المقترحة
                 {selectedGroup !== 'all' && (
-                  <Badge variant="outline" className="ml-2 text-xs">
+                  <Badge variant="outline" className="mr-2 text-xs">
                     {filteredMatches.length}
                   </Badge>
                 )}
@@ -217,14 +214,14 @@ export function Dashboard() {
           <CardContent className="flex-1 overflow-y-auto">
             {matchesLoading && (
               <p className="text-muted-foreground text-center py-8">
-                Loading...
+                جاري التحميل...
               </p>
             )}
             {!matchesLoading && filteredMatches.length === 0 && (
               <p className="text-muted-foreground text-center py-8">
                 {selectedGroup !== 'all'
-                  ? `No matches involving ${getGroupName(selectedGroup)}`
-                  : 'No pending matches'}
+                  ? `لا توجد تطابقات من ${getGroupName(selectedGroup)}`
+                  : 'لا توجد تطابقات معلقة'}
               </p>
             )}
             {filteredMatches.map((match) => (
@@ -244,15 +241,15 @@ export function Dashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">
-                🔍 Requests
+                🔍 الطلبات (الناقص)
                 {selectedGroup !== 'all' && (
-                  <Badge variant="outline" className="ml-2 text-xs">
+                  <Badge variant="outline" className="mr-2 text-xs">
                     {filteredRequests.length}
                   </Badge>
                 )}
               </CardTitle>
               <Input
-                placeholder="Search..."
+                placeholder="بحث..."
                 value={requestsQuery}
                 onChange={(e) => setRequestsQuery(e.target.value)}
                 className="w-40 h-8"
@@ -262,14 +259,14 @@ export function Dashboard() {
           <CardContent className="flex-1 overflow-y-auto space-y-2">
             {requestsLoading && (
               <p className="text-muted-foreground text-center py-8">
-                Loading...
+                جاري التحميل...
               </p>
             )}
             {!requestsLoading && filteredRequests.length === 0 && (
               <p className="text-muted-foreground text-center py-8">
                 {selectedGroup !== 'all'
-                  ? `No requests from ${getGroupName(selectedGroup)}`
-                  : 'No active requests'}
+                  ? `لا توجد طلبات من ${getGroupName(selectedGroup)}`
+                  : 'لا توجد طلبات نشطة'}
               </p>
             )}
             {filteredRequests.map((request) => (
