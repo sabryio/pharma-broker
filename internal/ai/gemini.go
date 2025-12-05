@@ -137,9 +137,9 @@ func (c *GeminiClient) ParseMessages(ctx context.Context, messages []*domain.Raw
 		Temperature:        genai.Ptr(float32(0.1)), // Low temperature for consistent parsing
 	}
 
-	// Retry configuration
-	const maxRetries = 3
-	baseDelay := time.Second
+	// Retry configuration from config
+	maxRetries := c.cfg.MaxRetries
+	baseDelay := c.cfg.RetryBaseDelay
 
 	var result *genai.GenerateContentResponse
 	var lastErr error
@@ -265,10 +265,7 @@ func (c *GeminiClient) GetRateLimitStatus() (used, limit int, resetIn time.Durat
 	defer c.mu.Unlock()
 
 	elapsed := time.Since(c.hourStart)
-	resetIn = time.Hour - elapsed
-	if resetIn < 0 {
-		resetIn = 0
-	}
+	resetIn = max(time.Hour - elapsed, 0)
 
 	return c.requestsThisHour, c.cfg.RateLimitPerHour, resetIn
 }

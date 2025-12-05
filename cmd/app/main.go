@@ -84,6 +84,7 @@ func main() {
 		matchRepo,
 		listener.MessageChannel(),
 		&cfg.Gemini,
+		&cfg.Parser,
 		log.Logger,
 	)
 

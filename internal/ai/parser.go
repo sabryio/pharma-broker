@@ -28,7 +28,8 @@ type Parser struct {
 	requestRepo domain.RequestRepository
 	matchRepo   domain.MatchRepository
 	log         zerolog.Logger
-	cfg         *config.GeminiConfig
+	geminiCfg   *config.GeminiConfig
+	parserCfg   *config.ParserConfig
 
 	// Processing
 	msgChan            <-chan *domain.RawMessage
@@ -49,7 +50,8 @@ func NewParser(
 	requestRepo domain.RequestRepository,
 	matchRepo domain.MatchRepository,
 	msgChan <-chan *domain.RawMessage,
-	cfg *config.GeminiConfig,
+	geminiCfg *config.GeminiConfig,
+	parserCfg *config.ParserConfig,
 	log zerolog.Logger,
 ) *Parser {
 	return &Parser{
@@ -59,9 +61,10 @@ func NewParser(
 		requestRepo:        requestRepo,
 		matchRepo:          matchRepo,
 		log:                log.With().Str("component", "parser").Logger(),
-		cfg:                cfg,
+		geminiCfg:          geminiCfg,
+		parserCfg:          parserCfg,
 		msgChan:            msgChan,
-		batchSize:          cfg.MaxMessagesPerRequest,
+		batchSize:          geminiCfg.MaxMessagesPerRequest,
 		stopChan:           make(chan struct{}),
 		isAutoParseEnabled: func() bool { return true }, // Default: always parse
 	}
@@ -93,7 +96,7 @@ func (p *Parser) processLoop(ctx context.Context) {
 	defer p.wg.Done()
 
 	batch := make([]*domain.RawMessage, 0, p.batchSize)
-	ticker := time.NewTicker(5 * time.Second) // Process batch every 5 seconds
+	ticker := time.NewTicker(p.parserCfg.BatchInterval) // Use config for batch interval
 	defer ticker.Stop()
 
 	for {
@@ -343,7 +346,7 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 
 	for _, req := range requests {
 		score := calculateMatchScore(offer, req)
-		if score >= 0.5 { // Minimum 50% match
+		if score >= p.parserCfg.MatchThreshold { // Use config threshold
 			match := &domain.Match{
 				ID:        uuid.New().String(),
 				OfferID:   offer.ID,
@@ -380,7 +383,7 @@ func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Requ
 
 	for _, offer := range offers {
 		score := calculateMatchScore(offer, request)
-		if score >= 0.5 { // Minimum 50% match
+		if score >= p.parserCfg.MatchThreshold { // Use config threshold
 			match := &domain.Match{
 				ID:        uuid.New().String(),
 				OfferID:   offer.ID,

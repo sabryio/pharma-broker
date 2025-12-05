@@ -1,0 +1,110 @@
+# PharmaBroker Configuration
+# ===========================
+# All values can be overridden via environment variables with PB_ prefix
+# Example: PB_GEMINI_API_KEY, PB_SERVER_PORT, PB_PARSER_MATCH_THRESHOLD
+
+# ---------------------------------
+# WhatsApp Web Connection Settings
+# ---------------------------------
+whatsapp:
+  # Directory for WhatsApp session data (keys, credentials)
+  # Persistent storage allows login without re-scanning QR code
+  session_dir: ./data/whatsapp
+
+  # Time to wait before reconnecting after connection failure
+  reconnect_delay: 5s
+
+  # Timeout for WhatsApp operations (fetching groups, etc.)
+  operation_timeout: 30s
+
+  # Optional: List of specific group JIDs to monitor
+  # If empty, all groups are discovered and can be toggled via API
+  # monitored_groups:
+  #   - "1234567890@g.us"
+
+# ---------------------------------
+# Google Gemini AI Settings
+# ---------------------------------
+gemini:
+  # API key from Google AI Studio (Required)
+  # Can also set via GEMINI_API_KEY environment variable
+  # api_key: your-api-key-here
+
+  # Model to use for parsing messages
+  # Options: gemini-2.5-flash (fast), gemini-2.5-pro (accurate)
+  model: gemini-2.5-flash
+
+  # Messages per batch API request (efficiency vs token limits)
+  max_messages_per_request: 10
+
+  # Maximum API calls per hour (avoid quota exhaustion)
+  rate_limit_per_hour: 100
+
+  # Timeout waiting for AI response
+  request_timeout: 30s
+
+  # Retry attempts for failed API calls (uses exponential backoff)
+  max_retries: 3
+
+  # Initial delay between retries (doubles each attempt: 1s, 2s, 4s)
+  retry_base_delay: 1s
+
+# ---------------------------------
+# Message Parser & Matching Engine
+# ---------------------------------
+parser:
+  # How often to process accumulated messages
+  # Shorter = faster, longer = more efficient batching
+  batch_interval: 5s
+
+  # Minimum similarity score (0.0-1.0) for offer/request matching
+  # 0.5 = 50% match, 0.8 = 80% match
+  # Lower values = more matches but more false positives
+  match_threshold: 0.5
+
+  # Channel buffer for incoming messages (handles bursts)
+  message_buffer_size: 1000
+
+# ---------------------------------
+# HTTP API Configuration
+# ---------------------------------
+api:
+  # Timeout for standard API requests (listings, updates)
+  request_timeout: 5s
+
+  # Timeout for export operations (CSV downloads)
+  export_timeout: 30s
+
+  # Interval between SSE heartbeat pings
+  # Keeps connections alive and detects disconnected clients
+  sse_heartbeat: 30s
+
+  # How long to cache dynamic config from database
+  # Reduces DB load for frequently checked settings
+  config_cache_ttl: 30s
+
+  # Default items per page in list APIs
+  default_page_limit: 50
+
+  # Maximum records in export files
+  max_export_records: 1000
+
+# ---------------------------------
+# SQLite Database Settings
+# ---------------------------------
+database:
+  # Path to SQLite database file (created if not exists)
+  path: ./data/pharmabroker.db
+
+  # Enable WAL mode for better concurrent read/write performance
+  enable_wal: true
+
+# ---------------------------------
+# Network/Server Settings
+# ---------------------------------
+server:
+  # Main HTTP server port (API + Dashboard)
+  port: 8080
+
+  # Health check endpoint port (separate for isolation)
+  health_port: 5050
