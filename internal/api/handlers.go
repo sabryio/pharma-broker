@@ -93,10 +93,10 @@ func (h *Handlers) SetConfigRepo(repo ConfigRepository) {
 
 // Response helpers
 type response struct {
-	Success bool        `json:"success"`
-	Data    interface{} `json:"data,omitempty"`
-	Error   string      `json:"error,omitempty"`
-	Meta    *meta       `json:"meta,omitempty"`
+	Success bool      `json:"success"`
+	Data    any       `json:"data,omitempty"`
+	Error   *APIError `json:"error,omitempty"`
+	Meta    *meta     `json:"meta,omitempty"`
 }
 
 type meta struct {
@@ -120,7 +120,12 @@ func (h *Handlers) successWithMeta(w http.ResponseWriter, data interface{}, m *m
 }
 
 func (h *Handlers) error(w http.ResponseWriter, status int, msg string) {
-	h.writeJSON(w, status, response{Success: false, Error: msg})
+	// Legacy simple error - converts to structured format
+	h.errorWithCode(w, status, ErrBadRequest(msg))
+}
+
+func (h *Handlers) errorWithCode(w http.ResponseWriter, status int, apiErr *APIError) {
+	h.writeJSON(w, status, response{Success: false, Error: apiErr})
 }
 
 // GetOffers returns active offers with pagination
@@ -142,7 +147,7 @@ func (h *Handlers) GetOffers(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		h.log.Error().Err(err).Msg("Failed to get offers")
-		h.error(w, http.StatusInternalServerError, "Failed to fetch offers")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch offers"))
 		return
 	}
 
@@ -163,7 +168,7 @@ func (h *Handlers) GetOffer(w http.ResponseWriter, r *http.Request) {
 
 	offer, err := h.offerRepo.GetByID(ctx, id)
 	if err != nil {
-		h.error(w, http.StatusNotFound, "Offer not found")
+		h.errorWithCode(w, http.StatusNotFound, ErrOfferNotFound())
 		return
 	}
 
@@ -189,7 +194,7 @@ func (h *Handlers) GetRequests(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		h.log.Error().Err(err).Msg("Failed to get requests")
-		h.error(w, http.StatusInternalServerError, "Failed to fetch requests")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch requests"))
 		return
 	}
 
@@ -210,7 +215,7 @@ func (h *Handlers) GetRequest(w http.ResponseWriter, r *http.Request) {
 
 	request, err := h.requestRepo.GetByID(ctx, id)
 	if err != nil {
-		h.error(w, http.StatusNotFound, "Request not found")
+		h.errorWithCode(w, http.StatusNotFound, ErrRequestNotFound())
 		return
 	}
 
@@ -227,7 +232,7 @@ func (h *Handlers) GetMatches(w http.ResponseWriter, r *http.Request) {
 	matches, err := h.matchRepo.GetPending(ctx, limit, offset)
 	if err != nil {
 		h.log.Error().Err(err).Msg("Failed to get matches")
-		h.error(w, http.StatusInternalServerError, "Failed to fetch matches")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch matches"))
 		return
 	}
 

@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -414,12 +415,21 @@ func calculateMatchScore(offer *domain.Offer, request *domain.Request) float64 {
 	score := 0.0
 	weights := 0.0
 
-	// Medication name match (most important)
-	if offer.Medication == request.Medication {
+	// Medication name match using fuzzy matching (most important - 60% weight)
+	similarity := fuzzyMatch(offer.Medication, request.Medication)
+	if similarity >= 1.0 {
+		// Exact match
 		score += 0.6
+	} else if similarity >= 0.8 {
+		// High similarity (e.g., "Amoxil" vs "Amoxicillin")
+		score += 0.5
+	} else if similarity >= 0.6 {
+		// Moderate similarity
+		score += 0.35
 	} else if containsIgnoreCase(offer.Medication, request.Medication) ||
 		containsIgnoreCase(request.Medication, offer.Medication) {
-		score += 0.4
+		// Substring match fallback
+		score += 0.3
 	}
 	weights += 0.6
 
@@ -450,6 +460,66 @@ func calculateMatchScore(offer *domain.Offer, request *domain.Request) float64 {
 func containsIgnoreCase(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 &&
 		(s == substr || len(s) > len(substr) && s[:len(substr)] == substr)
+}
+
+// fuzzyMatch returns a similarity score between 0 and 1 using Levenshtein distance
+func fuzzyMatch(s1, s2 string) float64 {
+	// Normalize strings: lowercase and trim
+	s1 = strings.ToLower(strings.TrimSpace(s1))
+	s2 = strings.ToLower(strings.TrimSpace(s2))
+
+	if s1 == s2 {
+		return 1.0
+	}
+
+	if len(s1) == 0 || len(s2) == 0 {
+		return 0.0
+	}
+
+	// Calculate Levenshtein distance
+	dist := levenshteinDistance(s1, s2)
+	maxLen := max(len(s1), len(s2))
+
+	// Convert to similarity score (1 - normalized distance)
+	similarity := 1.0 - float64(dist)/float64(maxLen)
+	return similarity
+}
+
+// levenshteinDistance calculates the edit distance between two strings
+func levenshteinDistance(s1, s2 string) int {
+	if len(s1) == 0 {
+		return len(s2)
+	}
+	if len(s2) == 0 {
+		return len(s1)
+	}
+
+	// Use two rows instead of full matrix for memory efficiency
+	prev := make([]int, len(s2)+1)
+	curr := make([]int, len(s2)+1)
+
+	// Initialize first row
+	for j := range prev {
+		prev[j] = j
+	}
+
+	for i := 1; i <= len(s1); i++ {
+		curr[0] = i
+		for j := 1; j <= len(s2); j++ {
+			cost := 1
+			if s1[i-1] == s2[j-1] {
+				cost = 0
+			}
+			curr[j] = min(
+				prev[j]+1,      // deletion
+				curr[j-1]+1,    // insertion
+				prev[j-1]+cost, // substitution
+			)
+		}
+		prev, curr = curr, prev
+	}
+
+	return prev[len(s2)]
 }
 
 func generateMatchReasoning(offer *domain.Offer, request *domain.Request, score float64) string {
