@@ -1,5 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Offer, Request, Match, Group, Stats } from './types'
+import type {
+  Offer,
+  Request,
+  Match,
+  Group,
+  Stats,
+  AnalyzeRequest,
+  AnalyzeResult,
+  AppConfig,
+} from './types'
 
 const API_BASE = '/api'
 
@@ -131,6 +140,44 @@ export function useToggleGroup() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['groups'] })
+    },
+  })
+}
+
+// AI Analysis
+export function useAnalyze() {
+  return useMutation({
+    mutationFn: async (request: AnalyzeRequest) => {
+      return fetchJson<AnalyzeResult>(`${API_BASE}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      })
+    },
+  })
+}
+
+// Configuration
+export function useConfig() {
+  return useQuery({
+    queryKey: ['config'],
+    queryFn: () => fetchJson<AppConfig>(`${API_BASE}/config`),
+    staleTime: 60000, // Config doesn't change often
+  })
+}
+
+export function useUpdateConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (updates: Partial<AppConfig>) => {
+      return fetchJson<AppConfig>(`${API_BASE}/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config'] })
     },
   })
 }

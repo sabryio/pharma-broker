@@ -19,9 +19,48 @@ type Handlers struct {
 	matchRepo   domain.MatchRepository
 	groupRepo   domain.GroupRepository
 	statsRepo   domain.StatsRepository
+	configRepo  ConfigRepository
 	log         zerolog.Logger
 	sseHub      *SSEHub
-	syncGroups  func() error // Function to sync groups from WhatsApp
+	syncGroups  func() error                              // Function to sync groups from WhatsApp
+	analyzeFunc func(text string) (*AnalyzeResult, error) // Function to analyze text with AI
+}
+
+// ConfigRepository interface for config storage
+type ConfigRepository interface {
+	GetAll(ctx context.Context) (*AppConfig, error)
+	UpdateFromMap(ctx context.Context, updates map[string]interface{}) error
+}
+
+// AppConfig from storage package
+type AppConfig = struct {
+	MatchThreshold      float64 `json:"match_threshold"`
+	BatchSize           int     `json:"batch_size"`
+	ProcessDelaySeconds int     `json:"process_delay_seconds"`
+	SystemPrompt        string  `json:"system_prompt,omitempty"`
+	ResponseFormat      string  `json:"response_format,omitempty"`
+}
+
+// AnalyzeResult represents AI analysis output
+type AnalyzeResult struct {
+	Items   []AnalyzeItem `json:"items"`
+	RawJSON string        `json:"raw_json,omitempty"`
+}
+
+// AnalyzeItem represents a single parsed item
+type AnalyzeItem struct {
+	Type          string  `json:"type"`
+	Medication    string  `json:"medication"`
+	MedicationRaw string  `json:"medication_raw"`
+	Quantity      int     `json:"quantity"`
+	Unit          string  `json:"unit,omitempty"`
+	Price         float64 `json:"price,omitempty"`
+	MaxPrice      float64 `json:"max_price,omitempty"`
+	Currency      string  `json:"currency,omitempty"`
+	ExpiryDate    string  `json:"expiry_date,omitempty"`
+	BatchNumber   string  `json:"batch_number,omitempty"`
+	Urgent        bool    `json:"urgent,omitempty"`
+	Notes         string  `json:"notes,omitempty"`
 }
 
 // NewHandlers creates new HTTP handlers
@@ -48,6 +87,16 @@ func NewHandlers(
 // SetGroupSyncFunc sets the function to sync groups from WhatsApp
 func (h *Handlers) SetGroupSyncFunc(fn func() error) {
 	h.syncGroups = fn
+}
+
+// SetAnalyzeFunc sets the function to analyze text with AI
+func (h *Handlers) SetAnalyzeFunc(fn func(text string) (*AnalyzeResult, error)) {
+	h.analyzeFunc = fn
+}
+
+// SetConfigRepo sets the config repository
+func (h *Handlers) SetConfigRepo(repo ConfigRepository) {
+	h.configRepo = repo
 }
 
 // Response helpers
@@ -373,4 +422,83 @@ func (h *Handlers) getPagination(r *http.Request) (limit, offset int) {
 	}
 
 	return
+}
+
+// Analyze handles manual text analysis with AI
+func (h *Handlers) Analyze(w http.ResponseWriter, r *http.Request) {
+	if h.analyzeFunc == nil {
+		h.error(w, http.StatusServiceUnavailable, "Analyze function not configured")
+		return
+	}
+
+	var req struct {
+		Text       string `json:"text"`
+		SourceName string `json:"source_name,omitempty"`
+		GroupName  string `json:"group_name,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Text == "" {
+		h.error(w, http.StatusBadRequest, "Text is required")
+		return
+	}
+
+	result, err := h.analyzeFunc(req.Text)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to analyze text")
+		h.error(w, http.StatusInternalServerError, "Analysis failed: "+err.Error())
+		return
+	}
+
+	h.success(w, result)
+}
+
+// GetConfig returns current configuration
+func (h *Handlers) GetConfig(w http.ResponseWriter, r *http.Request) {
+	if h.configRepo == nil {
+		h.error(w, http.StatusServiceUnavailable, "Config not available")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	config, err := h.configRepo.GetAll(ctx)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to get config")
+		h.error(w, http.StatusInternalServerError, "Failed to get config")
+		return
+	}
+
+	h.success(w, config)
+}
+
+// UpdateConfig updates configuration
+func (h *Handlers) UpdateConfig(w http.ResponseWriter, r *http.Request) {
+	if h.configRepo == nil {
+		h.error(w, http.StatusServiceUnavailable, "Config not available")
+		return
+	}
+
+	var updates map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		h.error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	if err := h.configRepo.UpdateFromMap(ctx, updates); err != nil {
+		h.log.Error().Err(err).Msg("Failed to update config")
+		h.error(w, http.StatusInternalServerError, "Failed to update config")
+		return
+	}
+
+	// Return updated config
+	config, _ := h.configRepo.GetAll(ctx)
+	h.success(w, config)
 }

@@ -15,6 +15,8 @@ import { OfferCard } from './OfferCard'
 import { RequestCard } from './RequestCard'
 import { MatchCard } from './MatchCard'
 import { GroupsModal } from './GroupsModal'
+import { AnalyzeModal } from './AnalyzeModal'
+import { ConfigPanel } from './ConfigPanel'
 
 export function Dashboard() {
   const [connected, setConnected] = useState(false)
@@ -180,8 +182,10 @@ export function Dashboard() {
         </Card>
       </main>
 
-      {/* Groups FAB */}
+      {/* FAB Modals */}
       <GroupsModal />
+      <AnalyzeModal />
+      <ConfigPanel />
     </div>
   )
 }

@@ -204,4 +204,15 @@ var migrations = []migration{
 			END;
 		`,
 	},
+	{
+		version: 3,
+		sql: `
+			-- Dynamic configuration storage
+			CREATE TABLE config (
+				key TEXT PRIMARY KEY,
+				value TEXT NOT NULL,
+				updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			);
+		`,
+	},
 }

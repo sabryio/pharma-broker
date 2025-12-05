@@ -73,6 +73,42 @@ export interface Stats {
   confirmed_today: number
 }
 
+// AI Analysis types
+export interface AnalyzeItem {
+  type: 'OFFER' | 'REQUEST' | 'BOTH'
+  medication: string
+  medication_raw: string
+  quantity: number
+  unit?: string
+  price?: number
+  max_price?: number
+  currency?: string
+  expiry_date?: string
+  batch_number?: string
+  urgent?: boolean
+  notes?: string
+}
+
+export interface AnalyzeResult {
+  items: AnalyzeItem[]
+  raw_json?: string
+}
+
+export interface AnalyzeRequest {
+  text: string
+  source_name?: string
+  group_name?: string
+}
+
+// Configuration types
+export interface AppConfig {
+  match_threshold: number
+  batch_size: number
+  process_delay_seconds: number
+  system_prompt?: string
+  response_format?: string
+}
+
 export interface ApiResponse<T> {
   success: boolean
   data?: T

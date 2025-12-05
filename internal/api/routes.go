@@ -29,6 +29,11 @@ func NewRouter(handlers *Handlers, log zerolog.Logger) http.Handler {
 	mux.HandleFunc("POST /api/groups/sync", handlers.SyncGroups)
 	mux.HandleFunc("PATCH /api/groups/{jid}", handlers.UpdateGroupMonitoring)
 
+	// AI Analysis and Config
+	mux.HandleFunc("POST /api/analyze", handlers.Analyze)
+	mux.HandleFunc("GET /api/config", handlers.GetConfig)
+	mux.HandleFunc("PATCH /api/config", handlers.UpdateConfig)
+
 	// SSE endpoint
 	mux.HandleFunc("GET /api/events", handlers.sseHub.ServeHTTP)
 
