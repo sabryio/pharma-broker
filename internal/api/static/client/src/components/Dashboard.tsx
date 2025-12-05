@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -25,7 +26,15 @@ import { MatchCard } from './MatchCard'
 import { GroupsModal } from './GroupsModal'
 import { AnalyzeModal } from './AnalyzeModal'
 import { ConfigPanel } from './ConfigPanel'
-import { Search, Filter, TrendingUp, Package, ShoppingCart } from 'lucide-react'
+import {
+  Search,
+  Filter,
+  TrendingUp,
+  Package,
+  ShoppingCart,
+  Download,
+} from 'lucide-react'
+import { showSuccess, showError } from '@/lib/toast'
 
 export function Dashboard() {
   const [connected, setConnected] = useState(false)
@@ -65,6 +74,28 @@ export function Dashboard() {
 
   const handleConfirm = (id: string) => confirmMatch.mutate(id)
   const handleReject = (id: string) => rejectMatch.mutate(id)
+
+  // Export matches to CSV
+  const handleExport = async () => {
+    try {
+      const response = await fetch('/api/matches/export')
+      if (!response.ok) throw new Error('فشل تصدير البيانات')
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `matches_${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      showSuccess('تم التصدير', 'تم تحميل ملف CSV بنجاح')
+    } catch {
+      showError('خطأ', 'فشل تصدير التطابقات')
+    }
+  }
 
   // Stats values
   const totalOffers = stats?.active_offers ?? 0
@@ -168,6 +199,17 @@ export function Dashboard() {
                 color="text-blue-600"
               />
             </div>
+
+            {/* Export Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              className="flex items-center gap-2"
+            >
+              <Download className="h-4 w-4" />
+              تصدير CSV
+            </Button>
 
             {/* Connection Status */}
             <div

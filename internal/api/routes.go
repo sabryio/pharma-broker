@@ -22,6 +22,7 @@ func NewRouter(handlers *Handlers, log zerolog.Logger) http.Handler {
 	mux.HandleFunc("GET /api/requests", handlers.GetRequests)
 	mux.HandleFunc("GET /api/requests/{id}", handlers.GetRequest)
 	mux.HandleFunc("GET /api/matches", handlers.GetMatches)
+	mux.HandleFunc("GET /api/matches/export", handlers.ExportMatchesCSV)
 	mux.HandleFunc("POST /api/matches/{id}/confirm", handlers.ConfirmMatch)
 	mux.HandleFunc("POST /api/matches/{id}/reject", handlers.RejectMatch)
 	mux.HandleFunc("GET /api/stats", handlers.GetStats)

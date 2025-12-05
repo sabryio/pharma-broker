@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -498,4 +499,141 @@ func (h *Handlers) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 	// Return updated config
 	config, _ := h.configRepo.GetAll(ctx)
 	h.success(w, config)
+}
+
+// ExportMatchesCSV exports matched pairs to CSV format
+func (h *Handlers) ExportMatchesCSV(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	// Get status filter (default: all matches)
+	statusFilter := r.URL.Query().Get("status")
+
+	// Get all matches with details
+	matches, err := h.matchRepo.GetPending(ctx, 1000, 0) // Get all pending first
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to get matches for export")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch matches"))
+		return
+	}
+
+	// Set CSV headers
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=matches_export.csv")
+
+	// Write BOM for Excel Arabic support
+	w.Write([]byte{0xEF, 0xBB, 0xBF})
+
+	// Create CSV writer
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	// Write header row
+	headers := []string{
+		"Match ID",
+		"Status",
+		"Score",
+		"Offer Medication",
+		"Offer Quantity",
+		"Offer Price",
+		"Offer Expiry",
+		"Offer Source",
+		"Offer Group",
+		"Request Medication",
+		"Request Quantity",
+		"Request Max Price",
+		"Request Source",
+		"Request Group",
+		"Reasoning",
+		"Matched By",
+		"Created At",
+		"Confirmed At",
+	}
+	writer.Write(headers)
+
+	// Write data rows
+	for _, m := range matches {
+		// Apply status filter if specified
+		if statusFilter != "" && string(m.Status) != statusFilter {
+			continue
+		}
+
+		// Format confirmed at
+		confirmedAt := ""
+		if m.ConfirmedAt != nil {
+			confirmedAt = m.ConfirmedAt.Format("2006-01-02 15:04")
+		}
+
+		// Build row
+		row := []string{
+			m.ID,
+			string(m.Status),
+			formatFloat(m.Score),
+			safeString(m.Offer, func(o *domain.Offer) string { return o.Medication }),
+			safeInt(m.Offer, func(o *domain.Offer) int { return o.Quantity }),
+			safeFloat(m.Offer, func(o *domain.Offer) float64 { return o.Price }),
+			safeExpiry(m.Offer),
+			safeString(m.Offer, func(o *domain.Offer) string { return o.SourcePhone }),
+			safeString(m.Offer, func(o *domain.Offer) string { return o.GroupName }),
+			safeString(m.Request, func(r *domain.Request) string { return r.Medication }),
+			safeIntReq(m.Request, func(r *domain.Request) int { return r.Quantity }),
+			safeFloatReq(m.Request, func(r *domain.Request) float64 { return r.MaxPrice }),
+			safeString(m.Request, func(r *domain.Request) string { return r.SourcePhone }),
+			safeString(m.Request, func(r *domain.Request) string { return r.GroupName }),
+			m.Reasoning,
+			m.MatchedBy,
+			m.CreatedAt.Format("2006-01-02 15:04"),
+			confirmedAt,
+		}
+		writer.Write(row)
+	}
+
+	h.log.Info().Int("count", len(matches)).Msg("Exported matches to CSV")
+}
+
+// Helper functions for safe field access
+func formatFloat(f float64) string {
+	return strconv.FormatFloat(f, 'f', 2, 64)
+}
+
+func safeString[T any](ptr *T, getter func(*T) string) string {
+	if ptr == nil {
+		return ""
+	}
+	return getter(ptr)
+}
+
+func safeInt(offer *domain.Offer, getter func(*domain.Offer) int) string {
+	if offer == nil {
+		return ""
+	}
+	return strconv.Itoa(getter(offer))
+}
+
+func safeFloat(offer *domain.Offer, getter func(*domain.Offer) float64) string {
+	if offer == nil {
+		return ""
+	}
+	return formatFloat(getter(offer))
+}
+
+func safeExpiry(offer *domain.Offer) string {
+	if offer == nil || offer.ExpiryDate == nil {
+		return ""
+	}
+	return offer.ExpiryDate.Format("2006-01")
+}
+
+func safeIntReq(req *domain.Request, getter func(*domain.Request) int) string {
+	if req == nil {
+		return ""
+	}
+	return strconv.Itoa(getter(req))
+}
+
+func safeFloatReq(req *domain.Request, getter func(*domain.Request) float64) string {
+	if req == nil {
+		return ""
+	}
+	return formatFloat(getter(req))
 }
