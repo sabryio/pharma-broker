@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { timeAgo } from '@/lib/sse'
+import { showSuccess, showInfo, showWarning } from '@/lib/toast'
 import type { Offer } from '@/lib/types'
 import {
   Clock,
@@ -54,6 +55,7 @@ export function OfferCard({
         `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`,
         '_blank',
       )
+      showInfo('تم فتح واتساب', 'تذكر تحديث حالة العرض بعد التواصل')
     }
   }
 
@@ -61,24 +63,34 @@ export function OfferCard({
   const handleClaim = () => {
     setStatus('contacted')
     onContact?.(offer.id)
+    showSuccess('تم الحجز', `${offer.medication} - تم تحديد كمحجوز`)
   }
 
   // Snooze (hide temporarily)
   const handleSnooze = () => {
     setSnoozed(true)
-    setTimeout(() => setSnoozed(false), 30 * 60 * 1000) // 30 minutes
+    showWarning('تم التأجيل', 'سيظهر العرض مرة أخرى بعد 30 دقيقة')
+    setTimeout(
+      () => {
+        setSnoozed(false)
+        showInfo('انتهى التأجيل', `${offer.medication} - ظهر مرة أخرى`)
+      },
+      30 * 60 * 1000,
+    ) // 30 minutes
   }
 
   // Dismiss permanently
   const handleDismiss = () => {
     setStatus('dismissed')
     onDismiss?.(offer.id)
+    showInfo('تم الإخفاء', `${offer.medication} - تم إخفاء العرض`)
   }
 
   // Copy details
   const handleCopy = () => {
     const details = `${offer.medication}${qty ? ` - ${qty}` : ''}${price ? ` - ${price}` : ''}\nمن: ${offer.source_name || offer.source_phone}`
     navigator.clipboard.writeText(details)
+    showSuccess('تم النسخ', 'تم نسخ تفاصيل العرض')
   }
 
   if (status === 'dismissed' || snoozed) return null

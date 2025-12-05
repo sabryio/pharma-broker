@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { timeAgo } from '@/lib/sse'
+import { showSuccess, showInfo, showWarning } from '@/lib/toast'
 import type { Request } from '@/lib/types'
 import {
   Clock,
@@ -59,6 +60,7 @@ export function RequestCard({
         `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`,
         '_blank',
       )
+      showInfo('تم فتح واتساب', 'تذكر تحديث حالة الطلب بعد التواصل')
     }
   }
 
@@ -66,24 +68,34 @@ export function RequestCard({
   const handleClaim = () => {
     setStatus('contacted')
     onContact?.(request.id)
+    showSuccess('تم الحجز', `${request.medication} - تم تحديد كمحجوز`)
   }
 
   // Snooze (hide temporarily)
   const handleSnooze = () => {
     setSnoozed(true)
-    setTimeout(() => setSnoozed(false), 30 * 60 * 1000) // 30 minutes
+    showWarning('تم التأجيل', 'سيظهر الطلب مرة أخرى بعد 30 دقيقة')
+    setTimeout(
+      () => {
+        setSnoozed(false)
+        showInfo('انتهى التأجيل', `${request.medication} - ظهر مرة أخرى`)
+      },
+      30 * 60 * 1000,
+    ) // 30 minutes
   }
 
   // Dismiss permanently
   const handleDismiss = () => {
     setStatus('dismissed')
     onDismiss?.(request.id)
+    showInfo('تم الإخفاء', `${request.medication} - تم إخفاء الطلب`)
   }
 
   // Copy details
   const handleCopy = () => {
     const details = `${request.medication}${qty ? ` - ${qty}` : ''}${maxPrice ? ` - Max: ${maxPrice}` : ''}\nمن: ${request.source_name || request.source_phone}`
     navigator.clipboard.writeText(details)
+    showSuccess('تم النسخ', 'تم نسخ تفاصيل الطلب')
   }
 
   if (status === 'dismissed' || snoozed) return null
