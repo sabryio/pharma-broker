@@ -25,11 +25,11 @@ import { MatchCard } from './MatchCard'
 import { GroupsModal } from './GroupsModal'
 import { AnalyzeModal } from './AnalyzeModal'
 import { ConfigPanel } from './ConfigPanel'
+import { Search, Filter, TrendingUp, Package, ShoppingCart } from 'lucide-react'
 
 export function Dashboard() {
   const [connected, setConnected] = useState(false)
-  const [offersQuery, setOffersQuery] = useState('')
-  const [requestsQuery, setRequestsQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [selectedGroup, setSelectedGroup] = useState<string>('all')
 
   // SSE for real-time updates
@@ -37,12 +37,12 @@ export function Dashboard() {
 
   // Data fetching
   const { data: offers, isLoading: offersLoading } = useOffers(
-    offersQuery || undefined,
+    searchQuery || undefined,
   )
   const { data: requests, isLoading: requestsLoading } = useRequests(
-    requestsQuery || undefined,
+    searchQuery || undefined,
   )
-  const { data: matches, isLoading: matchesLoading } = useMatches()
+  const { data: matches } = useMatches()
   const { data: stats } = useStats()
   const { data: groups } = useGroups()
 
@@ -59,16 +59,6 @@ export function Dashboard() {
     return requests.filter((r) => r.source_group === selectedGroup)
   }, [requests, selectedGroup])
 
-  const filteredMatches = useMemo(() => {
-    if (!matches) return []
-    if (selectedGroup === 'all') return matches
-    return matches.filter(
-      (m) =>
-        m.offer?.source_group === selectedGroup ||
-        m.request?.source_group === selectedGroup,
-    )
-  }, [matches, selectedGroup])
-
   // Mutations
   const confirmMatch = useConfirmMatch()
   const rejectMatch = useRejectMatch()
@@ -76,205 +66,214 @@ export function Dashboard() {
   const handleConfirm = (id: string) => confirmMatch.mutate(id)
   const handleReject = (id: string) => rejectMatch.mutate(id)
 
-  // Group name lookup
-  const getGroupName = (jid: string) => {
-    const group = groups?.find((g) => g.jid === jid)
-    return group?.name || jid
-  }
+  // Stats values
+  const totalOffers = stats?.active_offers ?? 0
+  const totalRequests = stats?.active_requests ?? 0
+  const totalMatches = stats?.pending_matches ?? 0
+  const total = totalOffers + totalRequests
 
   return (
-    <div className="flex flex-col h-screen bg-background" dir="rtl">
+    <div
+      className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900"
+      dir="rtl"
+    >
       {/* Header */}
-      <header className="border-b p-4">
-        <div className="flex items-center justify-between max-w-[1800px] mx-auto">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold bg-linear-to-l from-primary to-primary/60 bg-clip-text text-transparent">
-              💊 فارما بروكر
-            </h1>
-            <span className="text-muted-foreground">لوحة التحكم</span>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Group Filter */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">المجموعة:</span>
-              <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-                <SelectTrigger className="w-[200px] h-9">
-                  <SelectValue placeholder="كل المجموعات" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">
-                    <span className="flex items-center gap-2">
-                      🌐 كل المجموعات
-                    </span>
-                  </SelectItem>
-                  {groups
-                    ?.filter((g) => g.monitored)
-                    .map((group) => (
-                      <SelectItem key={group.jid} value={group.jid}>
-                        <span className="flex items-center gap-2">
-                          💬 {group.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {selectedGroup !== 'all' && (
-                <Badge variant="secondary" className="text-xs">
-                  {filteredOffers.length + filteredRequests.length} عنصر
-                </Badge>
-              )}
+      <header className="bg-white dark:bg-gray-800 border-b p-4 shadow-sm">
+        <div className="max-w-[1600px] mx-auto">
+          {/* Top row: Search and Stats */}
+          <div className="flex items-center justify-between gap-8">
+            {/* Search and Filter */}
+            <div className="flex-1 max-w-md space-y-2">
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="ابحث عن اسم دواء..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pr-10 bg-gray-50 dark:bg-gray-900"
+                />
+              </div>
+              {/* Group Filter */}
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+                  <SelectTrigger className="flex-1 bg-gray-50 dark:bg-gray-900">
+                    <SelectValue placeholder="فلترة حسب الجروب" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">كل الجروبات</SelectItem>
+                    {groups
+                      ?.filter((g) => g.monitored)
+                      .map((group) => (
+                        <SelectItem key={group.jid} value={group.jid}>
+                          {group.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Summary */}
+              <p className="text-xs text-muted-foreground">
+                الكل: {total} • عروض: {totalOffers} • طلبات: {totalRequests}
+              </p>
             </div>
 
-            <div className="flex gap-8">
-              <StatItem label="العروض" value={stats?.active_offers ?? '-'} />
-              <StatItem label="الطلبات" value={stats?.active_requests ?? '-'} />
-              <StatItem
-                label="معلق"
-                value={stats?.pending_matches ?? '-'}
-                highlight="warning"
+            {/* Stats Bar Chart */}
+            <div className="flex items-end gap-1 h-16">
+              <div
+                className="w-8 bg-green-500 rounded-t"
+                style={{
+                  height: `${Math.min((totalOffers / (total || 1)) * 100, 100)}%`,
+                  minHeight: '8px',
+                }}
+                title={`عروض: ${totalOffers}`}
               />
-              <StatItem
-                label="اليوم"
-                value={stats?.confirmed_today ?? '-'}
-                highlight="success"
+              <div
+                className="w-8 bg-red-500 rounded-t"
+                style={{
+                  height: `${Math.min((totalRequests / (total || 1)) * 100, 100)}%`,
+                  minHeight: '8px',
+                }}
+                title={`طلبات: ${totalRequests}`}
+              />
+              <div
+                className="w-8 bg-blue-500 rounded-t"
+                style={{
+                  height: `${Math.min((totalMatches / (total || 1)) * 100, 100)}%`,
+                  minHeight: '8px',
+                }}
+                title={`تطابقات: ${totalMatches}`}
               />
             </div>
 
+            {/* Stats Cards */}
+            <div className="flex gap-6">
+              <StatCard
+                icon={<TrendingUp className="h-5 w-5" />}
+                value={stats?.confirmed_today ?? 0}
+                label="فرصة ناجحة"
+                color="text-green-600"
+              />
+              <StatCard
+                icon={<ShoppingCart className="h-5 w-5" />}
+                value={totalRequests}
+                label="طلب استلام"
+                color="text-red-600"
+              />
+              <StatCard
+                icon={<Package className="h-5 w-5" />}
+                value={totalOffers}
+                label="عرض متاح"
+                color="text-blue-600"
+              />
+            </div>
+
+            {/* Connection Status */}
             <div
-              className={`flex items-center gap-2 px-4 py-2 rounded-full bg-secondary ${connected ? 'text-green-500' : 'text-yellow-500'}`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs ${
+                connected
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+              }`}
             >
               <span
-                className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}
+                className={`w-2 h-2 rounded-full ${
+                  connected ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'
+                }`}
               />
-              <span className="text-sm">
-                {connected ? 'متصل' : 'جاري الاتصال...'}
-              </span>
+              {connected ? 'متصل' : 'جاري الاتصال...'}
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Grid */}
-      <main className="flex-1 grid grid-cols-3 gap-4 p-4 overflow-hidden max-w-[1800px] mx-auto w-full">
-        {/* Offers Panel */}
-        <Card className="flex flex-col overflow-hidden">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">
-                📦 العروض (الراكد)
-                {selectedGroup !== 'all' && (
-                  <Badge variant="outline" className="mr-2 text-xs">
-                    {filteredOffers.length}
-                  </Badge>
-                )}
-              </CardTitle>
-              <Input
-                placeholder="بحث..."
-                value={offersQuery}
-                onChange={(e) => setOffersQuery(e.target.value)}
-                className="w-40 h-8"
-              />
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto space-y-2">
-            {offersLoading && (
-              <p className="text-muted-foreground text-center py-8">
-                جاري التحميل...
-              </p>
-            )}
-            {!offersLoading && filteredOffers.length === 0 && (
-              <p className="text-muted-foreground text-center py-8">
-                {selectedGroup !== 'all'
-                  ? `لا توجد عروض من ${getGroupName(selectedGroup)}`
-                  : 'لا توجد عروض نشطة'}
-              </p>
-            )}
-            {filteredOffers.map((offer) => (
-              <OfferCard key={offer.id} offer={offer} />
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Matches Panel */}
-        <Card className="flex flex-col overflow-hidden">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">
-                🎯 التطابقات المقترحة
-                {selectedGroup !== 'all' && (
-                  <Badge variant="outline" className="mr-2 text-xs">
-                    {filteredMatches.length}
-                  </Badge>
-                )}
-              </CardTitle>
-              <Badge variant="secondary">{filteredMatches.length}</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto">
-            {matchesLoading && (
-              <p className="text-muted-foreground text-center py-8">
-                جاري التحميل...
-              </p>
-            )}
-            {!matchesLoading && filteredMatches.length === 0 && (
-              <p className="text-muted-foreground text-center py-8">
-                {selectedGroup !== 'all'
-                  ? `لا توجد تطابقات من ${getGroupName(selectedGroup)}`
-                  : 'لا توجد تطابقات معلقة'}
-              </p>
-            )}
-            {filteredMatches.map((match) => (
-              <MatchCard
-                key={match.id}
-                match={match}
-                onConfirm={handleConfirm}
-                onReject={handleReject}
-                isLoading={confirmMatch.isPending || rejectMatch.isPending}
-              />
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Requests Panel */}
-        <Card className="flex flex-col overflow-hidden">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">
-                🔍 الطلبات (الناقص)
-                {selectedGroup !== 'all' && (
-                  <Badge variant="outline" className="mr-2 text-xs">
+      {/* Main Content - Two Columns */}
+      <main className="flex-1 overflow-hidden p-4">
+        <div className="max-w-[1600px] mx-auto h-full grid grid-cols-2 gap-4">
+          {/* Requests Column (Left) */}
+          <Card className="flex flex-col overflow-hidden border-t-4 border-t-red-500">
+            <CardHeader className="py-3 px-4 bg-red-50 dark:bg-red-950/20">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Badge className="bg-red-500 text-white">
                     {filteredRequests.length}
                   </Badge>
-                )}
-              </CardTitle>
-              <Input
-                placeholder="بحث..."
-                value={requestsQuery}
-                onChange={(e) => setRequestsQuery(e.target.value)}
-                className="w-40 h-8"
-              />
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto space-y-2">
-            {requestsLoading && (
-              <p className="text-muted-foreground text-center py-8">
-                جاري التحميل...
-              </p>
-            )}
-            {!requestsLoading && filteredRequests.length === 0 && (
-              <p className="text-muted-foreground text-center py-8">
-                {selectedGroup !== 'all'
-                  ? `لا توجد طلبات من ${getGroupName(selectedGroup)}`
-                  : 'لا توجد طلبات نشطة'}
-              </p>
-            )}
-            {filteredRequests.map((request) => (
-              <RequestCard key={request.id} request={request} />
-            ))}
-          </CardContent>
-        </Card>
+                  <span>الطلبات (Requests)</span>
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto p-3 space-y-3">
+              {requestsLoading && (
+                <p className="text-muted-foreground text-center py-8">
+                  جاري التحميل...
+                </p>
+              )}
+              {!requestsLoading && filteredRequests.length === 0 && (
+                <p className="text-muted-foreground text-center py-8">
+                  لا توجد طلبات نشطة
+                </p>
+              )}
+              {filteredRequests.map((request) => (
+                <RequestCard key={request.id} request={request} />
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Offers Column (Right) */}
+          <Card className="flex flex-col overflow-hidden border-t-4 border-t-green-500">
+            <CardHeader className="py-3 px-4 bg-green-50 dark:bg-green-950/20">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Badge className="bg-green-500 text-white">
+                    {filteredOffers.length}
+                  </Badge>
+                  <span>العروض (Offers)</span>
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto p-3 space-y-3">
+              {offersLoading && (
+                <p className="text-muted-foreground text-center py-8">
+                  جاري التحميل...
+                </p>
+              )}
+              {!offersLoading && filteredOffers.length === 0 && (
+                <p className="text-muted-foreground text-center py-8">
+                  لا توجد عروض نشطة
+                </p>
+              )}
+              {filteredOffers.map((offer) => (
+                <OfferCard key={offer.id} offer={offer} />
+              ))}
+            </CardContent>
+          </Card>
+        </div>
       </main>
+
+      {/* Matches Drawer (if any pending) */}
+      {matches && matches.length > 0 && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40">
+          <Card className="shadow-2xl border-2 border-green-500 max-w-lg">
+            <CardHeader className="py-2 px-4 bg-green-50 dark:bg-green-950/20">
+              <CardTitle className="text-sm flex items-center gap-2">
+                🎯 تطابقات معلقة ({matches.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 max-h-64 overflow-y-auto">
+              {matches.slice(0, 3).map((match) => (
+                <MatchCard
+                  key={match.id}
+                  match={match}
+                  onConfirm={handleConfirm}
+                  onReject={handleReject}
+                  isLoading={confirmMatch.isPending || rejectMatch.isPending}
+                />
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* FAB Modals */}
       <GroupsModal />
@@ -284,27 +283,22 @@ export function Dashboard() {
   )
 }
 
-function StatItem({
-  label,
+function StatCard({
+  icon,
   value,
-  highlight,
+  label,
+  color,
 }: {
+  icon: React.ReactNode
+  value: number
   label: string
-  value: string | number
-  highlight?: 'warning' | 'success'
+  color: string
 }) {
-  const colorClass =
-    highlight === 'success'
-      ? 'text-green-500'
-      : highlight === 'warning'
-        ? 'text-yellow-500'
-        : ''
   return (
-    <div className="flex flex-col items-center">
-      <span className={`text-2xl font-bold ${colorClass}`}>{value}</span>
-      <span className="text-xs text-muted-foreground uppercase tracking-wide">
-        {label}
-      </span>
+    <div className="flex flex-col items-center text-center">
+      <div className={`${color} mb-1`}>{icon}</div>
+      <span className={`text-2xl font-bold ${color}`}>{value}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
     </div>
   )
 }
