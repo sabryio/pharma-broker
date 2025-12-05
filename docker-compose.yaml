@@ -5,25 +5,25 @@ services:
   pharmabroker:
     build: .
     ports:
-      - "8080:8080"     # Main HTTP API + Dashboard
-      - "5050:5050"     # Health check endpoint
+      - "8080:8080" # Main HTTP API + Dashboard
+      - "5051:5050" # Health check endpoint (external 5051)
     environment:
       # AI Provider Selection
-      - PB_AI_PROVIDER=docker              # Use Docker Model Runner
+      - PB_AI_PROVIDER=docker # Use Docker Model Runner
       # Docker Model Runner (auto-injected by Compose models)
       # - LLM_URL                          # Auto-set from models binding
       # - LLM_MODEL                        # Auto-set from models binding
       # Database
-      - PB_DATABASE_PATH=/data/pharmabroker.db
+      - PB_DATABASE_PATH=/app/data/pharmabroker.db
       # WhatsApp session
-      - PB_WHATSAPP_SESSION_DIR=/data/whatsapp
+      - PB_WHATSAPP_SESSION_DIR=/app/data/whatsapp
     volumes:
-      - pharmabroker-data:/data
+      - ./data:/app/data # Share local session with Docker
     models:
-      - llm                                 # Bind to the llm model
+      - llm # Bind to the llm model
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5050/health"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5050/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -35,7 +35,7 @@ models:
     context_size: 4096
     runtime_flags:
       - "--temp"
-      - "0.1"                               # Low temperature for consistent parsing
+      - "0.1" # Low temperature for consistent parsing
 
 volumes:
   pharmabroker-data:
