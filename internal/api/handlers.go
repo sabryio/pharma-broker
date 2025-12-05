@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"pharmabroker/internal/domain"
+	"pharmabroker/internal/storage"
 )
 
 // Handlers contains all HTTP handlers
@@ -28,17 +29,8 @@ type Handlers struct {
 
 // ConfigRepository interface for config storage
 type ConfigRepository interface {
-	GetAll(ctx context.Context) (*AppConfig, error)
+	GetAll(ctx context.Context) (*storage.AppConfig, error)
 	UpdateFromMap(ctx context.Context, updates map[string]interface{}) error
-}
-
-// AppConfig from storage package
-type AppConfig = struct {
-	MatchThreshold      float64 `json:"match_threshold"`
-	BatchSize           int     `json:"batch_size"`
-	ProcessDelaySeconds int     `json:"process_delay_seconds"`
-	SystemPrompt        string  `json:"system_prompt,omitempty"`
-	ResponseFormat      string  `json:"response_format,omitempty"`
 }
 
 // AnalyzeResult represents AI analysis output

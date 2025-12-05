@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import { Spinner } from '@/components/ui/spinner'
 import { useConfig, useUpdateConfig } from '@/lib/api'
 
@@ -18,6 +19,7 @@ export function ConfigPanel() {
   const { data: config, isLoading } = useConfig()
   const updateConfig = useUpdateConfig()
 
+  const [localAutoParse, setLocalAutoParse] = useState(true)
   const [localThreshold, setLocalThreshold] = useState(0.5)
   const [localBatchSize, setLocalBatchSize] = useState(5)
   const [localDelay, setLocalDelay] = useState(5)
@@ -25,6 +27,7 @@ export function ConfigPanel() {
   // Sync local state when config loads
   useEffect(() => {
     if (config) {
+      setLocalAutoParse(config.auto_parse_enabled)
       setLocalThreshold(config.match_threshold)
       setLocalBatchSize(config.batch_size)
       setLocalDelay(config.process_delay_seconds)
@@ -33,15 +36,23 @@ export function ConfigPanel() {
 
   const handleSave = () => {
     updateConfig.mutate({
+      auto_parse_enabled: localAutoParse,
       match_threshold: localThreshold,
       batch_size: localBatchSize,
       process_delay_seconds: localDelay,
     })
   }
 
+  // Quick toggle for auto-parse (saves immediately)
+  const handleAutoParseToggle = (enabled: boolean) => {
+    setLocalAutoParse(enabled)
+    updateConfig.mutate({ auto_parse_enabled: enabled })
+  }
+
   const hasChanges =
     config &&
-    (localThreshold !== config.match_threshold ||
+    (localAutoParse !== config.auto_parse_enabled ||
+      localThreshold !== config.match_threshold ||
       localBatchSize !== config.batch_size ||
       localDelay !== config.process_delay_seconds)
 
@@ -70,6 +81,33 @@ export function ConfigPanel() {
           </div>
         ) : (
           <div className="space-y-6 py-4">
+            {/* Auto Parse Toggle - Primary Control */}
+            <div
+              className={`p-4 rounded-lg border-2 ${localAutoParse ? 'border-green-500/50 bg-green-500/10' : 'border-red-500/50 bg-red-500/10'}`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label
+                    htmlFor="autoParse"
+                    className="text-base font-semibold"
+                  >
+                    Auto-Parse Messages
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {localAutoParse
+                      ? '✅ Incoming messages are being processed automatically'
+                      : '⏸️ Message processing is paused'}
+                  </p>
+                </div>
+                <Switch
+                  id="autoParse"
+                  checked={localAutoParse}
+                  onCheckedChange={handleAutoParseToggle}
+                  disabled={updateConfig.isPending}
+                />
+              </div>
+            </div>
+
             {/* Match Threshold */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">

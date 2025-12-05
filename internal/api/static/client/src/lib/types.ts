@@ -102,6 +102,7 @@ export interface AnalyzeRequest {
 
 // Configuration types
 export interface AppConfig {
+  auto_parse_enabled: boolean
   match_threshold: number
   batch_size: number
   process_delay_seconds: number

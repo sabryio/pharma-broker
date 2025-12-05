@@ -23,10 +23,11 @@ type Parser struct {
 	cfg         *config.GeminiConfig
 
 	// Processing
-	msgChan   <-chan *domain.RawMessage
-	batchSize int
-	stopChan  chan struct{}
-	wg        sync.WaitGroup
+	msgChan            <-chan *domain.RawMessage
+	batchSize          int
+	stopChan           chan struct{}
+	wg                 sync.WaitGroup
+	isAutoParseEnabled func() bool // Check if auto-parse is enabled
 }
 
 // NewParser creates a new message parser
@@ -41,17 +42,23 @@ func NewParser(
 	log zerolog.Logger,
 ) *Parser {
 	return &Parser{
-		gemini:      gemini,
-		rawMsgRepo:  rawMsgRepo,
-		offerRepo:   offerRepo,
-		requestRepo: requestRepo,
-		matchRepo:   matchRepo,
-		log:         log.With().Str("component", "parser").Logger(),
-		cfg:         cfg,
-		msgChan:     msgChan,
-		batchSize:   cfg.MaxMessagesPerRequest,
-		stopChan:    make(chan struct{}),
+		gemini:             gemini,
+		rawMsgRepo:         rawMsgRepo,
+		offerRepo:          offerRepo,
+		requestRepo:        requestRepo,
+		matchRepo:          matchRepo,
+		log:                log.With().Str("component", "parser").Logger(),
+		cfg:                cfg,
+		msgChan:            msgChan,
+		batchSize:          cfg.MaxMessagesPerRequest,
+		stopChan:           make(chan struct{}),
+		isAutoParseEnabled: func() bool { return true }, // Default: always parse
 	}
+}
+
+// SetAutoParseChecker sets the function to check if auto-parse is enabled
+func (p *Parser) SetAutoParseChecker(fn func() bool) {
+	p.isAutoParseEnabled = fn
 }
 
 // Start begins processing messages
@@ -102,6 +109,12 @@ func (p *Parser) processLoop(ctx context.Context) {
 }
 
 func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
+	// Check if auto-parsing is enabled
+	if !p.isAutoParseEnabled() {
+		p.log.Debug().Int("count", len(batch)).Msg("Auto-parse disabled, skipping batch")
+		return
+	}
+
 	p.log.Info().Int("count", len(batch)).Msg("Processing message batch")
 
 	// Call Gemini API

@@ -87,6 +87,18 @@ func main() {
 		log.Logger,
 	)
 
+	// Create config repository for dynamic settings
+	configRepo := storage.NewConfigRepo(db)
+
+	// Wire parser to check auto-parse config
+	parser.SetAutoParseChecker(func() bool {
+		config, err := configRepo.GetAll(ctx)
+		if err != nil {
+			return true // Default to enabled on error
+		}
+		return config.AutoParseEnabled
+	})
+
 	// Create SSE hub for real-time updates
 	sseHub := api.NewSSEHub()
 
@@ -100,6 +112,9 @@ func main() {
 		sseHub,
 		log.Logger,
 	)
+
+	// Wire config repo to handlers
+	handlers.SetConfigRepo(configRepo)
 
 	// Wire up group sync function
 	handlers.SetGroupSyncFunc(func() error {

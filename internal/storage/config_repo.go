@@ -26,6 +26,7 @@ type Config struct {
 
 // AppConfig represents all configurable settings
 type AppConfig struct {
+	AutoParseEnabled    bool    `json:"auto_parse_enabled"`
 	MatchThreshold      float64 `json:"match_threshold"`
 	BatchSize           int     `json:"batch_size"`
 	ProcessDelaySeconds int     `json:"process_delay_seconds"`
@@ -36,6 +37,7 @@ type AppConfig struct {
 // DefaultConfig returns sensible defaults
 func DefaultConfig() *AppConfig {
 	return &AppConfig{
+		AutoParseEnabled:    true, // Parse messages by default
 		MatchThreshold:      0.5,
 		BatchSize:           5,
 		ProcessDelaySeconds: 5,
@@ -79,6 +81,11 @@ func (r *ConfigRepo) GetAll(ctx context.Context) (*AppConfig, error) {
 		}
 
 		switch key {
+		case "auto_parse_enabled":
+			var v bool
+			if json.Unmarshal([]byte(value), &v) == nil {
+				config.AutoParseEnabled = v
+			}
 		case "match_threshold":
 			var v float64
 			if json.Unmarshal([]byte(value), &v) == nil {
