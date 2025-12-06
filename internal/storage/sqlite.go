@@ -13,13 +13,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// DB wraps the SQL database connection
+// DB wraps the SQL database connection with read replica support
 type DB struct {
-	conn *sql.DB
-	cfg  *config.DatabaseConfig
+	writer *sql.DB // Single writer connection (SQLite requirement)
+	reader *sql.DB // Read-only connection pool for queries
+	cfg    *config.DatabaseConfig
 }
 
-// New creates a new database connection
+// New creates a new database connection with read replica support
 func New(cfg *config.DatabaseConfig) (*DB, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(cfg.Path)
@@ -27,27 +28,42 @@ func New(cfg *config.DatabaseConfig) (*DB, error) {
 		return nil, fmt.Errorf("create database directory: %w", err)
 	}
 
-	// Open connection
-	conn, err := sql.Open("sqlite", cfg.Path)
+	// Open writer connection (single connection for writes)
+	writer, err := sql.Open("sqlite", cfg.Path)
 	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
+		return nil, fmt.Errorf("open database writer: %w", err)
 	}
+	writer.SetMaxOpenConns(1) // SQLite single writer
+	writer.SetMaxIdleConns(1)
+	writer.SetConnMaxLifetime(time.Hour)
 
-	// Configure connection pool
-	conn.SetMaxOpenConns(1) // SQLite single writer
-	conn.SetMaxIdleConns(1)
-	conn.SetConnMaxLifetime(time.Hour)
+	// Open reader connection pool (for read-heavy operations)
+	// Use read-only mode via query parameter
+	readerPath := cfg.Path + "?mode=ro"
+	reader, err := sql.Open("sqlite", readerPath)
+	if err != nil {
+		writer.Close()
+		return nil, fmt.Errorf("open database reader: %w", err)
+	}
+	maxReadConns := cfg.MaxReadConns
+	if maxReadConns <= 0 {
+		maxReadConns = 5
+	}
+	reader.SetMaxOpenConns(maxReadConns)
+	reader.SetMaxIdleConns(maxReadConns)
+	reader.SetConnMaxLifetime(time.Hour)
 
-	db := &DB{conn: conn, cfg: cfg}
+	db := &DB{writer: writer, reader: reader, cfg: cfg}
 
-	// Enable WAL mode if configured
+	// Enable WAL mode if configured (on writer)
 	if cfg.EnableWAL {
-		if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		if _, err := writer.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			db.Close()
 			return nil, fmt.Errorf("enable WAL mode: %w", err)
 		}
 	}
 
-	// Set other pragmas for performance
+	// Set pragmas on both connections
 	pragmas := []string{
 		"PRAGMA busy_timeout = 5000",
 		"PRAGMA synchronous = NORMAL",
@@ -55,32 +71,57 @@ func New(cfg *config.DatabaseConfig) (*DB, error) {
 		"PRAGMA foreign_keys = ON",
 	}
 	for _, pragma := range pragmas {
-		if _, err := conn.Exec(pragma); err != nil {
-			return nil, fmt.Errorf("set pragma: %w", err)
+		if _, err := writer.Exec(pragma); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("set pragma on writer: %w", err)
+		}
+		if _, err := reader.Exec(pragma); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("set pragma on reader: %w", err)
 		}
 	}
 
-	// Run migrations
+	// Run migrations (on writer only)
 	if err := db.migrate(); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
 	return db, nil
 }
 
-// Conn returns the underlying database connection
+// Conn returns the writer connection (for compatibility and writes)
 func (db *DB) Conn() *sql.DB {
-	return db.conn
+	return db.writer
 }
 
-// Close closes the database connection
+// Reader returns the read-only connection pool for SELECT queries
+func (db *DB) Reader() *sql.DB {
+	return db.reader
+}
+
+// Close closes both database connections
 func (db *DB) Close() error {
-	return db.conn.Close()
+	var errs []error
+	if db.reader != nil {
+		if err := db.reader.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if db.writer != nil {
+		if err := db.writer.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return errs[0]
+	}
+	return nil
 }
 
-// Transaction executes a function within a transaction
+// Transaction executes a function within a transaction (uses writer)
 func (db *DB) Transaction(ctx context.Context, fn func(tx *sql.Tx) error) error {
-	tx, err := db.conn.BeginTx(ctx, nil)
+	tx, err := db.writer.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}

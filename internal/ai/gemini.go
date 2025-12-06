@@ -295,7 +295,8 @@ func (c *GeminiClient) Embed(ctx context.Context, text string) ([]float32, error
 }
 
 // EmbedBatch generates embeddings for a batch of texts by calling Embed concurrently
-// Note: Google GenAI SDK might support BatchEmbedContents, but we use parallel calls for now to be safe with this version.
+// Note: Google GenAI SDK (v0.x) does not yet expose BatchEmbedContents in a stable way.
+// We use a worker pool to simulate batching for performance.
 func (c *GeminiClient) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return nil, nil

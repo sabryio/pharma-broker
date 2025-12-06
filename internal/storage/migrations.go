@@ -11,7 +11,7 @@ var schemaFS embed.FS
 // migrate runs all database migrations
 func (db *DB) migrate() error {
 	// Create migrations table
-	if _, err := db.conn.Exec(`
+	if _, err := db.Conn().Exec(`
 		CREATE TABLE IF NOT EXISTS migrations (
 			version INTEGER PRIMARY KEY,
 			applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -22,7 +22,7 @@ func (db *DB) migrate() error {
 
 	// Get current version
 	var currentVersion int
-	row := db.conn.QueryRow("SELECT COALESCE(MAX(version), 0) FROM migrations")
+	row := db.Conn().QueryRow("SELECT COALESCE(MAX(version), 0) FROM migrations")
 	if err := row.Scan(&currentVersion); err != nil {
 		return fmt.Errorf("get current version: %w", err)
 	}
@@ -57,7 +57,7 @@ func mustReadSQL(path string) string {
 }
 
 func (db *DB) runMigration(m migration) error {
-	tx, err := db.conn.Begin()
+	tx, err := db.Conn().Begin()
 	if err != nil {
 		return err
 	}

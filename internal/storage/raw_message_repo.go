@@ -40,7 +40,7 @@ func (r *RawMessageRepo) Save(ctx context.Context, msg *domain.RawMessage) error
 		`
 	}
 
-	_, err := r.db.conn.ExecContext(ctx, query,
+	_, err := r.db.Conn().ExecContext(ctx, query,
 		msg.ID, msg.ExternalID, msg.GroupJID, msg.GroupName,
 		msg.SenderJID, msg.SenderPhone, msg.SenderName,
 		msg.Content, msg.Timestamp)
@@ -48,7 +48,7 @@ func (r *RawMessageRepo) Save(ctx context.Context, msg *domain.RawMessage) error
 }
 
 func (r *RawMessageRepo) GetByID(ctx context.Context, id string) (*domain.RawMessage, error) {
-	row := r.db.conn.QueryRowContext(ctx, `
+	row := r.db.Conn().QueryRowContext(ctx, `
 		SELECT id, external_id, group_jid, group_name, sender_jid, sender_phone, sender_name, content, timestamp, processed_at, error
 		FROM raw_messages WHERE id = ?
 	`, id)
@@ -79,7 +79,7 @@ func (r *RawMessageRepo) GetByID(ctx context.Context, id string) (*domain.RawMes
 }
 
 func (r *RawMessageRepo) GetUnprocessed(ctx context.Context, limit int) ([]*domain.RawMessage, error) {
-	rows, err := r.db.conn.QueryContext(ctx, `
+	rows, err := r.db.Conn().QueryContext(ctx, `
 		SELECT id, group_jid, group_name, sender_jid, sender_phone, sender_name, content, timestamp
 		FROM raw_messages
 		WHERE processed_at IS NULL
@@ -110,14 +110,14 @@ func (r *RawMessageRepo) MarkProcessed(ctx context.Context, id string, processEr
 		errStr = sql.NullString{String: processErr.Error(), Valid: true}
 	}
 
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		UPDATE raw_messages SET processed_at = ?, error = ? WHERE id = ?
 	`, time.Now(), errStr, id)
 	return err
 }
 
 func (r *RawMessageRepo) GetLastMessageBySender(ctx context.Context, groupJID, senderJID string) (*domain.RawMessage, error) {
-	row := r.db.conn.QueryRowContext(ctx, `
+	row := r.db.Conn().QueryRowContext(ctx, `
 		SELECT id, external_id, group_jid, group_name, sender_jid, sender_phone, sender_name, content, timestamp
 		FROM raw_messages
 		WHERE group_jid = ? AND sender_jid = ?
@@ -147,15 +147,15 @@ func (r *RawMessageRepo) ArchiveOldMessages(ctx context.Context, archivePath str
 	// 1. Attach Archive DB
 	// We use "archive" as the schema alias.
 	// Note: We need to handle potential relative paths if CWD varies, but config usually provides valid paths.
-	_, err := r.db.conn.ExecContext(ctx, fmt.Sprintf("ATTACH DATABASE '%s' AS archive", archivePath))
+	_, err := r.db.Conn().ExecContext(ctx, fmt.Sprintf("ATTACH DATABASE '%s' AS archive", archivePath))
 	if err != nil {
 		return 0, fmt.Errorf("failed to attach archive db: %w", err)
 	}
-	defer r.db.conn.ExecContext(ctx, "DETACH DATABASE archive")
+	defer r.db.Conn().ExecContext(ctx, "DETACH DATABASE archive")
 
 	// 2. Ensure Schema Exists in Archive
 	// We replicate the raw_messages table structure matching migration v1 (Consolidated)
-	_, err = r.db.conn.ExecContext(ctx, `
+	_, err = r.db.Conn().ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS archive.raw_messages (
 			id TEXT PRIMARY KEY,
 			external_id TEXT UNIQUE, -- WhatsApp Deduplication ID
@@ -178,7 +178,7 @@ func (r *RawMessageRepo) ArchiveOldMessages(ctx context.Context, archivePath str
 	}
 
 	// 3. Perform Copy-Delete Transaction
-	tx, err := r.db.conn.BeginTx(ctx, nil)
+	tx, err := r.db.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}

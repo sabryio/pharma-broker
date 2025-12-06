@@ -18,7 +18,7 @@ func NewMatchRepo(db *DB) *MatchRepo {
 }
 
 func (r *MatchRepo) Save(ctx context.Context, match *domain.Match) error {
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		INSERT INTO matches (id, offer_id, request_id, score, reasoning, matched_by, status, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(offer_id, request_id) DO UPDATE SET
@@ -29,7 +29,7 @@ func (r *MatchRepo) Save(ctx context.Context, match *domain.Match) error {
 }
 
 func (r *MatchRepo) GetByID(ctx context.Context, id string) (*domain.Match, error) {
-	row := r.db.conn.QueryRowContext(ctx, `
+	row := r.db.Conn().QueryRowContext(ctx, `
 		SELECT id, offer_id, request_id, score, reasoning, matched_by, status, created_at, confirmed_at, notes
 		FROM matches WHERE id = ?
 	`, id)
@@ -61,7 +61,7 @@ func (r *MatchRepo) GetByID(ctx context.Context, id string) (*domain.Match, erro
 }
 
 func (r *MatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*domain.MatchWithDetails, error) {
-	rows, err := r.db.conn.QueryContext(ctx, `
+	rows, err := r.db.Conn().QueryContext(ctx, `
 		SELECT m.id, m.offer_id, m.request_id, m.score, m.reasoning, m.matched_by, m.status, m.created_at, m.confirmed_at, m.notes,
 			o.id, o.raw_message_id, o.source_phone, o.source_name, o.source_group, o.group_name,
 			o.medication, o.medication_raw, o.quantity, o.unit, o.price, o.currency, o.expiry_date, o.batch_number,
@@ -186,7 +186,7 @@ func (r *MatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*domai
 }
 
 func (r *MatchRepo) GetByOfferID(ctx context.Context, offerID string) ([]*domain.Match, error) {
-	rows, err := r.db.conn.QueryContext(ctx, `
+	rows, err := r.db.Conn().QueryContext(ctx, `
 		SELECT id, offer_id, request_id, score, reasoning, matched_by, status, created_at, confirmed_at, notes
 		FROM matches WHERE offer_id = ?
 	`, offerID)
@@ -199,7 +199,7 @@ func (r *MatchRepo) GetByOfferID(ctx context.Context, offerID string) ([]*domain
 }
 
 func (r *MatchRepo) GetByRequestID(ctx context.Context, requestID string) ([]*domain.Match, error) {
-	rows, err := r.db.conn.QueryContext(ctx, `
+	rows, err := r.db.Conn().QueryContext(ctx, `
 		SELECT id, offer_id, request_id, score, reasoning, matched_by, status, created_at, confirmed_at, notes
 		FROM matches WHERE request_id = ?
 	`, requestID)
@@ -217,7 +217,7 @@ func (r *MatchRepo) UpdateStatus(ctx context.Context, id string, status domain.M
 		confirmedAt = time.Now()
 	}
 
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		UPDATE matches SET status = ?, matched_by = ?, confirmed_at = ? WHERE id = ?
 	`, status, matchedBy, confirmedAt, id)
 	return err
@@ -225,13 +225,13 @@ func (r *MatchRepo) UpdateStatus(ctx context.Context, id string, status domain.M
 
 func (r *MatchRepo) CountPending(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE status = 'PENDING'`).Scan(&count)
+	err := r.db.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE status = 'PENDING'`).Scan(&count)
 	return count, err
 }
 
 func (r *MatchRepo) CountConfirmedToday(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.conn.QueryRowContext(ctx, `
+	err := r.db.Conn().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM matches 
 		WHERE status = 'CONFIRMED' AND date(confirmed_at) = date('now')
 	`).Scan(&count)

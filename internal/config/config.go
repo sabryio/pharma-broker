@@ -76,6 +76,23 @@ type DockerModelConfig struct {
 	// MaxMessageLines is the maximum number of lines in a message before splitting.
 	// Default: 20
 	MaxMessageLines int `mapstructure:"max_message_lines"`
+
+	// Circuit Breaker Configuration
+	// CBMaxRequests is the max number of requests in half-open state.
+	// Default: 3
+	CBMaxRequests uint32 `mapstructure:"cb_max_requests"`
+
+	// CBInterval is the cyclic period of the closed state for clearing internal counts.
+	// Default: 60s
+	CBInterval time.Duration `mapstructure:"cb_interval"`
+
+	// CBTimeout is the period of the open state before moving to half-open.
+	// Default: 30s
+	CBTimeout time.Duration `mapstructure:"cb_timeout"`
+
+	// CBFailureRatio is the failure ratio to trip the circuit breaker.
+	// Default: 0.6
+	CBFailureRatio float64 `mapstructure:"cb_failure_ratio"`
 }
 
 // WhatsAppConfig configures the WhatsApp Web connection
@@ -190,6 +207,23 @@ type APIConfig struct {
 	// Prevents memory issues with very large exports.
 	// Default: 1000
 	MaxExportRecords int `mapstructure:"max_export_records"`
+
+	// MaxPageSize is the maximum allowed page size for pagination.
+	// Requests exceeding this will be capped.
+	// Default: 100
+	MaxPageSize int `mapstructure:"max_page_size"`
+
+	// RateLimitRPS is the maximum requests per second allowed per client.
+	// Default: 10
+	RateLimitRPS float64 `mapstructure:"rate_limit_rps"`
+
+	// RateLimitBurst is the maximum burst size for rate limiting.
+	// Default: 20
+	RateLimitBurst int `mapstructure:"rate_limit_burst"`
+
+	// MaxSSEClients is the maximum number of concurrent SSE connections.
+	// Default: 100
+	MaxSSEClients int `mapstructure:"max_sse_clients"`
 }
 
 // DatabaseConfig configures SQLite database settings
@@ -211,6 +245,10 @@ type DatabaseConfig struct {
 	// ArchivePath is the file path to the archive SQLite database.
 	// Default: ./data/archive.db
 	ArchivePath string `mapstructure:"archive_path"`
+
+	// MaxReadConns is the max number of read-only connections (for read replicas).
+	// Default: 5
+	MaxReadConns int `mapstructure:"max_read_conns"`
 }
 
 // MonitorConfig configures system monitoring and alerting
@@ -310,6 +348,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("docker_model.retry_base_delay", "1s")
 	v.SetDefault("docker_model.request_timeout", "60s")
 	v.SetDefault("docker_model.max_message_lines", 20)
+	v.SetDefault("docker_model.cb_max_requests", 3)
+	v.SetDefault("docker_model.cb_interval", "60s")
+	v.SetDefault("docker_model.cb_timeout", "30s")
+	v.SetDefault("docker_model.cb_failure_ratio", 0.6)
 
 	// WhatsApp defaults
 	v.SetDefault("whatsapp.session_dir", "./data/whatsapp")
@@ -336,12 +378,17 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("api.config_cache_ttl", "30s")
 	v.SetDefault("api.default_page_limit", 50)
 	v.SetDefault("api.max_export_records", 1000)
+	v.SetDefault("api.max_page_size", 100)
+	v.SetDefault("api.rate_limit_rps", 10.0)
+	v.SetDefault("api.rate_limit_burst", 20)
+	v.SetDefault("api.max_sse_clients", 100)
 
 	// Database defaults
 	v.SetDefault("database.path", "./data/pharmabroker.db")
 	v.SetDefault("database.enable_wal", true)
 	v.SetDefault("database.raw_retention_days", 30)
 	v.SetDefault("database.archive_path", "./data/archive.db")
+	v.SetDefault("database.max_read_conns", 5)
 
 	// Server defaults
 	v.SetDefault("server.port", 8080)
@@ -363,6 +410,10 @@ func loadFallback() *Config {
 			RetryBaseDelay:     1 * time.Second,
 			RequestTimeout:     300 * time.Second,
 			MaxMessageLines:    20,
+			CBMaxRequests:      3,
+			CBInterval:         60 * time.Second,
+			CBTimeout:          30 * time.Second,
+			CBFailureRatio:     0.6,
 		},
 		WhatsApp: WhatsAppConfig{
 			SessionDir:       "./data/whatsapp",
@@ -390,12 +441,17 @@ func loadFallback() *Config {
 			ConfigCacheTTL:   30 * time.Second,
 			DefaultPageLimit: 50,
 			MaxExportRecords: 1000,
+			MaxPageSize:      100,
+			RateLimitRPS:     10.0,
+			RateLimitBurst:   20,
+			MaxSSEClients:    100,
 		},
 		Database: DatabaseConfig{
 			Path:             "./data/pharmabroker.db",
 			EnableWAL:        true,
 			RawRetentionDays: 30,
 			ArchivePath:      "./data/archive.db",
+			MaxReadConns:     5,
 		},
 		Server: ServerConfig{
 			Port:       8080,

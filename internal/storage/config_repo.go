@@ -63,7 +63,7 @@ func DefaultConfig() *AppConfig {
 // Get retrieves a config value
 func (r *ConfigRepo) Get(ctx context.Context, key string) (string, error) {
 	var value string
-	err := r.db.conn.QueryRowContext(ctx,
+	err := r.db.Conn().QueryRowContext(ctx,
 		"SELECT value FROM config WHERE key = ?", key).Scan(&value)
 	if err == sql.ErrNoRows {
 		return "", nil
@@ -73,7 +73,7 @@ func (r *ConfigRepo) Get(ctx context.Context, key string) (string, error) {
 
 // Set stores a config value and invalidates cache
 func (r *ConfigRepo) Set(ctx context.Context, key, value string) error {
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
 	`, key, value, time.Now())
@@ -102,7 +102,7 @@ func (r *ConfigRepo) GetAll(ctx context.Context) (*AppConfig, error) {
 	// Cache miss or expired - fetch from database
 	config := DefaultConfig()
 
-	rows, err := r.db.conn.QueryContext(ctx, "SELECT key, value FROM config")
+	rows, err := r.db.Conn().QueryContext(ctx, "SELECT key, value FROM config")
 	if err != nil {
 		return config, err
 	}

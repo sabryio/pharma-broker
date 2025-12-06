@@ -20,7 +20,7 @@ func NewOfferRepo(db *DB) *OfferRepo {
 
 func (r *OfferRepo) Save(ctx context.Context, offer *domain.Offer) error {
 	now := time.Now()
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		INSERT INTO offers (id, raw_message_id, source_phone, source_name, source_group, group_name,
 			medication, medication_raw, quantity, unit, price, currency, expiry_date, batch_number,
 			notes, raw_message, status, created_at, updated_at)
@@ -38,7 +38,7 @@ func (r *OfferRepo) Save(ctx context.Context, offer *domain.Offer) error {
 }
 
 func (r *OfferRepo) GetByID(ctx context.Context, id string) (*domain.Offer, error) {
-	row := r.db.conn.QueryRowContext(ctx, `
+	row := r.db.Conn().QueryRowContext(ctx, `
 		SELECT id, raw_message_id, source_phone, source_name, source_group, group_name,
 			medication, medication_raw, quantity, unit, price, currency, expiry_date, batch_number,
 			notes, raw_message, status, created_at, updated_at
@@ -49,7 +49,7 @@ func (r *OfferRepo) GetByID(ctx context.Context, id string) (*domain.Offer, erro
 }
 
 func (r *OfferRepo) GetActive(ctx context.Context, limit, offset int) ([]*domain.Offer, error) {
-	rows, err := r.db.conn.QueryContext(ctx, `
+	rows, err := r.db.Conn().QueryContext(ctx, `
 		SELECT id, raw_message_id, source_phone, source_name, source_group, group_name,
 			medication, medication_raw, quantity, unit, price, currency, expiry_date, batch_number,
 			notes, raw_message, status, created_at, updated_at
@@ -70,7 +70,7 @@ func (r *OfferRepo) Search(ctx context.Context, query string, limit, offset int)
 	// Escape FTS5 special characters by quoting the query
 	safeQuery := "\"" + strings.ReplaceAll(query, "\"", "\"\"") + "\"" + "*"
 
-	rows, err := r.db.conn.QueryContext(ctx, `
+	rows, err := r.db.Conn().QueryContext(ctx, `
 		SELECT o.id, o.raw_message_id, o.source_phone, o.source_name, o.source_group, o.group_name,
 			o.medication, o.medication_raw, o.quantity, o.unit, o.price, o.currency, o.expiry_date, o.batch_number,
 			o.notes, o.raw_message, o.status, o.created_at, o.updated_at
@@ -89,7 +89,7 @@ func (r *OfferRepo) Search(ctx context.Context, query string, limit, offset int)
 }
 
 func (r *OfferRepo) UpdateStatus(ctx context.Context, id string, status domain.ItemStatus) error {
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		UPDATE offers SET status = ?, updated_at = ? WHERE id = ?
 	`, status, time.Now(), id)
 	return err
@@ -97,7 +97,7 @@ func (r *OfferRepo) UpdateStatus(ctx context.Context, id string, status domain.I
 
 func (r *OfferRepo) CountActive(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM offers WHERE status = 'ACTIVE'`).Scan(&count)
+	err := r.db.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM offers WHERE status = 'ACTIVE'`).Scan(&count)
 	return count, err
 }
 

@@ -18,7 +18,7 @@ func NewGroupRepo(db *DB) *GroupRepo {
 }
 
 func (r *GroupRepo) Save(ctx context.Context, group *domain.Group) error {
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		INSERT INTO groups (jid, name, description, monitored, added_at, last_message, message_count)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(jid) DO UPDATE SET
@@ -30,7 +30,7 @@ func (r *GroupRepo) Save(ctx context.Context, group *domain.Group) error {
 
 // SaveFromSync saves a group from WhatsApp sync (creates if not exists)
 func (r *GroupRepo) SaveFromSync(ctx context.Context, jid, name, description string) error {
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		INSERT INTO groups (jid, name, description, monitored, added_at, message_count)
 		VALUES (?, ?, ?, FALSE, datetime('now'), 0)
 		ON CONFLICT(jid) DO UPDATE SET
@@ -41,7 +41,7 @@ func (r *GroupRepo) SaveFromSync(ctx context.Context, jid, name, description str
 }
 
 func (r *GroupRepo) GetAll(ctx context.Context) ([]*domain.Group, error) {
-	rows, err := r.db.conn.QueryContext(ctx, `
+	rows, err := r.db.Conn().QueryContext(ctx, `
 		SELECT jid, name, description, monitored, added_at, last_message, message_count
 		FROM groups ORDER BY name
 	`)
@@ -54,7 +54,7 @@ func (r *GroupRepo) GetAll(ctx context.Context) ([]*domain.Group, error) {
 }
 
 func (r *GroupRepo) GetMonitored(ctx context.Context) ([]*domain.Group, error) {
-	rows, err := r.db.conn.QueryContext(ctx, `
+	rows, err := r.db.Conn().QueryContext(ctx, `
 		SELECT jid, name, description, monitored, added_at, last_message, message_count
 		FROM groups WHERE monitored = TRUE ORDER BY name
 	`)
@@ -67,21 +67,21 @@ func (r *GroupRepo) GetMonitored(ctx context.Context) ([]*domain.Group, error) {
 }
 
 func (r *GroupRepo) SetMonitored(ctx context.Context, jid string, monitored bool) error {
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		UPDATE groups SET monitored = ? WHERE jid = ?
 	`, monitored, jid)
 	return err
 }
 
 func (r *GroupRepo) UpdateLastMessage(ctx context.Context, jid string) error {
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		UPDATE groups SET last_message = ? WHERE jid = ?
 	`, time.Now(), jid)
 	return err
 }
 
 func (r *GroupRepo) IncrementMessageCount(ctx context.Context, jid string) error {
-	_, err := r.db.conn.ExecContext(ctx, `
+	_, err := r.db.Conn().ExecContext(ctx, `
 		UPDATE groups SET message_count = message_count + 1 WHERE jid = ?
 	`, jid)
 	return err
@@ -96,7 +96,7 @@ func (r *GroupRepo) EnableFromConfig(ctx context.Context, jids []string) (int, e
 
 	var enabled int
 	for _, jid := range jids {
-		result, err := r.db.conn.ExecContext(ctx, `
+		result, err := r.db.Conn().ExecContext(ctx, `
 			UPDATE groups SET monitored = TRUE WHERE jid = ?
 		`, jid)
 		if err != nil {
@@ -148,43 +148,43 @@ func (r *StatsRepo) GetStats(ctx context.Context) (*domain.Stats, error) {
 	stats := &domain.Stats{}
 
 	// Count active offers
-	if err := r.db.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM offers WHERE status = 'ACTIVE'`).Scan(&stats.ActiveOffers); err != nil {
+	if err := r.db.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM offers WHERE status = 'ACTIVE'`).Scan(&stats.ActiveOffers); err != nil {
 		return nil, err
 	}
 
 	// Count active requests
-	if err := r.db.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM requests WHERE status = 'ACTIVE'`).Scan(&stats.ActiveRequests); err != nil {
+	if err := r.db.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM requests WHERE status = 'ACTIVE'`).Scan(&stats.ActiveRequests); err != nil {
 		return nil, err
 	}
 
 	// Count pending matches
-	if err := r.db.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE status = 'PENDING'`).Scan(&stats.PendingMatches); err != nil {
+	if err := r.db.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM matches WHERE status = 'PENDING'`).Scan(&stats.PendingMatches); err != nil {
 		return nil, err
 	}
 
 	// Count confirmed today
-	if err := r.db.conn.QueryRowContext(ctx, `
+	if err := r.db.Conn().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM matches WHERE status = 'CONFIRMED' AND date(confirmed_at) = date('now')
 	`).Scan(&stats.ConfirmedToday); err != nil {
 		return nil, err
 	}
 
 	// Count processed today
-	if err := r.db.conn.QueryRowContext(ctx, `
+	if err := r.db.Conn().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM raw_messages WHERE date(processed_at) = date('now')
 	`).Scan(&stats.ProcessedToday); err != nil {
 		return nil, err
 	}
 
 	// Average match score
-	if err := r.db.conn.QueryRowContext(ctx, `
+	if err := r.db.Conn().QueryRowContext(ctx, `
 		SELECT COALESCE(AVG(score), 0) FROM matches WHERE status = 'PENDING'
 	`).Scan(&stats.AvgMatchScore); err != nil {
 		return nil, err
 	}
 
 	// Count monitored groups
-	if err := r.db.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM groups WHERE monitored = TRUE`).Scan(&stats.MonitoredGroups); err != nil {
+	if err := r.db.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM groups WHERE monitored = TRUE`).Scan(&stats.MonitoredGroups); err != nil {
 		return nil, err
 	}
 
@@ -193,7 +193,7 @@ func (r *StatsRepo) GetStats(ctx context.Context) (*domain.Stats, error) {
 
 func (r *StatsRepo) GetProcessedToday(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.conn.QueryRowContext(ctx, `
+	err := r.db.Conn().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM raw_messages WHERE date(processed_at) = date('now')
 	`).Scan(&count)
 	return count, err

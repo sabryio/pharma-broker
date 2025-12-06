@@ -18,7 +18,7 @@ func setupTestDB(t *testing.T) *DB {
 		t.Fatalf("Failed to open DB: %v", err)
 	}
 
-	db := &DB{conn: conn}
+	db := &DB{writer: conn, reader: conn}
 
 	// Run migration manually (simplified for test)
 	_, err = conn.Exec(`
@@ -79,7 +79,7 @@ func TestRawMessageRepo_Save_Deduplication(t *testing.T) {
 
 	// 3. Verify count is 1
 	var count int
-	err = db.conn.QueryRow("SELECT COUNT(*) FROM raw_messages").Scan(&count)
+	err = db.Conn().QueryRow("SELECT COUNT(*) FROM raw_messages").Scan(&count)
 	if err != nil {
 		t.Fatalf("Count failed: %v", err)
 	}

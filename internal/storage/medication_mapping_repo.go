@@ -54,7 +54,7 @@ func (r *MedicationMappingRepo) Save(ctx context.Context, m *domain.MedicationMa
 	}
 	m.UpdatedAt = time.Now()
 
-	_, err = r.db.conn.ExecContext(ctx, query,
+	_, err = r.db.Conn().ExecContext(ctx, query,
 		m.ID,
 		m.ArabicName,
 		m.EnglishName,
@@ -88,7 +88,7 @@ func decodeEmbedding(data []byte) ([]float32, error) {
 func (r *MedicationMappingRepo) GetByArabicName(ctx context.Context, arabicName string) (*domain.MedicationMapping, error) {
 	query := `SELECT id, arabic_name, english_name, synonyms, embedding, created_at, updated_at FROM medication_mappings WHERE arabic_name = ?`
 
-	row := r.db.conn.QueryRowContext(ctx, query, arabicName)
+	row := r.db.Conn().QueryRowContext(ctx, query, arabicName)
 	var m domain.MedicationMapping
 	var synonymsJSON []byte
 	var embeddingBytes []byte
@@ -117,7 +117,7 @@ func (r *MedicationMappingRepo) GetByArabicName(ctx context.Context, arabicName 
 func (r *MedicationMappingRepo) GetAll(ctx context.Context) ([]*domain.MedicationMapping, error) {
 	query := `SELECT id, arabic_name, english_name, synonyms, embedding, created_at, updated_at FROM medication_mappings`
 
-	rows, err := r.db.conn.QueryContext(ctx, query)
+	rows, err := r.db.Conn().QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (r *MedicationMappingRepo) GetAll(ctx context.Context) ([]*domain.Medicatio
 // Count returns the number of mappings
 func (r *MedicationMappingRepo) Count(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM medication_mappings").Scan(&count)
+	err := r.db.Conn().QueryRowContext(ctx, "SELECT COUNT(*) FROM medication_mappings").Scan(&count)
 	return count, err
 }
 
@@ -168,7 +168,7 @@ func (r *MedicationMappingRepo) Search(ctx context.Context, query string) ([]*do
 		LIMIT 200
 	`
 
-	rows, err := r.db.conn.QueryContext(ctx, q, query)
+	rows, err := r.db.Conn().QueryContext(ctx, q, query)
 	if err != nil {
 		return nil, err
 	}

@@ -30,7 +30,7 @@ func (r *MatchQueueRepo) Enqueue(ctx context.Context, item *domain.MatchQueueIte
 		item.CreatedAt = time.Now()
 	}
 
-	_, err := r.db.conn.ExecContext(ctx, query, item.ID, item.SourceType, item.SourceID, item.CreatedAt)
+	_, err := r.db.Conn().ExecContext(ctx, query, item.ID, item.SourceType, item.SourceID, item.CreatedAt)
 	return err
 }
 
@@ -38,7 +38,7 @@ func (r *MatchQueueRepo) Enqueue(ctx context.Context, item *domain.MatchQueueIte
 func (r *MatchQueueRepo) DequeueBatch(ctx context.Context, limit int) ([]*domain.MatchQueueItem, error) {
 	query := `SELECT id, source_type, source_id, created_at FROM match_queue ORDER BY created_at ASC LIMIT ?`
 
-	rows, err := r.db.conn.QueryContext(ctx, query, limit)
+	rows, err := r.db.Conn().QueryContext(ctx, query, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -57,13 +57,13 @@ func (r *MatchQueueRepo) DequeueBatch(ctx context.Context, limit int) ([]*domain
 
 // Delete removes an item from the queue (after processing)
 func (r *MatchQueueRepo) Delete(ctx context.Context, id string) error {
-	_, err := r.db.conn.ExecContext(ctx, "DELETE FROM match_queue WHERE id = ?", id)
+	_, err := r.db.Conn().ExecContext(ctx, "DELETE FROM match_queue WHERE id = ?", id)
 	return err
 }
 
 // Count returns queue size
 func (r *MatchQueueRepo) Count(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM match_queue").Scan(&count)
+	err := r.db.Conn().QueryRowContext(ctx, "SELECT COUNT(*) FROM match_queue").Scan(&count)
 	return count, err
 }
