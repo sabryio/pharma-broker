@@ -39,6 +39,9 @@ type Config struct {
 
 	// Server settings for network configuration
 	Server ServerConfig `mapstructure:"server"`
+
+	// Reports settings for automated match reports
+	Reports ReportsConfig `mapstructure:"reports"`
 }
 
 // AIConfig selects which AI provider to use
@@ -268,6 +271,50 @@ type ServerConfig struct {
 	// Separate port allows health checks without exposing main API.
 	// Default: 5050
 	HealthPort int `mapstructure:"health_port"`
+}
+
+// ReportsConfig configures automated match reporting
+type ReportsConfig struct {
+	// Enabled controls whether scheduled reports are generated
+	// Default: false
+	Enabled bool `mapstructure:"enabled"`
+
+	// IntervalMins is the interval between reports in minutes
+	// Default: 60 (hourly)
+	IntervalMins int `mapstructure:"interval_mins"`
+
+	// MinScore is the minimum match score to include in reports
+	// Default: 0.5
+	MinScore float64 `mapstructure:"min_score"`
+
+	// Limit is the maximum number of matches per report
+	// Default: 100
+	Limit int `mapstructure:"limit"`
+
+	// Telegram Bot configuration
+	Telegram TelegramNotifyConfig `mapstructure:"telegram"`
+
+	// Email SMTP configuration
+	Email EmailNotifyConfig `mapstructure:"email"`
+}
+
+// TelegramNotifyConfig configures Telegram notifications
+type TelegramNotifyConfig struct {
+	Enabled  bool     `mapstructure:"enabled"`
+	BotToken string   `mapstructure:"bot_token"`
+	ChatIDs  []string `mapstructure:"chat_ids"`
+}
+
+// EmailNotifyConfig configures email notifications
+type EmailNotifyConfig struct {
+	Enabled    bool     `mapstructure:"enabled"`
+	SMTPHost   string   `mapstructure:"smtp_host"`
+	SMTPPort   int      `mapstructure:"smtp_port"`
+	Username   string   `mapstructure:"username"`
+	Password   string   `mapstructure:"password"`
+	FromName   string   `mapstructure:"from_name"`
+	FromEmail  string   `mapstructure:"from_email"`
+	Recipients []string `mapstructure:"recipients"`
 }
 
 // Load loads configuration from file, environment, and defaults.

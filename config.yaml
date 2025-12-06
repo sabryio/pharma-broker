@@ -140,3 +140,41 @@ server:
 
   # Health check port (for monitoring)
   health_port: 5050
+
+# ---------------------------------
+# Automated Match Reports
+# ---------------------------------
+reports:
+  # Enable scheduled report generation and delivery
+  enabled: false
+
+  # Report generation interval in minutes (60 = hourly)
+  interval_mins: 60
+
+  # Minimum match score to include in reports (0.0-1.0)
+  min_score: 0.5
+
+  # Maximum number of matches per report
+  limit: 100
+
+  # Telegram Bot notifications
+  telegram:
+    enabled: false
+    # Create bot via @BotFather, get token
+    bot_token: ""
+    # Chat IDs to send reports to (use @getidsbot to find IDs)
+    # Negative IDs are group chats, positive are individual users
+    chat_ids: []
+    # Example: ["-1001234567890", "123456789"]
+
+  # Email SMTP notifications
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    username: ""
+    password: "" # Use App Password for Gmail
+    from_name: "PharmaBroker"
+    from_email: ""
+    recipients: []
+    # Example: ["admin@pharmacy.com", "manager@pharmacy.com"]

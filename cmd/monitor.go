@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	"pharmabroker/internal/storage"
 	"pharmabroker/internal/whatsapp"
 )
@@ -44,13 +43,6 @@ var (
 	infoStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			MarginLeft(2)
-
-	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("170")).
-			Bold(true)
-
-	normalStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252"))
 
 	checkStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("42"))
@@ -272,14 +264,5 @@ func runMonitor(cmd *cobra.Command, args []string) {
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running UI: %v\n", err)
 		os.Exit(1)
-	}
-}
-
-// Helper to convert domain groups (for interface compliance)
-func domainToGroupItem(g *domain.Group) groupItem {
-	return groupItem{
-		jid:       g.JID,
-		name:      g.Name,
-		monitored: g.Monitored,
 	}
 }

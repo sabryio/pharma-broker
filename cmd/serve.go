@@ -18,6 +18,8 @@ import (
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/janitor"
 	"pharmabroker/internal/monitor"
+	"pharmabroker/internal/notify"
+	"pharmabroker/internal/reports"
 	"pharmabroker/internal/storage"
 	"pharmabroker/internal/whatsapp"
 )
@@ -328,6 +330,67 @@ func runServe(cmd *cobra.Command, args []string) {
 	// Start parser
 	parser.Start(ctx)
 
+	// Initialize and start report scheduler if enabled
+	var reportScheduler *reports.Scheduler
+	if cfg.Reports.Enabled {
+		reportRepo := storage.NewReportRepo(db)
+		reportGenerator := reports.NewGenerator(reportRepo, log)
+		
+		// Configure notification service
+		telegramConfig := notify.TelegramConfig{
+			Enabled:  cfg.Reports.Telegram.Enabled,
+			BotToken: cfg.Reports.Telegram.BotToken,
+			ChatIDs:  cfg.Reports.Telegram.ChatIDs,
+		}
+		emailConfig := notify.EmailConfig{
+			Enabled:    cfg.Reports.Email.Enabled,
+			SMTPHost:   cfg.Reports.Email.SMTPHost,
+			SMTPPort:   cfg.Reports.Email.SMTPPort,
+			Username:   cfg.Reports.Email.Username,
+			Password:   cfg.Reports.Email.Password,
+			FromName:   cfg.Reports.Email.FromName,
+			FromEmail:  cfg.Reports.Email.FromEmail,
+			Recipients: cfg.Reports.Email.Recipients,
+		}
+		notifier := notify.NewNotificationService(telegramConfig, emailConfig, log)
+		
+		// Configure scheduler
+		schedulerConfig := reports.SchedulerConfig{
+			Enabled:      cfg.Reports.Enabled,
+			IntervalMins: cfg.Reports.IntervalMins,
+		}
+		if schedulerConfig.IntervalMins <= 0 {
+			schedulerConfig.IntervalMins = 60 // Default hourly
+		}
+		
+		reportConfig := reports.ReportConfig{
+			IncludePending:   true,
+			IncludeConfirmed: true,
+			IncludeRejected:  false,
+			MinScore:         cfg.Reports.MinScore,
+			Limit:            cfg.Reports.Limit,
+			PeriodHours:      schedulerConfig.IntervalMins / 60,
+		}
+		if reportConfig.MinScore <= 0 {
+			reportConfig.MinScore = 0.5
+		}
+		if reportConfig.Limit <= 0 {
+			reportConfig.Limit = 100
+		}
+		if reportConfig.PeriodHours <= 0 {
+			reportConfig.PeriodHours = 1
+		}
+		
+		reportScheduler = reports.NewScheduler(reportGenerator, notifier, schedulerConfig, reportConfig, log)
+		if err := reportScheduler.Start(ctx); err != nil {
+			log.Error().Err(err).Msg("Failed to start report scheduler")
+		} else {
+			log.Info().
+				Int("interval_mins", schedulerConfig.IntervalMins).
+				Msg("Report scheduler started")
+		}
+	}
+
 	// Start HTTP server
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
@@ -350,6 +413,9 @@ func runServe(cmd *cobra.Command, args []string) {
 	cancel()
 	parser.Stop()
 	janitorService.Stop()
+	if reportScheduler != nil {
+		reportScheduler.Stop()
+	}
 	waManager.Disconnect()
 	server.Close()
 }
