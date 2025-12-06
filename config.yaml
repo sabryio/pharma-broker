@@ -29,7 +29,7 @@ docker_model:
   retry_base_delay: 1s
 
   # Timeout for API requests (local models can be slower)
-  request_timeout: 60s
+  request_timeout: 300s
 
 # ---------------------------------
 # WhatsApp Web Connection Settings

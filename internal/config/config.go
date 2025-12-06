@@ -320,7 +320,7 @@ func loadFallback() *Config {
 			Model:          "ai/qwen3-vl:latest",
 			MaxRetries:     3,
 			RetryBaseDelay: 1 * time.Second,
-			RequestTimeout: 60 * time.Second,
+			RequestTimeout: 300 * time.Second,
 		},
 		WhatsApp: WhatsAppConfig{
 			SessionDir:       "./data/whatsapp",

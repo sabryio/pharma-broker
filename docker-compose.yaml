@@ -32,10 +32,13 @@ services:
 models:
   llm:
     model: ai/qwen3-vl:latest
-    context_size: 4096
+    context_size: 16384
     runtime_flags:
       - "--temp"
       - "0.1" # Low temperature for consistent parsing
+      - "--threads"
+      - "8" # Number of threads for generation
+      - "--mlock" # Lock memory to prevent swapping
 
 volumes:
   pharmabroker-data:

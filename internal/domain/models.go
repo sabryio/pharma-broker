@@ -57,7 +57,7 @@ type Offer struct {
 	GroupName     string     `json:"group_name"`
 	Medication    string     `json:"medication"`     // Normalized name
 	MedicationRaw string     `json:"medication_raw"` // Original text
-	Quantity      int        `json:"quantity"`
+	Quantity      float64    `json:"quantity"`
 	Unit          string     `json:"unit,omitempty"` // e.g., "boxes", "strips"
 	Price         float64    `json:"price,omitempty"`
 	Currency      string     `json:"currency,omitempty"` // Default EGP
@@ -80,7 +80,7 @@ type Request struct {
 	GroupName     string     `json:"group_name"`
 	Medication    string     `json:"medication"`     // Normalized name
 	MedicationRaw string     `json:"medication_raw"` // Original text
-	Quantity      int        `json:"quantity"`
+	Quantity      float64    `json:"quantity"`
 	Unit          string     `json:"unit,omitempty"`
 	MaxPrice      float64    `json:"max_price,omitempty"`
 	Currency      string     `json:"currency,omitempty"`
@@ -141,15 +141,13 @@ type ParsedItem struct {
 	Type          MessageType `json:"type"`
 	Medication    string      `json:"medication"`
 	MedicationRaw string      `json:"medication_raw"`
-	Quantity      int         `json:"quantity,omitempty"`
+	Quantity      float64     `json:"quantity,omitempty"`
 	Unit          string      `json:"unit,omitempty"`
 	Price         float64     `json:"price,omitempty"`
 	MaxPrice      float64     `json:"max_price,omitempty"`
-	Currency      string      `json:"currency,omitempty"`
-	ExpiryDate    string      `json:"expiry_date,omitempty"` // String from AI, parsed later
-	BatchNumber   string      `json:"batch_number,omitempty"`
-	Urgent        bool        `json:"urgent,omitempty"`
-	Notes         string      `json:"notes,omitempty"`
+	// Removed: Currency, ExpiryDate, BatchNumber (moved to Notes)
+	Urgent bool   `json:"urgent,omitempty"`
+	Notes  string `json:"notes,omitempty"`
 }
 
 // AIParseResult represents the AI response for a message

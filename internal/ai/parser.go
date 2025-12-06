@@ -212,7 +212,7 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 				Str("type", string(item.Type)).
 				Str("medication", item.Medication).
 				Str("medication_raw", item.MedicationRaw).
-				Int("quantity", item.Quantity).
+				Float64("quantity", item.Quantity).
 				Float64("price", item.Price).
 				Bool("urgent", item.Urgent).
 				Msg("📦 Extracted item from AI")
@@ -270,17 +270,8 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 }
 
 func (p *Parser) createOffer(msg *domain.RawMessage, item *domain.ParsedItem) *domain.Offer {
-	var expiryDate *time.Time
-	if item.ExpiryDate != "" {
-		if t, err := time.Parse("2006-01", item.ExpiryDate); err == nil {
-			expiryDate = &t
-		}
-	}
-
-	currency := item.Currency
-	if currency == "" {
-		currency = "EGP"
-	}
+	// Expiry and Batch are now in Notes
+	// Currency defaults to EGP
 
 	return &domain.Offer{
 		ID:            uuid.New().String(),
@@ -294,9 +285,9 @@ func (p *Parser) createOffer(msg *domain.RawMessage, item *domain.ParsedItem) *d
 		Quantity:      item.Quantity,
 		Unit:          item.Unit,
 		Price:         item.Price,
-		Currency:      currency,
-		ExpiryDate:    expiryDate,
-		BatchNumber:   item.BatchNumber,
+		Currency:      "EGP",
+		ExpiryDate:    nil,
+		BatchNumber:   "",
 		Notes:         item.Notes,
 		RawMessage:    msg.Content,
 		Status:        domain.StatusActive,
@@ -306,11 +297,6 @@ func (p *Parser) createOffer(msg *domain.RawMessage, item *domain.ParsedItem) *d
 }
 
 func (p *Parser) createRequest(msg *domain.RawMessage, item *domain.ParsedItem) *domain.Request {
-	currency := item.Currency
-	if currency == "" {
-		currency = "EGP"
-	}
-
 	return &domain.Request{
 		ID:            uuid.New().String(),
 		RawMessageID:  msg.ID,
@@ -323,7 +309,7 @@ func (p *Parser) createRequest(msg *domain.RawMessage, item *domain.ParsedItem) 
 		Quantity:      item.Quantity,
 		Unit:          item.Unit,
 		MaxPrice:      item.MaxPrice,
-		Currency:      currency,
+		Currency:      "EGP",
 		Urgent:        item.Urgent,
 		Notes:         item.Notes,
 		RawMessage:    msg.Content,

@@ -45,6 +45,10 @@ Your task is to extract medication OFFERS and REQUESTS from informal Arabic text
 
 ### Medication Extraction
 - Extract brand names and generic names
+- **CRITICAL: Do NOT guess generic names or active ingredients.**
+- **CRITICAL: Translate/Transliterate the brand name EXACTLY as written.**
+- Example: "Monjaro" -> "Monjaro" (NOT "Tirzepatide", NOT "Moxifloxacin")
+- Example: "Panadol" -> "Panadol" (NOT "Paracetamol")
 - Normalize common misspellings
 - Include dosage forms: tablets, capsules, ampules, syrup, etc.
 - Include strength when mentioned: 500mg, 1g, etc.
@@ -58,6 +62,7 @@ Your task is to extract medication OFFERS and REQUESTS from informal Arabic text
 - OFFER: Seller has medication available
 - REQUEST: Buyer needs medication
 - BOTH: Message contains both offers and requests (common in "swap" messages)
+- **If the message is just a list of medications without clear context, assume it is an OFFER.**
 - If message is general chat or unclear, return empty items array
 
 ### Urgency Detection
@@ -79,11 +84,8 @@ Each item in items array:
   "unit": "boxes" | "strips" | "ampules" | "bottles" | null,
   "price": number or 0 if not specified (for offers),
   "max_price": number or 0 if not specified (for requests),
-  "currency": "EGP",
-  "expiry_date": "YYYY-MM" if mentioned or null,
-  "batch_number": string if mentioned or null,
   "urgent": true/false (for requests),
-  "notes": "any additional details"
+  "notes": "any additional details (expiry, batch, currency, etc)"
 }
 
 ## Examples
@@ -100,8 +102,7 @@ Output:
       "quantity": 5,
       "unit": "boxes",
       "price": 300,
-      "currency": "EGP",
-      "notes": ""
+      "notes": "Currency: EGP"
     }
   ]
 }
@@ -118,7 +119,6 @@ Output:
       "quantity": 0,
       "unit": null,
       "max_price": 0,
-      "currency": "EGP",
       "urgent": true,
       "notes": ""
     }
