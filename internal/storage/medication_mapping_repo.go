@@ -90,3 +90,33 @@ func (r *MedicationMappingRepo) Count(ctx context.Context) (int, error) {
 	err := r.db.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM medication_mappings").Scan(&count)
 	return count, err
 }
+
+// Search returns mappings matching the query using FTS
+func (r *MedicationMappingRepo) Search(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
+	// Use the FTS virtual table for efficient searching
+	// We select from the main table, joining with the FTS table on rowid
+	q := `
+		SELECT m.id, m.arabic_name, m.english_name, m.created_at, m.updated_at
+		FROM medication_mappings m
+		JOIN medication_mappings_fts fts ON m.rowid = fts.rowid
+		WHERE fts MATCH ?
+		ORDER BY rank
+		LIMIT 200
+	`
+
+	rows, err := r.db.conn.QueryContext(ctx, q, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var mappings []*domain.MedicationMapping
+	for rows.Next() {
+		var m domain.MedicationMapping
+		if err := rows.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		mappings = append(mappings, &m)
+	}
+	return mappings, nil
+}

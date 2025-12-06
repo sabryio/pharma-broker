@@ -239,4 +239,36 @@ var migrations = []migration{
 			CREATE INDEX idx_medication_mappings_arabic ON medication_mappings(arabic_name);
 		`,
 	},
+	{
+		version: 6,
+		sql: `
+			-- Full-text search for medication mappings (RAG-Lite optimization)
+			CREATE VIRTUAL TABLE medication_mappings_fts USING fts5(
+				arabic_name, english_name,
+				content='medication_mappings', content_rowid='rowid'
+			);
+
+			-- Triggers to keep FTS index in sync
+			CREATE TRIGGER medication_mappings_ai AFTER INSERT ON medication_mappings BEGIN
+				INSERT INTO medication_mappings_fts(rowid, arabic_name, english_name)
+				VALUES (NEW.rowid, NEW.arabic_name, NEW.english_name);
+			END;
+
+			CREATE TRIGGER medication_mappings_ad AFTER DELETE ON medication_mappings BEGIN
+				INSERT INTO medication_mappings_fts(medication_mappings_fts, rowid, arabic_name, english_name)
+				VALUES('delete', OLD.rowid, OLD.arabic_name, OLD.english_name);
+			END;
+
+			CREATE TRIGGER medication_mappings_au AFTER UPDATE ON medication_mappings BEGIN
+				INSERT INTO medication_mappings_fts(medication_mappings_fts, rowid, arabic_name, english_name)
+				VALUES('delete', OLD.rowid, OLD.arabic_name, OLD.english_name);
+				INSERT INTO medication_mappings_fts(rowid, arabic_name, english_name)
+				VALUES (NEW.rowid, NEW.arabic_name, NEW.english_name);
+			END;
+
+			-- Backfill existing data
+			INSERT INTO medication_mappings_fts(rowid, arabic_name, english_name)
+			SELECT rowid, arabic_name, english_name FROM medication_mappings;
+		`,
+	},
 }

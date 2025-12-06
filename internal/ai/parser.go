@@ -41,12 +41,6 @@ type Parser struct {
 	isAutoParseEnabled func() bool                // Check if auto-parse is enabled
 	matchJobChan       chan func(context.Context) // Worker pool for matching
 
-	// Caching
-	cachedMappings    map[string]string
-	cacheMutex        sync.RWMutex
-	lastCacheRefresh  time.Time
-	cacheRefreshTimer *time.Ticker
-
 	// Real-time updates
 	sseBroadcaster SSEBroadcaster
 }
@@ -77,8 +71,6 @@ func NewParser(
 		stopChan:           make(chan struct{}),
 		isAutoParseEnabled: func() bool { return true },           // Default: always parse
 		matchJobChan:       make(chan func(context.Context), 100), // Buffer for match jobs
-		cachedMappings:     make(map[string]string),
-		cacheRefreshTimer:  time.NewTicker(5 * time.Minute),
 	}
 }
 
@@ -128,13 +120,12 @@ func (p *Parser) matchWorker(ctx context.Context) {
 func (p *Parser) processLoop(ctx context.Context) {
 	defer p.wg.Done()
 
-	// Initial cache load
-	p.refreshCache(ctx)
+	// Initial startup
+	// No cache needed for FTS
 
 	batch := make([]*domain.RawMessage, 0, p.batchSize)
 	ticker := time.NewTicker(p.parserCfg.BatchInterval) // Use config for batch interval
 	defer ticker.Stop()
-	defer p.cacheRefreshTimer.Stop()
 
 	for {
 		select {
@@ -149,8 +140,6 @@ func (p *Parser) processLoop(ctx context.Context) {
 				p.processBatch(context.Background(), batch)
 			}
 			return
-		case <-p.cacheRefreshTimer.C:
-			p.refreshCache(ctx)
 		case msg := <-p.msgChan:
 			batch = append(batch, msg)
 			if len(batch) >= p.batchSize {
@@ -203,21 +192,14 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 		Int("message_count", len(batch)).
 		Msg("🚀 Sending to AI provider...")
 
-	// Fetch medication mappings from Cache
-	p.cacheMutex.RLock()
-	allMappings := p.cachedMappings
-	// Make a copy if we were mutating, but filterRelevantMappings creates a new map
-	p.cacheMutex.RUnlock()
-
-	// Filter relevant mappings (RAG-Lite)
+	// Get relevant mappings from DB using FTS (RAG-Lite)
 	filteringStart := time.Now()
-	mappings := p.filterRelevantMappings(batch, allMappings)
+	mappings := p.getRelevantMappings(ctx, batch)
 
 	p.log.Info().
-		Int("total_mappings", len(allMappings)).
 		Int("relevant_mappings", len(mappings)).
 		Dur("duration", time.Since(filteringStart)).
-		Msg("Filtered relevant medication mappings for context")
+		Msg("Retrieved relevant medication mappings from DB (FTS)")
 
 	results, err := p.aiProvider.ParseMessages(ctx, batch, mappings)
 	if err != nil {
@@ -474,57 +456,78 @@ func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Requ
 	}
 }
 
-// refreshCache reloads medication mappings from the database
-func (p *Parser) refreshCache(ctx context.Context) {
-	p.log.Debug().Msg("Refreshing medication mapping cache...")
-	mappings, err := p.medicationRepo.GetAll(ctx)
-	if err != nil {
-		p.log.Error().Err(err).Msg("Failed to refresh medication cache")
-		return
-	}
-
-	newCache := make(map[string]string)
-	for _, m := range mappings {
-		newCache[m.ArabicName] = m.EnglishName
-	}
-
-	p.cacheMutex.Lock()
-	p.cachedMappings = newCache
-	p.lastCacheRefresh = time.Now()
-	p.cacheMutex.Unlock()
-
-	p.log.Info().Int("count", len(newCache)).Msg("Medication mapping cache refreshed")
-}
-
-// filterRelevantMappings returns a subset of mappings that appear in the messages
-// This is RAG-Lite: we only inject context that is relevant to the current input.
-func (p *Parser) filterRelevantMappings(messages []*domain.RawMessage, allMappings map[string]string) map[string]string {
+// getRelevantMappings extracts tokens from messages and queries the FTS index
+func (p *Parser) getRelevantMappings(ctx context.Context, messages []*domain.RawMessage) map[string]string {
 	relevant := make(map[string]string)
 
-	// Pre-process messages into a single big string for faster searching
-	// or iterate. Given map size ~5000 and msg size ~500 chars, iteration is fine.
-	// But let's be efficient: build a big string of all content normalized.
-	var sb strings.Builder
+	// Tokenize messages to form a search query
+	uniqueTokens := make(map[string]struct{})
 	for _, msg := range messages {
-		sb.WriteString(strings.ToLower(msg.Content))
-		sb.WriteString(" ")
-	}
-	fullContent := sb.String()
+		// Normalize and split
+		content := strings.ToLower(msg.Content)
+		// Replace common punctuation with space
+		content = strings.ReplaceAll(content, "\n", " ")
+		content = strings.ReplaceAll(content, ",", " ")
+		content = strings.ReplaceAll(content, ".", " ")
+		content = strings.ReplaceAll(content, "-", " ")
 
-	// Naive approach: Iterate all keys and check Contains.
-	// Optimization: Aho-Corasick would be better for massive dictionaries,
-	// but for <10k keys and Go's optimized strings.Contains, this is acceptable for now.
-	for k, v := range allMappings {
-		// keys in map are typically Arabic.
-		// We perform a simple substring check.
-		// optimization: check both Arabic (Key) and English (Value)
-		if strings.Contains(fullContent, strings.ToLower(k)) || strings.Contains(fullContent, strings.ToLower(v)) {
-			relevant[k] = v
+		words := strings.Fields(content)
+		for _, w := range words {
+			// Filter out short words and common junk
+			if len(w) > 2 {
+				uniqueTokens[w] = struct{}{}
+			}
 		}
 	}
 
-	// Optional: Always include some "Common" very high frequency items if we had a way to mark them.
-	// For now, strict relevance is fine.
+	if len(uniqueTokens) == 0 {
+		return relevant
+	}
+
+	// Build OR query
+	var queryBuilder strings.Builder
+	first := true
+	count := 0
+	const maxTokens = 50 // Limit to top 50 tokens to avoid query string limit
+
+	for token := range uniqueTokens {
+		if count >= maxTokens {
+			break
+		}
+		if !first {
+			queryBuilder.WriteString(" OR ")
+		}
+		// Sanitize token for FTS (remove quotes)
+		cleanToken := strings.ReplaceAll(token, "\"", "")
+		cleanToken = strings.ReplaceAll(cleanToken, "'", "")
+		if cleanToken == "" {
+			continue
+		}
+
+		// Use quotes to handle tokens with special chars if needed,
+		// but simple cleaning is safer.
+		// "token" in FTS5
+		queryBuilder.WriteString("\"")
+		queryBuilder.WriteString(cleanToken)
+		queryBuilder.WriteString("\"")
+
+		first = false
+		count++
+	}
+
+	if count == 0 {
+		return relevant
+	}
+
+	mappings, err := p.medicationRepo.Search(ctx, queryBuilder.String())
+	if err != nil {
+		p.log.Error().Err(err).Msg("Failed to search medication mappings")
+		return relevant
+	}
+
+	for _, m := range mappings {
+		relevant[m.ArabicName] = m.EnglishName
+	}
 
 	return relevant
 }

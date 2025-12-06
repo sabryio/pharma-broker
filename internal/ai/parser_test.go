@@ -58,7 +58,8 @@ func TestParser_ProcessBatch_HappyPath(t *testing.T) {
 	offerSaved := false
 	msgMarked := false
 
-	mockMedRepo.OnGetAll = func(ctx context.Context) ([]*domain.MedicationMapping, error) {
+	// FTS Mock
+	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
 		return []*domain.MedicationMapping{}, nil
 	}
 
@@ -104,37 +105,6 @@ func TestParser_ProcessBatch_HappyPath(t *testing.T) {
 	}
 }
 
-func TestParser_FilterRelevantMappings(t *testing.T) {
-	parser := &Parser{} // Empty parser, we only need the method
-
-	allMappings := map[string]string{
-		"اوجمنتين": "Augmentin",
-		"بنادول":   "Panadol",
-		"فلاجيل":   "Flagyl",
-		"ادول":     "Adol",
-	}
-
-	messages := []*domain.RawMessage{
-		{Content: "I need 2 boxes of Augmentin (اوجمنتين) please"},
-		{Content: "Also do you have adol?"},
-	}
-
-	relevant := parser.filterRelevantMappings(messages, allMappings)
-
-	if len(relevant) != 2 {
-		t.Errorf("Expected 2 relevant mappings, got %d", len(relevant))
-	}
-	if _, ok := relevant["اوجمنتين"]; !ok {
-		t.Error("Expected 'اوجمنتين' to be in relevant mappings")
-	}
-	if _, ok := relevant["ادول"]; !ok {
-		t.Error("Expected 'ادول' to be in relevant mappings")
-	}
-	if _, ok := relevant["بنادول"]; ok {
-		t.Error("Expected 'بنادول' NOT to be in relevant mappings")
-	}
-}
-
 func TestParser_ProcessBatch_AIError(t *testing.T) {
 	// Setup Mocks
 	mockRawRepo := &MockRawMessageRepo{}
@@ -161,7 +131,7 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 	msg := &domain.RawMessage{ID: "msg-error"}
 
 	// Expectations
-	mockMedRepo.OnGetAll = func(ctx context.Context) ([]*domain.MedicationMapping, error) {
+	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
 		return []*domain.MedicationMapping{}, nil
 	}
 

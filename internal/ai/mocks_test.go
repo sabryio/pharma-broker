@@ -154,11 +154,18 @@ type MockMedicationRepo struct {
 	OnSave            func(ctx context.Context, mapping *domain.MedicationMapping) error
 	OnGetByArabicName func(ctx context.Context, arabicName string) (*domain.MedicationMapping, error)
 	OnCount           func(ctx context.Context) (int, error)
+	OnSearch          func(ctx context.Context, query string) ([]*domain.MedicationMapping, error)
 }
 
 func (m *MockMedicationRepo) GetAll(ctx context.Context) ([]*domain.MedicationMapping, error) {
 	if m.OnGetAll != nil {
 		return m.OnGetAll(ctx)
+	}
+	return []*domain.MedicationMapping{}, nil
+}
+func (m *MockMedicationRepo) Search(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
+	if m.OnSearch != nil {
+		return m.OnSearch(ctx, query)
 	}
 	return []*domain.MedicationMapping{}, nil
 }

@@ -63,5 +63,6 @@ type MedicationMappingRepository interface {
 	Save(ctx context.Context, mapping *MedicationMapping) error
 	GetByArabicName(ctx context.Context, arabicName string) (*MedicationMapping, error)
 	GetAll(ctx context.Context) ([]*MedicationMapping, error)
+	Search(ctx context.Context, query string) ([]*MedicationMapping, error)
 	Count(ctx context.Context) (int, error)
 }
