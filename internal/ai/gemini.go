@@ -293,3 +293,59 @@ func (c *GeminiClient) Embed(ctx context.Context, text string) ([]float32, error
 	// First embedding
 	return resp.Embeddings[0].Values, nil
 }
+
+// EmbedBatch generates embeddings for a batch of texts by calling Embed concurrently
+// Note: Google GenAI SDK might support BatchEmbedContents, but we use parallel calls for now to be safe with this version.
+func (c *GeminiClient) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	if len(texts) == 0 {
+		return nil, nil
+	}
+
+	results := make([][]float32, len(texts))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+
+	// 5 concurrent requests usually safe for Gemini quotas
+	sem := make(chan struct{}, 5)
+
+	for i, text := range texts {
+		wg.Add(1)
+		go func(idx int, txt string) {
+			defer wg.Done()
+
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Check if we should abort due to previous error
+			mu.Lock()
+			if firstErr != nil {
+				mu.Unlock()
+				return
+			}
+			mu.Unlock()
+
+			// Use the existing Embed method
+			// Note: Rate limiting is handled inside Embed or implicitly by API
+			vec, err := c.Embed(ctx, txt)
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				return
+			}
+			results[idx] = vec
+		}(i, text)
+	}
+
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return results, nil
+}

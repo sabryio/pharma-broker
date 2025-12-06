@@ -410,3 +410,48 @@ func (c *DockerModelClient) Embed(ctx context.Context, text string) ([]float32, 
 
 	return vec32, nil
 }
+
+// EmbedBatch generates embeddings for a batch of texts using the OpenAI-compatible endpoint
+func (c *DockerModelClient) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	if len(texts) == 0 {
+		return nil, nil
+	}
+
+	client := c.client
+	model := c.cfg.EmbeddingModelName
+	if model == "" {
+		model = "ai/embeddinggemma"
+	}
+
+	resp, err := client.Embeddings.New(ctx, openai.EmbeddingNewParams{
+		Model: openai.EmbeddingModel(model),
+		Input: openai.EmbeddingNewParamsInputUnion{
+			OfArrayOfStrings: texts,
+		},
+	})
+	if err != nil {
+		c.log.Error().Err(err).Int("batch_size", len(texts)).Msg("Failed to generate batch embeddings")
+		return nil, err
+	}
+
+	if len(resp.Data) == 0 {
+		return nil, fmt.Errorf("empty embedding response")
+	}
+
+	// Sort response by Index to ensure order matches input
+	// OpenAI guarantees order usually, but explicit sorting is safer if indices are provided.
+	// Actually, the SDK returns a slice in order. We map it directly.
+	results := make([][]float32, len(texts))
+	for _, item := range resp.Data {
+		if int(item.Index) < len(results) {
+			vec64 := item.Embedding
+			vec32 := make([]float32, len(vec64))
+			for i, v := range vec64 {
+				vec32[i] = float32(v)
+			}
+			results[item.Index] = vec32
+		}
+	}
+
+	return results, nil
+}

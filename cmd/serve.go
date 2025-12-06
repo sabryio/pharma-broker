@@ -80,59 +80,83 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Info().Int("count", len(commonMedications)).Msg("Loaded medication mappings")
 	}
 
+	// Initialize AI provider (Gemini or Docker Model Runner based on config)
+	// Moved up to be available for seeding
+	aiProvider, err := ai.NewAIProvider(ctx, cfg, log)
+	if err != nil {
+		log.Fatal().Err(err).Str("provider", cfg.AI.Provider).Msg("Failed to initialize AI provider")
+	}
+	log.Info().Str("provider", cfg.AI.Provider).Msg("AI provider initialized")
+
 	// Seed medication mappings if empty
 	count, err := medicationRepo.Count(ctx)
 	if err == nil && count == 0 {
 		log.Info().Msg("Seeding medication mappings (consolidating synonyms)...")
 
-		// 1. Group by English Name
+		// 1. Group by English Name for consolidation
+		// Also collect all texts to embed in batch
 		grouped := make(map[string][]string)
+		var arabicsToEmbed []string
+
 		for arabic, english := range commonMedications {
 			grouped[english] = append(grouped[english], arabic)
 		}
 
-		// 2. Iterate and Save
+		// Pre-calculate canonical names for batch embedding
+		type seedItem struct {
+			Canonical string
+			English   string
+			Synonyms  []string
+		}
+		var seedQueue []seedItem
+
 		for english, arabics := range grouped {
 			if len(arabics) == 0 {
 				continue
 			}
-
-			// Deterministic Canonical Name (e.g. shortest or alphabetical)
-			// Let's sort them to ensure consistency
-			// If we wanted shortest: sort.Slice(arabics, func(i, j int) bool { return len(arabics[i]) < len(arabics[j]) })
-			// But for now, let's just use the first one encountered (need stable usage?)
-			// Go map iteration is random, so 'arabics' order depends on how we built it.
-			// Let's rely on the first one being "primary" if consistent, but since map order is random,
-			// we should probably pick the one that "looks" best?
-			// For simplicity: We will treat the alphabetically first one as canonical?
-			// Or just no sorting and accept one as canonical.
-			// Actually, let's pick the one with the fewest characters as likely canonical?
-			// No, "Augmentin" -> "اوجمنتين" vs "اجمنتين". Longest might be more accurate.
-			// Let's just pick index 0.
-
 			canonical := arabics[0]
 			var synonyms []string
 			if len(arabics) > 1 {
 				synonyms = arabics[1:]
 			}
 
-			if err := medicationRepo.Save(ctx, &domain.MedicationMapping{
-				ArabicName:  canonical,
-				EnglishName: english,
-				Synonyms:    synonyms,
-			}); err != nil {
-				log.Warn().Err(err).Str("english", english).Msg("Failed to seed mapping")
+			seedQueue = append(seedQueue, seedItem{
+				Canonical: canonical,
+				English:   english,
+				Synonyms:  synonyms,
+			})
+			arabicsToEmbed = append(arabicsToEmbed, canonical)
+		}
+
+		// Batch Embed
+		log.Info().Int("count", len(arabicsToEmbed)).Msg("Generating embeddings in batch...")
+		embeddings, err := aiProvider.EmbedBatch(ctx, arabicsToEmbed)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to generate batch embeddings, falling back to individual or none")
+			// We continue; the embeddings slice might be nil, handled below
+		} else {
+			log.Info().Msg("Batch embeddings generated successfully")
+		}
+
+		// Save mapped data
+		for i, item := range seedQueue {
+			mapping := &domain.MedicationMapping{
+				ArabicName:  item.Canonical,
+				EnglishName: item.English,
+				Synonyms:    item.Synonyms,
+				CreatedAt:   time.Now(),
+			}
+
+			if embeddings != nil && i < len(embeddings) {
+				mapping.Embedding = embeddings[i]
+			}
+
+			if err := medicationRepo.Save(ctx, mapping); err != nil {
+				log.Warn().Err(err).Str("english", item.English).Msg("Failed to seed mapping")
 			}
 		}
 		log.Info().Msg("Seeding complete")
 	}
-
-	// Initialize AI provider (Gemini or Docker Model Runner based on config)
-	aiProvider, err := ai.NewAIProvider(ctx, cfg, log)
-	if err != nil {
-		log.Fatal().Err(err).Str("provider", cfg.AI.Provider).Msg("Failed to initialize AI provider")
-	}
-	log.Info().Str("provider", cfg.AI.Provider).Msg("AI provider initialized")
 
 	// Initialize WhatsApp manager
 	waManager, err := whatsapp.NewManager(ctx, &cfg.WhatsApp, log)
