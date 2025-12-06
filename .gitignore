@@ -53,3 +53,7 @@ logs/
 
 # Taskfile checksum
 .task/
+
+# Results
+test_*.json
+results*.json

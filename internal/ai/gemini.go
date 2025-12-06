@@ -265,7 +265,7 @@ func (c *GeminiClient) GetRateLimitStatus() (used, limit int, resetIn time.Durat
 	defer c.mu.Unlock()
 
 	elapsed := time.Since(c.hourStart)
-	resetIn = max(time.Hour - elapsed, 0)
+	resetIn = max(time.Hour-elapsed, 0)
 
 	return c.requestsThisHour, c.cfg.RateLimitPerHour, resetIn
 }
