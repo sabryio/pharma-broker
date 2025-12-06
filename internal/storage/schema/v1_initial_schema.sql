@@ -201,3 +201,30 @@ CREATE TABLE failed_messages (
 );
 CREATE INDEX idx_failed_messages_unresolved ON failed_messages(resolved_at) WHERE resolved_at IS NULL;
 CREATE INDEX idx_failed_messages_retry ON failed_messages(retry_count) WHERE resolved_at IS NULL;
+
+-- 8. Match Feedback for Operator Learning Loop
+-- ---------------------------------------------------------
+CREATE TABLE match_feedback (
+    id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL REFERENCES matches(id),
+    operator_id TEXT,
+    decision TEXT NOT NULL, -- 'CONFIRMED', 'REJECTED'
+    reason TEXT,
+    original_score REAL NOT NULL,
+    original_confidence TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_feedback_match ON match_feedback(match_id);
+CREATE INDEX idx_feedback_decision ON match_feedback(decision);
+CREATE INDEX idx_feedback_created ON match_feedback(created_at);
+
+-- 9. Demand Leaderboard (Materialized View Pattern)
+-- ---------------------------------------------------------
+CREATE TABLE demand_leaderboard (
+    medication TEXT PRIMARY KEY,
+    request_count INTEGER NOT NULL DEFAULT 0,
+    offer_count INTEGER NOT NULL DEFAULT 0,
+    demand_ratio REAL NOT NULL DEFAULT 0,
+    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_leaderboard_ratio ON demand_leaderboard(demand_ratio DESC);

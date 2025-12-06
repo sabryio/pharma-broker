@@ -167,3 +167,32 @@ type FailedMessage struct {
 	FailedAt      time.Time  `json:"failed_at"`
 	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`
 }
+
+// FeedbackDecision represents the operator's decision on a match
+type FeedbackDecision string
+
+const (
+	FeedbackConfirmed FeedbackDecision = "CONFIRMED"
+	FeedbackRejected  FeedbackDecision = "REJECTED"
+)
+
+// MatchFeedback represents operator feedback on a match for learning loop
+type MatchFeedback struct {
+	ID                 string           `json:"id"`
+	MatchID            string           `json:"match_id"`
+	OperatorID         string           `json:"operator_id,omitempty"`
+	Decision           FeedbackDecision `json:"decision"`
+	Reason             string           `json:"reason,omitempty"`
+	OriginalScore      float64          `json:"original_score"`
+	OriginalConfidence string           `json:"original_confidence"`
+	CreatedAt          time.Time        `json:"created_at"`
+}
+
+// DemandStats represents medication demand statistics for leaderboard
+type DemandStats struct {
+	Medication   string  `json:"medication"`
+	RequestCount int     `json:"request_count"`
+	OfferCount   int     `json:"offer_count"`
+	DemandRatio  float64 `json:"demand_ratio"` // Higher = more demand
+	Trend        string  `json:"trend"`        // "UP", "DOWN", "STABLE"
+}

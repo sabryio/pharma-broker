@@ -485,40 +485,54 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 		return
 	}
 
-	// Dynamic Config: Get current match threshold
-	// Use default 0.5 if config fetch fails
-	matchThreshold := 0.5
-	if p.configRepo != nil {
-		if cfg, err := p.configRepo.GetAll(ctx); err == nil {
-			matchThreshold = cfg.MatchThreshold
-		}
-	}
-
 	for _, req := range requests {
-		score := p.calculateMatchScore(offer, req)
-		if score >= matchThreshold {
-			match := &domain.Match{
-				ID:        uuid.New().String(),
-				OfferID:   offer.ID,
-				RequestID: req.ID,
-				Score:     score,
-				Reasoning: generateMatchReasoning(offer, req, score),
-				Status:    domain.MatchStatusPending,
-				CreatedAt: time.Now(),
-			}
+		// Calculate multi-field medication score
+		medicationScore := p.calculateMedicationScore(offer.Medication, req.Medication)
 
-			if err := p.matchRepo.Save(ctx, match); err != nil {
-				p.log.Error().Err(err).Msg("Failed to save match")
-			} else {
-				p.log.Info().
-					Str("match_id", match.ID).
-					Float64("score", score).
-					Float64("threshold", matchThreshold).
-					Msg("Created potential match")
-				// Broadcast new match via SSE
-				if p.sseBroadcaster != nil {
-					p.sseBroadcaster.BroadcastNewMatch(match.ID, score)
-				}
+		// Get full match score with breakdown
+		matchScore := p.scorer.ScoreMatch(offer, req, medicationScore)
+
+		// Skip matches below minimum threshold (NONE confidence)
+		if matchScore.Confidence == ConfidenceNone {
+			continue
+		}
+
+		// Determine match status based on confidence band
+		status := domain.MatchStatusPending
+		if matchScore.Confidence == ConfidenceAuto {
+			status = domain.MatchStatusConfirmed // Auto-confirm high-confidence matches
+		}
+
+		match := &domain.Match{
+			ID:        uuid.New().String(),
+			OfferID:   offer.ID,
+			RequestID: req.ID,
+			Score:     matchScore.Total,
+			Reasoning: matchScore.Breakdown,
+			MatchedBy: string(matchScore.Confidence),
+			Status:    status,
+			CreatedAt: time.Now(),
+		}
+
+		if status == domain.MatchStatusConfirmed {
+			now := time.Now()
+			match.ConfirmedAt = &now
+		}
+
+		if err := p.matchRepo.Save(ctx, match); err != nil {
+			p.log.Error().Err(err).Msg("Failed to save match")
+		} else {
+			p.log.Info().
+				Str("match_id", match.ID).
+				Float64("score", matchScore.Total).
+				Str("confidence", string(matchScore.Confidence)).
+				Str("status", string(status)).
+				Str("breakdown", matchScore.Breakdown).
+				Msg("Created match")
+
+			// Broadcast new match via SSE
+			if p.sseBroadcaster != nil {
+				p.sseBroadcaster.BroadcastNewMatch(match.ID, matchScore.Total)
 			}
 		}
 	}
@@ -532,42 +546,57 @@ func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Requ
 		return
 	}
 
-	// Dynamic Config: Get current match threshold
-	matchThreshold := 0.5
-	if p.configRepo != nil {
-		if cfg, err := p.configRepo.GetAll(ctx); err == nil {
-			matchThreshold = cfg.MatchThreshold
-		}
-	}
-
 	for _, offer := range offers {
-		score := p.calculateMatchScore(offer, request)
-		if score >= matchThreshold {
-			match := &domain.Match{
-				ID:        uuid.New().String(),
-				OfferID:   offer.ID,
-				RequestID: request.ID,
-				Score:     score,
-				Reasoning: generateMatchReasoning(offer, request, score),
-				Status:    domain.MatchStatusPending,
-				CreatedAt: time.Now(),
-			}
+		// Calculate multi-field medication score
+		medicationScore := p.calculateMedicationScore(offer.Medication, request.Medication)
 
-			if err := p.matchRepo.Save(ctx, match); err != nil {
-				// Might fail on duplicate, that's ok
-				if err.Error() != "UNIQUE constraint failed" {
-					p.log.Error().Err(err).Msg("Failed to save match")
-				}
-			} else {
-				p.log.Info().
-					Str("match_id", match.ID).
-					Float64("score", score).
-					Float64("threshold", matchThreshold).
-					Msg("Created potential match")
-				// Broadcast new match via SSE
-				if p.sseBroadcaster != nil {
-					p.sseBroadcaster.BroadcastNewMatch(match.ID, score)
-				}
+		// Get full match score with breakdown
+		matchScore := p.scorer.ScoreMatch(offer, request, medicationScore)
+
+		// Skip matches below minimum threshold (NONE confidence)
+		if matchScore.Confidence == ConfidenceNone {
+			continue
+		}
+
+		// Determine match status based on confidence band
+		status := domain.MatchStatusPending
+		if matchScore.Confidence == ConfidenceAuto {
+			status = domain.MatchStatusConfirmed // Auto-confirm high-confidence matches
+		}
+
+		match := &domain.Match{
+			ID:        uuid.New().String(),
+			OfferID:   offer.ID,
+			RequestID: request.ID,
+			Score:     matchScore.Total,
+			Reasoning: matchScore.Breakdown,
+			MatchedBy: string(matchScore.Confidence),
+			Status:    status,
+			CreatedAt: time.Now(),
+		}
+
+		if status == domain.MatchStatusConfirmed {
+			now := time.Now()
+			match.ConfirmedAt = &now
+		}
+
+		if err := p.matchRepo.Save(ctx, match); err != nil {
+			// Might fail on duplicate, that's ok
+			if !strings.Contains(err.Error(), "UNIQUE constraint") {
+				p.log.Error().Err(err).Msg("Failed to save match")
+			}
+		} else {
+			p.log.Info().
+				Str("match_id", match.ID).
+				Float64("score", matchScore.Total).
+				Str("confidence", string(matchScore.Confidence)).
+				Str("status", string(status)).
+				Str("breakdown", matchScore.Breakdown).
+				Msg("Created match")
+
+			// Broadcast new match via SSE
+			if p.sseBroadcaster != nil {
+				p.sseBroadcaster.BroadcastNewMatch(match.ID, matchScore.Total)
 			}
 		}
 	}
@@ -713,30 +742,6 @@ func generateTrigrams(s string) []string {
 		trigrams = append(trigrams, string(runes[i:i+3]))
 	}
 	return trigrams
-}
-
-// calculateMatchScore computes similarity between offer and request using multi-field scoring
-func (p *Parser) calculateMatchScore(offer *domain.Offer, request *domain.Request) float64 {
-	// Calculate medication score using hybrid approach (lexical + semantic)
-	medicationScore := p.calculateMedicationScore(offer.Medication, request.Medication)
-
-	// Use the professional scorer for weighted multi-field scoring
-	matchScore := p.scorer.ScoreMatch(offer, request, medicationScore)
-
-	// Log detailed breakdown for debugging
-	p.log.Debug().
-		Str("offer_med", offer.Medication).
-		Str("request_med", request.Medication).
-		Float64("med_score", matchScore.MedicationScore).
-		Float64("qty_score", matchScore.QuantityScore).
-		Float64("price_score", matchScore.PriceScore).
-		Float64("recency_score", matchScore.RecencyScore).
-		Float64("total", matchScore.Total).
-		Str("confidence", string(matchScore.Confidence)).
-		Str("breakdown", matchScore.Breakdown).
-		Msg("Match score calculated")
-
-	return matchScore.Total
 }
 
 // calculateMedicationScore computes a hybrid lexical + semantic medication match score
@@ -905,32 +910,4 @@ func levenshteinDistance(s1, s2 string) int {
 	}
 
 	return prev[len(s2)]
-}
-
-func generateMatchReasoning(offer *domain.Offer, request *domain.Request, score float64) string {
-	reasons := []string{}
-
-	if offer.Medication == request.Medication {
-		reasons = append(reasons, "Exact medication match")
-	} else {
-		reasons = append(reasons, "Similar medication names")
-	}
-
-	if offer.Quantity >= request.Quantity && request.Quantity > 0 {
-		reasons = append(reasons, "Sufficient quantity available")
-	}
-
-	if offer.Price > 0 && request.MaxPrice > 0 && offer.Price <= request.MaxPrice {
-		reasons = append(reasons, "Price within budget")
-	}
-
-	if len(reasons) == 0 {
-		return "Potential match based on medication similarity"
-	}
-
-	result := reasons[0]
-	for i := 1; i < len(reasons); i++ {
-		result += "; " + reasons[i]
-	}
-	return result
 }
