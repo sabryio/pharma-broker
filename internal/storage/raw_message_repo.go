@@ -18,30 +18,53 @@ func NewRawMessageRepo(db *DB) *RawMessageRepo {
 }
 
 func (r *RawMessageRepo) Save(ctx context.Context, msg *domain.RawMessage) error {
-	_, err := r.db.conn.ExecContext(ctx, `
-		INSERT INTO raw_messages (id, group_jid, group_name, sender_jid, sender_phone, sender_name, content, timestamp)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
+	// If ExternalID is present, use it for conflict resolution
+	query := `
+		INSERT INTO raw_messages (id, external_id, group_jid, group_name, sender_jid, sender_phone, sender_name, content, timestamp)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(external_id) DO UPDATE SET
 			content = excluded.content,
-			timestamp = excluded.timestamp
-	`, msg.ID, msg.GroupJID, msg.GroupName, msg.SenderJID, msg.SenderPhone, msg.SenderName, msg.Content, msg.Timestamp)
+			timestamp = excluded.timestamp,
+			group_name = excluded.group_name
+		WHERE excluded.external_id IS NOT NULL
+	`
+
+	// If no ExternalID (legacy), fallback to ID conflict (less likely to happen with new logic but safe)
+	if msg.ExternalID == "" {
+		query = `
+			INSERT INTO raw_messages (id, external_id, group_jid, group_name, sender_jid, sender_phone, sender_name, content, timestamp)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				content = excluded.content
+		`
+	}
+
+	_, err := r.db.conn.ExecContext(ctx, query,
+		msg.ID, msg.ExternalID, msg.GroupJID, msg.GroupName,
+		msg.SenderJID, msg.SenderPhone, msg.SenderName,
+		msg.Content, msg.Timestamp)
 	return err
 }
 
 func (r *RawMessageRepo) GetByID(ctx context.Context, id string) (*domain.RawMessage, error) {
 	row := r.db.conn.QueryRowContext(ctx, `
-		SELECT id, group_jid, group_name, sender_jid, sender_phone, sender_name, content, timestamp, processed_at, error
+		SELECT id, external_id, group_jid, group_name, sender_jid, sender_phone, sender_name, content, timestamp, processed_at, error
 		FROM raw_messages WHERE id = ?
 	`, id)
 
 	msg := &domain.RawMessage{}
+	var externalID sql.NullString
 	var processedAt sql.NullTime
 	var errStr sql.NullString
 
-	err := row.Scan(&msg.ID, &msg.GroupJID, &msg.GroupName, &msg.SenderJID, &msg.SenderPhone, &msg.SenderName,
+	err := row.Scan(&msg.ID, &externalID, &msg.GroupJID, &msg.GroupName, &msg.SenderJID, &msg.SenderPhone, &msg.SenderName,
 		&msg.Content, &msg.Timestamp, &processedAt, &errStr)
 	if err != nil {
 		return nil, err
+	}
+
+	if externalID.Valid {
+		msg.ExternalID = externalID.String
 	}
 
 	if processedAt.Valid {

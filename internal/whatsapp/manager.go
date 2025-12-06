@@ -42,7 +42,8 @@ type EventHandler interface {
 
 // IncomingMessage represents a received WhatsApp message
 type IncomingMessage struct {
-	ID          string
+	ID string // External WhatsApp ID
+
 	GroupJID    string
 	GroupName   string
 	SenderJID   string
@@ -232,6 +233,76 @@ func (m *Manager) handleEvent(evt interface{}) {
 		m.mu.Unlock()
 		m.log.Warn().Msg("WhatsApp disconnected")
 		go m.reconnect()
+	case *events.HistorySync:
+		m.log.Info().
+			Str("type", fmt.Sprintf("%v", v.Data.SyncType)).
+			Int("conversations", len(v.Data.Conversations)).
+			Msg("📥 Processing History Sync...")
+
+		for _, conv := range v.Data.Conversations {
+			for _, waMsg := range conv.Messages {
+				if waMsg.Message == nil || waMsg.Message.Key == nil {
+					continue
+				}
+
+				// Extract basics
+				key := waMsg.Message.Key
+				ts := int64(0)
+				if waMsg.Message.MessageTimestamp != nil {
+					ts = int64(*waMsg.Message.MessageTimestamp)
+				}
+
+				pushName := ""
+				if waMsg.Message.PushName != nil {
+					pushName = *waMsg.Message.PushName
+				}
+
+				// Construct MessageInfo
+				info := types.MessageInfo{
+					ID:        key.GetID(),
+					Timestamp: time.Unix(ts, 0),
+					PushName:  pushName,
+				}
+				info.IsFromMe = key.GetFromMe()
+
+				// Parse JIDs
+				if key.RemoteJID != nil {
+					chatJID, err := types.ParseJID(*key.RemoteJID)
+					if err == nil {
+						info.Chat = chatJID
+					}
+				}
+				if key.Participant != nil {
+					senderJID, err := types.ParseJID(*key.Participant)
+					if err == nil {
+						info.Sender = senderJID
+					}
+				} else {
+					// In DM, sender is RemoteJid if not from me
+					if !info.IsFromMe {
+						info.Sender = info.Chat
+					}
+				}
+
+				// Handle Group logic
+				if info.Chat.Server == "g.us" {
+					info.IsGroup = true
+					// For groups, sender is in Participant. If missing and not from me, might be issue.
+					// HistorySync usually has Participant for groups.
+				}
+
+				msgEvt := &events.Message{
+					Info:    info,
+					Message: waMsg.Message.Message,
+					// Raw: waMsg.Message, // Removed as it caused error and unused
+				}
+
+				// Only process if it looks like a valid group message
+				if info.IsGroup {
+					m.handleMessageEvent(msgEvt)
+				}
+			}
+		}
 	}
 }
 

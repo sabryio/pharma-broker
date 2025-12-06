@@ -36,6 +36,7 @@ const (
 // RawMessage represents an incoming WhatsApp message before AI processing
 type RawMessage struct {
 	ID          string     `json:"id"`
+	ExternalID  string     `json:"external_id"` // WhatsApp Message ID
 	GroupJID    string     `json:"group_jid"`
 	GroupName   string     `json:"group_name"`
 	SenderJID   string     `json:"sender_jid"`

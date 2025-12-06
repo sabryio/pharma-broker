@@ -286,4 +286,12 @@ var migrations = []migration{
 			CREATE INDEX idx_match_queue_created ON match_queue(created_at);
 		`,
 	},
+	{
+		version: 8,
+		sql: `
+			-- Deduplication ID from WhatsApp (External ID)
+			ALTER TABLE raw_messages ADD COLUMN external_id TEXT;
+			CREATE UNIQUE INDEX idx_raw_messages_external_id ON raw_messages(external_id);
+		`,
+	},
 }

@@ -95,6 +95,7 @@ func (l *Listener) HandleMessage(msg *IncomingMessage) {
 	// Create raw message
 	rawMsg := &domain.RawMessage{
 		ID:          uuid.New().String(),
+		ExternalID:  msg.ID, // WhatsApp Message ID
 		GroupJID:    msg.GroupJID,
 		GroupName:   msg.GroupName,
 		SenderJID:   msg.SenderJID,
