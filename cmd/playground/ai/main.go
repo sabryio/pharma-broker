@@ -103,7 +103,7 @@ func main() {
 	fmt.Println(separator)
 
 	start := time.Now()
-	results, err := provider.ParseMessages(ctx, testMessages)
+	results, err := provider.ParseMessages(ctx, testMessages, nil)
 	elapsed := time.Since(start)
 
 	if err != nil {

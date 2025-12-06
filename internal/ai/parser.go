@@ -26,9 +26,11 @@ type Parser struct {
 	rawMsgRepo  domain.RawMessageRepository
 	offerRepo   domain.OfferRepository
 	requestRepo domain.RequestRepository
-	matchRepo   domain.MatchRepository
-	log         zerolog.Logger
-	parserCfg   *config.ParserConfig
+
+	matchRepo      domain.MatchRepository
+	medicationRepo domain.MedicationMappingRepository
+	log            zerolog.Logger
+	parserCfg      *config.ParserConfig
 
 	// Processing
 	msgChan            <-chan *domain.RawMessage
@@ -48,6 +50,7 @@ func NewParser(
 	offerRepo domain.OfferRepository,
 	requestRepo domain.RequestRepository,
 	matchRepo domain.MatchRepository,
+	medicationRepo domain.MedicationMappingRepository,
 	msgChan <-chan *domain.RawMessage,
 	parserCfg *config.ParserConfig,
 	log zerolog.Logger,
@@ -58,6 +61,7 @@ func NewParser(
 		offerRepo:          offerRepo,
 		requestRepo:        requestRepo,
 		matchRepo:          matchRepo,
+		medicationRepo:     medicationRepo,
 		log:                log.With().Str("component", "parser").Logger(),
 		parserCfg:          parserCfg,
 		msgChan:            msgChan,
@@ -156,7 +160,20 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 		Int("message_count", len(batch)).
 		Msg("🚀 Sending to AI provider...")
 
-	results, err := p.aiProvider.ParseMessages(ctx, batch)
+	// Fetch medication mappings
+	mappingsStart := time.Now()
+	mappingsList, err := p.medicationRepo.GetAll(ctx)
+	mappings := make(map[string]string)
+	if err != nil {
+		p.log.Error().Err(err).Msg("Failed to fetch medication mappings, using empty")
+	} else {
+		for _, m := range mappingsList {
+			mappings[m.ArabicName] = m.EnglishName
+		}
+	}
+	p.log.Debug().Int("count", len(mappings)).Dur("duration", time.Since(mappingsStart)).Msg("Fetched medication mappings")
+
+	results, err := p.aiProvider.ParseMessages(ctx, batch, mappings)
 	if err != nil {
 		p.log.Error().
 			Err(err).

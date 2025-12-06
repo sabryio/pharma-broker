@@ -15,6 +15,7 @@ import (
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/api"
 	"pharmabroker/internal/config"
+	"pharmabroker/internal/domain"
 	"pharmabroker/internal/storage"
 	"pharmabroker/internal/whatsapp"
 )
@@ -28,6 +29,12 @@ var serveCmd = &cobra.Command{
 - Uses AI to extract offers and requests
 - Matches them and serves a dashboard`,
 	Run: runServe,
+}
+
+// CommonMedications maps common Arabic drug names to English
+var commonMedications = map[string]string{
+	"اوجمنتين":    "Augmentin",
+	"انسولين":     "Insulin",
 }
 
 func runServe(cmd *cobra.Command, args []string) {
@@ -66,6 +73,22 @@ func runServe(cmd *cobra.Command, args []string) {
 	matchRepo := storage.NewMatchRepo(db)
 	groupRepo := storage.NewGroupRepo(db)
 	statsRepo := storage.NewStatsRepo(db)
+	medicationRepo := storage.NewMedicationMappingRepo(db)
+
+	// Seed medication mappings if empty
+	count, err := medicationRepo.Count(ctx)
+	if err == nil && count == 0 {
+		log.Info().Msg("Seeding medication mappings...")
+		for arabic, english := range commonMedications {
+			if err := medicationRepo.Save(ctx, &domain.MedicationMapping{
+				ArabicName:  arabic,
+				EnglishName: english,
+			}); err != nil {
+				log.Warn().Err(err).Str("arabic", arabic).Msg("Failed to seed mapping")
+			}
+		}
+		log.Info().Msg("Seeding complete")
+	}
 
 	// Initialize AI provider (Gemini or Docker Model Runner based on config)
 	aiProvider, err := ai.NewAIProvider(ctx, cfg, log)
@@ -91,6 +114,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		offerRepo,
 		requestRepo,
 		matchRepo,
+		medicationRepo,
 		listener.MessageChannel(),
 		&cfg.Parser,
 		log,

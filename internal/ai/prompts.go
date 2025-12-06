@@ -8,10 +8,20 @@ import (
 )
 
 // buildParsePrompt creates the prompt for parsing pharmaceutical messages
-func buildParsePrompt(messages []*domain.RawMessage) string {
+func buildParsePrompt(messages []*domain.RawMessage, mappings map[string]string) string {
 	var sb strings.Builder
 
 	sb.WriteString(systemPrompt)
+
+	// Inject dynamic mappings if available
+	if len(mappings) > 0 {
+		sb.WriteString("\n\n### KNOWN MEDICATION TRANSLATIONS (Priority)\n")
+		sb.WriteString("Use these specific translations if encountered:\n")
+		for arabic, english := range mappings {
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", arabic, english))
+		}
+	}
+
 	sb.WriteString("\n\n")
 	sb.WriteString("=== MESSAGES TO PARSE ===\n\n")
 
@@ -126,23 +136,3 @@ Output:
 }
 
 Now parse the following messages and return ONLY valid JSON:`
-
-// CommonMedications maps common Arabic drug names to English
-var CommonMedications = map[string]string{
-	"اوجمنتين":    "Augmentin",
-	"كونكور":      "Concor",
-	"كوكسيكام":    "Coxicam",
-	"فلاجيل":      "Flagyl",
-	"زيثروماكس":   "Zithromax",
-	"سيفترياكسون": "Ceftriaxone",
-	"أموكسيسيلين": "Amoxicillin",
-	"كيتولاك":     "Ketorolac",
-	"فولتارين":    "Voltaren",
-	"بروفين":      "Brufen",
-	"باراسيتامول": "Paracetamol",
-	"اسبرين":      "Aspirin",
-	"لوسارتان":    "Losartan",
-	"أملوديبين":   "Amlodipine",
-	"ميتفورمين":   "Metformin",
-	"انسولين":     "Insulin",
-}

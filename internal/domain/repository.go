@@ -57,3 +57,11 @@ type StatsRepository interface {
 	GetStats(ctx context.Context) (*Stats, error)
 	GetProcessedToday(ctx context.Context) (int64, error)
 }
+
+// MedicationMappingRepository defines storage operations for medication mappings
+type MedicationMappingRepository interface {
+	Save(ctx context.Context, mapping *MedicationMapping) error
+	GetByArabicName(ctx context.Context, arabicName string) (*MedicationMapping, error)
+	GetAll(ctx context.Context) ([]*MedicationMapping, error)
+	Count(ctx context.Context) (int, error)
+}

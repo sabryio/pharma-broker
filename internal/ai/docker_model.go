@@ -41,7 +41,7 @@ func NewDockerModelClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*D
 }
 
 // ParseMessages implements AIProvider.ParseMessages using Docker Model Runner.
-func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage) ([]*domain.AIParseResult, error) {
+func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
 	if len(messages) == 0 {
 		return nil, nil
 	}
@@ -128,7 +128,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 				Int("chunk_size", len(batch)).
 				Msg("Processing chunk batch")
 
-			results, err := c.processBatch(ctx, batch)
+			results, err := c.processBatch(ctx, batch, mappings)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -216,9 +216,9 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 }
 
 // processBatch processes a small batch of messages
-func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain.RawMessage) ([]*domain.AIParseResult, error) {
+func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
 	// Build prompt with messages
-	prompt := buildParsePrompt(messages)
+	prompt := buildParsePrompt(messages, mappings)
 
 	c.log.Debug().
 		Int("message_count", len(messages)).

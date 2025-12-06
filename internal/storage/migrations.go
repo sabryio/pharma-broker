@@ -225,4 +225,18 @@ var migrations = []migration{
 			CREATE INDEX IF NOT EXISTS idx_matches_status_created ON matches(status, created_at DESC);
 		`,
 	},
+	{
+		version: 5,
+		sql: `
+			-- Medication name mappings (Arabic to English)
+			CREATE TABLE medication_mappings (
+				id TEXT PRIMARY KEY,
+				arabic_name TEXT NOT NULL UNIQUE,
+				english_name TEXT NOT NULL,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE INDEX idx_medication_mappings_arabic ON medication_mappings(arabic_name);
+		`,
+	},
 }

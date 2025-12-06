@@ -121,14 +121,14 @@ var pharmaParseSchema = map[string]any{
 }
 
 // ParseMessages parses one or more messages and extracts offers/requests
-func (c *GeminiClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage) ([]*domain.AIParseResult, error) {
+func (c *GeminiClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
 	// Check rate limit
 	if !c.checkRateLimit() {
 		return nil, fmt.Errorf("rate limit exceeded (%d requests/hour)", c.cfg.RateLimitPerHour)
 	}
 
 	// Build prompt with all messages
-	prompt := buildParsePrompt(messages)
+	prompt := buildParsePrompt(messages, mappings)
 
 	// Configure generation with JSON schema
 	config := &genai.GenerateContentConfig{
