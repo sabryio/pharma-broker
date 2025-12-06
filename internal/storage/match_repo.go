@@ -136,7 +136,8 @@ func (r *MatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*domai
 			mwd.Offer.GroupName = oGroupName.String
 		}
 		if oUnit.Valid {
-			mwd.Offer.Unit = oUnit.String
+			val := oUnit.String
+			mwd.Offer.Unit = &val
 		}
 		if oPrice.Valid {
 			mwd.Offer.Price = oPrice.Float64
@@ -165,7 +166,8 @@ func (r *MatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*domai
 			mwd.Request.GroupName = rGroupName.String
 		}
 		if rUnit.Valid {
-			mwd.Request.Unit = rUnit.String
+			val := rUnit.String
+			mwd.Request.Unit = &val
 		}
 		if rMaxPrice.Valid {
 			mwd.Request.MaxPrice = rMaxPrice.Float64

@@ -123,7 +123,8 @@ func scanRequest(row *sql.Row) (*domain.Request, error) {
 		req.GroupName = groupName.String
 	}
 	if unit.Valid {
-		req.Unit = unit.String
+		val := unit.String
+		req.Unit = &val
 	}
 	if maxPrice.Valid {
 		req.MaxPrice = maxPrice.Float64
@@ -162,7 +163,8 @@ func scanRequests(rows *sql.Rows) ([]*domain.Request, error) {
 			req.GroupName = groupName.String
 		}
 		if unit.Valid {
-			req.Unit = unit.String
+			val := unit.String
+			req.Unit = &val
 		}
 		if maxPrice.Valid {
 			req.MaxPrice = maxPrice.Float64

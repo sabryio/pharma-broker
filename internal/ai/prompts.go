@@ -33,7 +33,8 @@ func buildParsePrompt(messages []*domain.RawMessage, mappings map[string]string)
 	}
 
 	sb.WriteString("=== END MESSAGES ===\n\n")
-	sb.WriteString(responseFormat)
+	sb.WriteString("=== END MESSAGES ===\n\n")
+	sb.WriteString(parsingExamples)
 
 	return sb.String()
 }
@@ -57,11 +58,16 @@ Your task is to extract medication OFFERS and REQUESTS from informal Arabic text
 - Extract brand names and generic names
 - **CRITICAL: Do NOT guess generic names or active ingredients.**
 - **CRITICAL: Translate/Transliterate the brand name EXACTLY as written.**
-- Example: "Monjaro" -> "Monjaro" (NOT "Tirzepatide", NOT "Moxifloxacin")
+- **CRITICAL: IF THE NAME IS IN ARABIC, TRANSLITERATE IT TO ENGLISH LETTERS.**
+- Example: "Suvreza" -> "سوفريزا"
+- Example: "Mounjaro" -> "Mounjaro" (NOT "Tirzepatide", NOT "Moxifloxacin")
 - Example: "Panadol" -> "Panadol" (NOT "Paracetamol")
 - Normalize common misspellings
 - Include dosage forms: tablets, capsules, ampules, syrup, etc.
 - Include strength when mentioned: 500mg, 1g, etc.
+- **Exclusions**: Do NOT extract communication terms as items:
+  - "واتس", "فون", "تواصل", "خاص", "موبيل"
+  - "WhatsApp", "Phone", "DM", "Inbox", "Contact"
 
 ### Quantity & Price
 - Extract quantities with units (علبة, شريط, امبول, boxes, strips)
@@ -78,32 +84,12 @@ Your task is to extract medication OFFERS and REQUESTS from informal Arabic text
 ### Urgency Detection
 - Mark as urgent if contains: ضروري، عاجل، urgent، ASAP، مستعجل`
 
-const responseFormat = `## Response Format
-
-Return a JSON array with one object per message. Each object has:
-- message_index: 0-based index of the message
-- items: array of extracted items
-- error: optional error message if parsing failed
-
-Each item in items array:
-{
-  "type": "OFFER" | "REQUEST" | "BOTH",
-  "medication": "normalized drug name in English",
-  "medication_raw": "original text as written",
-  "quantity": number or 0 if not specified,
-  "unit": "boxes" | "strips" | "ampules" | "bottles" | null,
-  "price": number or 0 if not specified (for offers),
-  "max_price": number or 0 if not specified (for requests),
-  "urgent": true/false (for requests),
-  "notes": "any additional details (expiry, batch, currency, etc)"
-}
-
+const parsingExamples = `
 ## Examples
 
 Input message: "عندي اوجمنتين 1 جم ٥ علب ب ٣٠٠ جنيه الواحدة"
 Output:
 {
-  "message_index": 0,
   "items": [
     {
       "type": "OFFER",
@@ -120,7 +106,6 @@ Output:
 Input message: "محتاج كونكور 5 ضروري"
 Output:
 {
-  "message_index": 0,
   "items": [
     {
       "type": "REQUEST",
@@ -133,6 +118,4 @@ Output:
       "notes": ""
     }
   ]
-}
-
-Now parse the following messages and return ONLY valid JSON:`
+}`

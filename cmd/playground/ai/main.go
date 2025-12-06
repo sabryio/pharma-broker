@@ -103,7 +103,8 @@ func main() {
 	fmt.Println(separator)
 
 	start := time.Now()
-	results, err := provider.ParseMessages(ctx, testMessages, nil)
+	// Use domain.CommonMedications for testing
+	results, err := provider.ParseMessages(ctx, testMessages, domain.CommonMedications)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -142,7 +143,11 @@ func main() {
 		for j, item := range result.Items {
 			fmt.Printf("  %d. [%s] %s", j+1, item.Type, item.Medication)
 			if item.Quantity > 0 {
-				fmt.Printf(" (qty: %f %s)", item.Quantity, item.Unit)
+				unit := ""
+				if item.Unit != nil {
+					unit = *item.Unit
+				}
+				fmt.Printf(" (qty: %f %s)", item.Quantity, unit)
 			}
 			if item.Price > 0 {
 				fmt.Printf(" @ %.0f", item.Price)

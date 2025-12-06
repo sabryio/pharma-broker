@@ -30,4 +30,5 @@ func init() {
 	// Add subcommands
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(monitorCmd)
+	rootCmd.AddCommand(resetDbCmd)
 }

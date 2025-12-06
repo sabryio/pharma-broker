@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/invopop/jsonschema"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/rs/zerolog"
@@ -24,6 +24,18 @@ type DockerModelClient struct {
 	client openai.Client
 	log    zerolog.Logger
 }
+
+func GenerateSchema[T any]() interface{} {
+	reflector := jsonschema.Reflector{
+		AllowAdditionalProperties: false,
+		DoNotReference:            true,
+	}
+	var v T
+	return reflector.Reflect(v)
+}
+
+// Cached schema to avoid reflection on every call
+var aiParseResultSchema = GenerateSchema[domain.AIParseResult]()
 
 // NewDockerModelClient creates a new Docker Model Runner client.
 // It connects to the OpenAI-compatible API endpoint exposed by Docker Model Runner.
@@ -238,6 +250,16 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage(prompt), // prompt already includes system instructions
 			},
+			ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+				OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+					JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+						Name:        "pharma_parsing",
+						Description: openai.String("Extract medication offers and requests"),
+						Schema:      aiParseResultSchema,
+						Strict:      openai.Bool(true),
+					},
+				},
+			},
 			Temperature: openai.Float(0.1), // Low temperature for consistent parsing
 		})
 
@@ -278,23 +300,18 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 		Msg("Received response from Docker Model Runner")
 
 	// Parse JSON response - handle both array and single object responses
-	var parseResults []*domain.AIParseResult
+	var parseResult domain.AIParseResult
 
-	cleanResponse := cleanJSON(responseText)
-
-	// First try to parse as array
-	if err := json.Unmarshal([]byte(cleanResponse), &parseResults); err != nil {
-		// Try parsing as single object (model returns this for single message)
-		var singleResult domain.AIParseResult
-		if singleErr := json.Unmarshal([]byte(cleanResponse), &singleResult); singleErr != nil {
-			c.log.Error().
-				Err(err).
-				Str("response", truncateForLog(responseText, 500)).
-				Msg("Failed to parse Docker Model Runner response")
-			return nil, fmt.Errorf("parse response: %w", err)
-		}
-		parseResults = []*domain.AIParseResult{&singleResult}
+	// Try to parsing as single object (expected structure)
+	if err := json.Unmarshal([]byte(responseText), &parseResult); err != nil {
+		c.log.Error().
+			Err(err).
+			Str("response", truncateForLog(responseText, 500)).
+			Msg("Failed to parse Docker Model Runner response")
+		return nil, fmt.Errorf("parse response: %w", err)
 	}
+
+	parseResults := []*domain.AIParseResult{&parseResult}
 
 	c.log.Info().
 		Int("parsed_count", len(parseResults)).
@@ -311,17 +328,6 @@ func countTotalItems(results []*domain.AIParseResult) int {
 		count += len(res.Items)
 	}
 	return count
-}
-
-var invalidEscapeRegex = regexp.MustCompile(`\\([^"\\/bfnrtu])`)
-
-// cleanJSON removes invalid control characters and fixes common JSON issues from LLMs
-func cleanJSON(s string) string {
-	// Fix invalid escapes: backslash followed by invalid char (not " \ / b f n r t u)
-	// We escape the backslash to make it a literal backslash.
-	// Example: "path\7" -> "path/7" (replace backslash with forward slash) which is valid JSON
-	// This helps with things like "30\70" becoming "30/70"
-	return invalidEscapeRegex.ReplaceAllString(s, "/$1")
 }
 
 // truncateForLog truncates a string for logging purposes

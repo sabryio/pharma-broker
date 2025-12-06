@@ -31,12 +31,6 @@ var serveCmd = &cobra.Command{
 	Run: runServe,
 }
 
-// CommonMedications maps common Arabic drug names to English
-var commonMedications = map[string]string{
-	"اوجمنتين":    "Augmentin",
-	"انسولين":     "Insulin",
-}
-
 func runServe(cmd *cobra.Command, args []string) {
 	// Load configuration
 	cfg := config.Load()
@@ -79,7 +73,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	count, err := medicationRepo.Count(ctx)
 	if err == nil && count == 0 {
 		log.Info().Msg("Seeding medication mappings...")
-		for arabic, english := range commonMedications {
+		for arabic, english := range domain.CommonMedications {
 			if err := medicationRepo.Save(ctx, &domain.MedicationMapping{
 				ArabicName:  arabic,
 				EnglishName: english,

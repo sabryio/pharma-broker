@@ -58,7 +58,7 @@ type Offer struct {
 	Medication    string     `json:"medication"`     // Normalized name
 	MedicationRaw string     `json:"medication_raw"` // Original text
 	Quantity      float64    `json:"quantity"`
-	Unit          string     `json:"unit,omitempty"` // e.g., "boxes", "strips"
+	Unit          *string    `json:"unit,omitempty"` // e.g., "boxes", "strips"
 	Price         float64    `json:"price,omitempty"`
 	Currency      string     `json:"currency,omitempty"` // Default EGP
 	ExpiryDate    *time.Time `json:"expiry_date,omitempty"`
@@ -81,7 +81,7 @@ type Request struct {
 	Medication    string     `json:"medication"`     // Normalized name
 	MedicationRaw string     `json:"medication_raw"` // Original text
 	Quantity      float64    `json:"quantity"`
-	Unit          string     `json:"unit,omitempty"`
+	Unit          *string    `json:"unit,omitempty"`
 	MaxPrice      float64    `json:"max_price,omitempty"`
 	Currency      string     `json:"currency,omitempty"`
 	Urgent        bool       `json:"urgent"`
@@ -138,21 +138,21 @@ type Stats struct {
 
 // ParsedItem represents a single item extracted by AI from a message
 type ParsedItem struct {
-	Type          MessageType `json:"type"`
-	Medication    string      `json:"medication"`
-	MedicationRaw string      `json:"medication_raw"`
-	Quantity      float64     `json:"quantity,omitempty"`
-	Unit          string      `json:"unit,omitempty"`
-	Price         float64     `json:"price,omitempty"`
-	MaxPrice      float64     `json:"max_price,omitempty"`
+	Type          MessageType `json:"type" jsonschema:"enum=OFFER,enum=REQUEST,description=Type of the listing (OFFER or REQUEST)"`
+	Medication    string      `json:"medication" jsonschema_description:"Normalized medication name (English preferred)"`
+	MedicationRaw string      `json:"medication_raw" jsonschema_description:"Exact text from message referring to medication"`
+	Quantity      float64     `json:"quantity,omitempty" jsonschema_description:"Numeric quantity (supports decimals like 0.5)"`
+	Unit          *string     `json:"unit,omitempty" jsonschema_description:"Unit of measure (e.g. boxes, strips, ampoules)"`
+	Price         float64     `json:"price,omitempty" jsonschema_description:"Price per unit if specified"`
+	MaxPrice      float64     `json:"max_price,omitempty" jsonschema_description:"Maximum price willing to pay (for requests)"`
 	// Removed: Currency, ExpiryDate, BatchNumber (moved to Notes)
-	Urgent bool   `json:"urgent,omitempty"`
-	Notes  string `json:"notes,omitempty"`
+	Urgent bool   `json:"urgent,omitempty" jsonschema_description:"If the user explicitly mentions urgent/emergency"`
+	Notes  string `json:"notes,omitempty" jsonschema_description:"Any other details (expiry, batch, currency, location, unknown text)"`
 }
 
 // AIParseResult represents the AI response for a message
 type AIParseResult struct {
-	Items   []ParsedItem `json:"items"`
-	Error   string       `json:"error,omitempty"`
+	Items   []ParsedItem `json:"items" jsonschema_description:"List of pharmaceutical items found in the message"`
+	Error   string       `json:"error,omitempty" jsonschema_description:"Error message if parsing failed, otherwise empty"`
 	RawJSON string       `json:"-"` // Raw JSON for debugging
 }

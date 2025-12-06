@@ -124,7 +124,8 @@ func scanOffer(row *sql.Row) (*domain.Offer, error) {
 		offer.GroupName = groupName.String
 	}
 	if unit.Valid {
-		offer.Unit = unit.String
+		val := unit.String
+		offer.Unit = &val
 	}
 	if price.Valid {
 		offer.Price = price.Float64
@@ -170,7 +171,8 @@ func scanOffers(rows *sql.Rows) ([]*domain.Offer, error) {
 			offer.GroupName = groupName.String
 		}
 		if unit.Valid {
-			offer.Unit = unit.String
+			val := unit.String
+			offer.Unit = &val
 		}
 		if price.Valid {
 			offer.Price = price.Float64
