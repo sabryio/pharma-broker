@@ -157,3 +157,13 @@ type AIParseResult struct {
 	Error   string       `json:"error,omitempty" jsonschema_description:"Error message if parsing failed, otherwise empty"`
 	RawJSON string       `json:"-"` // Raw JSON for debugging
 }
+
+// FailedMessage represents a message that failed AI processing (dead-letter queue)
+type FailedMessage struct {
+	ID            string     `json:"id"`
+	RawMessageID  string     `json:"raw_message_id"`
+	FailureReason string     `json:"failure_reason"`
+	RetryCount    int        `json:"retry_count"`
+	FailedAt      time.Time  `json:"failed_at"`
+	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`
+}

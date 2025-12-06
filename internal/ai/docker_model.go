@@ -47,15 +47,32 @@ func NewDockerModelClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*D
 		option.WithAPIKey("not-needed"), // Docker Model Runner doesn't require API key
 	)
 
-	// Circuit Breaker Settings
+	// Circuit Breaker Settings - use config values with fallbacks
+	cbMaxRequests := cfg.CBMaxRequests
+	if cbMaxRequests == 0 {
+		cbMaxRequests = 3
+	}
+	cbInterval := cfg.CBInterval
+	if cbInterval == 0 {
+		cbInterval = 60 * time.Second
+	}
+	cbTimeout := cfg.CBTimeout
+	if cbTimeout == 0 {
+		cbTimeout = 30 * time.Second
+	}
+	cbFailureRatio := cfg.CBFailureRatio
+	if cbFailureRatio == 0 {
+		cbFailureRatio = 0.6
+	}
+
 	st := gobreaker.Settings{
 		Name:        "DockerModel",
-		MaxRequests: 0, // No limit on concurrent requests allowed to pass through (throttled by worker pool anyway)
-		Interval:    60 * time.Second,
-		Timeout:     30 * time.Second,
+		MaxRequests: cbMaxRequests,
+		Interval:    cbInterval,
+		Timeout:     cbTimeout,
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
 			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-			return counts.Requests >= 5 && failureRatio >= 0.6
+			return counts.Requests >= 5 && failureRatio >= cbFailureRatio
 		},
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
 			log.Warn().Str("name", name).Str("from", from.String()).Str("to", to.String()).Msg("Circuit Breaker state changed")

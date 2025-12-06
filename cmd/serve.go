@@ -310,7 +310,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	})
 
 	// Create HTTP router
-	router := api.NewRouter(handlers, log)
+	router := api.NewRouter(handlers, &cfg.API, log)
 
 	// Start WhatsApp connection (async)
 	go func() {

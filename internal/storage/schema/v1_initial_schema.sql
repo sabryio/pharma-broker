@@ -188,3 +188,16 @@ CREATE TRIGGER medication_mappings_au AFTER UPDATE ON medication_mappings BEGIN
     INSERT INTO medication_mappings_fts(rowid, arabic_name, english_name, synonyms)
     VALUES (NEW.rowid, NEW.arabic_name, NEW.english_name, NEW.synonyms);
 END;
+
+-- 7. Dead-Letter Queue for Failed Messages
+-- ---------------------------------------------------------
+CREATE TABLE failed_messages (
+    id TEXT PRIMARY KEY,
+    raw_message_id TEXT UNIQUE REFERENCES raw_messages(id),
+    failure_reason TEXT NOT NULL,
+    retry_count INTEGER DEFAULT 0,
+    failed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME
+);
+CREATE INDEX idx_failed_messages_unresolved ON failed_messages(resolved_at) WHERE resolved_at IS NULL;
+CREATE INDEX idx_failed_messages_retry ON failed_messages(retry_count) WHERE resolved_at IS NULL;

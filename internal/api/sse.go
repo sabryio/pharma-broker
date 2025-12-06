@@ -15,6 +15,7 @@ type SSEHub struct {
 	register   chan chan SSEEvent
 	unregister chan chan SSEEvent
 	broadcast  chan SSEEvent
+	maxClients int // Maximum concurrent SSE connections
 }
 
 // SSEEvent represents an event to send to clients
@@ -25,11 +26,20 @@ type SSEEvent struct {
 
 // NewSSEHub creates a new SSE hub
 func NewSSEHub() *SSEHub {
+	return NewSSEHubWithLimit(100) // Default max 100 clients
+}
+
+// NewSSEHubWithLimit creates a new SSE hub with a custom client limit
+func NewSSEHubWithLimit(maxClients int) *SSEHub {
+	if maxClients <= 0 {
+		maxClients = 100
+	}
 	hub := &SSEHub{
 		clients:    make(map[chan SSEEvent]bool),
 		register:   make(chan chan SSEEvent),
 		unregister: make(chan chan SSEEvent),
 		broadcast:  make(chan SSEEvent, 100),
+		maxClients: maxClients,
 	}
 	go hub.run()
 	return hub
@@ -98,6 +108,16 @@ func (h *SSEHub) ClientCount() int {
 
 // ServeHTTP handles SSE connections
 func (h *SSEHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Check connection limit
+	h.mu.RLock()
+	clientCount := len(h.clients)
+	h.mu.RUnlock()
+
+	if clientCount >= h.maxClients {
+		http.Error(w, "Too many SSE connections", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

@@ -603,13 +603,6 @@ func safeString[T any](ptr *T, getter func(*T) string) string {
 	return getter(ptr)
 }
 
-func safeInt(offer *domain.Offer, getter func(*domain.Offer) int) string {
-	if offer == nil {
-		return ""
-	}
-	return strconv.Itoa(getter(offer))
-}
-
 func safeFloat(offer *domain.Offer, getter func(*domain.Offer) float64) string {
 	if offer == nil {
 		return ""
@@ -622,13 +615,6 @@ func safeExpiry(offer *domain.Offer) string {
 		return ""
 	}
 	return offer.ExpiryDate.Format("2006-01")
-}
-
-func safeIntReq(req *domain.Request, getter func(*domain.Request) int) string {
-	if req == nil {
-		return ""
-	}
-	return strconv.Itoa(getter(req))
 }
 
 func safeFloatReq(req *domain.Request, getter func(*domain.Request) float64) string {

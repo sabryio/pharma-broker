@@ -4,17 +4,18 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
-	"strings"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
+
+	"pharmabroker/internal/config"
 )
 
 //go:embed static/dist/*
 var staticFiles embed.FS
 
-// NewRouter creates the HTTP router
-func NewRouter(handlers *Handlers, log zerolog.Logger) http.Handler {
+// NewRouter creates the HTTP router with middleware
+func NewRouter(handlers *Handlers, cfg *config.APIConfig, log zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
 
 	// API routes
@@ -47,55 +48,17 @@ func NewRouter(handlers *Handlers, log zerolog.Logger) http.Handler {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create static file system")
 	}
-	mux.Handle("GET /", spaHandler(http.FS(staticFS)))
+	mux.Handle("GET /", SpaHandler(http.FS(staticFS)))
 
-	// Middleware
-	return corsMiddleware(loggingMiddleware(mux, log))
-}
+	// Create rate limiter
+	rateLimiter := NewRateLimiter(cfg)
 
-// spaHandler serves static files and falls back to index.html for SPA routing
-func spaHandler(fsys http.FileSystem) http.Handler {
-	fileServer := http.FileServer(fsys)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
+	// Apply middleware stack: CORS -> Rate Limit -> Tracing -> Handler
+	handler := CorsMiddleware(
+		RateLimitMiddleware(rateLimiter)(
+			TracingMiddleware(mux, log),
+		),
+	)
 
-		// Try to open the file
-		f, err := fsys.Open(path)
-		if err != nil {
-			// If file doesn't exist and it's not an API/static asset, serve index.html
-			if !strings.HasPrefix(path, "/api") && !strings.Contains(path, ".") {
-				r.URL.Path = "/"
-			}
-		} else {
-			f.Close()
-		}
-
-		fileServer.ServeHTTP(w, r)
-	})
-}
-
-func loggingMiddleware(next http.Handler, log zerolog.Logger) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Debug().
-			Str("method", r.Method).
-			Str("path", r.URL.Path).
-			Str("remote", r.RemoteAddr).
-			Msg("Request")
-		next.ServeHTTP(w, r)
-	})
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
+	return handler
 }
