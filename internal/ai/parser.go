@@ -80,6 +80,9 @@ type Parser struct {
 	// Vector Store (In-Memory)
 	embeddingMu          sync.RWMutex
 	medicationEmbeddings map[string][]float32
+
+	// Professional Scorer (Phase 1 Matching Enhancement)
+	scorer *Scorer
 }
 
 // NewParser creates a new Parser instance
@@ -115,6 +118,7 @@ func NewParser(
 		matchStop:            make(chan struct{}),
 		isAutoParseEnabled:   func() bool { return true }, // Default: always parse
 		medicationEmbeddings: make(map[string][]float32),
+		scorer:               NewScorer(nil, nil), // Use default weights and thresholds
 	}
 }
 
@@ -711,80 +715,70 @@ func generateTrigrams(s string) []string {
 	return trigrams
 }
 
-// calculateMatchScore computes similarity between offer and request
+// calculateMatchScore computes similarity between offer and request using multi-field scoring
 func (p *Parser) calculateMatchScore(offer *domain.Offer, request *domain.Request) float64 {
-	score := 0.0
-	weights := 0.0
+	// Calculate medication score using hybrid approach (lexical + semantic)
+	medicationScore := p.calculateMedicationScore(offer.Medication, request.Medication)
 
-	// Medication name match using fuzzy matching (most important - 60% weight)
-	similarity := fuzzyMatch(offer.Medication, request.Medication)
-	nameScore := 0.0
+	// Use the professional scorer for weighted multi-field scoring
+	matchScore := p.scorer.ScoreMatch(offer, request, medicationScore)
 
-	if similarity >= 1.0 {
-		nameScore = 0.6 // Exact match
-	} else if similarity >= 0.8 {
-		nameScore = 0.5 // High similarity
-	} else if similarity >= 0.6 {
-		nameScore = 0.35 // Moderate similarity
-	} else if containsIgnoreCase(offer.Medication, request.Medication) ||
-		containsIgnoreCase(request.Medication, offer.Medication) {
-		nameScore = 0.3 // Substring match fallback
+	// Log detailed breakdown for debugging
+	p.log.Debug().
+		Str("offer_med", offer.Medication).
+		Str("request_med", request.Medication).
+		Float64("med_score", matchScore.MedicationScore).
+		Float64("qty_score", matchScore.QuantityScore).
+		Float64("price_score", matchScore.PriceScore).
+		Float64("recency_score", matchScore.RecencyScore).
+		Float64("total", matchScore.Total).
+		Str("confidence", string(matchScore.Confidence)).
+		Str("breakdown", matchScore.Breakdown).
+		Msg("Match score calculated")
+
+	return matchScore.Total
+}
+
+// calculateMedicationScore computes a hybrid lexical + semantic medication match score
+func (p *Parser) calculateMedicationScore(offerMed, requestMed string) float64 {
+	// Lexical scoring using fuzzy match
+	lexicalScore := fuzzyMatch(offerMed, requestMed)
+
+	// Apply scaling to fuzzy match score to fit 0-1 range better
+	normalizedLexical := 0.0
+	if lexicalScore >= 1.0 {
+		normalizedLexical = 1.0 // Exact match
+	} else if lexicalScore >= 0.8 {
+		normalizedLexical = 0.85 // High similarity
+	} else if lexicalScore >= 0.6 {
+		normalizedLexical = 0.6 // Moderate similarity
+	} else if containsIgnoreCase(offerMed, requestMed) ||
+		containsIgnoreCase(requestMed, offerMed) {
+		normalizedLexical = 0.5 // Substring match fallback
+	} else {
+		normalizedLexical = lexicalScore * 0.5 // Low similarity
 	}
 
-	// Semantic Fallback (Embeddings)
-	// If score is low but we have embeddings, try vector comparison
-	if nameScore < 0.4 {
-		p.embeddingMu.RLock()
-		vecA, okA := p.medicationEmbeddings[strings.ToLower(offer.Medication)]
-		vecB, okB := p.medicationEmbeddings[strings.ToLower(request.Medication)]
-		p.embeddingMu.RUnlock()
+	// Semantic scoring using embeddings
+	semanticScore := 0.0
+	p.embeddingMu.RLock()
+	vecA, okA := p.medicationEmbeddings[strings.ToLower(offerMed)]
+	vecB, okB := p.medicationEmbeddings[strings.ToLower(requestMed)]
+	p.embeddingMu.RUnlock()
 
-		if okA && okB {
-			// Get dynamic semantic threshold
-			semanticThreshold := 0.85
-			if p.configRepo != nil {
-				if cfg, err := p.configRepo.GetAll(context.Background()); err == nil {
-					semanticThreshold = cfg.SemanticMatchThreshold
-				}
-			}
-
-			semScore := CosineSimilarity(vecA, vecB)
-			if semScore >= semanticThreshold {
-				// Strong semantic match (e.g. "Panadol" vs "Paracetamol")
-				// Boost slightly but keep below exact match
-				nameScore = math.Max(nameScore, 0.55)
-			} else if semScore >= (semanticThreshold - 0.1) {
-				// Slightly lower threshold for "likely" matches
-				nameScore = math.Max(nameScore, 0.4)
-			}
-		}
+	if okA && okB {
+		semanticScore = CosineSimilarity(vecA, vecB)
 	}
 
-	score += nameScore
-	weights += 0.6
-
-	// Quantity compatibility
-	if offer.Quantity > 0 && request.Quantity > 0 {
-		if offer.Quantity >= request.Quantity {
-			score += 0.2
-		} else {
-			score += 0.1 // Partial match
-		}
-		weights += 0.2
+	// Hybrid: Weight semantic if available, otherwise use lexical only
+	alpha := p.scorer.semanticWeight // Default 0.6
+	if semanticScore > 0 {
+		// Both available: weighted average
+		return alpha*semanticScore + (1-alpha)*normalizedLexical
 	}
 
-	// Price compatibility
-	if offer.Price > 0 && request.MaxPrice > 0 {
-		if offer.Price <= request.MaxPrice {
-			score += 0.2
-		}
-		weights += 0.2
-	}
-
-	if weights > 0 {
-		return score / weights
-	}
-	return score
+	// Semantic not available: use lexical only
+	return normalizedLexical
 }
 
 // CosineSimilarity computes the cosine similarity between two vectors
