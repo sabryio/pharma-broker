@@ -19,6 +19,7 @@ type RawMessageRepository interface {
 	GetByID(ctx context.Context, id string) (*RawMessage, error)
 	GetUnprocessed(ctx context.Context, limit int) ([]*RawMessage, error)
 	MarkProcessed(ctx context.Context, id string, err error) error
+	GetLastMessageBySender(ctx context.Context, groupJID, senderJID string) (*RawMessage, error)
 }
 
 // OfferRepository handles offer storage

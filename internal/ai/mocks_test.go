@@ -7,10 +7,11 @@ import (
 
 // MockRawMessageRepo
 type MockRawMessageRepo struct {
-	OnSave           func(ctx context.Context, msg *domain.RawMessage) error
-	OnGetByID        func(ctx context.Context, id string) (*domain.RawMessage, error)
-	OnGetUnprocessed func(ctx context.Context, limit int) ([]*domain.RawMessage, error)
-	OnMarkProcessed  func(ctx context.Context, id string, err error) error
+	OnSave                   func(ctx context.Context, msg *domain.RawMessage) error
+	OnGetByID                func(ctx context.Context, id string) (*domain.RawMessage, error)
+	OnGetUnprocessed         func(ctx context.Context, limit int) ([]*domain.RawMessage, error)
+	OnMarkProcessed          func(ctx context.Context, id string, err error) error
+	OnGetLastMessageBySender func(ctx context.Context, groupJID, senderJID string) (*domain.RawMessage, error)
 }
 
 func (m *MockRawMessageRepo) Save(ctx context.Context, msg *domain.RawMessage) error {
@@ -36,6 +37,12 @@ func (m *MockRawMessageRepo) MarkProcessed(ctx context.Context, id string, err e
 		return m.OnMarkProcessed(ctx, id, err)
 	}
 	return nil
+}
+func (m *MockRawMessageRepo) GetLastMessageBySender(ctx context.Context, groupJID, senderJID string) (*domain.RawMessage, error) {
+	if m.OnGetLastMessageBySender != nil {
+		return m.OnGetLastMessageBySender(ctx, groupJID, senderJID)
+	}
+	return nil, nil // Default: no previous message found
 }
 
 // MockOfferRepo

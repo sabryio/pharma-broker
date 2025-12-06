@@ -114,3 +114,28 @@ func (r *RawMessageRepo) MarkProcessed(ctx context.Context, id string, processEr
 	`, time.Now(), errStr, id)
 	return err
 }
+
+func (r *RawMessageRepo) GetLastMessageBySender(ctx context.Context, groupJID, senderJID string) (*domain.RawMessage, error) {
+	row := r.db.conn.QueryRowContext(ctx, `
+		SELECT id, external_id, group_jid, group_name, sender_jid, sender_phone, sender_name, content, timestamp
+		FROM raw_messages
+		WHERE group_jid = ? AND sender_jid = ?
+		ORDER BY timestamp DESC
+		LIMIT 1
+	`, groupJID, senderJID)
+
+	msg := &domain.RawMessage{}
+	var externalID sql.NullString
+
+	err := row.Scan(&msg.ID, &externalID, &msg.GroupJID, &msg.GroupName, &msg.SenderJID, &msg.SenderPhone,
+		&msg.SenderName, &msg.Content, &msg.Timestamp)
+	if err != nil {
+		return nil, err // potentially sql.ErrNoRows
+	}
+
+	if externalID.Valid {
+		msg.ExternalID = externalID.String
+	}
+
+	return msg, nil
+}

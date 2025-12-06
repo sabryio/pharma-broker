@@ -69,6 +69,33 @@ func (l *Listener) HandleMessage(msg *IncomingMessage) {
 			Msg("📨 Processing OWN message (config: skip_own_messages=false)")
 	}
 
+	// ----------------------------------------------------
+	// Semantic Deduplication (Spam/Repetition Filter)
+	// ----------------------------------------------------
+	// Check if this user sent the exact same message very recently (e.g. < 10s)
+	// This prevents duplicate requests if they double-tap send or history sync re-sends logic.
+	ctxShort, cancelShort := context.WithTimeout(context.Background(), 2*time.Second)
+	lastMsg, err := l.rawMsgRepo.GetLastMessageBySender(ctxShort, msg.GroupJID, msg.SenderJID)
+	cancelShort()
+
+	if err == nil && lastMsg != nil {
+		// Time threshold: 10 seconds
+		timeDiff := msg.Timestamp.Sub(lastMsg.Timestamp)
+		if timeDiff < 0 {
+			timeDiff = -timeDiff // Handle out-of-order clocks slightly
+		}
+
+		if timeDiff < 10*time.Second && lastMsg.Content == msg.Content {
+			l.log.Warn().
+				Str("step", "1_DUPLICATE_IGNORED").
+				Str("sender", msg.SenderName).
+				Str("content", truncate(msg.Content, 50)).
+				Dur("time_diff", timeDiff).
+				Msg("🛑 Ignoring duplicate message from same user < 10s")
+			return
+		}
+	}
+
 	// Check if this group is monitored
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
