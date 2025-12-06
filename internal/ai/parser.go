@@ -37,7 +37,8 @@ type Parser struct {
 	batchSize          int
 	stopChan           chan struct{}
 	wg                 sync.WaitGroup
-	isAutoParseEnabled func() bool // Check if auto-parse is enabled
+	isAutoParseEnabled func() bool                // Check if auto-parse is enabled
+	matchJobChan       chan func(context.Context) // Worker pool for matching
 
 	// Real-time updates
 	sseBroadcaster SSEBroadcaster
@@ -67,7 +68,8 @@ func NewParser(
 		msgChan:            msgChan,
 		batchSize:          parserCfg.MessageBufferSize / 100, // Reasonable batch size
 		stopChan:           make(chan struct{}),
-		isAutoParseEnabled: func() bool { return true }, // Default: always parse
+		isAutoParseEnabled: func() bool { return true },           // Default: always parse
+		matchJobChan:       make(chan func(context.Context), 100), // Buffer for match jobs
 	}
 }
 
@@ -85,12 +87,33 @@ func (p *Parser) SetAutoParseChecker(fn func() bool) {
 func (p *Parser) Start(ctx context.Context) {
 	p.wg.Add(1)
 	go p.processLoop(ctx)
+
+	// Start match workers
+	workerCount := 10 // Limit concurrent matching logic
+	for i := 0; i < workerCount; i++ {
+		p.wg.Add(1)
+		go p.matchWorker(ctx)
+	}
 }
 
 // Stop stops the parser
 func (p *Parser) Stop() {
 	close(p.stopChan)
 	p.wg.Wait()
+}
+
+func (p *Parser) matchWorker(ctx context.Context) {
+	defer p.wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-p.stopChan:
+			return
+		case job := <-p.matchJobChan:
+			job(ctx)
+		}
+	}
 }
 
 func (p *Parser) processLoop(ctx context.Context) {
@@ -252,7 +275,13 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 					}
 
 					// Find matching requests
-					go p.findMatchesForOffer(context.Background(), offer)
+					select {
+					case p.matchJobChan <- func(ctx context.Context) {
+						p.findMatchesForOffer(ctx, offer)
+					}:
+					default:
+						p.log.Warn().Str("offer_id", offer.ID).Msg("Match job queue full, skipping async matching")
+					}
 				}
 			}
 
@@ -274,7 +303,13 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 					}
 
 					// Find matching offers
-					go p.findMatchesForRequest(context.Background(), request)
+					select {
+					case p.matchJobChan <- func(ctx context.Context) {
+						p.findMatchesForRequest(ctx, request)
+					}:
+					default:
+						p.log.Warn().Str("request_id", request.ID).Msg("Match job queue full, skipping async matching")
+					}
 				}
 			}
 		}

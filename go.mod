@@ -12,6 +12,7 @@ require (
 	github.com/openai/openai-go v1.12.0
 	github.com/pkoukk/tiktoken-go v0.1.8
 	github.com/rs/zerolog v1.34.0
+	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.mau.fi/whatsmeow v0.0.0-20251203212742-364369929a75

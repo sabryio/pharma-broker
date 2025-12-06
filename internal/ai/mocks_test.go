@@ -1,0 +1,171 @@
+package ai
+
+import (
+	"context"
+	"pharmabroker/internal/domain"
+)
+
+// MockRawMessageRepo
+type MockRawMessageRepo struct {
+	OnSave           func(ctx context.Context, msg *domain.RawMessage) error
+	OnGetByID        func(ctx context.Context, id string) (*domain.RawMessage, error)
+	OnGetUnprocessed func(ctx context.Context, limit int) ([]*domain.RawMessage, error)
+	OnMarkProcessed  func(ctx context.Context, id string, err error) error
+}
+
+func (m *MockRawMessageRepo) Save(ctx context.Context, msg *domain.RawMessage) error {
+	if m.OnSave != nil {
+		return m.OnSave(ctx, msg)
+	}
+	return nil
+}
+func (m *MockRawMessageRepo) GetByID(ctx context.Context, id string) (*domain.RawMessage, error) {
+	if m.OnGetByID != nil {
+		return m.OnGetByID(ctx, id)
+	}
+	return nil, nil
+}
+func (m *MockRawMessageRepo) GetUnprocessed(ctx context.Context, limit int) ([]*domain.RawMessage, error) {
+	if m.OnGetUnprocessed != nil {
+		return m.OnGetUnprocessed(ctx, limit)
+	}
+	return nil, nil
+}
+func (m *MockRawMessageRepo) MarkProcessed(ctx context.Context, id string, err error) error {
+	if m.OnMarkProcessed != nil {
+		return m.OnMarkProcessed(ctx, id, err)
+	}
+	return nil
+}
+
+// MockOfferRepo
+type MockOfferRepo struct {
+	OnSave        func(ctx context.Context, offer *domain.Offer) error
+	OnSearch      func(ctx context.Context, query string, limit, offset int) ([]*domain.Offer, error)
+	OnCountActive func(ctx context.Context) (int64, error)
+	// Add others as needed to satisfy interface
+	OnGetByID      func(ctx context.Context, id string) (*domain.Offer, error)
+	OnGetActive    func(ctx context.Context, limit, offset int) ([]*domain.Offer, error)
+	OnUpdateStatus func(ctx context.Context, id string, status domain.ItemStatus) error
+}
+
+func (m *MockOfferRepo) Save(ctx context.Context, offer *domain.Offer) error {
+	if m.OnSave != nil {
+		return m.OnSave(ctx, offer)
+	}
+	return nil
+}
+func (m *MockOfferRepo) Search(ctx context.Context, query string, limit, offset int) ([]*domain.Offer, error) {
+	if m.OnSearch != nil {
+		return m.OnSearch(ctx, query, limit, offset)
+	}
+	return []*domain.Offer{}, nil
+}
+func (m *MockOfferRepo) CountActive(ctx context.Context) (int64, error) {
+	if m.OnCountActive != nil {
+		return m.OnCountActive(ctx)
+	}
+	return 0, nil
+}
+func (m *MockOfferRepo) GetByID(ctx context.Context, id string) (*domain.Offer, error) {
+	return nil, nil
+}
+func (m *MockOfferRepo) GetActive(ctx context.Context, limit, offset int) ([]*domain.Offer, error) {
+	return nil, nil
+}
+func (m *MockOfferRepo) UpdateStatus(ctx context.Context, id string, status domain.ItemStatus) error {
+	return nil
+}
+
+// MockRequestRepo
+type MockRequestRepo struct {
+	OnSave   func(ctx context.Context, req *domain.Request) error
+	OnSearch func(ctx context.Context, query string, limit, offset int) ([]*domain.Request, error)
+	// stub others
+	OnGetByID      func(ctx context.Context, id string) (*domain.Request, error)
+	OnGetActive    func(ctx context.Context, limit, offset int) ([]*domain.Request, error)
+	OnUpdateStatus func(ctx context.Context, id string, status domain.ItemStatus) error
+	OnCountActive  func(ctx context.Context) (int64, error)
+}
+
+func (m *MockRequestRepo) Save(ctx context.Context, req *domain.Request) error {
+	if m.OnSave != nil {
+		return m.OnSave(ctx, req)
+	}
+	return nil
+}
+func (m *MockRequestRepo) Search(ctx context.Context, query string, limit, offset int) ([]*domain.Request, error) {
+	if m.OnSearch != nil {
+		return m.OnSearch(ctx, query, limit, offset)
+	}
+	return []*domain.Request{}, nil
+}
+func (m *MockRequestRepo) GetByID(ctx context.Context, id string) (*domain.Request, error) {
+	return nil, nil
+}
+func (m *MockRequestRepo) GetActive(ctx context.Context, limit, offset int) ([]*domain.Request, error) {
+	return nil, nil
+}
+func (m *MockRequestRepo) UpdateStatus(ctx context.Context, id string, status domain.ItemStatus) error {
+	return nil
+}
+func (m *MockRequestRepo) CountActive(ctx context.Context) (int64, error) { return 0, nil }
+
+// MockMatchRepo
+type MockMatchRepo struct {
+	OnSave func(ctx context.Context, match *domain.Match) error
+	// stub others
+	OnGetByID             func(ctx context.Context, id string) (*domain.Match, error)
+	OnGetPending          func(ctx context.Context, limit, offset int) ([]*domain.MatchWithDetails, error)
+	OnGetByOfferID        func(ctx context.Context, id string) ([]*domain.Match, error)
+	OnGetByRequestID      func(ctx context.Context, id string) ([]*domain.Match, error)
+	OnUpdateStatus        func(ctx context.Context, id string, status domain.MatchStatus, matchedBy string) error
+	OnCountPending        func(ctx context.Context) (int64, error)
+	OnCountConfirmedToday func(ctx context.Context) (int64, error)
+}
+
+func (m *MockMatchRepo) Save(ctx context.Context, match *domain.Match) error {
+	if m.OnSave != nil {
+		return m.OnSave(ctx, match)
+	}
+	return nil
+}
+func (m *MockMatchRepo) GetByID(ctx context.Context, id string) (*domain.Match, error) {
+	return nil, nil
+}
+func (m *MockMatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*domain.MatchWithDetails, error) {
+	return nil, nil
+}
+func (m *MockMatchRepo) GetByOfferID(ctx context.Context, id string) ([]*domain.Match, error) {
+	return nil, nil
+}
+func (m *MockMatchRepo) GetByRequestID(ctx context.Context, id string) ([]*domain.Match, error) {
+	return nil, nil
+}
+func (m *MockMatchRepo) UpdateStatus(ctx context.Context, id string, status domain.MatchStatus, matchedBy string) error {
+	return nil
+}
+func (m *MockMatchRepo) CountPending(ctx context.Context) (int64, error)        { return 0, nil }
+func (m *MockMatchRepo) CountConfirmedToday(ctx context.Context) (int64, error) { return 0, nil }
+
+// MockMedicationRepo
+type MockMedicationRepo struct {
+	OnGetAll          func(ctx context.Context) ([]*domain.MedicationMapping, error)
+	OnSave            func(ctx context.Context, mapping *domain.MedicationMapping) error
+	OnGetByArabicName func(ctx context.Context, arabicName string) (*domain.MedicationMapping, error)
+	OnCount           func(ctx context.Context) (int, error)
+}
+
+func (m *MockMedicationRepo) GetAll(ctx context.Context) ([]*domain.MedicationMapping, error) {
+	if m.OnGetAll != nil {
+		return m.OnGetAll(ctx)
+	}
+	return []*domain.MedicationMapping{}, nil
+}
+func (m *MockMedicationRepo) Save(ctx context.Context, mapping *domain.MedicationMapping) error {
+	return nil
+}
+func (m *MockMedicationRepo) GetByArabicName(ctx context.Context, arabicName string) (*domain.MedicationMapping, error) {
+	return nil, nil
+}
+func (m *MockMedicationRepo) Count(ctx context.Context) (int, error) { return 0, nil }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"pharmabroker/internal/config"
+	"pharmabroker/internal/domain"
 	"strings"
 	"sync"
 	"time"
@@ -12,9 +14,7 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/rs/zerolog"
-
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
+	"github.com/sony/gobreaker"
 )
 
 // DockerModelClient handles communication with Docker Model Runner
@@ -23,6 +23,7 @@ type DockerModelClient struct {
 	cfg    *config.DockerModelConfig
 	client openai.Client
 	log    zerolog.Logger
+	cb     *gobreaker.CircuitBreaker
 }
 
 func GenerateSchema[T any]() interface{} {
@@ -45,10 +46,26 @@ func NewDockerModelClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*D
 		option.WithAPIKey("not-needed"), // Docker Model Runner doesn't require API key
 	)
 
+	// Circuit Breaker Settings
+	st := gobreaker.Settings{
+		Name:        "DockerModel",
+		MaxRequests: 0, // No limit on concurrent requests allowed to pass through (throttled by worker pool anyway)
+		Interval:    60 * time.Second,
+		Timeout:     30 * time.Second,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
+			return counts.Requests >= 5 && failureRatio >= 0.6
+		},
+		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
+			log.Warn().Str("name", name).Str("from", from.String()).Str("to", to.String()).Msg("Circuit Breaker state changed")
+		},
+	}
+
 	return &DockerModelClient{
 		cfg:    cfg,
 		client: client,
 		log:    log.With().Str("component", "docker-model").Logger(),
+		cb:     gobreaker.NewCircuitBreaker(st),
 	}, nil
 }
 
@@ -249,52 +266,58 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.RequestTimeout)
 	defer cancel()
 
-	// Retry logic with exponential backoff
+	// Retry logic with exponential backoff wrapped in Circuit Breaker
 	var result *openai.ChatCompletion
-	var lastErr error
 
-	for attempt := 1; attempt <= c.cfg.MaxRetries; attempt++ {
-		result, lastErr = c.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-			Model: c.cfg.Model,
-			Messages: []openai.ChatCompletionMessageParamUnion{
-				openai.UserMessage(prompt), // prompt already includes system instructions
-			},
-			ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
-				OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
-					JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
-						Name:        "pharma_parsing",
-						Description: openai.String("Extract medication offers and requests"),
-						Schema:      aiParseResultSchema,
-						Strict:      openai.Bool(true),
+	cbResult, err := c.cb.Execute(func() (interface{}, error) {
+		var apiResult *openai.ChatCompletion
+		var lastErr error
+
+		for attempt := 1; attempt <= c.cfg.MaxRetries; attempt++ {
+			apiResult, lastErr = c.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+				Model: c.cfg.Model,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					openai.UserMessage(prompt), // prompt already includes system instructions
+				},
+				ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+					OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+						JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+							Name:        "pharma_parsing",
+							Description: openai.String("Extract medication offers and requests"),
+							Schema:      aiParseResultSchema,
+							Strict:      openai.Bool(true),
+						},
 					},
 				},
-			},
-			Temperature: openai.Float(0.1), // Low temperature for consistent parsing
-		})
+				Temperature: openai.Float(0.1), // Low temperature for consistent parsing
+			})
 
-		if lastErr == nil {
-			break
-		}
+			if lastErr == nil {
+				return apiResult, nil
+			}
 
-		c.log.Warn().
-			Err(lastErr).
-			Int("attempt", attempt).
-			Int("max_retries", c.cfg.MaxRetries).
-			Msg("Docker Model Runner API call failed, retrying...")
+			c.log.Warn().
+				Err(lastErr).
+				Int("attempt", attempt).
+				Int("max_retries", c.cfg.MaxRetries).
+				Msg("Docker Model Runner API call failed, retrying...")
 
-		if attempt < c.cfg.MaxRetries {
-			delay := c.cfg.RetryBaseDelay * time.Duration(1<<(attempt-1))
-			select {
-			case <-ctx.Done():
-				return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-			case <-time.After(delay):
+			if attempt < c.cfg.MaxRetries {
+				delay := c.cfg.RetryBaseDelay * time.Duration(1<<(attempt-1))
+				select {
+				case <-ctx.Done():
+					return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
+				case <-time.After(delay):
+				}
 			}
 		}
-	}
+		return nil, fmt.Errorf("failed after %d attempts: %w", c.cfg.MaxRetries, lastErr)
+	})
 
-	if lastErr != nil {
-		return nil, fmt.Errorf("docker model runner failed after %d attempts: %w", c.cfg.MaxRetries, lastErr)
+	if err != nil {
+		return nil, err
 	}
+	result = cbResult.(*openai.ChatCompletion)
 
 	// Extract response content
 	if len(result.Choices) == 0 || result.Choices[0].Message.Content == "" {
