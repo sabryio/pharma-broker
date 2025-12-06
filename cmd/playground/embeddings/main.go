@@ -34,7 +34,10 @@ func main() {
 	fmt.Printf("Connecting to %s using model '%s'...\n", cfg.DockerModel.BaseURL, cfg.DockerModel.EmbeddingModelName)
 
 	// Test words
-	words := []string{"Panadol", "Paracetamol", "Ibuprofen", "Car"}
+	words := []string{
+		"Panadol", "Paracetamol", "Ibuprofen", "Car",
+		"بنادول", "باراسيتامول", "سيارة",
+	}
 
 	fmt.Println("\n--- Generating Embeddings ---")
 
@@ -57,6 +60,10 @@ func main() {
 		{"Panadol", "Paracetamol"},
 		{"Panadol", "Ibuprofen"},
 		{"Panadol", "Car"},
+		{"بنادول", "Panadol"},
+		{"بنادول", "باراسيتامول"},
+		{"بنادول", "سيارة"},
+		{"Panadol", "بنادول"},
 	}
 
 	for _, pair := range pairs {

@@ -154,10 +154,11 @@ func (r *RawMessageRepo) ArchiveOldMessages(ctx context.Context, archivePath str
 	defer r.db.conn.ExecContext(ctx, "DETACH DATABASE archive")
 
 	// 2. Ensure Schema Exists in Archive
-	// We replicate the raw_messages table structure matching migration v1 + v8 order.
+	// We replicate the raw_messages table structure matching migration v1 (Consolidated)
 	_, err = r.db.conn.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS archive.raw_messages (
 			id TEXT PRIMARY KEY,
+			external_id TEXT UNIQUE, -- WhatsApp Deduplication ID
 			group_jid TEXT NOT NULL, 
 			group_name TEXT NOT NULL,
 			sender_jid TEXT NOT NULL,
@@ -167,8 +168,7 @@ func (r *RawMessageRepo) ArchiveOldMessages(ctx context.Context, archivePath str
 			timestamp DATETIME NOT NULL,
 			processed_at DATETIME,
 			error TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			external_id TEXT
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE UNIQUE INDEX IF NOT EXISTS archive.idx_raw_messages_external_id ON raw_messages(external_id);
 		CREATE INDEX IF NOT EXISTS archive.idx_raw_messages_timestamp ON raw_messages(timestamp);
