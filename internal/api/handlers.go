@@ -16,22 +16,39 @@ import (
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
-	offerRepo   domain.OfferRepository
-	requestRepo domain.RequestRepository
-	matchRepo   domain.MatchRepository
-	groupRepo   domain.GroupRepository
-	statsRepo   domain.StatsRepository
-	configRepo  ConfigRepository
-	log         zerolog.Logger
-	sseHub      *SSEHub
-	syncGroups  func() error                              // Function to sync groups from WhatsApp
-	analyzeFunc func(text string) (*AnalyzeResult, error) // Function to analyze text with AI
+	offerRepo       domain.OfferRepository
+	requestRepo     domain.RequestRepository
+	matchRepo       domain.MatchRepository
+	groupRepo       domain.GroupRepository
+	statsRepo       domain.StatsRepository
+	configRepo      ConfigRepository
+	feedbackRepo    FeedbackRepository
+	leaderboardRepo LeaderboardRepository
+	log             zerolog.Logger
+	sseHub          *SSEHub
+	syncGroups      func() error                              // Function to sync groups from WhatsApp
+	analyzeFunc     func(text string) (*AnalyzeResult, error) // Function to analyze text with AI
 }
 
 // ConfigRepository interface for config storage
 type ConfigRepository interface {
 	GetAll(ctx context.Context) (*storage.AppConfig, error)
 	UpdateFromMap(ctx context.Context, updates map[string]interface{}) error
+}
+
+// FeedbackRepository interface for feedback storage
+type FeedbackRepository interface {
+	RecordFeedback(ctx context.Context, fb *domain.MatchFeedback) error
+	GetFeedbackByMatch(ctx context.Context, matchID string) ([]*domain.MatchFeedback, error)
+	AnalyzeFeedback(ctx context.Context, days int) (*storage.FeedbackAnalysis, error)
+	GetRecentFeedback(ctx context.Context, limit int) ([]*domain.MatchFeedback, error)
+}
+
+// LeaderboardRepository interface for leaderboard storage
+type LeaderboardRepository interface {
+	GetTopDemand(ctx context.Context, limit int) ([]*domain.DemandStats, error)
+	GetDemandForMedication(ctx context.Context, medication string) (*domain.DemandStats, error)
+	RefreshLeaderboard(ctx context.Context) error
 }
 
 // AnalyzeResult represents AI analysis output
@@ -622,4 +639,210 @@ func safeFloatReq(req *domain.Request, getter func(*domain.Request) float64) str
 		return ""
 	}
 	return formatFloat(getter(req))
+}
+
+// SetFeedbackRepo sets the feedback repository
+func (h *Handlers) SetFeedbackRepo(repo FeedbackRepository) {
+	h.feedbackRepo = repo
+}
+
+// SetLeaderboardRepo sets the leaderboard repository
+func (h *Handlers) SetLeaderboardRepo(repo LeaderboardRepository) {
+	h.leaderboardRepo = repo
+}
+
+// RecordFeedback records operator feedback on a match
+func (h *Handlers) RecordFeedback(w http.ResponseWriter, r *http.Request) {
+	if h.feedbackRepo == nil {
+		h.error(w, http.StatusServiceUnavailable, "Feedback service not configured")
+		return
+	}
+
+	matchID := r.PathValue("id")
+	if matchID == "" {
+		h.error(w, http.StatusBadRequest, "Missing match ID")
+		return
+	}
+
+	var req struct {
+		Decision   string `json:"decision"`
+		Reason     string `json:"reason,omitempty"`
+		OperatorID string `json:"operator_id,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Decision != "CONFIRMED" && req.Decision != "REJECTED" {
+		h.error(w, http.StatusBadRequest, "Decision must be CONFIRMED or REJECTED")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	// Get the match to record original score
+	match, err := h.matchRepo.GetByID(ctx, matchID)
+	if err != nil {
+		h.log.Error().Err(err).Str("match_id", matchID).Msg("Failed to get match for feedback")
+		h.error(w, http.StatusNotFound, "Match not found")
+		return
+	}
+
+	feedback := &domain.MatchFeedback{
+		MatchID:            matchID,
+		OperatorID:         req.OperatorID,
+		Decision:           domain.FeedbackDecision(req.Decision),
+		Reason:             req.Reason,
+		OriginalScore:      match.Score,
+		OriginalConfidence: match.MatchedBy, // This stores the confidence band
+	}
+
+	if err := h.feedbackRepo.RecordFeedback(ctx, feedback); err != nil {
+		h.log.Error().Err(err).Msg("Failed to record feedback")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to record feedback"))
+		return
+	}
+
+	h.log.Info().
+		Str("match_id", matchID).
+		Str("decision", req.Decision).
+		Float64("original_score", match.Score).
+		Msg("Feedback recorded")
+
+	h.success(w, map[string]interface{}{
+		"success":  true,
+		"feedback": feedback,
+	})
+}
+
+// GetFeedbackAnalysis returns aggregated feedback statistics
+func (h *Handlers) GetFeedbackAnalysis(w http.ResponseWriter, r *http.Request) {
+	if h.feedbackRepo == nil {
+		h.error(w, http.StatusServiceUnavailable, "Feedback service not configured")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	// Default to last 30 days
+	days := 30
+	if d := r.URL.Query().Get("days"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 {
+			days = parsed
+		}
+	}
+
+	analysis, err := h.feedbackRepo.AnalyzeFeedback(ctx, days)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to analyze feedback")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to analyze feedback"))
+		return
+	}
+
+	h.success(w, analysis)
+}
+
+// GetRecentFeedback returns recent feedback entries
+func (h *Handlers) GetRecentFeedback(w http.ResponseWriter, r *http.Request) {
+	if h.feedbackRepo == nil {
+		h.error(w, http.StatusServiceUnavailable, "Feedback service not configured")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	limit := 20
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	feedback, err := h.feedbackRepo.GetRecentFeedback(ctx, limit)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to get recent feedback")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to get feedback"))
+		return
+	}
+
+	h.success(w, feedback)
+}
+
+// GetDemandLeaderboard returns top medications by demand ratio
+func (h *Handlers) GetDemandLeaderboard(w http.ResponseWriter, r *http.Request) {
+	if h.leaderboardRepo == nil {
+		h.error(w, http.StatusServiceUnavailable, "Leaderboard service not configured")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	limit := 20
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	stats, err := h.leaderboardRepo.GetTopDemand(ctx, limit)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to get demand leaderboard")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to get leaderboard"))
+		return
+	}
+
+	h.success(w, stats)
+}
+
+// GetMedicationDemand returns demand stats for a specific medication
+func (h *Handlers) GetMedicationDemand(w http.ResponseWriter, r *http.Request) {
+	if h.leaderboardRepo == nil {
+		h.error(w, http.StatusServiceUnavailable, "Leaderboard service not configured")
+		return
+	}
+
+	medication := r.PathValue("medication")
+	if medication == "" {
+		h.error(w, http.StatusBadRequest, "Missing medication name")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	stats, err := h.leaderboardRepo.GetDemandForMedication(ctx, medication)
+	if err != nil {
+		h.log.Error().Err(err).Str("medication", medication).Msg("Failed to get medication demand")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to get demand"))
+		return
+	}
+
+	h.success(w, stats)
+}
+
+// RefreshLeaderboard triggers a leaderboard refresh
+func (h *Handlers) RefreshLeaderboard(w http.ResponseWriter, r *http.Request) {
+	if h.leaderboardRepo == nil {
+		h.error(w, http.StatusServiceUnavailable, "Leaderboard service not configured")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	if err := h.leaderboardRepo.RefreshLeaderboard(ctx); err != nil {
+		h.log.Error().Err(err).Msg("Failed to refresh leaderboard")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to refresh leaderboard"))
+		return
+	}
+
+	h.success(w, map[string]interface{}{
+		"success":      true,
+		"refreshed_at": time.Now(),
+	})
 }

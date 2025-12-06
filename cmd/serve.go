@@ -71,6 +71,8 @@ func runServe(cmd *cobra.Command, args []string) {
 	groupRepo := storage.NewGroupRepo(db)
 	statsRepo := storage.NewStatsRepo(db)
 	medicationRepo := storage.NewMedicationMappingRepo(db)
+	feedbackRepo := storage.NewFeedbackRepo(db)
+	leaderboardRepo := storage.NewLeaderboardRepo(db)
 
 	// Load medication mappings from file
 	commonMedications, err := domain.LoadMedicationMappings("medications.json")
@@ -308,6 +310,10 @@ func runServe(cmd *cobra.Command, args []string) {
 		// Use the AI provider directly for analysis
 		return nil, fmt.Errorf("analyze not implemented for provider interface yet")
 	})
+
+	// Wire feedback and leaderboard repos
+	handlers.SetFeedbackRepo(feedbackRepo)
+	handlers.SetLeaderboardRepo(leaderboardRepo)
 
 	// Create HTTP router
 	router := api.NewRouter(handlers, &cfg.API, log)

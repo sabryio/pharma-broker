@@ -37,6 +37,16 @@ func NewRouter(handlers *Handlers, cfg *config.APIConfig, log zerolog.Logger) ht
 	mux.HandleFunc("GET /api/config", handlers.GetConfig)
 	mux.HandleFunc("PATCH /api/config", handlers.UpdateConfig)
 
+	// Feedback endpoints (learning loop)
+	mux.HandleFunc("POST /api/matches/{id}/feedback", handlers.RecordFeedback)
+	mux.HandleFunc("GET /api/feedback/analysis", handlers.GetFeedbackAnalysis)
+	mux.HandleFunc("GET /api/feedback/recent", handlers.GetRecentFeedback)
+
+	// Demand leaderboard endpoints
+	mux.HandleFunc("GET /api/leaderboard", handlers.GetDemandLeaderboard)
+	mux.HandleFunc("GET /api/leaderboard/{medication}", handlers.GetMedicationDemand)
+	mux.HandleFunc("POST /api/leaderboard/refresh", handlers.RefreshLeaderboard)
+
 	// SSE endpoint
 	mux.HandleFunc("GET /api/events", handlers.sseHub.ServeHTTP)
 
