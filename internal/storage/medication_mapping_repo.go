@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"pharmabroker/internal/domain"
@@ -22,11 +23,20 @@ func NewMedicationMappingRepo(db *DB) *MedicationMappingRepo {
 
 // Save saves a medication mapping
 func (r *MedicationMappingRepo) Save(ctx context.Context, m *domain.MedicationMapping) error {
+	synonymsJSON, err := json.Marshal(m.Synonyms)
+	if err != nil {
+		return err
+	}
+	if m.Synonyms == nil {
+		synonymsJSON = []byte("[]")
+	}
+
 	query := `
-		INSERT INTO medication_mappings (id, arabic_name, english_name, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO medication_mappings (id, arabic_name, english_name, synonyms, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(arabic_name) DO UPDATE SET
 			english_name = excluded.english_name,
+			synonyms = excluded.synonyms,
 			updated_at = excluded.updated_at
 	`
 
@@ -38,10 +48,11 @@ func (r *MedicationMappingRepo) Save(ctx context.Context, m *domain.MedicationMa
 	}
 	m.UpdatedAt = time.Now()
 
-	_, err := r.db.conn.ExecContext(ctx, query,
+	_, err = r.db.conn.ExecContext(ctx, query,
 		m.ID,
 		m.ArabicName,
 		m.EnglishName,
+		string(synonymsJSON),
 		m.CreatedAt,
 		m.UpdatedAt,
 	)
@@ -50,22 +61,26 @@ func (r *MedicationMappingRepo) Save(ctx context.Context, m *domain.MedicationMa
 
 // GetByArabicName returns a mapping by Arabic name
 func (r *MedicationMappingRepo) GetByArabicName(ctx context.Context, arabicName string) (*domain.MedicationMapping, error) {
-	query := `SELECT id, arabic_name, english_name, created_at, updated_at FROM medication_mappings WHERE arabic_name = ?`
+	query := `SELECT id, arabic_name, english_name, synonyms, created_at, updated_at FROM medication_mappings WHERE arabic_name = ?`
 
 	row := r.db.conn.QueryRowContext(ctx, query, arabicName)
 	var m domain.MedicationMapping
-	if err := row.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &m.CreatedAt, &m.UpdatedAt); err != nil {
+	var synonymsJSON []byte
+	if err := row.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &synonymsJSON, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
+	}
+	if len(synonymsJSON) > 0 {
+		_ = json.Unmarshal(synonymsJSON, &m.Synonyms)
 	}
 	return &m, nil
 }
 
 // GetAll returns all mappings
 func (r *MedicationMappingRepo) GetAll(ctx context.Context) ([]*domain.MedicationMapping, error) {
-	query := `SELECT id, arabic_name, english_name, created_at, updated_at FROM medication_mappings`
+	query := `SELECT id, arabic_name, english_name, synonyms, created_at, updated_at FROM medication_mappings`
 
 	rows, err := r.db.conn.QueryContext(ctx, query)
 	if err != nil {
@@ -76,8 +91,12 @@ func (r *MedicationMappingRepo) GetAll(ctx context.Context) ([]*domain.Medicatio
 	var mappings []*domain.MedicationMapping
 	for rows.Next() {
 		var m domain.MedicationMapping
-		if err := rows.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		var synonymsJSON []byte
+		if err := rows.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &synonymsJSON, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if len(synonymsJSON) > 0 {
+			_ = json.Unmarshal(synonymsJSON, &m.Synonyms)
 		}
 		mappings = append(mappings, &m)
 	}
@@ -96,10 +115,10 @@ func (r *MedicationMappingRepo) Search(ctx context.Context, query string) ([]*do
 	// Use the FTS virtual table for efficient searching
 	// We select from the main table, joining with the FTS table on rowid
 	q := `
-		SELECT m.id, m.arabic_name, m.english_name, m.created_at, m.updated_at
+		SELECT m.id, m.arabic_name, m.english_name, m.synonyms, m.created_at, m.updated_at
 		FROM medication_mappings m
-		JOIN medication_mappings_fts fts ON m.rowid = fts.rowid
-		WHERE fts MATCH ?
+		JOIN medication_mappings_fts ON m.rowid = medication_mappings_fts.rowid
+		WHERE medication_mappings_fts MATCH ?
 		ORDER BY rank
 		LIMIT 200
 	`
@@ -113,8 +132,12 @@ func (r *MedicationMappingRepo) Search(ctx context.Context, query string) ([]*do
 	var mappings []*domain.MedicationMapping
 	for rows.Next() {
 		var m domain.MedicationMapping
-		if err := rows.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		var synonymsJSON []byte
+		if err := rows.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &synonymsJSON, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if len(synonymsJSON) > 0 {
+			_ = json.Unmarshal(synonymsJSON, &m.Synonyms)
 		}
 		mappings = append(mappings, &m)
 	}

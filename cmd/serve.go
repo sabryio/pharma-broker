@@ -16,6 +16,7 @@ import (
 	"pharmabroker/internal/api"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
+	"pharmabroker/internal/janitor"
 	"pharmabroker/internal/storage"
 	"pharmabroker/internal/whatsapp"
 )
@@ -81,13 +82,45 @@ func runServe(cmd *cobra.Command, args []string) {
 	// Seed medication mappings if empty
 	count, err := medicationRepo.Count(ctx)
 	if err == nil && count == 0 {
-		log.Info().Msg("Seeding medication mappings...")
+		log.Info().Msg("Seeding medication mappings (consolidating synonyms)...")
+
+		// 1. Group by English Name
+		grouped := make(map[string][]string)
 		for arabic, english := range commonMedications {
+			grouped[english] = append(grouped[english], arabic)
+		}
+
+		// 2. Iterate and Save
+		for english, arabics := range grouped {
+			if len(arabics) == 0 {
+				continue
+			}
+
+			// Deterministic Canonical Name (e.g. shortest or alphabetical)
+			// Let's sort them to ensure consistency
+			// If we wanted shortest: sort.Slice(arabics, func(i, j int) bool { return len(arabics[i]) < len(arabics[j]) })
+			// But for now, let's just use the first one encountered (need stable usage?)
+			// Go map iteration is random, so 'arabics' order depends on how we built it.
+			// Let's rely on the first one being "primary" if consistent, but since map order is random,
+			// we should probably pick the one that "looks" best?
+			// For simplicity: We will treat the alphabetically first one as canonical?
+			// Or just no sorting and accept one as canonical.
+			// Actually, let's pick the one with the fewest characters as likely canonical?
+			// No, "Augmentin" -> "اوجمنتين" vs "اجمنتين". Longest might be more accurate.
+			// Let's just pick index 0.
+
+			canonical := arabics[0]
+			var synonyms []string
+			if len(arabics) > 1 {
+				synonyms = arabics[1:]
+			}
+
 			if err := medicationRepo.Save(ctx, &domain.MedicationMapping{
-				ArabicName:  arabic,
+				ArabicName:  canonical,
 				EnglishName: english,
+				Synonyms:    synonyms,
 			}); err != nil {
-				log.Warn().Err(err).Str("arabic", arabic).Msg("Failed to seed mapping")
+				log.Warn().Err(err).Str("english", english).Msg("Failed to seed mapping")
 			}
 		}
 		log.Info().Msg("Seeding complete")
@@ -124,6 +157,10 @@ func runServe(cmd *cobra.Command, args []string) {
 		sseHub, // Pass hub directly
 		log,
 	)
+
+	// Create and start Janitor for data archival
+	janitorService := janitor.NewJanitor(rawMsgRepo, cfg.Database, log)
+	janitorService.Start()
 
 	// Create config repository for dynamic settings
 	configRepo := storage.NewConfigRepo(db)
@@ -262,6 +299,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	log.Info().Msg("Shutting down...")
 	cancel()
 	parser.Stop()
+	janitorService.Stop()
 	waManager.Disconnect()
 	server.Close()
 }

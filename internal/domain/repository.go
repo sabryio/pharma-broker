@@ -20,6 +20,7 @@ type RawMessageRepository interface {
 	GetUnprocessed(ctx context.Context, limit int) ([]*RawMessage, error)
 	MarkProcessed(ctx context.Context, id string, err error) error
 	GetLastMessageBySender(ctx context.Context, groupJID, senderJID string) (*RawMessage, error)
+	ArchiveOldMessages(ctx context.Context, archivePath string, cutoff time.Time) (int64, error)
 }
 
 // OfferRepository handles offer storage

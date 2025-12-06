@@ -196,6 +196,14 @@ type DatabaseConfig struct {
 	// Improves concurrent read/write performance significantly.
 	// Default: true
 	EnableWAL bool `mapstructure:"enable_wal"`
+
+	// RawRetentionDays is the number of days to keep raw messages before archiving.
+	// Default: 30
+	RawRetentionDays int `mapstructure:"raw_retention_days"`
+
+	// ArchivePath is the file path to the archive SQLite database.
+	// Default: ./data/archive.db
+	ArchivePath string `mapstructure:"archive_path"`
 }
 
 // ServerConfig configures network settings
@@ -308,6 +316,8 @@ func setDefaults(v *viper.Viper) {
 	// Database defaults
 	v.SetDefault("database.path", "./data/pharmabroker.db")
 	v.SetDefault("database.enable_wal", true)
+	v.SetDefault("database.raw_retention_days", 30)
+	v.SetDefault("database.archive_path", "./data/archive.db")
 
 	// Server defaults
 	v.SetDefault("server.port", 8080)
@@ -357,8 +367,10 @@ func loadFallback() *Config {
 			MaxExportRecords: 1000,
 		},
 		Database: DatabaseConfig{
-			Path:      "./data/pharmabroker.db",
-			EnableWAL: true,
+			Path:             "./data/pharmabroker.db",
+			EnableWAL:        true,
+			RawRetentionDays: 30,
+			ArchivePath:      "./data/archive.db",
 		},
 		Server: ServerConfig{
 			Port:       8080,

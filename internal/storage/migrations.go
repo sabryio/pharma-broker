@@ -294,4 +294,47 @@ var migrations = []migration{
 			CREATE UNIQUE INDEX idx_raw_messages_external_id ON raw_messages(external_id);
 		`,
 	},
+	{
+		version: 9,
+		sql: `
+			-- Smart Synonyms: Add JSON column for synonyms
+			ALTER TABLE medication_mappings ADD COLUMN synonyms TEXT DEFAULT '[]';
+
+			-- Drop old triggers and FTS table to recreate with synonyms support
+			DROP TRIGGER IF EXISTS medication_mappings_ai;
+			DROP TRIGGER IF EXISTS medication_mappings_ad;
+			DROP TRIGGER IF EXISTS medication_mappings_au;
+			DROP TABLE IF EXISTS medication_mappings_fts;
+
+			-- Recreate FTS table with synonyms column
+			-- content='medication_mappings' makes it an External Content Table (faster, smaller)
+			CREATE VIRTUAL TABLE medication_mappings_fts USING fts5(
+				arabic_name, english_name, synonyms,
+				content='medication_mappings', content_rowid='rowid',
+				tokenize='trigram'
+			);
+
+			-- Recreate triggers to sync FTS
+			CREATE TRIGGER medication_mappings_ai AFTER INSERT ON medication_mappings BEGIN
+				INSERT INTO medication_mappings_fts(rowid, arabic_name, english_name, synonyms)
+				VALUES (NEW.rowid, NEW.arabic_name, NEW.english_name, NEW.synonyms);
+			END;
+
+			CREATE TRIGGER medication_mappings_ad AFTER DELETE ON medication_mappings BEGIN
+				INSERT INTO medication_mappings_fts(medication_mappings_fts, rowid, arabic_name, english_name, synonyms)
+				VALUES('delete', OLD.rowid, OLD.arabic_name, OLD.english_name, OLD.synonyms);
+			END;
+
+			CREATE TRIGGER medication_mappings_au AFTER UPDATE ON medication_mappings BEGIN
+				INSERT INTO medication_mappings_fts(medication_mappings_fts, rowid, arabic_name, english_name, synonyms)
+				VALUES('delete', OLD.rowid, OLD.arabic_name, OLD.english_name, OLD.synonyms);
+				INSERT INTO medication_mappings_fts(rowid, arabic_name, english_name, synonyms)
+				VALUES (NEW.rowid, NEW.arabic_name, NEW.english_name, NEW.synonyms);
+			END;
+
+			-- Backfill FTS index with existing data
+			INSERT INTO medication_mappings_fts(rowid, arabic_name, english_name, synonyms)
+			SELECT rowid, arabic_name, english_name, synonyms FROM medication_mappings;
+		`,
+	},
 }

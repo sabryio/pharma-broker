@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"pharmabroker/internal/domain"
@@ -138,4 +139,75 @@ func (r *RawMessageRepo) GetLastMessageBySender(ctx context.Context, groupJID, s
 	}
 
 	return msg, nil
+}
+
+// ArchiveOldMessages moves messages older than cutoff to the archive database.
+// It uses SQLite's ATTACH DATABASE to perform the move transactionally.
+func (r *RawMessageRepo) ArchiveOldMessages(ctx context.Context, archivePath string, cutoff time.Time) (int64, error) {
+	// 1. Attach Archive DB
+	// We use "archive" as the schema alias.
+	// Note: We need to handle potential relative paths if CWD varies, but config usually provides valid paths.
+	_, err := r.db.conn.ExecContext(ctx, fmt.Sprintf("ATTACH DATABASE '%s' AS archive", archivePath))
+	if err != nil {
+		return 0, fmt.Errorf("failed to attach archive db: %w", err)
+	}
+	defer r.db.conn.ExecContext(ctx, "DETACH DATABASE archive")
+
+	// 2. Ensure Schema Exists in Archive
+	// We replicate the raw_messages table structure matching migration v1 + v8 order.
+	_, err = r.db.conn.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS archive.raw_messages (
+			id TEXT PRIMARY KEY,
+			group_jid TEXT NOT NULL, 
+			group_name TEXT NOT NULL,
+			sender_jid TEXT NOT NULL,
+			sender_phone TEXT NOT NULL,
+			sender_name TEXT,
+			content TEXT NOT NULL,
+			timestamp DATETIME NOT NULL,
+			processed_at DATETIME,
+			error TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			external_id TEXT
+		);
+		CREATE UNIQUE INDEX IF NOT EXISTS archive.idx_raw_messages_external_id ON raw_messages(external_id);
+		CREATE INDEX IF NOT EXISTS archive.idx_raw_messages_timestamp ON raw_messages(timestamp);
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create archive schema: %w", err)
+	}
+
+	// 3. Perform Copy-Delete Transaction
+	tx, err := r.db.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// 3a. Copy to Archive
+	res, err := tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO archive.raw_messages 
+		SELECT * FROM main.raw_messages WHERE timestamp < ?
+	`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("failed to copy messages: %w", err)
+	}
+
+	rowsAffected, _ := res.RowsAffected()
+
+	// 3b. Delete from Main
+	if rowsAffected > 0 {
+		_, err = tx.ExecContext(ctx, `
+			DELETE FROM main.raw_messages WHERE timestamp < ?
+		`, cutoff)
+		if err != nil {
+			return 0, fmt.Errorf("failed to delete messages: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit archive transaction: %w", err)
+	}
+
+	return rowsAffected, nil
 }
