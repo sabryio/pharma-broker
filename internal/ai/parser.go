@@ -521,15 +521,81 @@ func (p *Parser) getRelevantMappings(ctx context.Context, messages []*domain.Raw
 
 	mappings, err := p.medicationRepo.Search(ctx, queryBuilder.String())
 	if err != nil {
-		p.log.Error().Err(err).Msg("Failed to search medication mappings")
-		return relevant
+		p.log.Error().Err(err).Msg("Failed to search medication mappings (exact)")
+	} else {
+		for _, m := range mappings {
+			relevant[m.ArabicName] = m.EnglishName
+		}
 	}
 
-	for _, m := range mappings {
-		relevant[m.ArabicName] = m.EnglishName
+	// 2. Fuzzy Search (Fallback)
+	// If exact search yields few results, or we want to be more tolerant (e.g. typos).
+	// We generate trigrams for words that are "likely items" (length > 3).
+	// This is "Poor Man's Vector Search" using FTS5 trigrams.
+
+	// Only do fuzzy if we have enough distinct tokens to justify it,
+	// and maybe distinct from what we already found?
+	// For simplicity in RAG-Lite: Just add fuzzy results to the map. Map handles deduplication.
+
+	var fuzzyQueryBuilder strings.Builder
+	firstFuzzy := true
+	fuzzyCount := 0
+
+	for token := range uniqueTokens {
+		// Only fuzzy match longer words found in dictionary usually
+		if len([]rune(token)) < 4 { // Skip short words (rune count for Arabic)
+			continue
+		}
+
+		trigrams := generateTrigrams(token)
+		if len(trigrams) == 0 {
+			continue
+		}
+
+		// LIMIT fuzzy queries to avoid massive OR statements
+		if fuzzyCount >= 20 {
+			break
+		}
+
+		// For each word, we add its trigrams to the query
+		for _, tri := range trigrams {
+			if !firstFuzzy {
+				fuzzyQueryBuilder.WriteString(" OR ")
+			}
+			fuzzyQueryBuilder.WriteString("\"")
+			fuzzyQueryBuilder.WriteString(tri)
+			fuzzyQueryBuilder.WriteString("\"")
+			firstFuzzy = false
+		}
+		fuzzyCount++
+	}
+
+	if fuzzyCount > 0 {
+		fuzzyResults, err := p.medicationRepo.Search(ctx, fuzzyQueryBuilder.String())
+		if err != nil {
+			p.log.Warn().Err(err).Msg("Failed to search medication mappings (fuzzy)")
+		} else {
+			p.log.Debug().Int("count", len(fuzzyResults)).Msg("Fuzzy search results")
+			for _, m := range fuzzyResults {
+				relevant[m.ArabicName] = m.EnglishName
+			}
+		}
 	}
 
 	return relevant
+}
+
+// generateTrigrams splits a string into 3-character substrings
+func generateTrigrams(s string) []string {
+	runes := []rune(s)
+	if len(runes) < 3 {
+		return nil
+	}
+	var trigrams []string
+	for i := 0; i < len(runes)-2; i++ {
+		trigrams = append(trigrams, string(runes[i:i+3]))
+	}
+	return trigrams
 }
 
 // calculateMatchScore computes similarity between offer and request

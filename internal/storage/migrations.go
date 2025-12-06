@@ -243,9 +243,11 @@ var migrations = []migration{
 		version: 6,
 		sql: `
 			-- Full-text search for medication mappings (RAG-Lite optimization)
+			-- Using 'trigram' tokenizer for fuzzy search support (e.g. typos, partial matches)
 			CREATE VIRTUAL TABLE medication_mappings_fts USING fts5(
 				arabic_name, english_name,
-				content='medication_mappings', content_rowid='rowid'
+				content='medication_mappings', content_rowid='rowid',
+				tokenize='trigram'
 			);
 
 			-- Triggers to keep FTS index in sync

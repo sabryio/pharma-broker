@@ -150,3 +150,75 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 	// Execute
 	parser.processBatch(context.Background(), []*domain.RawMessage{msg})
 }
+
+func TestGenerateTrigrams(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"abc", []string{"abc"}},
+		{"abcd", []string{"abc", "bcd"}},
+		{"hello", []string{"hel", "ell", "llo"}},
+		{"ab", nil}, // Too short
+		{"", nil},   // Empty
+		{"اوجمنتين", []string{"اوج", "وجم", "جمن", "منت", "نتي", "تين"}}, // Arabic
+	}
+
+	for _, tt := range tests {
+		result := generateTrigrams(tt.input)
+		if len(result) != len(tt.expected) {
+			t.Errorf("For input '%s', expected %d trigrams, got %d", tt.input, len(tt.expected), len(result))
+		}
+		for i, v := range result {
+			if v != tt.expected[i] {
+				t.Errorf("For input '%s', expected trigram %d to be '%s', got '%s'", tt.input, i, tt.expected[i], v)
+			}
+		}
+	}
+}
+
+func TestParser_GetRelevantMappings_Fuzzy(t *testing.T) {
+	// Setup Mocks
+	mockMedRepo := &MockMedicationRepo{}
+
+	parser := &Parser{
+		log:            zerolog.Nop(),
+		medicationRepo: mockMedRepo,
+	}
+
+	messages := []*domain.RawMessage{
+		{Content: "augmentin"}, // Typos handled by trigrams? "augmentin" -> "aug", "ugm"...
+	}
+
+	// 1. Exact search returns nothing
+	// 2. Fuzzy search returns result
+
+	callCount := 0
+	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
+		callCount++
+		if callCount == 1 {
+			// Exact match query
+			return []*domain.MedicationMapping{}, nil
+		}
+		if callCount == 2 {
+			// Fuzzy match query
+			// Should contain trigrams for "augmentin"
+			if len(query) == 0 {
+				t.Error("Expected fuzzy query to be non-empty")
+			}
+			return []*domain.MedicationMapping{
+				{ArabicName: "اوجمنتين", EnglishName: "Augmentin"},
+			}, nil
+		}
+		return nil, nil
+	}
+
+	mappings := parser.getRelevantMappings(context.Background(), messages)
+
+	if len(mappings) != 1 {
+		t.Errorf("Expected 1 mapping, got %d", len(mappings))
+	}
+	if val, ok := mappings["اوجمنتين"]; !ok || val != "Augmentin" {
+		t.Error("Expected correctly mapped fuzzy result")
+	}
+}
