@@ -17,6 +17,7 @@ import (
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/janitor"
+	"pharmabroker/internal/monitor"
 	"pharmabroker/internal/storage"
 	"pharmabroker/internal/whatsapp"
 )
@@ -146,6 +147,26 @@ func runServe(cmd *cobra.Command, args []string) {
 	// Create SSE hub for real-time updates (Needed BEFORE parser)
 	sseHub := api.NewSSEHub()
 
+	// Create config repository for dynamic settings
+	configRepo := storage.NewConfigRepo(db)
+
+	// Seed AdminPhone from static config if not present in DB
+	// This allows setting initial alert contact via config.yaml
+	startupCtx := context.Background()
+	if currentCfg, err := configRepo.GetAll(startupCtx); err == nil {
+		if currentCfg.AdminPhone == "" && cfg.Monitor.AdminPhone != "" {
+			log.Info().Str("phone", cfg.Monitor.AdminPhone).Msg("Seeding AdminPhone from config.yaml")
+			if err := configRepo.UpdateFromMap(startupCtx, map[string]any{
+				"admin_phone": cfg.Monitor.AdminPhone,
+			}); err != nil {
+				log.Warn().Err(err).Msg("Failed to seed AdminPhone")
+			}
+		}
+	}
+
+	// Create WarRoom monitor for alerting
+	warRoom := monitor.NewWarRoom(waManager, configRepo, log)
+
 	// Create AI parser
 	parser := ai.NewParser(
 		rawMsgRepo,
@@ -154,16 +175,15 @@ func runServe(cmd *cobra.Command, args []string) {
 		requestRepo,
 		medicationRepo,
 		matchQueueRepo,
-		sseHub, // Pass hub directly
+		configRepo, // Dynamic config
+		warRoom,    // Error notifier
+		sseHub,     // Pass hub directly
 		log,
 	)
 
 	// Create and start Janitor for data archival
 	janitorService := janitor.NewJanitor(rawMsgRepo, cfg.Database, log)
 	janitorService.Start()
-
-	// Create config repository for dynamic settings
-	configRepo := storage.NewConfigRepo(db)
 
 	// Wire parser to check auto-parse config
 	parser.SetAutoParseChecker(func() bool {

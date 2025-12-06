@@ -30,7 +30,9 @@ func TestParser_ProcessBatch_HappyPath(t *testing.T) {
 		mockRequestRepo,
 		mockMedRepo,
 		mockQueueRepo,
-		nil,
+		nil, // configRepo
+		nil, // errorNotifier
+		nil, // broadcaster
 		zerolog.Nop(),
 	)
 
@@ -114,7 +116,10 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 		mockRequestRepo,
 		mockMedRepo,
 		mockQueueRepo,
-		nil,
+
+		nil, // configRepo
+		nil, // errorNotifier
+		nil, // broadcaster
 		zerolog.Nop(),
 	)
 

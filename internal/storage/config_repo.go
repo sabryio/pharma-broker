@@ -42,6 +42,7 @@ type AppConfig struct {
 	ProcessDelaySeconds int     `json:"process_delay_seconds"`
 	SystemPrompt        string  `json:"system_prompt,omitempty"`
 	ResponseFormat      string  `json:"response_format,omitempty"`
+	AdminPhone          string  `json:"admin_phone,omitempty"`
 }
 
 // DefaultConfig returns sensible defaults
@@ -139,6 +140,8 @@ func (r *ConfigRepo) GetAll(ctx context.Context) (*AppConfig, error) {
 			config.SystemPrompt = value
 		case "response_format":
 			config.ResponseFormat = value
+		case "admin_phone":
+			config.AdminPhone = value
 		}
 	}
 

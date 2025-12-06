@@ -32,6 +32,15 @@ docker_model:
   request_timeout: 300s
 
 # ---------------------------------
+# Monitoring & Alerting (War Room)
+# ---------------------------------
+monitor:
+  # WhatsApp number for critical alerts (e.g. "1234567890")
+  # This serves as the initial seed value for the database configuration.
+  # If empty, alerts are disabled until configured via API/DB.
+  admin_phone: "20102137532"
+
+# ---------------------------------
 # WhatsApp Web Connection Settings
 # ---------------------------------
 whatsapp:

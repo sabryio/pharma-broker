@@ -11,10 +11,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
 
 	"pharmabroker/internal/config"
 )
@@ -396,6 +398,31 @@ func (m *Manager) reconnect() {
 
 func extractPhoneNumber(jid types.JID) string {
 	return jid.User
+}
+
+// SendMessage sends a text message to the specified JID
+func (m *Manager) SendMessage(ctx context.Context, jidStr, content string) error {
+	m.mu.RLock()
+	client := m.client
+	m.mu.RUnlock()
+
+	if client == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	jid, err := types.ParseJID(jidStr)
+	if err != nil {
+		return fmt.Errorf("invalid JID: %w", err)
+	}
+
+	msg := &waE2E.Message{
+		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+			Text: proto.String(content),
+		},
+	}
+
+	_, err = client.SendMessage(ctx, jid, msg)
+	return err
 }
 
 // GenerateMessageID creates a unique message ID

@@ -34,6 +34,9 @@ type Config struct {
 	// Database settings for SQLite storage
 	Database DatabaseConfig `mapstructure:"database"`
 
+	// Monitor settings for system alerts
+	Monitor MonitorConfig `mapstructure:"monitor"`
+
 	// Server settings for network configuration
 	Server ServerConfig `mapstructure:"server"`
 }
@@ -204,6 +207,13 @@ type DatabaseConfig struct {
 	// ArchivePath is the file path to the archive SQLite database.
 	// Default: ./data/archive.db
 	ArchivePath string `mapstructure:"archive_path"`
+}
+
+// MonitorConfig configures system monitoring and alerting
+type MonitorConfig struct {
+	// AdminPhone is the WhatsApp number to receive critical alerts.
+	// Used as initial seed for the database configuration.
+	AdminPhone string `mapstructure:"admin_phone"`
 }
 
 // ServerConfig configures network settings

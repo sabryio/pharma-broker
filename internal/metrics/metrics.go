@@ -27,6 +27,11 @@ var (
 		Help: "The total number of matches found between offers and requests",
 	})
 
+	SystemErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_system_errors_total",
+		Help: "The total number of system errors (AI failures, DB errors)",
+	})
+
 	// Histograms
 	AIRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "pharma_ai_request_duration_seconds",

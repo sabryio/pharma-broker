@@ -12,7 +12,13 @@ import (
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/metrics"
+	"pharmabroker/internal/storage"
 )
+
+// ErrorNotifier interface for reporting system errors
+type ErrorNotifier interface {
+	NotifyError(err error)
+}
 
 // SSEBroadcaster interface for real-time updates
 type SSEBroadcaster interface {
@@ -63,8 +69,12 @@ type Parser struct {
 	matchTicker *time.Ticker
 	matchStop   chan struct{}
 
-	// Real-time updates
+	// Real-time updates and Dynamic Config
 	sseBroadcaster SSEBroadcaster
+	configRepo     interface {
+		GetAll(ctx context.Context) (*storage.AppConfig, error)
+	}
+	errorNotifier ErrorNotifier
 }
 
 // NewParser creates a new Parser instance
@@ -75,6 +85,10 @@ func NewParser(
 	requestRepo domain.RequestRepository,
 	medicationRepo domain.MedicationMappingRepository,
 	matchQueueRepo domain.MatchQueueRepository,
+	configRepo interface {
+		GetAll(ctx context.Context) (*storage.AppConfig, error)
+	},
+	errorNotifier ErrorNotifier,
 	broadcaster SSEBroadcaster,
 	logger zerolog.Logger,
 ) *Parser {
@@ -85,6 +99,8 @@ func NewParser(
 		requestRepo:        requestRepo,
 		medicationRepo:     medicationRepo,
 		matchQueueRepo:     matchQueueRepo,
+		configRepo:         configRepo,
+		errorNotifier:      errorNotifier,
 		sseBroadcaster:     broadcaster,
 		log:                logger,
 		workers:            10, // Default workers for input processing
@@ -261,6 +277,10 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 			Err(err).
 			Str("step", "6_AI_ERROR").
 			Msg("❌ AI parsing failed")
+		metrics.SystemErrors.Inc()
+		if p.errorNotifier != nil {
+			p.errorNotifier.NotifyError(err)
+		}
 		// Mark all as failed
 		for _, msg := range batch {
 			if err := p.rawMsgRepo.MarkProcessed(ctx, msg.ID, err); err != nil {
@@ -441,9 +461,18 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 		return
 	}
 
+	// Dynamic Config: Get current match threshold
+	// Use default 0.5 if config fetch fails
+	matchThreshold := 0.5
+	if p.configRepo != nil {
+		if cfg, err := p.configRepo.GetAll(ctx); err == nil {
+			matchThreshold = cfg.MatchThreshold
+		}
+	}
+
 	for _, req := range requests {
 		score := calculateMatchScore(offer, req)
-		if score >= p.parserCfg.MatchThreshold { // Use config threshold
+		if score >= matchThreshold {
 			match := &domain.Match{
 				ID:        uuid.New().String(),
 				OfferID:   offer.ID,
@@ -460,6 +489,7 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 				p.log.Info().
 					Str("match_id", match.ID).
 					Float64("score", score).
+					Float64("threshold", matchThreshold).
 					Msg("Created potential match")
 				// Broadcast new match via SSE
 				if p.sseBroadcaster != nil {
@@ -478,9 +508,17 @@ func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Requ
 		return
 	}
 
+	// Dynamic Config: Get current match threshold
+	matchThreshold := 0.5
+	if p.configRepo != nil {
+		if cfg, err := p.configRepo.GetAll(ctx); err == nil {
+			matchThreshold = cfg.MatchThreshold
+		}
+	}
+
 	for _, offer := range offers {
 		score := calculateMatchScore(offer, request)
-		if score >= p.parserCfg.MatchThreshold { // Use config threshold
+		if score >= matchThreshold {
 			match := &domain.Match{
 				ID:        uuid.New().String(),
 				OfferID:   offer.ID,
@@ -500,6 +538,7 @@ func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Requ
 				p.log.Info().
 					Str("match_id", match.ID).
 					Float64("score", score).
+					Float64("threshold", matchThreshold).
 					Msg("Created potential match")
 				// Broadcast new match via SSE
 				if p.sseBroadcaster != nil {
