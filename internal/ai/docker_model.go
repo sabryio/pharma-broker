@@ -343,18 +343,12 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 		Msg("Received response from Docker Model Runner")
 
 	// Parse JSON response - handle both array and single object responses
-	var parseResult domain.AIParseResult
-
-	// Try to parsing as single object (expected structure)
-	if err := json.Unmarshal([]byte(responseText), &parseResult); err != nil {
-		c.log.Error().
-			Err(err).
-			Str("response", truncateForLog(responseText, 500)).
-			Msg("Failed to parse Docker Model Runner response")
-		return nil, fmt.Errorf("parse response: %w", err)
+	// Parse response
+	var parseResults []*domain.AIParseResult
+	if err := json.Unmarshal([]byte(responseText), &parseResults); err != nil {
+		c.log.Error().Err(err).Str("content", truncateForLog(responseText, 500)).Msg("Failed to unmarshal AI response")
+		return nil, fmt.Errorf("failed to parse AI response: %w", err)
 	}
-
-	parseResults := []*domain.AIParseResult{&parseResult}
 
 	c.log.Info().
 		Int("parsed_count", len(parseResults)).
@@ -379,4 +373,40 @@ func truncateForLog(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// Embed generates embeddings using the OpenAI-compatible endpoint
+func (c *DockerModelClient) Embed(ctx context.Context, text string) ([]float32, error) {
+	// Create a separate client for embeddings if the base URL differs
+	client := c.client
+
+	// OpenAI 'Creating Embeddings' API
+	model := c.cfg.EmbeddingModelName
+	if model == "" {
+		model = "ai/embeddinggemma" // Fallback default
+	}
+
+	resp, err := client.Embeddings.New(ctx, openai.EmbeddingNewParams{
+		Model: openai.EmbeddingModel(model),
+		Input: openai.EmbeddingNewParamsInputUnion{
+			OfString: openai.String(text),
+		},
+	})
+	if err != nil {
+		c.log.Error().Err(err).Msg("Failed to generate embedding")
+		return nil, err
+	}
+
+	if len(resp.Data) == 0 {
+		return nil, fmt.Errorf("empty embedding response")
+	}
+
+	// Convert float64 to float32
+	vec64 := resp.Data[0].Embedding
+	vec32 := make([]float32, len(vec64))
+	for i, v := range vec64 {
+		vec32[i] = float32(v)
+	}
+
+	return vec32, nil
 }

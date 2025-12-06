@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -75,6 +76,10 @@ type Parser struct {
 		GetAll(ctx context.Context) (*storage.AppConfig, error)
 	}
 	errorNotifier ErrorNotifier
+
+	// Vector Store (In-Memory)
+	embeddingMu          sync.RWMutex
+	medicationEmbeddings map[string][]float32
 }
 
 // NewParser creates a new Parser instance
@@ -93,21 +98,23 @@ func NewParser(
 	logger zerolog.Logger,
 ) *Parser {
 	return &Parser{
-		rawMsgRepo:         rawMsgRepo,
-		aiProvider:         aiProvider,
-		offerRepo:          offerRepo,
-		requestRepo:        requestRepo,
-		medicationRepo:     medicationRepo,
-		matchQueueRepo:     matchQueueRepo,
-		configRepo:         configRepo,
-		errorNotifier:      errorNotifier,
-		sseBroadcaster:     broadcaster,
-		log:                logger,
-		workers:            10, // Default workers for input processing
-		inputChan:          make(chan inputJob, 100),
-		matchTicker:        time.NewTicker(2 * time.Second), // Poll queue every 2s
-		matchStop:          make(chan struct{}),
-		isAutoParseEnabled: func() bool { return true }, // Default: always parse
+		rawMsgRepo:           rawMsgRepo,
+		aiProvider:           aiProvider,
+		offerRepo:            offerRepo,
+		requestRepo:          requestRepo,
+		medicationRepo:       medicationRepo,
+		matchQueueRepo:       matchQueueRepo,
+		configRepo:           configRepo,
+		errorNotifier:        errorNotifier,
+		sseBroadcaster:       broadcaster,
+		log:                  logger,
+		workers:              10, // Default workers for input processing
+		inputChan:            make(chan inputJob, 100),
+		stopChan:             make(chan struct{}),
+		matchTicker:          time.NewTicker(2 * time.Second), // Poll queue every 2s
+		matchStop:            make(chan struct{}),
+		isAutoParseEnabled:   func() bool { return true }, // Default: always parse
+		medicationEmbeddings: make(map[string][]float32),
 	}
 }
 
@@ -127,11 +134,24 @@ func (p *Parser) Start(ctx context.Context) {
 	go p.processLoop(ctx)
 
 	// Start match workers
-	workerCount := 10 // Limit concurrent matching logic
-	for i := 0; i < workerCount; i++ {
+	// Limit concurrent matching
+	for i := 0; i < p.workers; i++ {
 		p.wg.Add(1)
-		go p.matchWorkerLoop(ctx)
+		go p.processLoop(ctx)
 	}
+
+	// Start match worker
+	p.wg.Add(1)
+	go p.matchWorkerLoop(ctx)
+
+	// Load Embeddings (Async)
+	go func() {
+		if err := p.refreshEmbeddings(ctx); err != nil {
+			p.log.Error().Err(err).Msg("Failed to load initial embeddings")
+		}
+	}()
+
+	p.log.Info().Int("workers", p.workers).Msg("Parser started")
 }
 
 // Stop stops the parser
@@ -471,7 +491,7 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 	}
 
 	for _, req := range requests {
-		score := calculateMatchScore(offer, req)
+		score := p.calculateMatchScore(offer, req)
 		if score >= matchThreshold {
 			match := &domain.Match{
 				ID:        uuid.New().String(),
@@ -517,7 +537,7 @@ func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Requ
 	}
 
 	for _, offer := range offers {
-		score := calculateMatchScore(offer, request)
+		score := p.calculateMatchScore(offer, request)
 		if score >= matchThreshold {
 			match := &domain.Match{
 				ID:        uuid.New().String(),
@@ -692,26 +712,55 @@ func generateTrigrams(s string) []string {
 }
 
 // calculateMatchScore computes similarity between offer and request
-func calculateMatchScore(offer *domain.Offer, request *domain.Request) float64 {
+func (p *Parser) calculateMatchScore(offer *domain.Offer, request *domain.Request) float64 {
 	score := 0.0
 	weights := 0.0
 
 	// Medication name match using fuzzy matching (most important - 60% weight)
 	similarity := fuzzyMatch(offer.Medication, request.Medication)
+	nameScore := 0.0
+
 	if similarity >= 1.0 {
-		// Exact match
-		score += 0.6
+		nameScore = 0.6 // Exact match
 	} else if similarity >= 0.8 {
-		// High similarity (e.g., "Amoxil" vs "Amoxicillin")
-		score += 0.5
+		nameScore = 0.5 // High similarity
 	} else if similarity >= 0.6 {
-		// Moderate similarity
-		score += 0.35
+		nameScore = 0.35 // Moderate similarity
 	} else if containsIgnoreCase(offer.Medication, request.Medication) ||
 		containsIgnoreCase(request.Medication, offer.Medication) {
-		// Substring match fallback
-		score += 0.3
+		nameScore = 0.3 // Substring match fallback
 	}
+
+	// Semantic Fallback (Embeddings)
+	// If score is low but we have embeddings, try vector comparison
+	if nameScore < 0.4 {
+		p.embeddingMu.RLock()
+		vecA, okA := p.medicationEmbeddings[strings.ToLower(offer.Medication)]
+		vecB, okB := p.medicationEmbeddings[strings.ToLower(request.Medication)]
+		p.embeddingMu.RUnlock()
+
+		if okA && okB {
+			// Get dynamic semantic threshold
+			semanticThreshold := 0.85
+			if p.configRepo != nil {
+				if cfg, err := p.configRepo.GetAll(context.Background()); err == nil {
+					semanticThreshold = cfg.SemanticMatchThreshold
+				}
+			}
+
+			semScore := CosineSimilarity(vecA, vecB)
+			if semScore >= semanticThreshold {
+				// Strong semantic match (e.g. "Panadol" vs "Paracetamol")
+				// Boost slightly but keep below exact match
+				nameScore = math.Max(nameScore, 0.55)
+			} else if semScore >= (semanticThreshold - 0.1) {
+				// Slightly lower threshold for "likely" matches
+				nameScore = math.Max(nameScore, 0.4)
+			}
+		}
+	}
+
+	score += nameScore
 	weights += 0.6
 
 	// Quantity compatibility
@@ -738,9 +787,70 @@ func calculateMatchScore(offer *domain.Offer, request *domain.Request) float64 {
 	return score
 }
 
+// CosineSimilarity computes the cosine similarity between two vectors
+func CosineSimilarity(a, b []float32) float64 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0.0
+	}
+
+	dotProduct := 0.0
+	normA := 0.0
+	normB := 0.0
+
+	for i := 0; i < len(a); i++ {
+		dotProduct += float64(a[i] * b[i])
+		normA += float64(a[i] * a[i])
+		normB += float64(b[i] * b[i])
+	}
+
+	if normA == 0 || normB == 0 {
+		return 0.0
+	}
+
+	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
+}
+
 func containsIgnoreCase(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 &&
-		(s == substr || len(s) > len(substr) && s[:len(substr)] == substr)
+	s, substr = strings.ToUpper(s), strings.ToUpper(substr)
+	return strings.Contains(s, substr)
+}
+
+// refreshEmbeddings loads medication embeddings into memory
+func (p *Parser) refreshEmbeddings(ctx context.Context) error {
+	mappings, err := p.medicationRepo.GetAll(ctx)
+	if err != nil {
+		return err
+	}
+
+	newEmbeddings := make(map[string][]float32)
+	count := 0
+
+	for _, m := range mappings {
+		if len(m.Embedding) == 0 {
+			continue // Skip if no embedding
+		}
+
+		// Map all known names to this embedding
+		if m.ArabicName != "" {
+			newEmbeddings[strings.ToLower(m.ArabicName)] = m.Embedding
+		}
+		if m.EnglishName != "" {
+			newEmbeddings[strings.ToLower(m.EnglishName)] = m.Embedding
+		}
+		for _, syn := range m.Synonyms {
+			if syn != "" {
+				newEmbeddings[strings.ToLower(syn)] = m.Embedding
+			}
+		}
+		count++
+	}
+
+	p.embeddingMu.Lock()
+	p.medicationEmbeddings = newEmbeddings
+	p.embeddingMu.Unlock()
+
+	p.log.Info().Int("count", count).Int("keys", len(newEmbeddings)).Msg("Refreshed in-memory embeddings")
+	return nil
 }
 
 // fuzzyMatch returns a similarity score between 0 and 1 using Levenshtein distance

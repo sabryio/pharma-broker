@@ -17,6 +17,9 @@ type AIProvider interface {
 	// ParseMessages parses raw WhatsApp messages and extracts
 	// pharmaceutical offers and requests.
 	ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error)
+
+	// Embed generates a vector embedding for the given text.
+	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
 // NewAIProvider creates an AI provider based on configuration.

@@ -56,6 +56,10 @@ type DockerModelConfig struct {
 	// Default: http://localhost:12434/engines/llama.cpp/v1
 	BaseURL string `mapstructure:"base_url"`
 
+	// EmbeddingModelName is the name of the model to use for embeddings
+	// e.g., "ai/embeddinggemma"
+	EmbeddingModelName string `mapstructure:"embedding_model_name"`
+
 	// Model is the model identifier (e.g., "ai/qwen3-vl:latest")
 	// When using Compose models, this is auto-injected via LLM_MODEL environment variable.
 	Model string `mapstructure:"model"`
@@ -274,9 +278,19 @@ func Load() *Config {
 			cfg.DockerModel.BaseURL = url
 		}
 	}
+
+	// Fallback defaulting logic for BaseURLs handled by viper/loadFallback already,
+	// but if environment vars explicitly set empty string we might need care.
+	// Here we only set if empty struct field AND env var exists.
+
 	if cfg.DockerModel.Model == "" {
 		if model := os.Getenv("LLM_MODEL"); model != "" {
 			cfg.DockerModel.Model = model
+		}
+	}
+	if cfg.DockerModel.EmbeddingModelName == "" {
+		if model := os.Getenv("EMBEDDING_MODEL"); model != "" {
+			cfg.DockerModel.EmbeddingModelName = model
 		}
 	}
 
@@ -290,9 +304,9 @@ func setDefaults(v *viper.Viper) {
 
 	// Docker Model Runner defaults
 	v.SetDefault("docker_model.base_url", "http://localhost:12434/engines/llama.cpp/v1")
+	v.SetDefault("docker_model.embedding_model_name", "ai/embeddinggemma")
 	v.SetDefault("docker_model.model", "ai/qwen3-vl:latest")
 	v.SetDefault("docker_model.max_retries", 3)
-	v.SetDefault("docker_model.retry_base_delay", "1s")
 	v.SetDefault("docker_model.retry_base_delay", "1s")
 	v.SetDefault("docker_model.request_timeout", "60s")
 	v.SetDefault("docker_model.max_message_lines", 20)
@@ -342,12 +356,13 @@ func loadFallback() *Config {
 			Provider: "gemini",
 		},
 		DockerModel: DockerModelConfig{
-			BaseURL:         "http://localhost:12434/engines/llama.cpp/v1",
-			Model:           "ai/qwen3-vl:latest",
-			MaxRetries:      3,
-			RetryBaseDelay:  1 * time.Second,
-			RequestTimeout:  300 * time.Second,
-			MaxMessageLines: 20,
+			BaseURL:            "http://localhost:12434/engines/llama.cpp/v1",
+			EmbeddingModelName: "ai/embeddinggemma",
+			Model:              "ai/qwen3-vl:latest",
+			MaxRetries:         3,
+			RetryBaseDelay:     1 * time.Second,
+			RequestTimeout:     300 * time.Second,
+			MaxMessageLines:    20,
 		},
 		WhatsApp: WhatsAppConfig{
 			SessionDir:       "./data/whatsapp",

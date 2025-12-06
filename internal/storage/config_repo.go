@@ -35,24 +35,28 @@ type Config struct {
 
 // AppConfig represents all configurable settings
 type AppConfig struct {
-	AutoParseEnabled    bool    `json:"auto_parse_enabled"`
-	SkipOwnMessages     bool    `json:"skip_own_messages"`
-	MatchThreshold      float64 `json:"match_threshold"`
-	BatchSize           int     `json:"batch_size"`
-	ProcessDelaySeconds int     `json:"process_delay_seconds"`
-	SystemPrompt        string  `json:"system_prompt,omitempty"`
-	ResponseFormat      string  `json:"response_format,omitempty"`
-	AdminPhone          string  `json:"admin_phone,omitempty"`
+	AutoParseEnabled       bool    `json:"auto_parse_enabled"`
+	SkipOwnMessages        bool    `json:"skip_own_messages"`
+	MatchThreshold         float64 `json:"match_threshold"`
+	SemanticMatchThreshold float64 `json:"semantic_match_threshold"`
+	BatchSize              int     `json:"batch_size"`
+	ProcessDelaySeconds    int     `json:"process_delay_seconds"`
+	SystemPrompt           string  `json:"system_prompt,omitempty"`
+	ResponseFormat         string  `json:"response_format,omitempty"`
+	AdminPhone             string  `json:"admin_phone,omitempty"`
 }
 
 // DefaultConfig returns sensible defaults
 func DefaultConfig() *AppConfig {
 	return &AppConfig{
-		AutoParseEnabled:    true, // Parse messages by default
-		SkipOwnMessages:     true, // Skip own messages by default
-		MatchThreshold:      0.5,
-		BatchSize:           5,
-		ProcessDelaySeconds: 5,
+		AutoParseEnabled:       true, // Parse messages by default
+		SkipOwnMessages:        true, // Skip own messages by default
+		MatchThreshold:         0.5,
+		SemanticMatchThreshold: 0.85, // Strong semantic match by default
+		BatchSize:              10,
+		ProcessDelaySeconds:    5,
+		SystemPrompt:           "",
+		AdminPhone:             "",
 	}
 }
 

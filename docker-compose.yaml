@@ -21,6 +21,7 @@ services:
       - ./data:/app/data # Share local session with Docker
     models:
       - llm # Bind to the llm model
+      - embedding-model # Bind to the customized embedding model
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5050/health" ]
@@ -39,6 +40,14 @@ models:
       - "--threads"
       - "8" # Number of threads for generation
       - "--mlock" # Lock memory to prevent swapping
+
+  embedding-model:
+    model: ai/embeddinggemma:latest
+    context_size: 8192
+    runtime_flags:
+      - "--threads"
+      - "4"
+      - "--mlock"
 
 volumes:
   pharmabroker-data:

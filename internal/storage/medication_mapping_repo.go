@@ -31,12 +31,18 @@ func (r *MedicationMappingRepo) Save(ctx context.Context, m *domain.MedicationMa
 		synonymsJSON = []byte("[]")
 	}
 
+	embeddingBytes, err := encodeEmbedding(m.Embedding)
+	if err != nil {
+		return err
+	}
+
 	query := `
-		INSERT INTO medication_mappings (id, arabic_name, english_name, synonyms, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO medication_mappings (id, arabic_name, english_name, synonyms, embedding, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(arabic_name) DO UPDATE SET
 			english_name = excluded.english_name,
 			synonyms = excluded.synonyms,
+			embedding = excluded.embedding,
 			updated_at = excluded.updated_at
 	`
 
@@ -53,34 +59,63 @@ func (r *MedicationMappingRepo) Save(ctx context.Context, m *domain.MedicationMa
 		m.ArabicName,
 		m.EnglishName,
 		string(synonymsJSON),
+		embeddingBytes,
 		m.CreatedAt,
 		m.UpdatedAt,
 	)
 	return err
 }
 
+func encodeEmbedding(vec []float32) ([]byte, error) {
+	if len(vec) == 0 {
+		return nil, nil
+	}
+	// TODO: Use efficient binary encoding
+	// For now, JSON is safest for compatibility if we inspect DB
+	return json.Marshal(vec)
+}
+
+func decodeEmbedding(data []byte) ([]float32, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var vec []float32
+	err := json.Unmarshal(data, &vec)
+	return vec, err
+}
+
 // GetByArabicName returns a mapping by Arabic name
 func (r *MedicationMappingRepo) GetByArabicName(ctx context.Context, arabicName string) (*domain.MedicationMapping, error) {
-	query := `SELECT id, arabic_name, english_name, synonyms, created_at, updated_at FROM medication_mappings WHERE arabic_name = ?`
+	query := `SELECT id, arabic_name, english_name, synonyms, embedding, created_at, updated_at FROM medication_mappings WHERE arabic_name = ?`
 
 	row := r.db.conn.QueryRowContext(ctx, query, arabicName)
 	var m domain.MedicationMapping
 	var synonymsJSON []byte
-	if err := row.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &synonymsJSON, &m.CreatedAt, &m.UpdatedAt); err != nil {
+	var embeddingBytes []byte
+	if err := row.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &synonymsJSON, &embeddingBytes, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
 	if len(synonymsJSON) > 0 {
-		_ = json.Unmarshal(synonymsJSON, &m.Synonyms)
+		if err := json.Unmarshal(synonymsJSON, &m.Synonyms); err != nil {
+			return nil, err
+		}
+	}
+	if len(embeddingBytes) > 0 {
+		vec, err := decodeEmbedding(embeddingBytes)
+		if err != nil {
+			return nil, err
+		}
+		m.Embedding = vec
 	}
 	return &m, nil
 }
 
-// GetAll returns all mappings
+// GetAll returns all medication mappings
 func (r *MedicationMappingRepo) GetAll(ctx context.Context) ([]*domain.MedicationMapping, error) {
-	query := `SELECT id, arabic_name, english_name, synonyms, created_at, updated_at FROM medication_mappings`
+	query := `SELECT id, arabic_name, english_name, synonyms, embedding, created_at, updated_at FROM medication_mappings`
 
 	rows, err := r.db.conn.QueryContext(ctx, query)
 	if err != nil {
@@ -92,11 +127,21 @@ func (r *MedicationMappingRepo) GetAll(ctx context.Context) ([]*domain.Medicatio
 	for rows.Next() {
 		var m domain.MedicationMapping
 		var synonymsJSON []byte
-		if err := rows.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &synonymsJSON, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		var embeddingBytes []byte
+		if err := rows.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &synonymsJSON, &embeddingBytes, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if len(synonymsJSON) > 0 {
-			_ = json.Unmarshal(synonymsJSON, &m.Synonyms)
+			if err := json.Unmarshal(synonymsJSON, &m.Synonyms); err != nil {
+				return nil, err
+			}
+		}
+		if len(embeddingBytes) > 0 {
+			vec, err := decodeEmbedding(embeddingBytes)
+			if err != nil {
+				return nil, err
+			}
+			m.Embedding = vec
 		}
 		mappings = append(mappings, &m)
 	}

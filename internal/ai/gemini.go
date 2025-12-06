@@ -275,3 +275,21 @@ func (c *GeminiClient) Close() error {
 	// The genai client doesn't require explicit closing
 	return nil
 }
+
+// Embed generates embeddings for the given text
+func (c *GeminiClient) Embed(ctx context.Context, text string) ([]float32, error) {
+	// Use text-embedding-004 for better performance
+	model := "text-embedding-004"
+
+	resp, err := c.client.Models.EmbedContent(ctx, model, genai.Text(text), nil)
+	if err != nil {
+		return nil, fmt.Errorf("gemini embed error: %w", err)
+	}
+
+	if resp == nil || len(resp.Embeddings) == 0 {
+		return nil, fmt.Errorf("empty embedding response")
+	}
+
+	// First embedding
+	return resp.Embeddings[0].Values, nil
+}
