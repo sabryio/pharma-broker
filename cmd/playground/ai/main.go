@@ -102,9 +102,14 @@ func main() {
 	fmt.Println("PARSING TEST")
 	fmt.Println(separator)
 
+	// Load medication mappings for testing
+	commonMedications, err := domain.LoadMedicationMappings("medications.json")
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load medications.json")
+	}
+
 	start := time.Now()
-	// Use domain.CommonMedications for testing
-	results, err := provider.ParseMessages(ctx, testMessages, domain.CommonMedications)
+	results, err := provider.ParseMessages(ctx, testMessages, commonMedications)
 	elapsed := time.Since(start)
 
 	if err != nil {

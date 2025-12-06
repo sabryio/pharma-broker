@@ -69,11 +69,19 @@ func runServe(cmd *cobra.Command, args []string) {
 	statsRepo := storage.NewStatsRepo(db)
 	medicationRepo := storage.NewMedicationMappingRepo(db)
 
+	// Load medication mappings from file
+	commonMedications, err := domain.LoadMedicationMappings("medications.json")
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load medications.json")
+	} else {
+		log.Info().Int("count", len(commonMedications)).Msg("Loaded medication mappings")
+	}
+
 	// Seed medication mappings if empty
 	count, err := medicationRepo.Count(ctx)
 	if err == nil && count == 0 {
 		log.Info().Msg("Seeding medication mappings...")
-		for arabic, english := range domain.CommonMedications {
+		for arabic, english := range commonMedications {
 			if err := medicationRepo.Save(ctx, &domain.MedicationMapping{
 				ArabicName:  arabic,
 				EnglishName: english,

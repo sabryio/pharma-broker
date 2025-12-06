@@ -65,6 +65,10 @@ type DockerModelConfig struct {
 
 	// RequestTimeout is the maximum time to wait for a response.
 	RequestTimeout time.Duration `mapstructure:"request_timeout"`
+
+	// MaxMessageLines is the maximum number of lines in a message before splitting.
+	// Default: 20
+	MaxMessageLines int `mapstructure:"max_message_lines"`
 }
 
 // WhatsAppConfig configures the WhatsApp Web connection
@@ -271,7 +275,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("docker_model.model", "ai/qwen3-vl:latest")
 	v.SetDefault("docker_model.max_retries", 3)
 	v.SetDefault("docker_model.retry_base_delay", "1s")
+	v.SetDefault("docker_model.retry_base_delay", "1s")
 	v.SetDefault("docker_model.request_timeout", "60s")
+	v.SetDefault("docker_model.max_message_lines", 20)
 
 	// WhatsApp defaults
 	v.SetDefault("whatsapp.session_dir", "./data/whatsapp")
@@ -316,11 +322,12 @@ func loadFallback() *Config {
 			Provider: "gemini",
 		},
 		DockerModel: DockerModelConfig{
-			BaseURL:        "http://localhost:12434/engines/llama.cpp/v1",
-			Model:          "ai/qwen3-vl:latest",
-			MaxRetries:     3,
-			RetryBaseDelay: 1 * time.Second,
-			RequestTimeout: 300 * time.Second,
+			BaseURL:         "http://localhost:12434/engines/llama.cpp/v1",
+			Model:           "ai/qwen3-vl:latest",
+			MaxRetries:      3,
+			RetryBaseDelay:  1 * time.Second,
+			RequestTimeout:  300 * time.Second,
+			MaxMessageLines: 20,
 		},
 		WhatsApp: WhatsAppConfig{
 			SessionDir:       "./data/whatsapp",

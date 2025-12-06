@@ -59,10 +59,12 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 	}
 
 	// Constants for chunking
-	const (
-		maxBatchSize    = 1  // Process 1 chunk per request (safer for context)
-		maxMessageLines = 20 // Split messages longer than 20 lines
-	)
+	const maxBatchSize = 1 // Process 1 chunk per request (safer for context)
+
+	maxMessageLines := c.cfg.MaxMessageLines
+	if maxMessageLines <= 0 {
+		maxMessageLines = 20 // Default fallback
+	}
 
 	// Map unique original ID to list of split chunks
 	// We need to preserve the order of original messages
@@ -232,8 +234,15 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 	// Build prompt with messages
 	prompt := buildParsePrompt(messages, mappings)
 
-	c.log.Debug().
+	// Count tokens
+	tokenCount, err := CountTokens(c.cfg.Model, prompt)
+	if err != nil {
+		c.log.Warn().Err(err).Msg("Failed to count tokens")
+	}
+
+	c.log.Info().
 		Int("message_count", len(messages)).
+		Int("tokens", tokenCount).
 		Msg("Sending messages to Docker Model Runner")
 
 	// Create timeout context

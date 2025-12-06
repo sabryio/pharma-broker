@@ -55,5 +55,5 @@ logs/
 .task/
 
 # Results
-# test_*.json
-# results*.json
+test_*.json
+results*.json

@@ -89,9 +89,15 @@ func runResetDb(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 	medicationRepo := storage.NewMedicationMappingRepo(db)
 
+	// Load medication mappings from file
+	commonMedications, err := domain.LoadMedicationMappings("medications.json")
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load medications.json")
+	}
+
 	log.Info().Msg("Seeding medication mappings...")
 	count := 0
-	for arabic, english := range domain.CommonMedications {
+	for arabic, english := range commonMedications {
 		if err := medicationRepo.Save(ctx, &domain.MedicationMapping{
 			ArabicName:  arabic,
 			EnglishName: english,

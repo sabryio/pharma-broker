@@ -13,13 +13,16 @@ func buildParsePrompt(messages []*domain.RawMessage, mappings map[string]string)
 
 	sb.WriteString(systemPrompt)
 
-	// Inject dynamic mappings if available
+	// Inject dynamic mappings in GoTOON format (tabular array) for token efficiency
+	// Format: mapping[N]{arabic,english}:
 	if len(mappings) > 0 {
-		sb.WriteString("\n\n### KNOWN MEDICATION TRANSLATIONS (Priority)\n")
-		sb.WriteString("Use these specific translations if encountered:\n")
+		sb.WriteString(fmt.Sprintf("\n\nmapping[%d]{arabic,english}:\n", len(mappings)))
 		for arabic, english := range mappings {
-			sb.WriteString(fmt.Sprintf("- %s: %s\n", arabic, english))
+			// Simple CSV-like lines, no quotes needed unless special chars (rare in these simple names)
+			sb.WriteString(fmt.Sprintf("  %s,%s\n", arabic, english))
 		}
+		sb.WriteString("\n")
+		sb.WriteString("Use the mapping table above to translate Arabic medication names to English.\n")
 	}
 
 	sb.WriteString("\n\n")
@@ -32,7 +35,6 @@ func buildParsePrompt(messages []*domain.RawMessage, mappings map[string]string)
 		sb.WriteString(fmt.Sprintf("Content:\n%s\n\n", msg.Content))
 	}
 
-	sb.WriteString("=== END MESSAGES ===\n\n")
 	sb.WriteString("=== END MESSAGES ===\n\n")
 	sb.WriteString(parsingExamples)
 
@@ -57,11 +59,17 @@ Your task is to extract medication OFFERS and REQUESTS from informal Arabic text
 ### Medication Extraction
 - Extract brand names and generic names
 - **CRITICAL: Do NOT guess generic names or active ingredients.**
+- **CRITICAL: Translation Map Priority**:
+  - Check the "KNOWN MEDICATION TRANSLATIONS" list below.
+  - If a medication name **CONTAINS** a key from the map, replace that part with the English name.
+  - Example: Input "بنتازا أقراص" -> Map has "بنتازا":"Pentasa" -> Output "Pentasa Tablets" (or "Pentasa أقراص").
+  - Do NOT leave the brand name in Arabic if it exists in the map.
+
 - **CRITICAL: Translate/Transliterate the brand name EXACTLY as written.**
-- **CRITICAL: IF THE NAME IS IN ARABIC, TRANSLITERATE IT TO ENGLISH LETTERS.**
+- **CRITICAL: IF THE NAME IS IN ARABIC AND NOT IN THE MAP, TRANSLITERATE IT.**
 - Example: "Suvreza" -> "سوفريزا"
-- Example: "Mounjaro" -> "Mounjaro" (NOT "Tirzepatide", NOT "Moxifloxacin")
-- Example: "Panadol" -> "Panadol" (NOT "Paracetamol")
+- Example: "Mounjaro" -> "Mounjaro" (NOT "Tirzepatide")
+- Example: "Panadol" -> "Panadol"
 - Normalize common misspellings
 - Include dosage forms: tablets, capsules, ampules, syrup, etc.
 - Include strength when mentioned: 500mg, 1g, etc.
