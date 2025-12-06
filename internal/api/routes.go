@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 )
 
@@ -37,6 +38,9 @@ func NewRouter(handlers *Handlers, log zerolog.Logger) http.Handler {
 
 	// SSE endpoint
 	mux.HandleFunc("GET /api/events", handlers.sseHub.ServeHTTP)
+
+	// Metrics endpoint
+	mux.Handle("GET /metrics", promhttp.Handler())
 
 	// Static files (dashboard) - with SPA fallback
 	staticFS, err := fs.Sub(staticFiles, "static/dist")

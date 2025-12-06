@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
+	"pharmabroker/internal/metrics"
 	"strings"
 	"sync"
 	"time"
@@ -262,12 +263,15 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 		Int("tokens", tokenCount).
 		Msg("Sending messages to Docker Model Runner")
 
+	metrics.AITokensUsed.Observe(float64(tokenCount))
+
 	// Create timeout context
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.RequestTimeout)
 	defer cancel()
 
 	// Retry logic with exponential backoff wrapped in Circuit Breaker
 	var result *openai.ChatCompletion
+	start := time.Now()
 
 	cbResult, err := c.cb.Execute(func() (interface{}, error) {
 		var apiResult *openai.ChatCompletion
@@ -313,6 +317,13 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 		}
 		return nil, fmt.Errorf("failed after %d attempts: %w", c.cfg.MaxRetries, lastErr)
 	})
+
+	metrics.AIRequestDuration.WithLabelValues(func() string {
+		if err != nil {
+			return "error"
+		}
+		return "success"
+	}()).Observe(time.Since(start).Seconds())
 
 	if err != nil {
 		return nil, err
