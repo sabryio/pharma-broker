@@ -1,6 +1,17 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// MatchQueueItem represents a job in the persistent queue
+type MatchQueueItem struct {
+	ID         string
+	SourceType string // "OFFER" or "REQUEST"
+	SourceID   string
+	CreatedAt  time.Time
+}
 
 // RawMessageRepository handles raw message storage
 type RawMessageRepository interface {
@@ -64,5 +75,13 @@ type MedicationMappingRepository interface {
 	GetByArabicName(ctx context.Context, arabicName string) (*MedicationMapping, error)
 	GetAll(ctx context.Context) ([]*MedicationMapping, error)
 	Search(ctx context.Context, query string) ([]*MedicationMapping, error)
+	Count(ctx context.Context) (int, error)
+}
+
+// MatchQueueRepository handles persistent job queue
+type MatchQueueRepository interface {
+	Enqueue(ctx context.Context, item *MatchQueueItem) error
+	DequeueBatch(ctx context.Context, limit int) ([]*MatchQueueItem, error)
+	Delete(ctx context.Context, id string) error
 	Count(ctx context.Context) (int, error)
 }

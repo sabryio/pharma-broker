@@ -273,4 +273,17 @@ var migrations = []migration{
 			SELECT rowid, arabic_name, english_name FROM medication_mappings;
 		`,
 	},
+	{
+		version: 7,
+		sql: `
+			-- Persistent Queue for matching jobs to ensure reliability
+			CREATE TABLE match_queue (
+				id TEXT PRIMARY KEY,
+				source_type TEXT NOT NULL, -- 'OFFER' or 'REQUEST'
+				source_id TEXT NOT NULL,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE INDEX idx_match_queue_created ON match_queue(created_at);
+		`,
+	},
 }

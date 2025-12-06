@@ -176,3 +176,36 @@ func (m *MockMedicationRepo) GetByArabicName(ctx context.Context, arabicName str
 	return nil, nil
 }
 func (m *MockMedicationRepo) Count(ctx context.Context) (int, error) { return 0, nil }
+
+// MockMatchQueueRepo
+type MockMatchQueueRepo struct {
+	OnEnqueue      func(ctx context.Context, item *domain.MatchQueueItem) error
+	OnDequeueBatch func(ctx context.Context, limit int) ([]*domain.MatchQueueItem, error)
+	OnDelete       func(ctx context.Context, id string) error
+	OnCount        func(ctx context.Context) (int, error)
+}
+
+func (m *MockMatchQueueRepo) Enqueue(ctx context.Context, item *domain.MatchQueueItem) error {
+	if m.OnEnqueue != nil {
+		return m.OnEnqueue(ctx, item)
+	}
+	return nil
+}
+func (m *MockMatchQueueRepo) DequeueBatch(ctx context.Context, limit int) ([]*domain.MatchQueueItem, error) {
+	if m.OnDequeueBatch != nil {
+		return m.OnDequeueBatch(ctx, limit)
+	}
+	return nil, nil
+}
+func (m *MockMatchQueueRepo) Delete(ctx context.Context, id string) error {
+	if m.OnDelete != nil {
+		return m.OnDelete(ctx, id)
+	}
+	return nil
+}
+func (m *MockMatchQueueRepo) Count(ctx context.Context) (int, error) {
+	if m.OnCount != nil {
+		return m.OnCount(ctx)
+	}
+	return 0, nil
+}

@@ -3,12 +3,12 @@ package ai
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
 
-	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 )
 
@@ -17,27 +17,20 @@ func TestParser_ProcessBatch_HappyPath(t *testing.T) {
 	mockRawRepo := &MockRawMessageRepo{}
 	mockOfferRepo := &MockOfferRepo{}
 	mockRequestRepo := &MockRequestRepo{}
-	mockMatchRepo := &MockMatchRepo{}
 	mockMedRepo := &MockMedicationRepo{}
 	mockAI := &MockAIProvider{}
-
-	// Setup Config
-	cfg := &config.ParserConfig{
-		BatchInterval:     100 * time.Millisecond,
-		MatchThreshold:    0.5,
-		MessageBufferSize: 10,
-	}
+	mockQueueRepo := &MockMatchQueueRepo{}
 
 	// Create Parser
+	// Create Parser
 	parser := NewParser(
-		mockAI,
 		mockRawRepo,
+		mockAI,
 		mockOfferRepo,
 		mockRequestRepo,
-		mockMatchRepo,
 		mockMedRepo,
-		make(chan *domain.RawMessage),
-		cfg,
+		mockQueueRepo,
+		nil,
 		zerolog.Nop(),
 	)
 
@@ -110,21 +103,18 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 	mockRawRepo := &MockRawMessageRepo{}
 	mockOfferRepo := &MockOfferRepo{}
 	mockRequestRepo := &MockRequestRepo{}
-	mockMatchRepo := &MockMatchRepo{}
 	mockMedRepo := &MockMedicationRepo{}
 	mockAI := &MockAIProvider{}
-
-	cfg := &config.ParserConfig{BatchInterval: 100 * time.Millisecond}
+	mockQueueRepo := &MockMatchQueueRepo{}
 
 	parser := NewParser(
-		mockAI,
 		mockRawRepo,
+		mockAI,
 		mockOfferRepo,
 		mockRequestRepo,
-		mockMatchRepo,
 		mockMedRepo,
-		make(chan *domain.RawMessage),
-		cfg,
+		mockQueueRepo,
+		nil,
 		zerolog.Nop(),
 	)
 
@@ -147,7 +137,24 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 		return nil
 	}
 
-	// Execute
+	// Expect Enqueue instead of internal channel
+	mockQueueRepo.OnEnqueue = func(ctx context.Context, item *domain.MatchQueueItem) error {
+		if item.SourceType == "OFFER" && item.SourceID == "offer-123" {
+			return nil
+		}
+		return fmt.Errorf("unexpected enqueue")
+	}
+
+	mockOfferRepo.OnSave = func(ctx context.Context, offer *domain.Offer) error {
+		offer.ID = "offer-123" // Simulate ID generation
+		return nil
+	}
+
+	// Execute via ProcessMessage (new entry point)
+	parser.ProcessMessage(context.Background(), msg)
+
+	// Wait for workers (async) - in unit test, we might typically call processBatch directly
+	// But let's verify processBatch logic directly for simplicity as before
 	parser.processBatch(context.Background(), []*domain.RawMessage{msg})
 }
 
@@ -180,10 +187,13 @@ func TestGenerateTrigrams(t *testing.T) {
 func TestParser_GetRelevantMappings_Fuzzy(t *testing.T) {
 	// Setup Mocks
 	mockMedRepo := &MockMedicationRepo{}
+	mockQueueRepo := &MockMatchQueueRepo{}
 
 	parser := &Parser{
 		log:            zerolog.Nop(),
 		medicationRepo: mockMedRepo,
+		matchQueueRepo: mockQueueRepo,
+		// matchQueueRepo not used here
 	}
 
 	messages := []*domain.RawMessage{

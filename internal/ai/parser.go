@@ -21,6 +21,22 @@ type SSEBroadcaster interface {
 	BroadcastNewMatch(matchID string, score float64)
 }
 
+// ProcessMessage queues a message for processing
+func (p *Parser) ProcessMessage(ctx context.Context, msg *domain.RawMessage) {
+	select {
+	case p.inputChan <- inputJob{ctx: ctx, msg: msg}:
+		// Queued
+	default:
+		p.log.Warn().Str("msg_id", msg.ID).Msg("Input queue full, dropping message")
+	}
+}
+
+// inputJob represents a processing job for the worker pool
+type inputJob struct {
+	ctx context.Context
+	msg *domain.RawMessage
+}
+
 // Parser processes raw messages and creates offers/requests
 type Parser struct {
 	aiProvider  AIProvider
@@ -38,39 +54,44 @@ type Parser struct {
 	batchSize          int
 	stopChan           chan struct{}
 	wg                 sync.WaitGroup
-	isAutoParseEnabled func() bool                // Check if auto-parse is enabled
-	matchJobChan       chan func(context.Context) // Worker pool for matching
+	isAutoParseEnabled func() bool // Check if auto-parse is enabled
+	matchQueueRepo     domain.MatchQueueRepository
+
+	// Workers
+	workers     int
+	inputChan   chan inputJob
+	matchTicker *time.Ticker
+	matchStop   chan struct{}
 
 	// Real-time updates
 	sseBroadcaster SSEBroadcaster
 }
 
-// NewParser creates a new message parser
+// NewParser creates a new Parser instance
 func NewParser(
-	aiProvider AIProvider,
 	rawMsgRepo domain.RawMessageRepository,
+	aiProvider AIProvider,
 	offerRepo domain.OfferRepository,
 	requestRepo domain.RequestRepository,
-	matchRepo domain.MatchRepository,
 	medicationRepo domain.MedicationMappingRepository,
-	msgChan <-chan *domain.RawMessage,
-	parserCfg *config.ParserConfig,
-	log zerolog.Logger,
+	matchQueueRepo domain.MatchQueueRepository,
+	broadcaster SSEBroadcaster,
+	logger zerolog.Logger,
 ) *Parser {
 	return &Parser{
-		aiProvider:         aiProvider,
 		rawMsgRepo:         rawMsgRepo,
+		aiProvider:         aiProvider,
 		offerRepo:          offerRepo,
 		requestRepo:        requestRepo,
-		matchRepo:          matchRepo,
 		medicationRepo:     medicationRepo,
-		log:                log.With().Str("component", "parser").Logger(),
-		parserCfg:          parserCfg,
-		msgChan:            msgChan,
-		batchSize:          parserCfg.MessageBufferSize / 100, // Reasonable batch size
-		stopChan:           make(chan struct{}),
-		isAutoParseEnabled: func() bool { return true },           // Default: always parse
-		matchJobChan:       make(chan func(context.Context), 100), // Buffer for match jobs
+		matchQueueRepo:     matchQueueRepo,
+		sseBroadcaster:     broadcaster,
+		log:                logger,
+		workers:            10, // Default workers for input processing
+		inputChan:          make(chan inputJob, 100),
+		matchTicker:        time.NewTicker(2 * time.Second), // Poll queue every 2s
+		matchStop:          make(chan struct{}),
+		isAutoParseEnabled: func() bool { return true }, // Default: always parse
 	}
 }
 
@@ -93,7 +114,7 @@ func (p *Parser) Start(ctx context.Context) {
 	workerCount := 10 // Limit concurrent matching logic
 	for i := 0; i < workerCount; i++ {
 		p.wg.Add(1)
-		go p.matchWorker(ctx)
+		go p.matchWorkerLoop(ctx)
 	}
 }
 
@@ -103,16 +124,49 @@ func (p *Parser) Stop() {
 	p.wg.Wait()
 }
 
-func (p *Parser) matchWorker(ctx context.Context) {
-	defer p.wg.Done()
+// matchWorkerLoop continuously polls the DB for new matching jobs
+func (p *Parser) matchWorkerLoop(ctx context.Context) {
+	defer p.wg.Done() // Changed from p.workerWg.Done() to p.wg.Done() to match Start()
+	p.log.Info().Msg("Match Worker Queue Poller started")
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-p.stopChan:
+		case <-p.matchStop:
 			return
-		case job := <-p.matchJobChan:
-			job(ctx)
+		case <-p.matchTicker.C:
+			// Poll for jobs
+			jobs, err := p.matchQueueRepo.DequeueBatch(ctx, 10) // Process 10 at a time
+			if err != nil {
+				p.log.Error().Err(err).Msg("Failed to dequeue match jobs")
+				continue
+			}
+
+			if len(jobs) > 0 {
+				p.log.Debug().Int("count", len(jobs)).Msg("Processing match jobs from queue")
+			}
+
+			for _, job := range jobs {
+				// Process matched job
+				switch job.SourceType {
+				case "OFFER":
+					offer, err := p.offerRepo.GetByID(ctx, job.SourceID)
+					if err == nil && offer != nil {
+						p.findMatchesForOffer(ctx, offer)
+					}
+				case "REQUEST":
+					req, err := p.requestRepo.GetByID(ctx, job.SourceID)
+					if err == nil && req != nil {
+						p.findMatchesForRequest(ctx, req)
+					}
+				}
+
+				// Delete from queue after processing (or if source not found)
+				if err := p.matchQueueRepo.Delete(ctx, job.ID); err != nil {
+					p.log.Error().Err(err).Str("job_id", job.ID).Msg("Failed to delete match job")
+				}
+			}
 		}
 	}
 }
@@ -278,16 +332,16 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 					if p.sseBroadcaster != nil {
 						p.sseBroadcaster.BroadcastNewOffer(offer.ID, offer.Medication)
 					}
-					metrics.OffersCreated.Inc()
-
-					// Find matching requests
-					select {
-					case p.matchJobChan <- func(ctx context.Context) {
-						p.findMatchesForOffer(ctx, offer)
-					}:
-					default:
-						p.log.Warn().Str("offer_id", offer.ID).Msg("Match job queue full, skipping async matching")
+					// Queue for matching (Persistent)
+					err := p.matchQueueRepo.Enqueue(ctx, &domain.MatchQueueItem{
+						SourceType: "OFFER",
+						SourceID:   offer.ID,
+					})
+					if err != nil {
+						p.log.Error().Err(err).Str("offer_id", offer.ID).Msg("Failed to enqueue match job for offer")
 					}
+
+					metrics.OffersCreated.Inc()
 				}
 			}
 
@@ -309,13 +363,13 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 					}
 					metrics.RequestsCreated.Inc()
 
-					// Find matching offers
-					select {
-					case p.matchJobChan <- func(ctx context.Context) {
-						p.findMatchesForRequest(ctx, request)
-					}:
-					default:
-						p.log.Warn().Str("request_id", request.ID).Msg("Match job queue full, skipping async matching")
+					// Queue for matching (Persistent)
+					err := p.matchQueueRepo.Enqueue(ctx, &domain.MatchQueueItem{
+						SourceType: "REQUEST",
+						SourceID:   request.ID,
+					})
+					if err != nil {
+						p.log.Error().Err(err).Str("request_id", request.ID).Msg("Failed to enqueue match job for request")
 					}
 				}
 			}

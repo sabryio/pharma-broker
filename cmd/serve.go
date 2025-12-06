@@ -65,6 +65,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	offerRepo := storage.NewOfferRepo(db)
 	requestRepo := storage.NewRequestRepo(db)
 	matchRepo := storage.NewMatchRepo(db)
+	matchQueueRepo := storage.NewMatchQueueRepo(db)
 	groupRepo := storage.NewGroupRepo(db)
 	statsRepo := storage.NewStatsRepo(db)
 	medicationRepo := storage.NewMedicationMappingRepo(db)
@@ -109,16 +110,18 @@ func runServe(cmd *cobra.Command, args []string) {
 	listener := whatsapp.NewListener(log, rawMsgRepo, groupRepo)
 	waManager.RegisterHandler(listener)
 
+	// Create SSE hub for real-time updates (Needed BEFORE parser)
+	sseHub := api.NewSSEHub()
+
 	// Create AI parser
 	parser := ai.NewParser(
-		aiProvider,
 		rawMsgRepo,
+		aiProvider,
 		offerRepo,
 		requestRepo,
-		matchRepo,
 		medicationRepo,
-		listener.MessageChannel(),
-		&cfg.Parser,
+		matchQueueRepo,
+		sseHub, // Pass hub directly
 		log,
 	)
 
@@ -140,6 +143,14 @@ func runServe(cmd *cobra.Command, args []string) {
 		if err != nil {
 			return true // Default to skip on error
 		}
+		// Start message feeding loop
+		go func() {
+			msgChan := listener.MessageChannel()
+			for msg := range msgChan {
+				parser.ProcessMessage(context.Background(), msg)
+			}
+		}()
+
 		return config.SkipOwnMessages
 	})
 
@@ -193,12 +204,6 @@ func runServe(cmd *cobra.Command, args []string) {
 			}
 		}
 	}()
-
-	// Create SSE hub for real-time updates
-	sseHub := api.NewSSEHub()
-
-	// Wire SSE broadcaster to parser for real-time updates
-	parser.SetSSEBroadcaster(sseHub)
 
 	// Create API handlers
 	handlers := api.NewHandlers(
