@@ -2,178 +2,90 @@ package storage
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
-	"sync"
-	"time"
+	"fmt"
+
+	"pharmabroker/internal/storage/models"
 )
 
-// Cache TTL for config values
-const configCacheTTL = 30 * time.Second
-
-// ConfigRepo stores and retrieves dynamic configuration with caching
-type ConfigRepo struct {
-	db *DB
-
-	// Cache
-	mu           sync.RWMutex
-	cachedConfig *AppConfig
-	cacheTime    time.Time
+// GormConfigRepo implements configuration storage using GORM
+type GormConfigRepo struct {
+	db *GormDB
 }
 
-// NewConfigRepo creates a new config repository
-func NewConfigRepo(db *DB) *ConfigRepo {
-	return &ConfigRepo{db: db}
+// NewGormConfigRepo creates a new GORM-based config repository
+func NewGormConfigRepo(db *GormDB) *GormConfigRepo {
+	return &GormConfigRepo{db: db}
 }
 
-// Config represents system configuration
-type Config struct {
-	Key       string    `json:"key"`
-	Value     string    `json:"value"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// AppConfig represents all configurable settings
-type AppConfig struct {
-	AutoParseEnabled       bool    `json:"auto_parse_enabled"`
-	SkipOwnMessages        bool    `json:"skip_own_messages"`
-	MatchThreshold         float64 `json:"match_threshold"`
-	SemanticMatchThreshold float64 `json:"semantic_match_threshold"`
-	BatchSize              int     `json:"batch_size"`
-	ProcessDelaySeconds    int     `json:"process_delay_seconds"`
-	SystemPrompt           string  `json:"system_prompt,omitempty"`
-	ResponseFormat         string  `json:"response_format,omitempty"`
-	AdminPhone             string  `json:"admin_phone,omitempty"`
-}
-
-// DefaultConfig returns sensible defaults
-func DefaultConfig() *AppConfig {
-	return &AppConfig{
-		AutoParseEnabled:       true, // Parse messages by default
-		SkipOwnMessages:        true, // Skip own messages by default
-		MatchThreshold:         0.5,
-		SemanticMatchThreshold: 0.85, // Strong semantic match by default
-		BatchSize:              10,
-		ProcessDelaySeconds:    5,
-		SystemPrompt:           "",
-		AdminPhone:             "",
-	}
-}
-
-// Get retrieves a config value
-func (r *ConfigRepo) Get(ctx context.Context, key string) (string, error) {
-	var value string
-	err := r.db.Conn().QueryRowContext(ctx,
-		"SELECT value FROM config WHERE key = ?", key).Scan(&value)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
-	return value, err
-}
-
-// Set stores a config value and invalidates cache
-func (r *ConfigRepo) Set(ctx context.Context, key, value string) error {
-	_, err := r.db.Conn().ExecContext(ctx, `
-		INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-	`, key, value, time.Now())
-
-	if err == nil {
-		// Invalidate cache on successful update
-		r.mu.Lock()
-		r.cachedConfig = nil
-		r.mu.Unlock()
-	}
-
-	return err
-}
-
-// GetAll retrieves all config as AppConfig (with caching)
-func (r *ConfigRepo) GetAll(ctx context.Context) (*AppConfig, error) {
-	// Check cache first
-	r.mu.RLock()
-	if r.cachedConfig != nil && time.Since(r.cacheTime) < configCacheTTL {
-		cached := r.cachedConfig
-		r.mu.RUnlock()
-		return cached, nil
-	}
-	r.mu.RUnlock()
-
-	// Cache miss or expired - fetch from database
-	config := DefaultConfig()
-
-	rows, err := r.db.Conn().QueryContext(ctx, "SELECT key, value FROM config")
+// GetAll retrieves all configuration as AppConfig
+func (r *GormConfigRepo) GetAll(ctx context.Context) (*AppConfig, error) {
+	var configs []models.Config
+	err := r.db.DB.WithContext(ctx).Find(&configs).Error
 	if err != nil {
-		return config, err
+		return nil, err
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var key, value string
-		if err := rows.Scan(&key, &value); err != nil {
-			continue
-		}
+	cfg := &AppConfig{
+		AutoParseEnabled: true, // Default
+		SkipOwnMessages:  true, // Default
+	}
 
-		switch key {
+	for _, c := range configs {
+		switch c.Key {
 		case "auto_parse_enabled":
-			var v bool
-			if json.Unmarshal([]byte(value), &v) == nil {
-				config.AutoParseEnabled = v
-			}
+			cfg.AutoParseEnabled = c.Value == "true"
 		case "skip_own_messages":
-			var v bool
-			if json.Unmarshal([]byte(value), &v) == nil {
-				config.SkipOwnMessages = v
-			}
-		case "match_threshold":
-			var v float64
-			if json.Unmarshal([]byte(value), &v) == nil {
-				config.MatchThreshold = v
-			}
-		case "batch_size":
-			var v int
-			if json.Unmarshal([]byte(value), &v) == nil {
-				config.BatchSize = v
-			}
-		case "process_delay_seconds":
-			var v int
-			if json.Unmarshal([]byte(value), &v) == nil {
-				config.ProcessDelaySeconds = v
-			}
-		case "system_prompt":
-			config.SystemPrompt = value
-		case "response_format":
-			config.ResponseFormat = value
+			cfg.SkipOwnMessages = c.Value == "true"
 		case "admin_phone":
-			config.AdminPhone = value
+			cfg.AdminPhone = c.Value
 		}
 	}
 
-	// Update cache
-	r.mu.Lock()
-	r.cachedConfig = config
-	r.cacheTime = time.Now()
-	r.mu.Unlock()
-
-	return config, nil
+	return cfg, nil
 }
 
-// UpdateFromMap updates config from a map of key-value pairs
-func (r *ConfigRepo) UpdateFromMap(ctx context.Context, updates map[string]interface{}) error {
-	for key, value := range updates {
-		var strValue string
-		switch v := value.(type) {
-		case string:
-			strValue = v
-		default:
-			data, err := json.Marshal(v)
-			if err != nil {
-				continue
-			}
-			strValue = string(data)
-		}
+// Set stores a configuration key-value pair
+func (r *GormConfigRepo) Set(ctx context.Context, key, value string) error {
+	return r.db.DB.WithContext(ctx).Save(&models.Config{
+		Key:   key,
+		Value: value,
+	}).Error
+}
 
-		if err := r.Set(ctx, key, strValue); err != nil {
+// Get retrieves a configuration value by key
+func (r *GormConfigRepo) Get(ctx context.Context, key string) (string, error) {
+	var config models.Config
+	err := r.db.DB.WithContext(ctx).Where("key = ?", key).First(&config).Error
+	if err != nil {
+		return "", err
+	}
+	return config.Value, nil
+}
+
+// Delete removes a configuration key
+func (r *GormConfigRepo) Delete(ctx context.Context, key string) error {
+	return r.db.DB.WithContext(ctx).
+		Where("key = ?", key).
+		Delete(&models.Config{}).Error
+}
+
+// UpdateFromMap updates multiple config values from a map
+func (r *GormConfigRepo) UpdateFromMap(ctx context.Context, values map[string]any) error {
+	for key, val := range values {
+		var strVal string
+		switch v := val.(type) {
+		case string:
+			strVal = v
+		case bool:
+			if v {
+				strVal = "true"
+			} else {
+				strVal = "false"
+			}
+		default:
+			strVal = fmt.Sprintf("%v", v)
+		}
+		if err := r.Set(ctx, key, strVal); err != nil {
 			return err
 		}
 	}

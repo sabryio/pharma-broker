@@ -5,22 +5,29 @@ import (
 	"time"
 
 	"pharmabroker/internal/domain"
+	"pharmabroker/internal/storage/models"
 )
 
-// LeaderboardRepo implements storage for demand leaderboard
-type LeaderboardRepo struct {
-	db *DB
+// GormLeaderboardRepo implements storage for demand leaderboard using GORM
+type GormLeaderboardRepo struct {
+	db *GormDB
 }
 
-// NewLeaderboardRepo creates a new LeaderboardRepo
-func NewLeaderboardRepo(db *DB) *LeaderboardRepo {
-	return &LeaderboardRepo{db: db}
+// NewGormLeaderboardRepo creates a new GORM-based LeaderboardRepo
+func NewGormLeaderboardRepo(db *GormDB) *GormLeaderboardRepo {
+	return &GormLeaderboardRepo{db: db}
 }
 
-// GetTopDemand returns medications with highest demand ratio
-func (r *LeaderboardRepo) GetTopDemand(ctx context.Context, limit int) ([]*domain.DemandStats, error) {
-	// Query active requests and offers directly for real-time stats
-	query := `
+// GetTopDemand returns medications with highest demand ratio (complex query - raw SQL)
+func (r *GormLeaderboardRepo) GetTopDemand(ctx context.Context, limit int) ([]*domain.DemandStats, error) {
+	var results []struct {
+		Medication   string
+		RequestCount int
+		OfferCount   int
+		DemandRatio  float64
+	}
+
+	err := r.db.DB.WithContext(ctx).Raw(`
 		SELECT 
 			r.medication,
 			COUNT(DISTINCT r.id) as request_count,
@@ -39,36 +46,40 @@ func (r *LeaderboardRepo) GetTopDemand(ctx context.Context, limit int) ([]*domai
 		GROUP BY r.medication
 		ORDER BY demand_ratio DESC
 		LIMIT ?
-	`
-	rows, err := r.db.Reader().QueryContext(ctx, query, limit)
+	`, limit).Scan(&results).Error
+
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var result []*domain.DemandStats
-	for rows.Next() {
-		stat := &domain.DemandStats{}
-		if err := rows.Scan(&stat.Medication, &stat.RequestCount, &stat.OfferCount, &stat.DemandRatio); err != nil {
-			return nil, err
+	stats := make([]*domain.DemandStats, len(results))
+	for i, r := range results {
+		trend := "STABLE"
+		if r.DemandRatio > 2.0 {
+			trend = "UP"
+		} else if r.DemandRatio < 0.5 {
+			trend = "DOWN"
 		}
-		// Determine trend (simplified: no historical data yet)
-		stat.Trend = "STABLE"
-		if stat.DemandRatio > 2.0 {
-			stat.Trend = "UP" // High demand
-		} else if stat.DemandRatio < 0.5 {
-			stat.Trend = "DOWN" // Low demand
+		stats[i] = &domain.DemandStats{
+			Medication:   r.Medication,
+			RequestCount: r.RequestCount,
+			OfferCount:   r.OfferCount,
+			DemandRatio:  r.DemandRatio,
+			Trend:        trend,
 		}
-		result = append(result, stat)
 	}
-	return result, rows.Err()
+	return stats, nil
 }
 
 // GetDemandForMedication returns demand stats for a specific medication
-func (r *LeaderboardRepo) GetDemandForMedication(ctx context.Context, medication string) (*domain.DemandStats, error) {
-	query := `
+func (r *GormLeaderboardRepo) GetDemandForMedication(ctx context.Context, medication string) (*domain.DemandStats, error) {
+	var result struct {
+		RequestCount int
+		OfferCount   int
+	}
+
+	err := r.db.DB.WithContext(ctx).Raw(`
 		SELECT 
-			? as medication,
 			COALESCE(r.request_count, 0) as request_count,
 			COALESCE(o.offer_count, 0) as offer_count
 		FROM (SELECT 1) dummy
@@ -82,23 +93,25 @@ func (r *LeaderboardRepo) GetDemandForMedication(ctx context.Context, medication
 			FROM offers 
 			WHERE LOWER(medication) = LOWER(?) AND status = 'ACTIVE'
 		) o ON 1=1
-	`
-	stat := &domain.DemandStats{}
-	if err := r.db.Reader().QueryRowContext(ctx, query, medication, medication, medication).Scan(
-		&stat.Medication, &stat.RequestCount, &stat.OfferCount,
-	); err != nil {
+	`, medication, medication).Scan(&result).Error
+
+	if err != nil {
 		return nil, err
 	}
 
-	// Calculate demand ratio
+	stat := &domain.DemandStats{
+		Medication:   medication,
+		RequestCount: result.RequestCount,
+		OfferCount:   result.OfferCount,
+		Trend:        "STABLE",
+	}
+
 	if stat.OfferCount > 0 {
 		stat.DemandRatio = float64(stat.RequestCount) / float64(stat.OfferCount)
 	} else if stat.RequestCount > 0 {
-		stat.DemandRatio = 999.0 // Very high demand, no supply
+		stat.DemandRatio = 999.0
 	}
 
-	// Determine trend
-	stat.Trend = "STABLE"
 	if stat.DemandRatio > 2.0 {
 		stat.Trend = "UP"
 	} else if stat.DemandRatio < 0.5 {
@@ -109,15 +122,14 @@ func (r *LeaderboardRepo) GetDemandForMedication(ctx context.Context, medication
 }
 
 // RefreshLeaderboard updates the materialized leaderboard table
-func (r *LeaderboardRepo) RefreshLeaderboard(ctx context.Context) error {
+func (r *GormLeaderboardRepo) RefreshLeaderboard(ctx context.Context) error {
 	// Delete old entries
-	_, err := r.db.Conn().ExecContext(ctx, `DELETE FROM demand_leaderboard`)
-	if err != nil {
+	if err := r.db.DB.WithContext(ctx).Where("1=1").Delete(&models.DemandLeaderboard{}).Error; err != nil {
 		return err
 	}
 
 	// Insert fresh data
-	query := `
+	return r.db.DB.WithContext(ctx).Exec(`
 		INSERT INTO demand_leaderboard (medication, request_count, offer_count, demand_ratio, last_updated)
 		SELECT 
 			r.medication,
@@ -136,45 +148,47 @@ func (r *LeaderboardRepo) RefreshLeaderboard(ctx context.Context) error {
 		) o ON LOWER(r.medication) = LOWER(o.medication)
 		WHERE r.status = 'ACTIVE'
 		GROUP BY r.medication
-	`
-	_, err = r.db.Conn().ExecContext(ctx, query)
-	return err
+	`).Error
 }
 
 // GetCachedLeaderboard returns the cached leaderboard (for fast reads)
-func (r *LeaderboardRepo) GetCachedLeaderboard(ctx context.Context, limit int) ([]*domain.DemandStats, error) {
-	query := `
-		SELECT medication, request_count, offer_count, demand_ratio
-		FROM demand_leaderboard
-		ORDER BY demand_ratio DESC
-		LIMIT ?
-	`
-	rows, err := r.db.Reader().QueryContext(ctx, query, limit)
+func (r *GormLeaderboardRepo) GetCachedLeaderboard(ctx context.Context, limit int) ([]*domain.DemandStats, error) {
+	var leaderboard []models.DemandLeaderboard
+	err := r.db.DB.WithContext(ctx).
+		Order("demand_ratio DESC").
+		Limit(limit).
+		Find(&leaderboard).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var result []*domain.DemandStats
-	for rows.Next() {
-		stat := &domain.DemandStats{}
-		if err := rows.Scan(&stat.Medication, &stat.RequestCount, &stat.OfferCount, &stat.DemandRatio); err != nil {
-			return nil, err
+	stats := make([]*domain.DemandStats, len(leaderboard))
+	for i, lb := range leaderboard {
+		trend := "STABLE"
+		if lb.DemandRatio > 2.0 {
+			trend = "UP"
+		} else if lb.DemandRatio < 0.5 {
+			trend = "DOWN"
 		}
-		stat.Trend = "STABLE"
-		if stat.DemandRatio > 2.0 {
-			stat.Trend = "UP"
-		} else if stat.DemandRatio < 0.5 {
-			stat.Trend = "DOWN"
+		stats[i] = &domain.DemandStats{
+			Medication:   lb.Medication,
+			RequestCount: lb.RequestCount,
+			OfferCount:   lb.OfferCount,
+			DemandRatio:  lb.DemandRatio,
+			Trend:        trend,
 		}
-		result = append(result, stat)
 	}
-	return result, rows.Err()
+	return stats, nil
 }
 
 // GetLastRefreshTime returns when the leaderboard was last updated
-func (r *LeaderboardRepo) GetLastRefreshTime(ctx context.Context) (time.Time, error) {
-	var lastUpdated time.Time
-	err := r.db.Reader().QueryRowContext(ctx, `SELECT MAX(last_updated) FROM demand_leaderboard`).Scan(&lastUpdated)
-	return lastUpdated, err
+func (r *GormLeaderboardRepo) GetLastRefreshTime(ctx context.Context) (time.Time, error) {
+	var result struct {
+		LastUpdated time.Time
+	}
+	err := r.db.DB.WithContext(ctx).
+		Model(&models.DemandLeaderboard{}).
+		Select("MAX(last_updated) as last_updated").
+		Scan(&result).Error
+	return result.LastUpdated, err
 }

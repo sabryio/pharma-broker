@@ -315,7 +315,9 @@ func TestGetConfig_NotConfigured(t *testing.T) {
 func TestGetConfig_Success(t *testing.T) {
 	h := newTestHandlers()
 	h.SetConfigRepo(&mockConfigRepo{config: &storage.AppConfig{
-		MatchThreshold: 0.75,
+		AutoParseEnabled: true,
+		SkipOwnMessages:  true,
+		AdminPhone:       "1234567890",
 	}})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)

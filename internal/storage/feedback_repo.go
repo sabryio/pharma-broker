@@ -5,168 +5,128 @@ import (
 	"time"
 
 	"pharmabroker/internal/domain"
-
-	"github.com/google/uuid"
+	"pharmabroker/internal/storage/models"
 )
 
-// FeedbackRepo implements storage for match feedback (learning loop)
-type FeedbackRepo struct {
-	db *DB
-}
-
-// NewFeedbackRepo creates a new FeedbackRepo
-func NewFeedbackRepo(db *DB) *FeedbackRepo {
-	return &FeedbackRepo{db: db}
-}
-
-// RecordFeedback stores an operator's decision on a match
-func (r *FeedbackRepo) RecordFeedback(ctx context.Context, fb *domain.MatchFeedback) error {
-	if fb.ID == "" {
-		fb.ID = uuid.New().String()
-	}
-	if fb.CreatedAt.IsZero() {
-		fb.CreatedAt = time.Now()
-	}
-
-	query := `
-		INSERT INTO match_feedback (id, match_id, operator_id, decision, reason, original_score, original_confidence, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err := r.db.Conn().ExecContext(ctx, query,
-		fb.ID,
-		fb.MatchID,
-		fb.OperatorID,
-		string(fb.Decision),
-		fb.Reason,
-		fb.OriginalScore,
-		fb.OriginalConfidence,
-		fb.CreatedAt,
-	)
-	return err
-}
-
-// GetFeedbackByMatch returns all feedback for a specific match
-func (r *FeedbackRepo) GetFeedbackByMatch(ctx context.Context, matchID string) ([]*domain.MatchFeedback, error) {
-	query := `
-		SELECT id, match_id, operator_id, decision, reason, original_score, original_confidence, created_at
-		FROM match_feedback
-		WHERE match_id = ?
-		ORDER BY created_at DESC
-	`
-	rows, err := r.db.Reader().QueryContext(ctx, query, matchID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var result []*domain.MatchFeedback
-	for rows.Next() {
-		fb := &domain.MatchFeedback{}
-		var decision string
-		if err := rows.Scan(&fb.ID, &fb.MatchID, &fb.OperatorID, &decision, &fb.Reason, &fb.OriginalScore, &fb.OriginalConfidence, &fb.CreatedAt); err != nil {
-			return nil, err
-		}
-		fb.Decision = domain.FeedbackDecision(decision)
-		result = append(result, fb)
-	}
-	return result, rows.Err()
-}
-
-// FeedbackAnalysis represents aggregated feedback statistics
+// FeedbackAnalysis holds aggregated feedback statistics
 type FeedbackAnalysis struct {
-	TotalFeedback      int     `json:"total_feedback"`
-	ConfirmedCount     int     `json:"confirmed_count"`
-	RejectedCount      int     `json:"rejected_count"`
-	ConfirmRate        float64 `json:"confirm_rate"` // 0-1
-	AvgConfirmedScore  float64 `json:"avg_confirmed_score"`
-	AvgRejectedScore   float64 `json:"avg_rejected_score"`
-	SuggestedThreshold float64 `json:"suggested_threshold"` // Optimal threshold based on data
+	TotalFeedback    int            `json:"total_feedback"`
+	PositiveFeedback int            `json:"positive_feedback"`
+	NegativeFeedback int            `json:"negative_feedback"`
+	AccuracyRate     float64        `json:"accuracy_rate"`
+	TopIssues        []string       `json:"top_issues"`
+	TrendByDay       map[string]int `json:"trend_by_day"`
+	FeedbackByType   map[string]int `json:"feedback_by_type"`
 }
 
-// AnalyzeFeedback aggregates feedback data for tuning
-func (r *FeedbackRepo) AnalyzeFeedback(ctx context.Context, days int) (*FeedbackAnalysis, error) {
-	query := `
-		SELECT 
-			decision,
-			COUNT(*) as count,
-			AVG(original_score) as avg_score
-		FROM match_feedback
-		WHERE created_at > datetime('now', '-' || ? || ' days')
-		GROUP BY decision
-	`
-	rows, err := r.db.Reader().QueryContext(ctx, query, days)
+// GormFeedbackRepo implements match feedback storage using GORM
+type GormFeedbackRepo struct {
+	db *GormDB
+}
+
+// NewGormFeedbackRepo creates a new GORM-based feedback repository
+func NewGormFeedbackRepo(db *GormDB) *GormFeedbackRepo {
+	return &GormFeedbackRepo{db: db}
+}
+
+// Save stores operator feedback on a match
+func (r *GormFeedbackRepo) Save(ctx context.Context, feedback *domain.MatchFeedback) error {
+	model := ToMatchFeedbackModel(feedback)
+	return r.db.DB.WithContext(ctx).Create(model).Error
+}
+
+// GetByMatchID retrieves feedback for a specific match
+func (r *GormFeedbackRepo) GetByMatchID(ctx context.Context, matchID string) ([]*domain.MatchFeedback, error) {
+	var feedbacks []models.MatchFeedback
+	err := r.db.DB.WithContext(ctx).
+		Where("match_id = ?", matchID).
+		Order("created_at DESC").
+		Find(&feedbacks).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	analysis := &FeedbackAnalysis{}
-	var confirmedSum, rejectedSum float64
+	result := make([]*domain.MatchFeedback, len(feedbacks))
+	for i := range feedbacks {
+		result[i] = ToMatchFeedbackDomain(&feedbacks[i])
+	}
+	return result, nil
+}
 
-	for rows.Next() {
-		var decision string
-		var count int
-		var avgScore float64
-		if err := rows.Scan(&decision, &count, &avgScore); err != nil {
-			return nil, err
-		}
-
-		switch domain.FeedbackDecision(decision) {
-		case domain.FeedbackConfirmed:
-			analysis.ConfirmedCount = count
-			analysis.AvgConfirmedScore = avgScore
-			confirmedSum = avgScore * float64(count)
-		case domain.FeedbackRejected:
-			analysis.RejectedCount = count
-			analysis.AvgRejectedScore = avgScore
-			rejectedSum = avgScore * float64(count)
-		}
+// GetRecent retrieves recent feedback for learning loop
+func (r *GormFeedbackRepo) GetRecent(ctx context.Context, limit int) ([]*domain.MatchFeedback, error) {
+	var feedbacks []models.MatchFeedback
+	err := r.db.DB.WithContext(ctx).
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&feedbacks).Error
+	if err != nil {
+		return nil, err
 	}
 
-	analysis.TotalFeedback = analysis.ConfirmedCount + analysis.RejectedCount
+	result := make([]*domain.MatchFeedback, len(feedbacks))
+	for i := range feedbacks {
+		result[i] = ToMatchFeedbackDomain(&feedbacks[i])
+	}
+	return result, nil
+}
+
+// AnalyzeFeedback generates aggregated statistics from feedback data
+func (r *GormFeedbackRepo) AnalyzeFeedback(ctx context.Context, days int) (*FeedbackAnalysis, error) {
+	cutoff := time.Now().AddDate(0, 0, -days)
+
+	analysis := &FeedbackAnalysis{
+		TrendByDay:     make(map[string]int),
+		FeedbackByType: make(map[string]int),
+	}
+
+	// Count total and by type
+	var feedbacks []models.MatchFeedback
+	err := r.db.DB.WithContext(ctx).
+		Where("created_at >= ?", cutoff).
+		Find(&feedbacks).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for _, fb := range feedbacks {
+		analysis.TotalFeedback++
+		// Decision is 'CONFIRMED' or 'REJECTED'
+		if fb.Decision == "CONFIRMED" {
+			analysis.PositiveFeedback++
+		} else if fb.Decision == "REJECTED" {
+			analysis.NegativeFeedback++
+		}
+
+		// Track by decision type
+		if fb.Decision != "" {
+			analysis.FeedbackByType[fb.Decision]++
+		}
+
+		// Track by day
+		day := fb.CreatedAt.Format("2006-01-02")
+		analysis.TrendByDay[day]++
+	}
+
+	// Calculate accuracy rate
 	if analysis.TotalFeedback > 0 {
-		analysis.ConfirmRate = float64(analysis.ConfirmedCount) / float64(analysis.TotalFeedback)
+		analysis.AccuracyRate = float64(analysis.PositiveFeedback) / float64(analysis.TotalFeedback) * 100
 	}
 
-	// Calculate suggested threshold: midpoint between avg confirmed and rejected scores
-	if analysis.ConfirmedCount > 0 && analysis.RejectedCount > 0 {
-		avgConfirmed := confirmedSum / float64(analysis.ConfirmedCount)
-		avgRejected := rejectedSum / float64(analysis.RejectedCount)
-		analysis.SuggestedThreshold = (avgConfirmed + avgRejected) / 2
-	} else if analysis.ConfirmedCount > 0 {
-		// Only confirmed feedback, use a lower threshold
-		analysis.SuggestedThreshold = analysis.AvgConfirmedScore * 0.8
-	} else {
-		// Default threshold
-		analysis.SuggestedThreshold = 0.5
-	}
-
-	return analysis, rows.Err()
+	return analysis, nil
 }
 
-// GetRecentFeedback returns recent feedback entries for review
-func (r *FeedbackRepo) GetRecentFeedback(ctx context.Context, limit int) ([]*domain.MatchFeedback, error) {
-	query := `
-		SELECT id, match_id, operator_id, decision, reason, original_score, original_confidence, created_at
-		FROM match_feedback
-		ORDER BY created_at DESC
-		LIMIT ?
-	`
-	rows, err := r.db.Reader().QueryContext(ctx, query, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+// GetFeedbackByMatch is an alias for GetByMatchID (interface compatibility)
+func (r *GormFeedbackRepo) GetFeedbackByMatch(ctx context.Context, matchID string) ([]*domain.MatchFeedback, error) {
+	return r.GetByMatchID(ctx, matchID)
+}
 
-	var result []*domain.MatchFeedback
-	for rows.Next() {
-		fb := &domain.MatchFeedback{}
-		var decision string
-		if err := rows.Scan(&fb.ID, &fb.MatchID, &fb.OperatorID, &decision, &fb.Reason, &fb.OriginalScore, &fb.OriginalConfidence, &fb.CreatedAt); err != nil {
-			return nil, err
-		}
-		fb.Decision = domain.FeedbackDecision(decision)
-		result = append(result, fb)
-	}
-	return result, rows.Err()
+// GetRecentFeedback is an alias for GetRecent (interface compatibility)
+func (r *GormFeedbackRepo) GetRecentFeedback(ctx context.Context, limit int) ([]*domain.MatchFeedback, error) {
+	return r.GetRecent(ctx, limit)
+}
+
+// RecordFeedback is an alias for Save (interface compatibility)
+func (r *GormFeedbackRepo) RecordFeedback(ctx context.Context, fb *domain.MatchFeedback) error {
+	return r.Save(ctx, fb)
 }

@@ -2,189 +2,89 @@ package storage
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
-	"time"
+
+	"gorm.io/gorm"
 
 	"pharmabroker/internal/domain"
-
-	"github.com/google/uuid"
+	"pharmabroker/internal/storage/models"
 )
 
-// MedicationMappingRepo implements domain.MedicationMappingRepository
-type MedicationMappingRepo struct {
-	db *DB
+// GormMedicationMappingRepo implements domain.MedicationMappingRepository using GORM
+type GormMedicationMappingRepo struct {
+	db *GormDB
 }
 
-// NewMedicationMappingRepo creates a new repository
-func NewMedicationMappingRepo(db *DB) *MedicationMappingRepo {
-	return &MedicationMappingRepo{db: db}
+// NewGormMedicationMappingRepo creates a new GORM-based medication mapping repository
+func NewGormMedicationMappingRepo(db *GormDB) *GormMedicationMappingRepo {
+	return &GormMedicationMappingRepo{db: db}
 }
 
-// Save saves a medication mapping
-func (r *MedicationMappingRepo) Save(ctx context.Context, m *domain.MedicationMapping) error {
-	synonymsJSON, err := json.Marshal(m.Synonyms)
+// Save creates or updates a medication mapping
+func (r *GormMedicationMappingRepo) Save(ctx context.Context, mapping *domain.MedicationMapping) error {
+	model := ToMedicationMappingModel(mapping)
+	return r.db.DB.WithContext(ctx).Save(model).Error
+}
+
+// GetByArabicName retrieves a mapping by Arabic name
+func (r *GormMedicationMappingRepo) GetByArabicName(ctx context.Context, arabicName string) (*domain.MedicationMapping, error) {
+	var model models.MedicationMapping
+	err := r.db.DB.WithContext(ctx).
+		Where("arabic_name = ?", arabicName).
+		First(&model).Error
 	if err != nil {
-		return err
-	}
-	if m.Synonyms == nil {
-		synonymsJSON = []byte("[]")
-	}
-
-	embeddingBytes, err := encodeEmbedding(m.Embedding)
-	if err != nil {
-		return err
-	}
-
-	query := `
-		INSERT INTO medication_mappings (id, arabic_name, english_name, synonyms, embedding, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(arabic_name) DO UPDATE SET
-			english_name = excluded.english_name,
-			synonyms = excluded.synonyms,
-			embedding = excluded.embedding,
-			updated_at = excluded.updated_at
-	`
-
-	if m.ID == "" {
-		m.ID = uuid.New().String()
-	}
-	if m.CreatedAt.IsZero() {
-		m.CreatedAt = time.Now()
-	}
-	m.UpdatedAt = time.Now()
-
-	_, err = r.db.Conn().ExecContext(ctx, query,
-		m.ID,
-		m.ArabicName,
-		m.EnglishName,
-		string(synonymsJSON),
-		embeddingBytes,
-		m.CreatedAt,
-		m.UpdatedAt,
-	)
-	return err
-}
-
-func encodeEmbedding(vec []float32) ([]byte, error) {
-	if len(vec) == 0 {
-		return nil, nil
-	}
-	// TODO: Use efficient binary encoding
-	// For now, JSON is safest for compatibility if we inspect DB
-	return json.Marshal(vec)
-}
-
-func decodeEmbedding(data []byte) ([]float32, error) {
-	if len(data) == 0 {
-		return nil, nil
-	}
-	var vec []float32
-	err := json.Unmarshal(data, &vec)
-	return vec, err
-}
-
-// GetByArabicName returns a mapping by Arabic name
-func (r *MedicationMappingRepo) GetByArabicName(ctx context.Context, arabicName string) (*domain.MedicationMapping, error) {
-	query := `SELECT id, arabic_name, english_name, synonyms, embedding, created_at, updated_at FROM medication_mappings WHERE arabic_name = ?`
-
-	row := r.db.Conn().QueryRowContext(ctx, query, arabicName)
-	var m domain.MedicationMapping
-	var synonymsJSON []byte
-	var embeddingBytes []byte
-	if err := row.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &synonymsJSON, &embeddingBytes, &m.CreatedAt, &m.UpdatedAt); err != nil {
-		if err == sql.ErrNoRows {
+		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
 		return nil, err
 	}
-	if len(synonymsJSON) > 0 {
-		if err := json.Unmarshal(synonymsJSON, &m.Synonyms); err != nil {
-			return nil, err
-		}
-	}
-	if len(embeddingBytes) > 0 {
-		vec, err := decodeEmbedding(embeddingBytes)
-		if err != nil {
-			return nil, err
-		}
-		m.Embedding = vec
-	}
-	return &m, nil
+	return ToMedicationMappingDomain(&model), nil
 }
 
-// GetAll returns all medication mappings
-func (r *MedicationMappingRepo) GetAll(ctx context.Context) ([]*domain.MedicationMapping, error) {
-	query := `SELECT id, arabic_name, english_name, synonyms, embedding, created_at, updated_at FROM medication_mappings`
-
-	rows, err := r.db.Conn().QueryContext(ctx, query)
+// GetAll retrieves all medication mappings
+func (r *GormMedicationMappingRepo) GetAll(ctx context.Context) ([]*domain.MedicationMapping, error) {
+	var mappings []models.MedicationMapping
+	err := r.db.DB.WithContext(ctx).Find(&mappings).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var mappings []*domain.MedicationMapping
-	for rows.Next() {
-		var m domain.MedicationMapping
-		var synonymsJSON []byte
-		var embeddingBytes []byte
-		if err := rows.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &synonymsJSON, &embeddingBytes, &m.CreatedAt, &m.UpdatedAt); err != nil {
-			return nil, err
-		}
-		if len(synonymsJSON) > 0 {
-			if err := json.Unmarshal(synonymsJSON, &m.Synonyms); err != nil {
-				return nil, err
-			}
-		}
-		if len(embeddingBytes) > 0 {
-			vec, err := decodeEmbedding(embeddingBytes)
-			if err != nil {
-				return nil, err
-			}
-			m.Embedding = vec
-		}
-		mappings = append(mappings, &m)
+	result := make([]*domain.MedicationMapping, len(mappings))
+	for i := range mappings {
+		result[i] = ToMedicationMappingDomain(&mappings[i])
 	}
-	return mappings, nil
+	return result, nil
 }
 
-// Count returns the number of mappings
-func (r *MedicationMappingRepo) Count(ctx context.Context) (int, error) {
-	var count int
-	err := r.db.Conn().QueryRowContext(ctx, "SELECT COUNT(*) FROM medication_mappings").Scan(&count)
-	return count, err
-}
+// Search performs FTS search on medication mappings (raw SQL for FTS5)
+func (r *GormMedicationMappingRepo) Search(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
+	var mappings []models.MedicationMapping
 
-// Search returns mappings matching the query using FTS
-func (r *MedicationMappingRepo) Search(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
-	// Use the FTS virtual table for efficient searching
-	// We select from the main table, joining with the FTS table on rowid
-	q := `
-		SELECT m.id, m.arabic_name, m.english_name, m.synonyms, m.created_at, m.updated_at
-		FROM medication_mappings m
-		JOIN medication_mappings_fts ON m.rowid = medication_mappings_fts.rowid
-		WHERE medication_mappings_fts MATCH ?
-		ORDER BY rank
-		LIMIT 200
-	`
+	// FTS queries require raw SQL - using trigram tokenizer
+	err := r.db.DB.WithContext(ctx).
+		Raw(`
+			SELECT m.id, m.arabic_name, m.english_name, m.synonyms, m.embedding, m.created_at, m.updated_at
+			FROM medication_mappings m
+			JOIN medication_mappings_fts f ON m.rowid = f.rowid
+			WHERE medication_mappings_fts MATCH ?
+		`, query).
+		Scan(&mappings).Error
 
-	rows, err := r.db.Conn().QueryContext(ctx, q, query)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var mappings []*domain.MedicationMapping
-	for rows.Next() {
-		var m domain.MedicationMapping
-		var synonymsJSON []byte
-		if err := rows.Scan(&m.ID, &m.ArabicName, &m.EnglishName, &synonymsJSON, &m.CreatedAt, &m.UpdatedAt); err != nil {
-			return nil, err
-		}
-		if len(synonymsJSON) > 0 {
-			_ = json.Unmarshal(synonymsJSON, &m.Synonyms)
-		}
-		mappings = append(mappings, &m)
+	result := make([]*domain.MedicationMapping, len(mappings))
+	for i := range mappings {
+		result[i] = ToMedicationMappingDomain(&mappings[i])
 	}
-	return mappings, nil
+	return result, nil
+}
+
+// Count returns the total number of medication mappings
+func (r *GormMedicationMappingRepo) Count(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.DB.WithContext(ctx).
+		Model(&models.MedicationMapping{}).
+		Count(&count).Error
+	return int(count), err
 }
