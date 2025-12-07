@@ -65,10 +65,14 @@ type Parser struct {
 	matchQueueRepo     domain.MatchQueueRepository
 
 	// Workers
-	workers     int
-	inputChan   chan inputJob
-	matchTicker *time.Ticker
-	matchStop   chan struct{}
+	workers       int
+	inputChan     chan inputJob
+	matchTicker   *time.Ticker
+	matchStop     chan struct{}
+	matchPoolSize int // Configurable match worker pool size
+
+	// Circuit Breaker for AI calls
+	aiCircuitBreaker *CircuitBreaker
 
 	// Real-time updates and Dynamic Config
 	sseBroadcaster SSEBroadcaster
@@ -114,11 +118,13 @@ func NewParser(
 		workers:              10, // Default workers for input processing
 		inputChan:            make(chan inputJob, 100),
 		stopChan:             make(chan struct{}),
-		matchTicker:          time.NewTicker(2 * time.Second), // Poll queue every 2s
+		matchTicker:          time.NewTicker(2 * time.Second),
 		matchStop:            make(chan struct{}),
-		isAutoParseEnabled:   func() bool { return true }, // Default: always parse
+		matchPoolSize:        5, // Default match worker pool size
+		aiCircuitBreaker:     NewCircuitBreaker("ai_provider", 5, 30*time.Second),
+		isAutoParseEnabled:   func() bool { return true },
 		medicationEmbeddings: make(map[string][]float32),
-		scorer:               NewScorer(nil, nil), // Use default weights and thresholds
+		scorer:               NewScorer(nil, nil),
 	}
 }
 
@@ -168,10 +174,14 @@ func (p *Parser) Stop() {
 // matchWorkerLoop continuously polls the DB for new matching jobs
 func (p *Parser) matchWorkerLoop(ctx context.Context) {
 	defer p.wg.Done()
-	p.log.Info().Msg("Match Worker Pool started")
+	p.log.Info().Int("pool_size", p.matchPoolSize).Msg("Match Worker Pool started")
 
-	// Semaphore for concurrent job processing (5 concurrent jobs)
-	sem := make(chan struct{}, 5)
+	// Semaphore for concurrent job processing - configurable size
+	poolSize := p.matchPoolSize
+	if poolSize <= 0 {
+		poolSize = 5 // Default fallback
+	}
+	sem := make(chan struct{}, poolSize)
 
 	for {
 		select {
@@ -187,6 +197,9 @@ func (p *Parser) matchWorkerLoop(ctx context.Context) {
 				continue
 			}
 
+			// Update queue depth metric
+			metrics.MatchQueueDepth.Set(float64(len(jobs)))
+
 			if len(jobs) > 0 {
 				p.log.Debug().Int("count", len(jobs)).Msg("Processing match jobs concurrently")
 			}
@@ -197,6 +210,7 @@ func (p *Parser) matchWorkerLoop(ctx context.Context) {
 
 				go func(j *domain.MatchQueueItem) {
 					defer func() { <-sem }() // Release slot
+					start := time.Now()
 
 					// Process based on type
 					switch j.SourceType {
@@ -209,6 +223,10 @@ func (p *Parser) matchWorkerLoop(ctx context.Context) {
 							p.findMatchesForRequest(ctx, req)
 						}
 					}
+
+					// Record metrics
+					metrics.MatchJobsProcessed.Inc()
+					metrics.MatchProcessingDuration.Observe(time.Since(start).Seconds())
 
 					// Delete from queue after processing
 					if err := p.matchQueueRepo.Delete(ctx, j.ID); err != nil {
@@ -304,6 +322,17 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 		Dur("duration", time.Since(filteringStart)).
 		Msg("Retrieved relevant medication mappings from DB (FTS)")
 
+	// Check circuit breaker before AI call
+	if p.aiCircuitBreaker != nil && !p.aiCircuitBreaker.Allow() {
+		p.log.Warn().
+			Str("step", "6_CIRCUIT_OPEN").
+			Str("circuit", p.aiCircuitBreaker.Name()).
+			Msg("⚡ Circuit breaker OPEN - skipping AI call")
+		metrics.CircuitBreakerState.WithLabelValues(p.aiCircuitBreaker.Name()).Set(float64(p.aiCircuitBreaker.State()))
+		// Mark messages as pending for retry later
+		return
+	}
+
 	results, err := p.aiProvider.ParseMessages(ctx, batch, mappings)
 	if err != nil {
 		p.log.Error().
@@ -311,6 +340,14 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 			Str("step", "6_AI_ERROR").
 			Msg("❌ AI parsing failed")
 		metrics.SystemErrors.Inc()
+
+		// Record failure in circuit breaker
+		if p.aiCircuitBreaker != nil {
+			p.aiCircuitBreaker.RecordFailure()
+			metrics.CircuitBreakerState.WithLabelValues(p.aiCircuitBreaker.Name()).Set(float64(p.aiCircuitBreaker.State()))
+			metrics.CircuitBreakerFailures.WithLabelValues(p.aiCircuitBreaker.Name()).Inc()
+		}
+
 		if p.errorNotifier != nil {
 			p.errorNotifier.NotifyError(err)
 		}
@@ -321,6 +358,12 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 			}
 		}
 		return
+	}
+
+	// Record success in circuit breaker
+	if p.aiCircuitBreaker != nil {
+		p.aiCircuitBreaker.RecordSuccess()
+		metrics.CircuitBreakerState.WithLabelValues(p.aiCircuitBreaker.Name()).Set(float64(p.aiCircuitBreaker.State()))
 	}
 
 	p.log.Info().

@@ -32,6 +32,40 @@ var (
 		Help: "The total number of system errors (AI failures, DB errors)",
 	})
 
+	// Circuit Breaker Metrics
+	CircuitBreakerState = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "pharma_circuit_breaker_state",
+		Help: "Current state of circuit breakers (0=closed, 1=open, 2=half-open)",
+	}, []string{"name"})
+
+	CircuitBreakerFailures = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pharma_circuit_breaker_failures_total",
+		Help: "Total number of failures recorded by circuit breakers",
+	}, []string{"name"})
+
+	// Match Queue Metrics
+	MatchQueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pharma_match_queue_depth",
+		Help: "Current number of pending match jobs in the queue",
+	})
+
+	MatchJobsProcessed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_match_jobs_processed_total",
+		Help: "Total number of match jobs processed",
+	})
+
+	MatchProcessingDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pharma_match_processing_duration_seconds",
+		Help:    "Duration of match job processing",
+		Buckets: prometheus.DefBuckets,
+	})
+
+	// Goroutine Metrics
+	ActiveWorkers = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pharma_active_workers",
+		Help: "Number of active worker goroutines",
+	})
+
 	// Histograms
 	AIRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "pharma_ai_request_duration_seconds",

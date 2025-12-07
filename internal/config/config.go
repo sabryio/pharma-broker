@@ -190,6 +190,21 @@ type ParserConfig struct {
 	// Larger buffers handle bursts better but use more memory.
 	// Default: 1000
 	MessageBufferSize int `mapstructure:"message_buffer_size"`
+
+	// MatchWorkerPoolSize controls concurrent match job processing.
+	// Higher values process matches faster but use more resources.
+	// Default: 5
+	MatchWorkerPoolSize int `mapstructure:"match_worker_pool_size"`
+
+	// CircuitBreakerThreshold is the number of consecutive AI failures
+	// before the circuit breaker opens and requests are blocked.
+	// Default: 5
+	CircuitBreakerThreshold int `mapstructure:"circuit_breaker_threshold"`
+
+	// CircuitBreakerResetTimeout is how long to wait before allowing
+	// test requests after the circuit opens.
+	// Default: 30s
+	CircuitBreakerResetTimeout time.Duration `mapstructure:"circuit_breaker_reset_timeout"`
 }
 
 // APIConfig configures the HTTP API server and handlers
