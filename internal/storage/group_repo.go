@@ -23,6 +23,7 @@ func NewGormGroupRepo(db *GormDB) *GormGroupRepo {
 // Save creates or updates a group
 func (r *GormGroupRepo) Save(ctx context.Context, group *domain.Group) error {
 	model := ToGroupModel(group)
+	// Use Select("*") to save all fields including zero values like Monitored=false
 	return r.db.DB.WithContext(ctx).Save(model).Error
 }
 
@@ -102,7 +103,7 @@ func (r *GormGroupRepo) SaveFromSync(ctx context.Context, jid, name, description
 	// Upsert: update name/description if exists, otherwise create
 	return r.db.DB.WithContext(ctx).
 		Where("jid = ?", jid).
-		Assign(map[string]interface{}{
+		Assign(map[string]any{
 			"name":        name,
 			"description": descPtr,
 		}).

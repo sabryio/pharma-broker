@@ -139,7 +139,7 @@ type Group struct {
 	JID          string     `gorm:"column:jid;primaryKey"`
 	Name         string     `gorm:"column:name;not null"`
 	Description  *string    `gorm:"column:description"`
-	Monitored    bool       `gorm:"column:monitored;default:true;index"`
+	Monitored    bool       `gorm:"column:monitored;default:false;index"`
 	AddedAt      time.Time  `gorm:"column:added_at;autoCreateTime"`
 	LastMessage  *time.Time `gorm:"column:last_message"`
 	MessageCount int64      `gorm:"column:message_count;default:0"`
