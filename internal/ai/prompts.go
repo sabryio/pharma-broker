@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -121,14 +122,11 @@ Output:
   ]
 }`
 
-// FormatMappings creates the formatted string for prompt injection
+// FormatMappings creates a compact JSON string for prompt injection
 func FormatMappings(mappings map[string]string) string {
-	var sb strings.Builder
-	sb.WriteString("\n\n## KNOWN MEDICATION TRANSLATIONS\n")
-	sb.WriteString("You MUST use these specific English names for the corresponding Arabic terms:\n")
-	for arabic, english := range mappings {
-		sb.WriteString(fmt.Sprintf("- \"%s\" => \"%s\"\n", arabic, english))
+	if len(mappings) == 0 {
+		return ""
 	}
-	sb.WriteString("\n")
-	return sb.String()
+	jsonBytes, _ := json.Marshal(mappings)
+	return fmt.Sprintf("\n## MEDICATION MAP\n%s\n", string(jsonBytes))
 }

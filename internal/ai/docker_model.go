@@ -21,10 +21,12 @@ import (
 // DockerModelClient handles communication with Docker Model Runner
 // using the OpenAI-compatible API.
 type DockerModelClient struct {
-	cfg    *config.DockerModelConfig
-	client openai.Client
-	log    zerolog.Logger
-	cb     *gobreaker.CircuitBreaker
+	cfg         *config.DockerModelConfig
+	client      openai.Client
+	log         zerolog.Logger
+	cb          *gobreaker.CircuitBreaker
+	allMappings []*domain.MedicationMapping // For hybrid filtering
+	vectorTopK  int                         // Top-K for vector search (default 10)
 }
 
 func GenerateSchema[T any]() interface{} {
@@ -87,10 +89,40 @@ func NewDockerModelClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*D
 	}, nil
 }
 
+// SetMappings sets the full medication mappings for hybrid filtering
+// This enables keyword + vector search when ParseMessages is called
+func (c *DockerModelClient) SetMappings(mappings []*domain.MedicationMapping) {
+	c.allMappings = mappings
+	if c.vectorTopK == 0 {
+		c.vectorTopK = 10 // Default top-K
+	}
+	c.log.Info().Int("count", len(mappings)).Msg("Loaded medication mappings for hybrid filtering")
+}
+
 // ParseMessages implements AIProvider.ParseMessages using Docker Model Runner.
 func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
 	if len(messages) == 0 {
 		return nil, nil
+	}
+
+	// Apply hybrid filtering if allMappings is configured
+	effectiveMappings := mappings
+	if len(c.allMappings) > 0 {
+		// Concatenate all message contents for filtering
+		var contentBuilder strings.Builder
+		for _, msg := range messages {
+			contentBuilder.WriteString(msg.Content)
+			contentBuilder.WriteString(" ")
+		}
+		combinedContent := contentBuilder.String()
+
+		// Hybrid filter: keyword + vector (always combined)
+		effectiveMappings = FilterMappingsHybrid(ctx, combinedContent, c.allMappings, c, c.vectorTopK)
+
+		c.log.Info().
+			Int("original_mappings", len(mappings)).
+			Int("filtered_mappings", len(effectiveMappings)).
+			Msg("Applied hybrid mapping filter")
 	}
 
 	// Constants for chunking
@@ -177,7 +209,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 				Int("chunk_size", len(batch)).
 				Msg("Processing chunk batch")
 
-			results, err := c.processBatch(ctx, batch, mappings)
+			results, err := c.processBatch(ctx, batch, effectiveMappings)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -262,7 +294,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 	}
 
 	// Post-process to enforce mappings (Fix for AI hallucinations)
-	enforceMappings(finalResults, mappings)
+	enforceMappings(finalResults, effectiveMappings)
 
 	return finalResults, nil
 }
