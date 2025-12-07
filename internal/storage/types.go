@@ -1,6 +1,11 @@
 package storage
 
-import "time"
+import (
+	"fmt"
+	"time"
+
+	"pharmabroker/internal/config"
+)
 
 // AuditAction represents the type of audited action
 type AuditAction string
@@ -38,13 +43,13 @@ type AppConfig struct {
 type DB = GormDB
 
 // New creates a new database connection (alias to NewGormDB for compatibility)
-func New(cfg interface{}) (*DB, error) {
-	// Cast to the right config type
-	if dbCfg, ok := cfg.(interface{ GetPath() string }); ok {
-		// This is a stub - the actual implementation will come from gorm_db.go
-		_ = dbCfg
+func New(cfg any) (*DB, error) {
+	// Type assert to *config.DatabaseConfig
+	dbCfg, ok := cfg.(*config.DatabaseConfig)
+	if !ok {
+		return nil, fmt.Errorf("invalid config type: expected *config.DatabaseConfig, got %T", cfg)
 	}
-	return nil, nil // Will be replaced with proper implementation
+	return NewGormDB(dbCfg)
 }
 
 // ====================

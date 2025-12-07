@@ -2,6 +2,9 @@ package storage
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
 
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/storage/models"
@@ -19,6 +22,13 @@ func NewGormMatchQueueRepo(db *GormDB) *GormMatchQueueRepo {
 
 // Enqueue adds a new item to the match queue
 func (r *GormMatchQueueRepo) Enqueue(ctx context.Context, item *domain.MatchQueueItem) error {
+	// Generate ID if not provided
+	if item.ID == "" {
+		item.ID = uuid.New().String()
+	}
+	if item.CreatedAt.IsZero() {
+		item.CreatedAt = time.Now()
+	}
 	model := ToMatchQueueModel(item)
 	return r.db.DB.WithContext(ctx).Create(model).Error
 }
