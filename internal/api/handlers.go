@@ -912,12 +912,3 @@ func (h *Handlers) logAudit(ctx context.Context, action storage.AuditAction, ent
 		}
 	}
 }
-
-// logAuditWithValues is a helper to safely log audit events with old/new values
-func (h *Handlers) logAuditWithValues(ctx context.Context, action storage.AuditAction, entityID, oldVal, newVal, details string) {
-	if h.auditRepo != nil {
-		if err := h.auditRepo.LogWithValues(ctx, action, entityID, oldVal, newVal, details); err != nil {
-			h.log.Warn().Err(err).Str("action", string(action)).Msg("Failed to log audit event")
-		}
-	}
-}

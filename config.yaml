@@ -38,7 +38,7 @@ monitor:
   # WhatsApp number for critical alerts (e.g. "1234567890")
   # This serves as the initial seed value for the database configuration.
   # If empty, alerts are disabled until configured via API/DB.
-  admin_phone: "20102137532"
+  admin_phone: "201021347532"
 
 # ---------------------------------
 # WhatsApp Web Connection Settings
@@ -57,6 +57,14 @@ whatsapp:
   # Enable groups from config if specified
   # monitored_groups:
   #   - "123456789@g.us"
+
+  # Bot commands for operator interaction via WhatsApp
+  bot_commands:
+    enabled: true
+    # Phone numbers authorized to use bot commands
+    # Commands: /status, /pending, /confirm <id>, /reject <id>, /help
+    authorized_phones:
+      - "+201021347532" # Admin phone
 
 # ---------------------------------
 # Google Gemini AI (Cloud)

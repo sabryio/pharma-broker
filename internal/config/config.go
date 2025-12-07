@@ -118,6 +118,20 @@ type WhatsAppConfig struct {
 	// fetching groups or sending messages.
 	// Default: 30s
 	OperationTimeout time.Duration `mapstructure:"operation_timeout"`
+
+	// BotCommands configures WhatsApp bot command handling
+	BotCommands BotCommandsConfig `mapstructure:"bot_commands"`
+}
+
+// BotCommandsConfig configures WhatsApp bot commands
+type BotCommandsConfig struct {
+	// Enabled controls whether bot commands are processed
+	// Default: false
+	Enabled bool `mapstructure:"enabled"`
+
+	// AuthorizedPhones is a list of phone numbers authorized to use bot commands
+	// Format: "+201234567890" or "201234567890"
+	AuthorizedPhones []string `mapstructure:"authorized_phones"`
 }
 
 // GeminiConfig configures the Google Gemini AI integration

@@ -30,6 +30,9 @@ type Manager struct {
 	mu       sync.RWMutex
 	handlers []EventHandler
 
+	// Bot command handler (optional)
+	botHandler *BotCommandHandler
+
 	// State
 	connected bool
 	qrChannel chan string
@@ -347,6 +350,16 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 		IsFromMe:    evt.Info.IsFromMe,
 	}
 
+	// Check if this is a bot command (before group monitoring check)
+	if m.botHandler != nil && IsCommand(content) {
+		response := m.botHandler.HandleCommand(context.Background(), msg)
+		if response != "" {
+			// Send response back to the sender
+			go m.sendBotResponse(evt.Info.Chat, response)
+		}
+		return // Don't process as regular message
+	}
+
 	// Check if group is monitored
 	if !m.isGroupMonitored(groupJID) {
 		return
@@ -428,4 +441,39 @@ func (m *Manager) SendMessage(ctx context.Context, jidStr, content string) error
 // GenerateMessageID creates a unique message ID
 func GenerateMessageID() string {
 	return uuid.New().String()
+}
+
+// SetBotHandler sets the bot command handler
+func (m *Manager) SetBotHandler(handler *BotCommandHandler) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.botHandler = handler
+}
+
+// sendBotResponse sends a response message back to the chat
+func (m *Manager) sendBotResponse(chat types.JID, response string) {
+	m.mu.RLock()
+	client := m.client
+	m.mu.RUnlock()
+
+	if client == nil {
+		m.log.Warn().Msg("Cannot send bot response - not connected")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	msg := &waE2E.Message{
+		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+			Text: proto.String(response),
+		},
+	}
+
+	_, err := client.SendMessage(ctx, chat, msg)
+	if err != nil {
+		m.log.Error().Err(err).Str("chat", chat.String()).Msg("Failed to send bot response")
+	} else {
+		m.log.Debug().Str("chat", chat.String()).Msg("Bot response sent")
+	}
 }

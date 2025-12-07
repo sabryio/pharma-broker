@@ -75,6 +75,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	medicationRepo := storage.NewMedicationMappingRepo(db)
 	feedbackRepo := storage.NewFeedbackRepo(db)
 	leaderboardRepo := storage.NewLeaderboardRepo(db)
+	auditRepo := storage.NewAuditRepo(db)
 
 	// Load medication mappings from file
 	commonMedications, err := domain.LoadMedicationMappings("medications.json")
@@ -194,6 +195,21 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	// Create WarRoom monitor for alerting
 	warRoom := monitor.NewWarRoom(waManager, configRepo, log)
+
+	// Initialize WhatsApp bot commands if enabled
+	if cfg.WhatsApp.BotCommands.Enabled {
+		botHandler := whatsapp.NewBotCommandHandler(
+			matchRepo,
+			statsRepo,
+			auditRepo,
+			cfg.WhatsApp.BotCommands.AuthorizedPhones,
+			log,
+		)
+		waManager.SetBotHandler(botHandler)
+		log.Info().
+			Int("authorized_phones", len(cfg.WhatsApp.BotCommands.AuthorizedPhones)).
+			Msg("WhatsApp bot commands enabled")
+	}
 
 	// Create AI parser
 	parser := ai.NewParser(
@@ -318,7 +334,6 @@ func runServe(cmd *cobra.Command, args []string) {
 	handlers.SetLeaderboardRepo(leaderboardRepo)
 
 	// Wire audit repo
-	auditRepo := storage.NewAuditRepo(db)
 	handlers.SetAuditRepo(auditRepo)
 
 	// Create HTTP router
