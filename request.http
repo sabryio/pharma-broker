@@ -1,0 +1,17 @@
+### Request from the host using TCP
+POST http://localhost:12434/engines/llama.cpp/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "ai/qwen3-vl:latest",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant."
+    },
+    {
+      "role": "user",
+      "content": "Hello"
+    }
+  ]
+}

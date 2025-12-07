@@ -75,18 +75,19 @@ func (r *GormRawMessageRepo) MarkProcessed(ctx context.Context, id string, proce
 
 // GetLastMessageBySender retrieves the last message from a sender in a group
 func (r *GormRawMessageRepo) GetLastMessageBySender(ctx context.Context, groupJID, senderJID string) (*domain.RawMessage, error) {
-	var model models.RawMessage
+	var msgs []models.RawMessage
 	err := r.db.DB.WithContext(ctx).
 		Where("group_jid = ? AND sender_jid = ?", groupJID, senderJID).
 		Order("timestamp DESC").
-		First(&model).Error
+		Limit(1).
+		Find(&msgs).Error
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return ToRawMessageDomain(&model), nil
+	if len(msgs) == 0 {
+		return nil, nil
+	}
+	return ToRawMessageDomain(&msgs[0]), nil
 }
 
 // ArchiveOldMessages archives messages older than cutoff (raw SQL for file operations)

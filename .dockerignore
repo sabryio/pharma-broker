@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+bun.lock
+
+# Build outputs
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test and debug files
+*.test
+debug.log
+logs
+*.log
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Database files (don't include in image - mount as volume)
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# WhatsApp session data
+data/whatsapp/
+
+# Config files with secrets
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# Documentation and artifacts
+*.md
+!README.md
+docs/
+
+# Test coverage
+coverage/
+*.cover
+*.out
+
+# Drizzle studio
+drizzle/
+drizzle.config.ts
+
+# Temporary files
+tmp/
+temp/
+*.tmp

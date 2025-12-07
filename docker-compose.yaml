@@ -19,6 +19,8 @@ services:
       - PB_WHATSAPP_SESSION_DIR=/app/data/whatsapp
     volumes:
       - ./data:/app/data # Share local session with Docker
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     models:
       - llm # Bind to the llm model
       - embedding-model # Bind to the customized embedding model

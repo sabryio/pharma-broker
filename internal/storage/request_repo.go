@@ -71,6 +71,7 @@ func (r *GormRequestRepo) Search(ctx context.Context, query string, limit, offse
 	var requests []models.Request
 
 	// FTS queries require raw SQL - GORM doesn't support virtual tables
+	sanitizedQuery := SanitizeFTSQuery(query)
 	err := r.db.DB.WithContext(ctx).
 		Raw(`
 			SELECT r.id, r.raw_message_id, r.source_phone, r.source_name, r.source_group, r.group_name,
@@ -81,7 +82,7 @@ func (r *GormRequestRepo) Search(ctx context.Context, query string, limit, offse
 			WHERE requests_fts MATCH ? AND r.status = 'ACTIVE'
 			ORDER BY r.urgent DESC, rank
 			LIMIT ? OFFSET ?
-		`, query, limit, offset).
+		`, sanitizedQuery, limit, offset).
 		Scan(&requests).Error
 
 	if err != nil {

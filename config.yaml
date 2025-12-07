@@ -17,7 +17,8 @@ ai:
 # Docker Model Runner exposes an OpenAI-compatible API
 docker_model:
   # Endpoint URL (auto-injected via LLM_URL when using Compose models)
-  base_url: http://localhost:12434/engines/llama.cpp/v1
+  # Use model-runner.docker.internal when running in Docker to access host's model runner
+  base_url: http://model-runner.docker.internal/engines/llama.cpp/v1
 
   # Model identifier (auto-injected via LLM_MODEL when using Compose models)
   model: ai/qwen3-vl:latest

@@ -416,7 +416,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("ai.provider", "gemini")
 
 	// Docker Model Runner defaults
-	v.SetDefault("docker_model.base_url", "http://localhost:12434/engines/llama.cpp/v1")
+	v.SetDefault("docker_model.base_url", "http://model-runner.docker.internal/engines/llama.cpp/v1")
 	v.SetDefault("docker_model.embedding_model_name", "ai/embeddinggemma")
 	v.SetDefault("docker_model.model", "ai/qwen3-vl:latest")
 	v.SetDefault("docker_model.max_retries", 3)

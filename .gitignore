@@ -15,6 +15,7 @@ pharmabroker
 # Dependency directories
 vendor/
 node_modules/
+bun.lock
 
 # IDE
 .idea/

@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"pharmabroker/internal/domain"
@@ -21,6 +22,10 @@ func NewGormMedicationMappingRepo(db *GormDB) *GormMedicationMappingRepo {
 
 // Save creates or updates a medication mapping
 func (r *GormMedicationMappingRepo) Save(ctx context.Context, mapping *domain.MedicationMapping) error {
+	// Generate ID if not provided
+	if mapping.ID == "" {
+		mapping.ID = uuid.NewString()
+	}
 	model := ToMedicationMappingModel(mapping)
 	return r.db.DB.WithContext(ctx).Save(model).Error
 }
@@ -60,13 +65,14 @@ func (r *GormMedicationMappingRepo) Search(ctx context.Context, query string) ([
 	var mappings []models.MedicationMapping
 
 	// FTS queries require raw SQL - using trigram tokenizer
+	sanitizedQuery := SanitizeFTSQuery(query)
 	err := r.db.DB.WithContext(ctx).
 		Raw(`
 			SELECT m.id, m.arabic_name, m.english_name, m.synonyms, m.embedding, m.created_at, m.updated_at
 			FROM medication_mappings m
 			JOIN medication_mappings_fts f ON m.rowid = f.rowid
 			WHERE medication_mappings_fts MATCH ?
-		`, query).
+		`, sanitizedQuery).
 		Scan(&mappings).Error
 
 	if err != nil {

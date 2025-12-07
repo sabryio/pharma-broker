@@ -71,6 +71,7 @@ func (r *GormOfferRepo) Search(ctx context.Context, query string, limit, offset 
 	var offers []models.Offer
 
 	// FTS queries require raw SQL - GORM doesn't support virtual tables
+	sanitizedQuery := SanitizeFTSQuery(query)
 	err := r.db.DB.WithContext(ctx).
 		Raw(`
 			SELECT o.id, o.raw_message_id, o.source_phone, o.source_name, o.source_group, o.group_name,
@@ -81,7 +82,7 @@ func (r *GormOfferRepo) Search(ctx context.Context, query string, limit, offset 
 			WHERE offers_fts MATCH ? AND o.status = 'ACTIVE'
 			ORDER BY rank
 			LIMIT ? OFFSET ?
-		`, query, limit, offset).
+		`, sanitizedQuery, limit, offset).
 		Scan(&offers).Error
 
 	if err != nil {

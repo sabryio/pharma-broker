@@ -237,3 +237,44 @@ func TestRequestRepo_GetActive_UrgentThenByCreatedAt(t *testing.T) {
 	assertEqual(t, active[1].ID, olderUrgent.ID, "Second should be older urgent")
 	assertEqual(t, active[2].ID, nonUrgent.ID, "Third should be non-urgent")
 }
+
+func TestRequestRepo_Search_WithSpecialCharacters(t *testing.T) {
+	db := SetupTestDB(t)
+	defer db.Close()
+
+	repo := NewRequestRepo(db.GormDB)
+	ctx := testCtx()
+
+	// Create requests with special characters in medication name
+	req1 := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
+		r.Medication = "Zoladex 3.6"
+		r.Notes = "Urgent need"
+	})
+	assertNoError(t, repo.Save(ctx, req1), "Save req1")
+
+	req2 := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
+		r.Medication = "Augmentin-1.2g"
+	})
+	assertNoError(t, repo.Save(ctx, req2), "Save req2")
+
+	// Test searching with special characters
+	// "3.6" previously caused "syntax error near ."
+	results, err := repo.Search(ctx, "3.6", 10, 0)
+	assertNoError(t, err, "Search with '3.6' should not fail")
+	assertEqual(t, len(results), 1, "Should find 1 match")
+	if len(results) > 0 {
+		assertEqual(t, results[0].ID, req1.ID, "Should match req1")
+	}
+
+	// Test searching with dash
+	results, err = repo.Search(ctx, "Augmentin-1.2g", 10, 0)
+	assertNoError(t, err, "Search with dash should not fail")
+	assertEqual(t, len(results), 1, "Should find 1 match")
+
+	// Test complex query that might be interpreted as syntax
+	// "Zoladex OR 3.6" should be handled gracefully
+	results, err = repo.Search(ctx, "Zoladex OR 3.6", 10, 0)
+	assertNoError(t, err, "Search with 'Zoladex OR 3.6' should not fail")
+	// Both terms match req1, so it should be returned
+	assertEqual(t, len(results), 1, "Should find 1 match")
+}
