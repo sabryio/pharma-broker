@@ -1,11 +1,13 @@
 package reports
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/xuri/excelize/v2"
 )
 
 // Mock repository for testing
@@ -162,6 +164,52 @@ func TestExportToCSV(t *testing.T) {
 	}
 	if !contains(csvStr, "Paracetamol") {
 		t.Error("CSV missing medication data")
+	}
+}
+
+func TestExportToExcel(t *testing.T) {
+	g := newTestGenerator()
+	ctx := context.Background()
+
+	config := DefaultReportConfig()
+	report, _ := g.GenerateHourlyReport(ctx, config)
+
+	xlsxData, err := g.ExportToExcel(report)
+	if err != nil {
+		t.Fatalf("ExportToExcel failed: %v", err)
+	}
+
+	if len(xlsxData) == 0 {
+		t.Error("Expected non-empty Excel data")
+	}
+
+	// Verify content by reading it back
+	f, err := excelize.OpenReader(bytes.NewReader(xlsxData))
+	if err != nil {
+		t.Fatalf("Failed to open generated excel: %v", err)
+	}
+	defer f.Close()
+
+	sheetName := "Matches"
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		t.Fatalf("Failed to get rows: %v", err)
+	}
+
+	if len(rows) < 3 { // Header + 2 matches
+		t.Errorf("Expected at least 3 rows (1 header + 2 data), got %d", len(rows))
+	}
+
+	// Check header
+	header := rows[0]
+	if header[0] != "Match ID" {
+		t.Errorf("Expected first column 'Match ID', got %s", header[0])
+	}
+
+	// Check data
+	matchRow1 := rows[1]
+	if matchRow1[0] != "match-001" {
+		t.Errorf("Expected match-001 in row 1, got %s", matchRow1[0])
 	}
 }
 

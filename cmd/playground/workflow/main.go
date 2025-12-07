@@ -283,7 +283,8 @@ func main() {
 
 	// Wait for processing (batch interval + matching)
 	log.Info().Msg("Waiting for Parser to process batch...")
-	time.Sleep(10 * time.Second) // Allow batch processing + matching
+	fmt.Println("\n⏳ Waiting for processing/matching (giving LLM time)...")
+	time.Sleep(20 * time.Second)
 
 	// Check results
 	offers, _ := offerRepo.GetActive(ctx, 100, 0)
@@ -297,10 +298,20 @@ func main() {
 	// ============================================================
 	workflow.StartPhase("Report Generation")
 
+	// Match Verification
+	pendingMatchesCheck, _ := matchRepo.GetPending(ctx, 100, 0)
+	fmt.Printf("\nDEBUG: Found %d pending matches in DB before report\n", len(pendingMatchesCheck))
+	for _, m := range pendingMatchesCheck {
+		fmt.Printf(" - Match: %s | Status: %s | Score: %.2f | Created: %v\n", m.ID, m.Status, m.Score, m.CreatedAt)
+	}
+	fmt.Printf("DEBUG: Current Time for Report: %v\n", time.Now())
+
 	generator := reports.NewGenerator(reportRepo, log)
 	report, err := generator.GenerateHourlyReport(ctx, reports.ReportConfig{
-		PeriodHours: 24,
-		MinScore:    0.0,
+		PeriodHours:      24,
+		MinScore:         0.0,
+		IncludePending:   true,
+		IncludeConfirmed: true,
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Report generation failed")
@@ -317,7 +328,15 @@ func main() {
 		csvPath := "./data/workflow_report.csv"
 		os.WriteFile(csvPath, csvData, 0644)
 
-		workflow.EndPhase("success", fmt.Sprintf("Report saved to %s", csvPath))
+		// Save Excel
+		xlsxData, err := generator.ExportToExcel(report)
+		if err == nil {
+			xlsxPath := "./data/workflow_report.xlsx"
+			os.WriteFile(xlsxPath, xlsxData, 0644)
+			workflow.EndPhase("success", fmt.Sprintf("Reports saved: %s, %s", csvPath, xlsxPath))
+		} else {
+			workflow.EndPhase("success", fmt.Sprintf("Report saved to %s (Excel failed: %v)", csvPath, err))
+		}
 	}
 
 	// ============================================================

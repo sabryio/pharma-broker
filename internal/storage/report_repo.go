@@ -37,6 +37,11 @@ func (r *ReportRepo) GetMatchesForReport(ctx context.Context, config reports.Rep
 		statusConditions = []string{"'PENDING'", "'CONFIRMED'"}
 	}
 
+	limit := config.Limit
+	if limit <= 0 {
+		limit = 1000
+	}
+
 	query := `
 		SELECT 
 			m.id as match_id,
@@ -71,6 +76,7 @@ func (r *ReportRepo) GetMatchesForReport(ctx context.Context, config reports.Rep
 		FROM matches m
 		JOIN offers o ON m.offer_id = o.id
 		JOIN requests r ON m.request_id = r.id
+
 		LEFT JOIN groups og ON o.source_group = og.jid
 		LEFT JOIN groups rg ON r.source_group = rg.jid
 		WHERE m.created_at >= ?
@@ -80,7 +86,7 @@ func (r *ReportRepo) GetMatchesForReport(ctx context.Context, config reports.Rep
 		LIMIT ?
 	`
 
-	rows, err := r.db.Reader().QueryContext(ctx, query, periodStart, config.MinScore, config.Limit)
+	rows, err := r.db.Reader().QueryContext(ctx, query, periodStart, config.MinScore, limit)
 	if err != nil {
 		return nil, err
 	}

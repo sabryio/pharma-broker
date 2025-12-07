@@ -8,70 +8,8 @@ import (
 	"strconv"
 
 	"github.com/rs/zerolog"
+	"github.com/xuri/excelize/v2"
 )
-
-// ReportRepository interface for data fetching
-type ReportRepository interface {
-	GetMatchesForReport(ctx context.Context, config ReportConfig) ([]*MatchReport, error)
-	GetReportSummary(ctx context.Context, periodHours int) (*ReportSummary, error)
-	GetAlerts(ctx context.Context, periodHours int) ([]Alert, error)
-}
-
-// Generator generates reports from data
-type Generator struct {
-	repo ReportRepository
-	log  zerolog.Logger
-}
-
-// NewGenerator creates a new report generator
-func NewGenerator(repo ReportRepository, log zerolog.Logger) *Generator {
-	return &Generator{
-		repo: repo,
-		log:  log.With().Str("component", "reports").Logger(),
-	}
-}
-
-// GenerateHourlyReport creates a complete hourly report
-func (g *Generator) GenerateHourlyReport(ctx context.Context, config ReportConfig) (*HourlyReport, error) {
-	g.log.Info().
-		Int("period_hours", config.PeriodHours).
-		Float64("min_score", config.MinScore).
-		Int("limit", config.Limit).
-		Msg("Generating hourly report")
-
-	// Fetch matches
-	matches, err := g.repo.GetMatchesForReport(ctx, config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch matches: %w", err)
-	}
-
-	// Fetch summary
-	summary, err := g.repo.GetReportSummary(ctx, config.PeriodHours)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate summary: %w", err)
-	}
-
-	// Fetch alerts
-	alerts, err := g.repo.GetAlerts(ctx, config.PeriodHours)
-	if err != nil {
-		g.log.Warn().Err(err).Msg("Failed to fetch alerts, continuing without")
-		alerts = []Alert{}
-	}
-
-	report := &HourlyReport{
-		Summary: *summary,
-		Matches: matches,
-		Alerts:  alerts,
-	}
-
-	g.log.Info().
-		Int("matches", len(matches)).
-		Int("alerts", len(alerts)).
-		Int("pending", summary.PendingCount).
-		Msg("Report generated successfully")
-
-	return report, nil
-}
 
 // ExportToCSV exports the report to CSV format
 func (g *Generator) ExportToCSV(report *HourlyReport) ([]byte, error) {
@@ -152,6 +90,146 @@ func (g *Generator) ExportToCSV(report *HourlyReport) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// ExportToExcel exports the report to likely .xlsx format
+func (g *Generator) ExportToExcel(report *HourlyReport) ([]byte, error) {
+	f := excelize.NewFile()
+	defer func() {
+		if err := f.Close(); err != nil {
+			g.log.Error().Err(err).Msg("Failed to close excel file")
+		}
+	}()
+
+	// Rename default sheet
+	sheetName := "Matches"
+	index, err := f.NewSheet(sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("create sheet: %w", err)
+	}
+	f.SetActiveSheet(index)
+	_ = f.DeleteSheet("Sheet1") // Clean up default
+
+	// Styles
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Color: "#FFFFFF"},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#3498db"}, Pattern: 1},
+	})
+
+	// Headers
+	headers := []string{
+		"Match ID", "Created At", "Status", "Confidence", "Score", "Breakdown",
+		"Offer Medication", "Offer Qty", "Offer Unit", "Offer Price",
+		"Seller Name", "Seller Phone", "Seller WhatsApp", "Seller Group", "Offer Age",
+		"Request Medication", "Request Qty", "Max Price", "Urgent",
+		"Buyer Name", "Buyer Phone", "Buyer WhatsApp", "Buyer Group", "Request Age",
+	}
+
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheetName, cell, h)
+	}
+	f.SetCellStyle(sheetName, "A1", "X1", headerStyle)
+
+	// Rows
+	for i, m := range report.Matches {
+		row := i + 2
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), m.MatchID)
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), m.CreatedAt.Format("2006-01-02 15:04:05"))
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), m.Status)
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), m.Confidence)
+		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), m.Score)
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), m.Breakdown)
+		f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), m.OfferMedication)
+		f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), m.OfferQty)
+		f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), m.OfferUnit)
+		f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), m.OfferPrice)
+		f.SetCellValue(sheetName, fmt.Sprintf("K%d", row), m.SellerName)
+		f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), m.SellerPhone)
+		f.SetCellValue(sheetName, fmt.Sprintf("M%d", row), m.SellerWhatsApp)
+		f.SetCellValue(sheetName, fmt.Sprintf("N%d", row), m.SellerGroup)
+		f.SetCellValue(sheetName, fmt.Sprintf("O%d", row), CalculateAge(m.OfferCreatedAt))
+		f.SetCellValue(sheetName, fmt.Sprintf("P%d", row), m.RequestMedication)
+		f.SetCellValue(sheetName, fmt.Sprintf("Q%d", row), m.RequestQty)
+		f.SetCellValue(sheetName, fmt.Sprintf("R%d", row), m.RequestMaxPrice)
+		f.SetCellValue(sheetName, fmt.Sprintf("S%d", row), m.RequestUrgent)
+		f.SetCellValue(sheetName, fmt.Sprintf("T%d", row), m.BuyerName)
+		f.SetCellValue(sheetName, fmt.Sprintf("U%d", row), m.BuyerPhone)
+		f.SetCellValue(sheetName, fmt.Sprintf("V%d", row), m.BuyerWhatsApp)
+		f.SetCellValue(sheetName, fmt.Sprintf("W%d", row), m.BuyerGroup)
+		f.SetCellValue(sheetName, fmt.Sprintf("X%d", row), CalculateAge(m.RequestCreatedAt))
+	}
+
+	// Auto-width (simple estimation)
+	// For production, maybe iterate cols and verify content length, but this is fine.
+
+	buf, err := f.WriteToBuffer()
+	if err != nil {
+		return nil, fmt.Errorf("write buffer: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+type ReportRepository interface {
+	GetMatchesForReport(ctx context.Context, config ReportConfig) ([]*MatchReport, error)
+	GetReportSummary(ctx context.Context, periodHours int) (*ReportSummary, error)
+	GetAlerts(ctx context.Context, periodHours int) ([]Alert, error)
+}
+
+// Generator generates reports from data
+type Generator struct {
+	repo ReportRepository
+	log  zerolog.Logger
+}
+
+// NewGenerator creates a new report generator
+func NewGenerator(repo ReportRepository, log zerolog.Logger) *Generator {
+	return &Generator{
+		repo: repo,
+		log:  log.With().Str("component", "reports").Logger(),
+	}
+}
+
+// GenerateHourlyReport creates a complete hourly report
+func (g *Generator) GenerateHourlyReport(ctx context.Context, config ReportConfig) (*HourlyReport, error) {
+	g.log.Info().
+		Int("period_hours", config.PeriodHours).
+		Float64("min_score", config.MinScore).
+		Int("limit", config.Limit).
+		Msg("Generating hourly report")
+
+	// Fetch matches
+	matches, err := g.repo.GetMatchesForReport(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch matches: %w", err)
+	}
+
+	// Fetch summary
+	summary, err := g.repo.GetReportSummary(ctx, config.PeriodHours)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate summary: %w", err)
+	}
+
+	// Fetch alerts
+	alerts, err := g.repo.GetAlerts(ctx, config.PeriodHours)
+	if err != nil {
+		g.log.Warn().Err(err).Msg("Failed to fetch alerts, continuing without")
+		alerts = []Alert{}
+	}
+
+	report := &HourlyReport{
+		Summary: *summary,
+		Matches: matches,
+		Alerts:  alerts,
+	}
+
+	g.log.Info().
+		Int("matches", len(matches)).
+		Int("alerts", len(alerts)).
+		Int("pending", summary.PendingCount).
+		Msg("Report generated successfully")
+
+	return report, nil
+}
+
 // GenerateSummaryText creates a human-readable summary for messaging
 func (g *Generator) GenerateSummaryText(report *HourlyReport) string {
 	s := report.Summary
@@ -177,9 +255,10 @@ func (g *Generator) GenerateSummaryText(report *HourlyReport) string {
 		buf.WriteString("\n⚠️ Alerts:\n")
 		for _, alert := range report.Alerts {
 			priority := ""
-			if alert.Priority == "HIGH" {
+			switch alert.Priority {
+			case "HIGH":
 				priority = "🔴 "
-			} else if alert.Priority == "MEDIUM" {
+			case "MEDIUM":
 				priority = "🟡 "
 			}
 			buf.WriteString(fmt.Sprintf("• %s%s\n", priority, alert.Message))
@@ -281,9 +360,10 @@ a { color: #3498db; }
 
 	for _, m := range report.Matches {
 		statusClass := ""
-		if m.Status == "PENDING" {
+		switch m.Status {
+		case "PENDING":
 			statusClass = "pending"
-		} else if m.Status == "CONFIRMED" {
+		case "CONFIRMED":
 			statusClass = "confirmed"
 		}
 

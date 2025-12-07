@@ -551,7 +551,6 @@ func (p *Parser) createRequest(msg *domain.RawMessage, item *domain.ParsedItem) 
 		RawMessage:    msg.Content,
 		Status:        domain.StatusActive,
 		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
 	}
 }
 
@@ -591,9 +590,9 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 			OfferID:   offer.ID,
 			RequestID: req.ID,
 			Score:     matchScore.Total,
-			Reasoning: matchScore.Breakdown,
-			MatchedBy: string(matchScore.Confidence),
 			Status:    status,
+			MatchedBy: string(matchScore.Confidence), // Store confidence band in MatchedBy for now
+			Reasoning: matchScore.Breakdown,
 			CreatedAt: time.Now(),
 		}
 
@@ -602,6 +601,7 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 			match.ConfirmedAt = &now
 		}
 
+		// Save match
 		if err := p.matchRepo.Save(ctx, match); err != nil {
 			// Might fail on duplicate, that's ok
 			if !strings.Contains(err.Error(), "UNIQUE constraint") {
@@ -610,16 +610,14 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 		} else {
 			p.log.Info().
 				Str("match_id", match.ID).
-				Float64("score", matchScore.Total).
+				Float64("score", match.Score).
+				Str("status", string(match.Status)).
 				Str("confidence", string(matchScore.Confidence)).
-				Str("status", string(status)).
-				Str("breakdown", matchScore.Breakdown).
+				Str("breakdown", match.Reasoning).
 				Msg("Created match")
 
-			// Broadcast new match via SSE
-			if p.sseBroadcaster != nil {
-				p.sseBroadcaster.BroadcastNewMatch(match.ID, matchScore.Total)
-			}
+			// Notify via SSE if real-time
+			p.sseBroadcaster.BroadcastNewMatch(match.ID, match.Score)
 		}
 	}
 }
