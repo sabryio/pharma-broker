@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -365,13 +366,24 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 		return
 	}
 
-	// Notify handlers
+	// Notify handlers with panic recovery
 	m.mu.RLock()
 	handlers := m.handlers
 	m.mu.RUnlock()
 
 	for _, h := range handlers {
-		go h.HandleMessage(msg)
+		go func(handler EventHandler) {
+			defer func() {
+				if r := recover(); r != nil {
+					m.log.Error().
+						Interface("panic", r).
+						Str("message_id", msg.ID).
+						Str("group", msg.GroupName).
+						Msg("Handler panic recovered - message processing failed")
+				}
+			}()
+			handler.HandleMessage(msg)
+		}(h)
 	}
 }
 
@@ -381,12 +393,7 @@ func (m *Manager) isGroupMonitored(jid string) bool {
 		return true
 	}
 
-	for _, g := range m.cfg.MonitoredGroups {
-		if g == jid {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.cfg.MonitoredGroups, jid)
 }
 
 func (m *Manager) reconnect() {

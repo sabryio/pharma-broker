@@ -134,11 +134,7 @@ func (p *Parser) SetAutoParseChecker(fn func() bool) {
 
 // Start begins processing messages
 func (p *Parser) Start(ctx context.Context) {
-	p.wg.Add(1)
-	go p.processLoop(ctx)
-
-	// Start match workers
-	// Limit concurrent matching
+	// Start processing workers (exactly p.workers count)
 	for i := 0; i < p.workers; i++ {
 		p.wg.Add(1)
 		go p.processLoop(ctx)
@@ -148,9 +144,14 @@ func (p *Parser) Start(ctx context.Context) {
 	p.wg.Add(1)
 	go p.matchWorkerLoop(ctx)
 
-	// Load Embeddings (Async)
+	// Load Embeddings (Async) - tracked in WaitGroup to prevent leak
+	p.wg.Add(1)
 	go func() {
-		if err := p.refreshEmbeddings(ctx); err != nil {
+		defer p.wg.Done()
+		// Use timeout to prevent hanging on startup
+		embedCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+		if err := p.refreshEmbeddings(embedCtx); err != nil {
 			p.log.Error().Err(err).Msg("Failed to load initial embeddings")
 		}
 	}()
@@ -166,8 +167,11 @@ func (p *Parser) Stop() {
 
 // matchWorkerLoop continuously polls the DB for new matching jobs
 func (p *Parser) matchWorkerLoop(ctx context.Context) {
-	defer p.wg.Done() // Changed from p.workerWg.Done() to p.wg.Done() to match Start()
-	p.log.Info().Msg("Match Worker Queue Poller started")
+	defer p.wg.Done()
+	p.log.Info().Msg("Match Worker Pool started")
+
+	// Semaphore for concurrent job processing (5 concurrent jobs)
+	sem := make(chan struct{}, 5)
 
 	for {
 		select {
@@ -177,35 +181,40 @@ func (p *Parser) matchWorkerLoop(ctx context.Context) {
 			return
 		case <-p.matchTicker.C:
 			// Poll for jobs
-			jobs, err := p.matchQueueRepo.DequeueBatch(ctx, 10) // Process 10 at a time
+			jobs, err := p.matchQueueRepo.DequeueBatch(ctx, 10)
 			if err != nil {
 				p.log.Error().Err(err).Msg("Failed to dequeue match jobs")
 				continue
 			}
 
 			if len(jobs) > 0 {
-				p.log.Debug().Int("count", len(jobs)).Msg("Processing match jobs from queue")
+				p.log.Debug().Int("count", len(jobs)).Msg("Processing match jobs concurrently")
 			}
 
 			for _, job := range jobs {
-				// Process matched job
-				switch job.SourceType {
-				case "OFFER":
-					offer, err := p.offerRepo.GetByID(ctx, job.SourceID)
-					if err == nil && offer != nil {
-						p.findMatchesForOffer(ctx, offer)
-					}
-				case "REQUEST":
-					req, err := p.requestRepo.GetByID(ctx, job.SourceID)
-					if err == nil && req != nil {
-						p.findMatchesForRequest(ctx, req)
-					}
-				}
+				// Acquire semaphore slot
+				sem <- struct{}{}
 
-				// Delete from queue after processing (or if source not found)
-				if err := p.matchQueueRepo.Delete(ctx, job.ID); err != nil {
-					p.log.Error().Err(err).Str("job_id", job.ID).Msg("Failed to delete match job")
-				}
+				go func(j *domain.MatchQueueItem) {
+					defer func() { <-sem }() // Release slot
+
+					// Process based on type
+					switch j.SourceType {
+					case "OFFER":
+						if offer, err := p.offerRepo.GetByID(ctx, j.SourceID); err == nil && offer != nil {
+							p.findMatchesForOffer(ctx, offer)
+						}
+					case "REQUEST":
+						if req, err := p.requestRepo.GetByID(ctx, j.SourceID); err == nil && req != nil {
+							p.findMatchesForRequest(ctx, req)
+						}
+					}
+
+					// Delete from queue after processing
+					if err := p.matchQueueRepo.Delete(ctx, j.ID); err != nil {
+						p.log.Error().Err(err).Str("job_id", j.ID).Msg("Failed to delete match job")
+					}
+				}(job)
 			}
 		}
 	}

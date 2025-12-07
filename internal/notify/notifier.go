@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 )
 
 // TelegramConfig holds Telegram bot settings
@@ -234,36 +235,49 @@ func NewNotificationService(telegramConfig TelegramConfig, emailConfig EmailConf
 	}
 }
 
-// SendReport sends the report via all enabled channels
+// SendReport sends the report via all enabled channels concurrently
 func (n *NotificationService) SendReport(ctx context.Context, summaryText, htmlReport string, csvData []byte, csvFilename string) error {
-	var errs []error
+	g, ctx := errgroup.WithContext(ctx)
 
-	// Send to Telegram
+	// Send to Telegram (parallel goroutines)
 	if n.telegram.config.Enabled {
 		// Send summary message
-		if err := n.telegram.SendMessage(ctx, summaryText); err != nil {
-			errs = append(errs, fmt.Errorf("telegram message: %w", err))
-		}
+		g.Go(func() error {
+			if err := n.telegram.SendMessage(ctx, summaryText); err != nil {
+				n.log.Error().Err(err).Msg("Failed to send Telegram message")
+				return fmt.Errorf("telegram message: %w", err)
+			}
+			return nil
+		})
 
 		// Send CSV file
 		if len(csvData) > 0 {
-			if err := n.telegram.SendDocument(ctx, csvFilename, csvData, "📊 Full Match Report"); err != nil {
-				errs = append(errs, fmt.Errorf("telegram document: %w", err))
-			}
+			g.Go(func() error {
+				if err := n.telegram.SendDocument(ctx, csvFilename, csvData, "📊 Full Match Report"); err != nil {
+					n.log.Error().Err(err).Msg("Failed to send Telegram document")
+					return fmt.Errorf("telegram document: %w", err)
+				}
+				return nil
+			})
 		}
 	}
 
 	// Send to Email
 	if n.email.config.Enabled {
-		subject := fmt.Sprintf("PharmaBroker Report - %s", time.Now().Format("Jan 2, 15:04"))
-		if err := n.email.SendReport(ctx, subject, htmlReport, csvData, csvFilename); err != nil {
-			errs = append(errs, fmt.Errorf("email: %w", err))
-		}
+		g.Go(func() error {
+			subject := fmt.Sprintf("PharmaBroker Report - %s", time.Now().Format("Jan 2, 15:04"))
+			if err := n.email.SendReport(ctx, subject, htmlReport, csvData, csvFilename); err != nil {
+				n.log.Error().Err(err).Msg("Failed to send email")
+				return fmt.Errorf("email: %w", err)
+			}
+			return nil
+		})
 	}
 
-	if len(errs) > 0 {
-		return fmt.Errorf("notification errors: %v", errs)
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("notification error: %w", err)
 	}
 
+	n.log.Info().Msg("All notifications sent successfully")
 	return nil
 }
