@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"strings"
 	"time"
 
 	"pharmabroker/internal/domain"
@@ -67,8 +66,8 @@ func (r *OfferRepo) GetActive(ctx context.Context, limit, offset int) ([]*domain
 }
 
 func (r *OfferRepo) Search(ctx context.Context, query string, limit, offset int) ([]*domain.Offer, error) {
-	// Escape FTS5 special characters by quoting the query
-	safeQuery := "\"" + strings.ReplaceAll(query, "\"", "\"\"") + "\"" + "*"
+	// Pass query directly to FTS (caller must format it correctly)
+	// We just ensure it's safe from SQL injection via parameter binding
 
 	rows, err := r.db.Conn().QueryContext(ctx, `
 		SELECT o.id, o.raw_message_id, o.source_phone, o.source_name, o.source_group, o.group_name,
@@ -79,7 +78,7 @@ func (r *OfferRepo) Search(ctx context.Context, query string, limit, offset int)
 		WHERE offers_fts MATCH ? AND o.status = 'ACTIVE'
 		ORDER BY rank
 		LIMIT ? OFFSET ?
-	`, safeQuery, limit, offset)
+	`, query, limit, offset)
 	if err != nil {
 		return nil, err
 	}

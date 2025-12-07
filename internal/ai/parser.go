@@ -556,8 +556,13 @@ func (p *Parser) createRequest(msg *domain.RawMessage, item *domain.ParsedItem) 
 }
 
 func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
-	// Search for matching requests by medication name
-	requests, err := p.requestRepo.Search(ctx, offer.Medication, 10, 0)
+	// Search for matching requests by medication name (candidate generation)
+	query := sanitizeForFTS(offer.Medication)
+	if query == "" {
+		return
+	}
+
+	requests, err := p.requestRepo.Search(ctx, query, 10, 0)
 	if err != nil {
 		p.log.Error().Err(err).Msg("Failed to search for matching requests")
 		return
@@ -598,7 +603,10 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 		}
 
 		if err := p.matchRepo.Save(ctx, match); err != nil {
-			p.log.Error().Err(err).Msg("Failed to save match")
+			// Might fail on duplicate, that's ok
+			if !strings.Contains(err.Error(), "UNIQUE constraint") {
+				p.log.Error().Err(err).Msg("Failed to save match")
+			}
 		} else {
 			p.log.Info().
 				Str("match_id", match.ID).
@@ -617,8 +625,13 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 }
 
 func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Request) {
-	// Search for matching offers by medication name
-	offers, err := p.offerRepo.Search(ctx, request.Medication, 10, 0)
+	// Search for matching offers by medication name (candidate generation)
+	query := sanitizeForFTS(request.Medication)
+	if query == "" {
+		return
+	}
+
+	offers, err := p.offerRepo.Search(ctx, query, 10, 0)
 	if err != nil {
 		p.log.Error().Err(err).Msg("Failed to search for matching offers")
 		return
@@ -988,4 +1001,24 @@ func levenshteinDistance(s1, s2 string) int {
 	}
 
 	return prev[len(s2)]
+}
+
+// sanitizeForFTS prepares a string for FTS5 search
+func sanitizeForFTS(s string) string {
+	// Remove common punctuation and special chars
+	s = strings.ReplaceAll(s, "\"", "")
+	s = strings.ReplaceAll(s, "'", "")
+	s = strings.ReplaceAll(s, "*", " ") // Remove existing wildcards
+	s = strings.ReplaceAll(s, "(", " ")
+	s = strings.ReplaceAll(s, ")", " ")
+	s = strings.ReplaceAll(s, "-", " ")
+
+	tokens := strings.Fields(s)
+	if len(tokens) == 0 {
+		return ""
+	}
+
+	// Join with OR to broaden search (finding candidates)
+	// We rely on subsequent scoring to filter bad matches
+	return strings.Join(tokens, " OR ")
 }
