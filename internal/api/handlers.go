@@ -24,6 +24,7 @@ type Handlers struct {
 	configRepo      ConfigRepository
 	feedbackRepo    FeedbackRepository
 	leaderboardRepo LeaderboardRepository
+	auditRepo       AuditRepository
 	log             zerolog.Logger
 	sseHub          *SSEHub
 	syncGroups      func() error                              // Function to sync groups from WhatsApp
@@ -49,6 +50,14 @@ type LeaderboardRepository interface {
 	GetTopDemand(ctx context.Context, limit int) ([]*domain.DemandStats, error)
 	GetDemandForMedication(ctx context.Context, medication string) (*domain.DemandStats, error)
 	RefreshLeaderboard(ctx context.Context) error
+}
+
+// AuditRepository interface for audit logging
+type AuditRepository interface {
+	Log(ctx context.Context, action storage.AuditAction, entityID, details string) error
+	LogWithValues(ctx context.Context, action storage.AuditAction, entityID, oldVal, newVal, details string) error
+	GetRecent(ctx context.Context, limit int) ([]*storage.AuditLog, error)
+	GetByAction(ctx context.Context, action storage.AuditAction, limit int) ([]*storage.AuditLog, error)
 }
 
 // AnalyzeResult represents AI analysis output
@@ -302,6 +311,9 @@ func (h *Handlers) ConfirmMatch(w http.ResponseWriter, r *http.Request) {
 		Data: map[string]string{"match_id": id, "offer_id": match.OfferID, "request_id": match.RequestID},
 	})
 
+	// Audit log
+	h.logAudit(ctx, storage.AuditMatchConfirmed, id, "Offer: "+match.OfferID+", Request: "+match.RequestID)
+
 	h.success(w, map[string]string{"status": "confirmed"})
 }
 
@@ -331,6 +343,9 @@ func (h *Handlers) RejectMatch(w http.ResponseWriter, r *http.Request) {
 		Type: "match_rejected",
 		Data: map[string]string{"match_id": id},
 	})
+
+	// Audit log
+	h.logAudit(ctx, storage.AuditMatchRejected, id, "")
 
 	h.success(w, map[string]string{"status": "rejected"})
 }
@@ -845,4 +860,64 @@ func (h *Handlers) RefreshLeaderboard(w http.ResponseWriter, r *http.Request) {
 		"success":      true,
 		"refreshed_at": time.Now(),
 	})
+}
+
+// SetAuditRepo sets the audit repository
+func (h *Handlers) SetAuditRepo(repo AuditRepository) {
+	h.auditRepo = repo
+}
+
+// GetAuditLogs returns recent audit log entries
+func (h *Handlers) GetAuditLogs(w http.ResponseWriter, r *http.Request) {
+	if h.auditRepo == nil {
+		h.error(w, http.StatusServiceUnavailable, "Audit service not configured")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+
+	// Filter by action if specified
+	actionFilter := r.URL.Query().Get("action")
+	var logs []*storage.AuditLog
+	var err error
+
+	if actionFilter != "" {
+		logs, err = h.auditRepo.GetByAction(ctx, storage.AuditAction(actionFilter), limit)
+	} else {
+		logs, err = h.auditRepo.GetRecent(ctx, limit)
+	}
+
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to get audit logs")
+		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to get audit logs"))
+		return
+	}
+
+	h.success(w, logs)
+}
+
+// logAudit is a helper to safely log audit events
+func (h *Handlers) logAudit(ctx context.Context, action storage.AuditAction, entityID, details string) {
+	if h.auditRepo != nil {
+		if err := h.auditRepo.Log(ctx, action, entityID, details); err != nil {
+			h.log.Warn().Err(err).Str("action", string(action)).Msg("Failed to log audit event")
+		}
+	}
+}
+
+// logAuditWithValues is a helper to safely log audit events with old/new values
+func (h *Handlers) logAuditWithValues(ctx context.Context, action storage.AuditAction, entityID, oldVal, newVal, details string) {
+	if h.auditRepo != nil {
+		if err := h.auditRepo.LogWithValues(ctx, action, entityID, oldVal, newVal, details); err != nil {
+			h.log.Warn().Err(err).Str("action", string(action)).Msg("Failed to log audit event")
+		}
+	}
 }

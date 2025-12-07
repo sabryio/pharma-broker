@@ -47,8 +47,17 @@ func NewRouter(handlers *Handlers, cfg *config.APIConfig, log zerolog.Logger) ht
 	mux.HandleFunc("GET /api/leaderboard/{medication}", handlers.GetMedicationDemand)
 	mux.HandleFunc("POST /api/leaderboard/refresh", handlers.RefreshLeaderboard)
 
+	// Audit log endpoints
+	mux.HandleFunc("GET /api/audit", handlers.GetAuditLogs)
+
 	// SSE endpoint
 	mux.HandleFunc("GET /api/events", handlers.sseHub.ServeHTTP)
+
+	// Health check endpoints
+	healthChecker := NewHealthChecker()
+	mux.HandleFunc("GET /health", healthChecker.FullHealthHandler)
+	mux.HandleFunc("GET /health/live", healthChecker.LiveHandler)
+	mux.HandleFunc("GET /health/ready", healthChecker.ReadyHandler)
 
 	// Metrics endpoint
 	mux.Handle("GET /metrics", promhttp.Handler())

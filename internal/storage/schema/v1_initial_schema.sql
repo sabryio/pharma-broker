@@ -228,3 +228,19 @@ CREATE TABLE demand_leaderboard (
     last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_leaderboard_ratio ON demand_leaderboard(demand_ratio DESC);
+
+-- 10. Audit Logs
+-- ---------------------------------------------------------
+CREATE TABLE audit_logs (
+    id TEXT PRIMARY KEY,
+    action TEXT NOT NULL,
+    entity_id TEXT,
+    old_value TEXT,
+    new_value TEXT,
+    details TEXT,
+    ip_address TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_audit_action ON audit_logs(action);
+CREATE INDEX idx_audit_entity ON audit_logs(entity_id);
+CREATE INDEX idx_audit_created ON audit_logs(created_at DESC);

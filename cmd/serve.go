@@ -317,6 +317,10 @@ func runServe(cmd *cobra.Command, args []string) {
 	handlers.SetFeedbackRepo(feedbackRepo)
 	handlers.SetLeaderboardRepo(leaderboardRepo)
 
+	// Wire audit repo
+	auditRepo := storage.NewAuditRepo(db)
+	handlers.SetAuditRepo(auditRepo)
+
 	// Create HTTP router
 	router := api.NewRouter(handlers, &cfg.API, log)
 
@@ -335,7 +339,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	if cfg.Reports.Enabled {
 		reportRepo := storage.NewReportRepo(db)
 		reportGenerator := reports.NewGenerator(reportRepo, log)
-		
+
 		// Configure notification service
 		telegramConfig := notify.TelegramConfig{
 			Enabled:  cfg.Reports.Telegram.Enabled,
@@ -353,7 +357,7 @@ func runServe(cmd *cobra.Command, args []string) {
 			Recipients: cfg.Reports.Email.Recipients,
 		}
 		notifier := notify.NewNotificationService(telegramConfig, emailConfig, log)
-		
+
 		// Configure scheduler
 		schedulerConfig := reports.SchedulerConfig{
 			Enabled:      cfg.Reports.Enabled,
@@ -362,7 +366,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		if schedulerConfig.IntervalMins <= 0 {
 			schedulerConfig.IntervalMins = 60 // Default hourly
 		}
-		
+
 		reportConfig := reports.ReportConfig{
 			IncludePending:   true,
 			IncludeConfirmed: true,
@@ -380,7 +384,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		if reportConfig.PeriodHours <= 0 {
 			reportConfig.PeriodHours = 1
 		}
-		
+
 		reportScheduler = reports.NewScheduler(reportGenerator, notifier, schedulerConfig, reportConfig, log)
 		if err := reportScheduler.Start(ctx); err != nil {
 			log.Error().Err(err).Msg("Failed to start report scheduler")
