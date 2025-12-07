@@ -15,12 +15,7 @@ func buildParsePrompt(messages []*domain.RawMessage, mappings map[string]string)
 
 	// Inject dynamic mappings in explicit natural language format
 	if len(mappings) > 0 {
-		sb.WriteString("\n\n## KNOWN MEDICATION TRANSLATIONS\n")
-		sb.WriteString("You MUST use these specific English names for the corresponding Arabic terms:\n")
-		for arabic, english := range mappings {
-			sb.WriteString(fmt.Sprintf("- \"%s\" => \"%s\"\n", arabic, english))
-		}
-		sb.WriteString("\n")
+		sb.WriteString(FormatMappings(mappings))
 	}
 
 	sb.WriteString("\n\n")
@@ -125,3 +120,15 @@ Output:
     }
   ]
 }`
+
+// FormatMappings creates the formatted string for prompt injection
+func FormatMappings(mappings map[string]string) string {
+	var sb strings.Builder
+	sb.WriteString("\n\n## KNOWN MEDICATION TRANSLATIONS\n")
+	sb.WriteString("You MUST use these specific English names for the corresponding Arabic terms:\n")
+	for arabic, english := range mappings {
+		sb.WriteString(fmt.Sprintf("- \"%s\" => \"%s\"\n", arabic, english))
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}

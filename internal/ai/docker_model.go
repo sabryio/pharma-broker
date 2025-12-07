@@ -333,6 +333,13 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 		c.log.Warn().Err(err).Msg("Failed to count tokens")
 	}
 
+	// Log mapping specific tokens
+	if len(mappings) > 0 {
+		mappingStr := FormatMappings(mappings)
+		mappingTokens, _ := CountTokens(c.cfg.Model, mappingStr)
+		c.log.Info().Int("mapping_tokens", mappingTokens).Int("total_prompt_tokens", tokenCount).Msg("Token usage breakdown")
+	}
+
 	c.log.Info().
 		Int("message_count", len(messages)).
 		Int("tokens", tokenCount).
