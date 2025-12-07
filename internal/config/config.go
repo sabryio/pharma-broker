@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -509,20 +508,78 @@ func loadFallback() *Config {
 
 // Validate checks required configuration based on selected provider
 func (c *Config) Validate() error {
+	var errs []string
+
+	// AI Provider validation
 	switch c.AI.Provider {
 	case "gemini":
 		if c.Gemini.APIKey == "" {
-			return ErrMissingAPIKey
+			errs = append(errs, "gemini.api_key is required when using gemini provider")
 		}
 	case "docker":
 		if c.DockerModel.BaseURL == "" {
-			return errors.New("docker_model.base_url is required when using docker provider")
+			errs = append(errs, "docker_model.base_url is required when using docker provider")
 		}
 		if c.DockerModel.Model == "" {
-			return errors.New("docker_model.model is required when using docker provider")
+			errs = append(errs, "docker_model.model is required when using docker provider")
 		}
+	case "":
+		errs = append(errs, "ai.provider is required (use 'gemini' or 'docker')")
 	default:
-		return fmt.Errorf("unknown AI provider: %s (use 'gemini' or 'docker')", c.AI.Provider)
+		errs = append(errs, fmt.Sprintf("unknown AI provider: %s (use 'gemini' or 'docker')", c.AI.Provider))
 	}
+
+	// Database validation
+	if c.Database.Path == "" {
+		errs = append(errs, "database.path is required")
+	}
+
+	// Server port validation
+	if c.Server.Port <= 0 || c.Server.Port > 65535 {
+		errs = append(errs, fmt.Sprintf("server.port must be between 1 and 65535, got %d", c.Server.Port))
+	}
+	if c.Server.HealthPort != 0 && (c.Server.HealthPort <= 0 || c.Server.HealthPort > 65535) {
+		errs = append(errs, fmt.Sprintf("server.health_port must be between 1 and 65535, got %d", c.Server.HealthPort))
+	}
+
+	// Parser threshold validation
+	if c.Parser.MatchThreshold < 0 || c.Parser.MatchThreshold > 1 {
+		errs = append(errs, fmt.Sprintf("parser.match_threshold must be between 0 and 1, got %.2f", c.Parser.MatchThreshold))
+	}
+
+	// API limits validation - set defaults if not configured
+	if c.API.RateLimitRPS <= 0 {
+		c.API.RateLimitRPS = 10.0 // Default if not set
+	}
+	if c.API.MaxPageSize <= 0 {
+		c.API.MaxPageSize = 100 // Default if not set
+	}
+
+	// Return collected errors
+	if len(errs) > 0 {
+		return fmt.Errorf("configuration errors:\n  - %s", strings.Join(errs, "\n  - "))
+	}
+	return nil
+}
+
+// ValidateAndLog validates config and logs warnings for optional but recommended fields
+func (c *Config) ValidateAndLog() error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+
+	// Log warnings for recommended but optional fields (caller should use these)
+	var warnings []string
+
+	if c.WhatsApp.SessionDir == "" {
+		warnings = append(warnings, "whatsapp.session_dir not set - using default")
+	}
+
+	if c.Reports.Enabled && c.Reports.Telegram.BotToken == "" && !c.Reports.Email.Enabled {
+		warnings = append(warnings, "reports.enabled but no notification channels configured")
+	}
+
+	// Return warnings as a special error type if needed (or nil)
+	_ = warnings // Could be used for logging in caller
 	return nil
 }
