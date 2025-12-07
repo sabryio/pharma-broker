@@ -183,6 +183,14 @@ func (p *Parser) Stop() {
 // matchWorkerLoop continuously polls the DB for new matching jobs
 func (p *Parser) matchWorkerLoop(ctx context.Context) {
 	defer p.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			p.log.Error().Interface("panic", r).Msg("Match worker panicked! Restarting...")
+			// Restart worker
+			p.wg.Add(1)
+			go p.matchWorkerLoop(ctx)
+		}
+	}()
 	p.log.Info().Int("pool_size", p.matchPoolSize).Msg("Match Worker Pool started")
 
 	// Semaphore for concurrent job processing - configurable size
@@ -249,6 +257,14 @@ func (p *Parser) matchWorkerLoop(ctx context.Context) {
 
 func (p *Parser) processLoop(ctx context.Context) {
 	defer p.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			p.log.Error().Interface("panic", r).Msg("Parser worker panicked! Restarting...")
+			// Restart worker
+			p.wg.Add(1)
+			go p.processLoop(ctx)
+		}
+	}()
 
 	// Initial startup
 	// No cache needed for FTS

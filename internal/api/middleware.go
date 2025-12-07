@@ -217,3 +217,19 @@ func CorsMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// RecoveryMiddleware recovers from panics in HTTP handlers
+func RecoveryMiddleware(next http.Handler, log zerolog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rcv := recover(); rcv != nil {
+				log.Error().
+					Interface("panic", rcv).
+					Str("url", r.URL.String()).
+					Msg("Panic in HTTP handler")
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}

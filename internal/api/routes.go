@@ -72,10 +72,13 @@ func NewRouter(handlers *Handlers, cfg *config.APIConfig, log zerolog.Logger) ht
 	// Create rate limiter
 	rateLimiter := NewRateLimiter(cfg)
 
-	// Apply middleware stack: CORS -> Rate Limit -> Tracing -> Handler
+	// Apply middleware stack: CORS -> Recovery -> Rate Limit -> Tracing -> Handler
 	handler := CorsMiddleware(
-		RateLimitMiddleware(rateLimiter)(
-			TracingMiddleware(mux, log),
+		RecoveryMiddleware(
+			RateLimitMiddleware(rateLimiter)(
+				TracingMiddleware(mux, log),
+			),
+			log,
 		),
 	)
 

@@ -334,8 +334,15 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 	groupName := groupJID // Will be updated if we can get group info
 
 	// Try to get actual group name
-	if groupInfo, err := m.client.GetGroupInfo(context.Background(), evt.Info.Chat); err == nil {
-		groupName = groupInfo.Name
+	m.mu.RLock()
+	client := m.client
+	botHandler := m.botHandler
+	m.mu.RUnlock()
+
+	if client != nil {
+		if groupInfo, err := client.GetGroupInfo(context.Background(), evt.Info.Chat); err == nil {
+			groupName = groupInfo.Name
+		}
 	}
 
 	// Build incoming message
@@ -352,8 +359,8 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 	}
 
 	// Check if this is a bot command (before group monitoring check)
-	if m.botHandler != nil && IsCommand(content) {
-		response := m.botHandler.HandleCommand(context.Background(), msg)
+	if botHandler != nil && IsCommand(content) {
+		response := botHandler.HandleCommand(context.Background(), msg)
 		if response != "" {
 			// Send response back to the sender
 			go m.sendBotResponse(evt.Info.Chat, response)
