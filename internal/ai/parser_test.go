@@ -28,6 +28,7 @@ func TestParser_ProcessBatch_HappyPath(t *testing.T) {
 		mockAI,
 		mockOfferRepo,
 		mockRequestRepo,
+		nil, // matchRepo (added)
 		mockMedRepo,
 		mockQueueRepo,
 		nil, // configRepo
@@ -114,9 +115,9 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 		mockAI,
 		mockOfferRepo,
 		mockRequestRepo,
+		nil, // matchRepo (added)
 		mockMedRepo,
 		mockQueueRepo,
-
 		nil, // configRepo
 		nil, // errorNotifier
 		nil, // broadcaster

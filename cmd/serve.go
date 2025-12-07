@@ -217,6 +217,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		aiProvider,
 		offerRepo,
 		requestRepo,
+		matchRepo, // Added dependency
 		medicationRepo,
 		matchQueueRepo,
 		configRepo, // Dynamic config
@@ -244,16 +245,16 @@ func runServe(cmd *cobra.Command, args []string) {
 		if err != nil {
 			return true // Default to skip on error
 		}
-		// Start message feeding loop
-		go func() {
-			msgChan := listener.MessageChannel()
-			for msg := range msgChan {
-				parser.ProcessMessage(context.Background(), msg)
-			}
-		}()
-
 		return config.SkipOwnMessages
 	})
+
+	// Start message feeding loop (Listener -> Parser)
+	go func() {
+		msgChan := listener.MessageChannel()
+		for msg := range msgChan {
+			parser.ProcessMessage(context.Background(), msg)
+		}
+	}()
 
 	// Function to sync groups from WhatsApp
 	syncGroups := func() error {

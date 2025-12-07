@@ -57,7 +57,6 @@ type Parser struct {
 	parserCfg      *config.ParserConfig
 
 	// Processing
-	msgChan            <-chan *domain.RawMessage
 	batchSize          int
 	stopChan           chan struct{}
 	wg                 sync.WaitGroup
@@ -95,6 +94,7 @@ func NewParser(
 	aiProvider AIProvider,
 	offerRepo domain.OfferRepository,
 	requestRepo domain.RequestRepository,
+	matchRepo domain.MatchRepository, // Added dependency
 	medicationRepo domain.MedicationMappingRepository,
 	matchQueueRepo domain.MatchQueueRepository,
 	configRepo interface {
@@ -109,6 +109,7 @@ func NewParser(
 		aiProvider:           aiProvider,
 		offerRepo:            offerRepo,
 		requestRepo:          requestRepo,
+		matchRepo:            matchRepo, // Initialize dependency
 		medicationRepo:       medicationRepo,
 		matchQueueRepo:       matchQueueRepo,
 		configRepo:           configRepo,
@@ -125,6 +126,12 @@ func NewParser(
 		isAutoParseEnabled:   func() bool { return true },
 		medicationEmbeddings: make(map[string][]float32),
 		scorer:               NewScorer(nil, nil),
+		batchSize:            10, // Default batch size
+		parserCfg: &config.ParserConfig{
+			BatchInterval:     5 * time.Second,
+			MatchThreshold:    0.5,
+			MessageBufferSize: 1000,
+		},
 	}
 }
 
@@ -168,6 +175,8 @@ func (p *Parser) Start(ctx context.Context) {
 // Stop stops the parser
 func (p *Parser) Stop() {
 	close(p.stopChan)
+	close(p.matchStop)
+	p.matchTicker.Stop()
 	p.wg.Wait()
 }
 
@@ -261,8 +270,9 @@ func (p *Parser) processLoop(ctx context.Context) {
 				p.processBatch(context.Background(), batch)
 			}
 			return
-		case msg := <-p.msgChan:
-			batch = append(batch, msg)
+		case job := <-p.inputChan:
+			// Read from inputChan where ProcessMessage writes
+			batch = append(batch, job.msg)
 			if len(batch) >= p.batchSize {
 				p.processBatch(ctx, batch)
 				batch = make([]*domain.RawMessage, 0, p.batchSize)

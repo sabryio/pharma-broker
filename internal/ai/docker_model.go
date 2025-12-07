@@ -359,12 +359,22 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 		Int("response_length", len(responseText)).
 		Msg("Received response from Docker Model Runner")
 
-	// Parse JSON response - handle both array and single object responses
-	// Parse response
+	// Parse JSON response - handle both formats:
+	// 1. Single object: {"items": [...]} (what AI typically returns)
+	// 2. Array: [{"items": [...]}, ...] (original expectation)
 	var parseResults []*domain.AIParseResult
-	if err := json.Unmarshal([]byte(responseText), &parseResults); err != nil {
-		c.log.Error().Err(err).Str("content", truncateForLog(responseText, 500)).Msg("Failed to unmarshal AI response")
-		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+
+	// First try: single AIParseResult object (most common from structured output)
+	var singleResult domain.AIParseResult
+	if err := json.Unmarshal([]byte(responseText), &singleResult); err == nil && singleResult.Items != nil {
+		// Successfully parsed as single object with items field (even if empty)
+		parseResults = []*domain.AIParseResult{&singleResult}
+	} else {
+		// Second try: array of AIParseResult
+		if err := json.Unmarshal([]byte(responseText), &parseResults); err != nil {
+			c.log.Error().Err(err).Str("content", truncateForLog(responseText, 500)).Msg("Failed to unmarshal AI response")
+			return nil, fmt.Errorf("failed to parse AI response: %w", err)
+		}
 	}
 
 	c.log.Info().
