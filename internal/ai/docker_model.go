@@ -261,7 +261,65 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 		finalResults[i] = mergedResult
 	}
 
+	// Post-process to enforce mappings (Fix for AI hallucinations)
+	enforceMappings(finalResults, mappings)
+
 	return finalResults, nil
+}
+
+// enforceMappings iterates over results and strictly applies known mappings
+// overwriting the AI's output if a known Arabic term is found in the Raw field.
+func enforceMappings(results []*domain.AIParseResult, mappings map[string]string) {
+	if len(mappings) == 0 {
+		return
+	}
+
+	for _, res := range results {
+		for i := range res.Items {
+			item := &res.Items[i]
+			rawLower := strings.ToLower(item.MedicationRaw)
+
+			// Check all mappings
+			// Note: This O(N*M) look up is fine associated with the small size of mappings/items per message
+			for arabic, english := range mappings {
+				// If the raw text contains the known Arabic brand
+				if strings.Contains(rawLower, strings.ToLower(arabic)) {
+					// Check if the current English output is "incorrect" (doesn't contain the mapped term)
+					// We use a loose check: if the English term isn't part of the output, we force it.
+					if !strings.Contains(strings.ToLower(item.Medication), strings.ToLower(english)) {
+						// Heuristic: Reconstruct the name by replacing the Arabic part in Raw with the English part
+						// This preserves dosage/strength info usually present in Raw "زولادكس 3.6" -> "Zoladex 3.6"
+						// We use the original Case form of Arabic if possible, but map keys are usually normalized.
+						// Let's use string replacement on the Raw string.
+
+						// Replace all occurrences if repetition exists
+						newItem := strings.ReplaceAll(item.MedicationRaw, arabic, english)
+
+						// If the replacing didn't work (case mismatch), just prepend the English name?
+						// Or simpler: just set Medication = English + " " + (rest of raw?).
+						// Safe bet: strings.Replace is good if the Arabic matches the key.
+						// To handle case insensitivity of Arabic (rare but possible), we might need regex.
+						// But for now, simple replace.
+						if newItem == item.MedicationRaw {
+							// Replace failed (case mismatch?), try simple overwrite
+							// Or try to just use the mapped value + (maybe parsing logic?)
+							// Let's just set it to properties we know + raw remainder?
+							// Actually, if replace failed, maybe the AI Hallucinated the Raw too?
+							// Assuming Raw is correct (extracted from text).
+
+							// Fallback: Just use the English name.
+							// Risk: Losing "3.6" or "500ml".
+							// Better: Append Raw? "Zoladex (زولادكس 3.6)"?
+							// Let's stick to the mapped name if logic fails.
+							item.Medication = english
+						} else {
+							item.Medication = newItem
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 // processBatch processes a small batch of messages

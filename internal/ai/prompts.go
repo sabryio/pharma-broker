@@ -13,16 +13,14 @@ func buildParsePrompt(messages []*domain.RawMessage, mappings map[string]string)
 
 	sb.WriteString(systemPrompt)
 
-	// Inject dynamic mappings in GoTOON format (tabular array) for token efficiency
-	// Format: mapping[N]{arabic,english}:
+	// Inject dynamic mappings in explicit natural language format
 	if len(mappings) > 0 {
-		sb.WriteString(fmt.Sprintf("\n\nmapping[%d]{arabic,english}:\n", len(mappings)))
+		sb.WriteString("\n\n## KNOWN MEDICATION TRANSLATIONS\n")
+		sb.WriteString("You MUST use these specific English names for the corresponding Arabic terms:\n")
 		for arabic, english := range mappings {
-			// Simple CSV-like lines, no quotes needed unless special chars (rare in these simple names)
-			sb.WriteString(fmt.Sprintf("  %s,%s\n", arabic, english))
+			sb.WriteString(fmt.Sprintf("- \"%s\" => \"%s\"\n", arabic, english))
 		}
 		sb.WriteString("\n")
-		sb.WriteString("Use the mapping table above to translate Arabic medication names to English.\n")
 	}
 
 	sb.WriteString("\n\n")
