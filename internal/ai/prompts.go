@@ -47,8 +47,8 @@ Your task is to extract medication OFFERS and REQUESTS from informal Arabic text
 - Messages are in Egyptian Arabic dialect (عامية مصرية)
 - Common offer phrases: عندي، متوفر، للبيع، available، متاح، موجود
 - Common request phrases: محتاج، عايز، مطلوب، wanted، need، محتاجين
-- Handle mixed Arabic/English text
-- Handle transliterated drug names (e.g., "أوجمنتين" = Augmentin)
+- Handle mixed Arabic/English text carefully with patience
+- Handle transliterated drug names carefully with proper transliteration (e.g., "أوجمنتين" = Augmentin)
 
 ### Medication Extraction
 - Extract brand names and generic names
