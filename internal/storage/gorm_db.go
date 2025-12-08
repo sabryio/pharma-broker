@@ -120,6 +120,7 @@ func (g *GormDB) migrate() error {
 		&models.UnmappedMedication{},
 		&models.FeedbackRecord{},
 		&models.WeightHistory{},
+		&models.ReviewQueue{},
 	)
 }
 
