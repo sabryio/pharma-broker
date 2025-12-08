@@ -8,4 +8,6 @@ use (
 	./storage
 	./api
 	./app
+	./parsing
+	./matching
 )
