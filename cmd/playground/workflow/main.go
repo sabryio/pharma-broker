@@ -191,6 +191,7 @@ func main() {
 	cfg.AI.Provider = *provider
 	cfg.Database.Path = "./data/workflow_test.db"
 	cfg.Database.EnableWAL = true
+	cfg.DockerModel.BaseURL = "http://localhost:12434/engines/llama.cpp/v1"
 
 	// ============================================================
 	// PHASE 1: Initialize Database & Repositories

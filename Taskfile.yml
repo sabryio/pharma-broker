@@ -63,6 +63,16 @@ tasks:
     cmds:
       - go run ./cmd/tools/refresh_embeddings
 
+  workflow:test:
+    desc: Run comprehensive workflow test
+    cmds:
+      - go run ./cmd/playground/workflow/main.go
+
+  workflow:test:skip-notify:
+    desc: Run comprehensive workflow test (skip notifications)
+    cmds:
+      - go run ./cmd/playground/workflow/main.go -skip-notify
+
   playground:normalization:
     desc: Test Arabic normalization
     cmds:

@@ -249,7 +249,84 @@ parser:
 
 ---
 
-## 🧪 Testing
+## � WhatsApp Bot Commands
+
+PharmaBroker includes a built-in WhatsApp bot for managing matches directly from chat.
+
+### Enabling the Bot
+
+Add to `config.yaml`:
+
+```yaml
+whatsapp:
+  bot_commands:
+    enabled: true
+    authorized_phones:
+      - "201234567890" # Egyptian format (no +)
+      - "201098765432"
+```
+
+### Available Commands
+
+| Command         | Description                  | Example             |
+| --------------- | ---------------------------- | ------------------- |
+| `/status`       | System status & stats        | `/status`           |
+| `/pending`      | List pending matches (top 5) | `/pending`          |
+| `/confirm <id>` | Confirm a match              | `/confirm abc12345` |
+| `/reject <id>`  | Reject a match               | `/reject abc12345`  |
+| `/help`         | Show available commands      | `/help`             |
+
+### Command Examples
+
+**Check System Status:**
+
+```
+/status
+
+📊 PharmaBroker Status
+━━━━━━━━━━━━━━━━
+✅ System: Online
+📦 Pending Matches: 12
+💊 Active Offers: 45
+📋 Active Requests: 23
+✔️ Confirmed Today: 8
+```
+
+**List Pending Matches:**
+
+```
+/pending
+
+📋 Pending Matches (5)
+━━━━━━━━━━━━━━━━
+1. Augmentin 1g 🔥
+   ID: abc12345
+   Score: 92%
+
+2. Concor 5mg
+   ID: def67890
+   Score: 85%
+```
+
+**Confirm a Match:**
+
+```
+/confirm abc12345
+
+✅ Match abc12345 confirmed!
+تم تأكيد المطابقة
+```
+
+### Security Features
+
+- Only authorized phone numbers can execute commands
+- All bot actions are logged to the audit trail
+- Partial ID matching (first 8 characters) for convenience
+- Bilingual responses (English + Arabic)
+
+---
+
+## �🧪 Testing
 
 ```bash
 # Run all tests
