@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"pharmabroker/internal/domain"
@@ -78,6 +79,7 @@ type MatchScore struct {
 
 // Scorer provides multi-field scoring for offer-request matching
 type Scorer struct {
+	mu              sync.RWMutex
 	weights         ScoringWeights
 	thresholds      ConfidenceThresholds
 	recencyHalfLife float64   // Hours until score decays to 50% (default: 24)
@@ -360,41 +362,61 @@ func (s *Scorer) generateBreakdown(medScore, dosageScore, qtyScore, priceScore, 
 }
 
 // UpdateWeights allows dynamic weight adjustment (for feedback loop)
+// Thread-safe for runtime updates from scheduler.
 func (s *Scorer) UpdateWeights(weights ScoringWeights) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.weights = weights
 }
 
 // UpdateThresholds allows dynamic threshold adjustment
 func (s *Scorer) UpdateThresholds(thresholds ConfidenceThresholds) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.thresholds = thresholds
 }
 
 // GetWeights returns the current scoring weights
+// Thread-safe for concurrent access.
 func (s *Scorer) GetWeights() ScoringWeights {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.weights
 }
 
 // GetThresholds returns the current confidence thresholds
+// Thread-safe for concurrent access.
 func (s *Scorer) GetThresholds() ConfidenceThresholds {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.thresholds
 }
 
 // SetRecencyHalfLife sets the half-life for recency decay (in hours)
 func (s *Scorer) SetRecencyHalfLife(hours float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.recencyHalfLife = hours
 }
 
 // GetRecencyHalfLife returns the current recency half-life
+// Thread-safe for concurrent access.
 func (s *Scorer) GetRecencyHalfLife() float64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.recencyHalfLife
 }
 
 // SetDecayType sets the type of decay curve for recency scoring
 func (s *Scorer) SetDecayType(decayType DecayType) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.decayType = decayType
 }
 
 // GetDecayType returns the current decay type
 func (s *Scorer) GetDecayType() DecayType {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.decayType
 }

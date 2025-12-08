@@ -41,6 +41,9 @@ type Config struct {
 
 	// Reports settings for automated match reports
 	Reports ReportsConfig `mapstructure:"reports"`
+
+	// AdaptiveLearning settings for automatic weight optimization
+	AdaptiveLearning AdaptiveLearningConfig `mapstructure:"adaptive_learning"`
 }
 
 // AIConfig selects which AI provider to use
@@ -345,6 +348,100 @@ type EmailNotifyConfig struct {
 	Recipients []string `mapstructure:"recipients"`
 }
 
+// AdaptiveLearningConfig configures automatic weight optimization
+type AdaptiveLearningConfig struct {
+	// Enabled controls whether adaptive learning is active.
+	// Default: false (manual management only)
+	Enabled bool `mapstructure:"enabled"`
+
+	// Schedule is a cron expression for when to run learning.
+	// Examples: "0 3 * * *" (3 AM daily), "0 */6 * * *" (every 6 hours)
+	// Default: "0 3 * * *"
+	Schedule string `mapstructure:"schedule"`
+
+	// Algorithm contains weight adjustment parameters
+	Algorithm LearningAlgorithmConfig `mapstructure:"algorithm"`
+
+	// AutoApply controls automatic weight application
+	AutoApply AutoApplyConfig `mapstructure:"auto_apply"`
+
+	// Notifications configures alerting for learning events
+	Notifications LearningNotificationsConfig `mapstructure:"notifications"`
+}
+
+// LearningAlgorithmConfig configures the weight learning algorithm
+type LearningAlgorithmConfig struct {
+	// LearningRate controls how quickly weights adjust (alpha).
+	// Lower values = slower but more stable learning.
+	// Range: 0.01 to 0.5, Default: 0.1
+	LearningRate float64 `mapstructure:"learning_rate"`
+
+	// MinWeight is the minimum allowed weight for any factor.
+	// Prevents factors from becoming irrelevant.
+	// Range: 0.01 to 0.20, Default: 0.05
+	MinWeight float64 `mapstructure:"min_weight"`
+
+	// MaxWeight is the maximum allowed weight for any factor.
+	// Prevents single factor dominance.
+	// Range: 0.50 to 0.90, Default: 0.70
+	MaxWeight float64 `mapstructure:"max_weight"`
+
+	// MinChange is the minimum weight change to apply.
+	// Changes smaller than this are ignored as noise.
+	// Range: 0.005 to 0.10, Default: 0.02
+	MinChange float64 `mapstructure:"min_change"`
+
+	// MinSamples is the minimum feedback count required for learning.
+	// Prevents learning from insufficient data.
+	// Range: 10 to 1000, Default: 100
+	MinSamples int `mapstructure:"min_samples"`
+
+	// AnalysisWindowDays is how many days of feedback to analyze.
+	// Default: 30
+	AnalysisWindowDays int `mapstructure:"analysis_window_days"`
+}
+
+// AutoApplyConfig controls automatic weight application
+type AutoApplyConfig struct {
+	// Enabled controls whether new weights are applied automatically.
+	// When false, weights are calculated but require manual approval.
+	// Default: false (safer for initial deployment)
+	Enabled bool `mapstructure:"enabled"`
+
+	// RequireImprovement only applies weights if performance improves.
+	// Default: true
+	RequireImprovement bool `mapstructure:"require_improvement"`
+
+	// MinSeparationGain is the minimum separation gain required.
+	// Separation = avg_confirmed_score - avg_rejected_score
+	// Default: 0.01
+	MinSeparationGain float64 `mapstructure:"min_separation_gain"`
+
+	// MaxConfirmationRateDrop is the maximum allowed drop in confirmation rate.
+	// If confirmation rate drops more than this, weights are not applied.
+	// Default: 0.05 (5%)
+	MaxConfirmationRateDrop float64 `mapstructure:"max_confirmation_rate_drop"`
+}
+
+// LearningNotificationsConfig configures learning event notifications
+type LearningNotificationsConfig struct {
+	// OnSuccess notifies when weights are successfully applied.
+	// Default: true
+	OnSuccess bool `mapstructure:"on_success"`
+
+	// OnFailure notifies when learning fails (errors, insufficient data).
+	// Default: true
+	OnFailure bool `mapstructure:"on_failure"`
+
+	// OnRecommendation notifies when new weights are calculated but not applied.
+	// Default: true
+	OnRecommendation bool `mapstructure:"on_recommendation"`
+
+	// LogLevel controls verbosity: "debug", "info", "warn", "error"
+	// Default: "info"
+	LogLevel string `mapstructure:"log_level"`
+}
+
 // Load loads configuration from file, environment, and defaults.
 // Priority order: Environment variables > config file > defaults
 func Load() *Config {
@@ -468,6 +565,30 @@ func setDefaults(v *viper.Viper) {
 	// Server defaults
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.health_port", 5050)
+
+	// Adaptive Learning defaults (conservative for safe initial deployment)
+	v.SetDefault("adaptive_learning.enabled", false)
+	v.SetDefault("adaptive_learning.schedule", "0 3 * * *") // 3 AM daily
+
+	// Algorithm defaults
+	v.SetDefault("adaptive_learning.algorithm.learning_rate", 0.1)
+	v.SetDefault("adaptive_learning.algorithm.min_weight", 0.05)
+	v.SetDefault("adaptive_learning.algorithm.max_weight", 0.70)
+	v.SetDefault("adaptive_learning.algorithm.min_change", 0.02)
+	v.SetDefault("adaptive_learning.algorithm.min_samples", 100)
+	v.SetDefault("adaptive_learning.algorithm.analysis_window_days", 30)
+
+	// Auto-apply defaults (disabled by default for safety)
+	v.SetDefault("adaptive_learning.auto_apply.enabled", false)
+	v.SetDefault("adaptive_learning.auto_apply.require_improvement", true)
+	v.SetDefault("adaptive_learning.auto_apply.min_separation_gain", 0.01)
+	v.SetDefault("adaptive_learning.auto_apply.max_confirmation_rate_drop", 0.05)
+
+	// Notification defaults
+	v.SetDefault("adaptive_learning.notifications.on_success", true)
+	v.SetDefault("adaptive_learning.notifications.on_failure", true)
+	v.SetDefault("adaptive_learning.notifications.on_recommendation", true)
+	v.SetDefault("adaptive_learning.notifications.log_level", "info")
 }
 
 // loadFallback creates a config with hardcoded fallback values

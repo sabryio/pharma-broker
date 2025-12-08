@@ -187,3 +187,26 @@ reports:
     from_email: ""
     recipients: []
     # Example: ["admin@pharmacy.com", "manager@pharmacy.com"]
+
+adaptive_learning:
+  enabled: false # Safe default
+  schedule: "0 3 * * *" # 3 AM daily
+
+  algorithm:
+    learning_rate: 0.1
+    min_weight: 0.05
+    max_weight: 0.70
+    min_change: 0.02
+    min_samples: 100
+    analysis_window_days: 30
+
+  auto_apply:
+    enabled: false # Manual review by default
+    require_improvement: true
+    min_separation_gain: 0.01
+    max_confirmation_rate_drop: 0.05
+
+  notifications:
+    on_success: true
+    on_failure: true
+    on_recommendation: true
