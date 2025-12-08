@@ -10,4 +10,5 @@ use (
 	./app
 	./parsing
 	./matching
+	./messaging
 )
