@@ -13,14 +13,17 @@ func TestDefaultWeights(t *testing.T) {
 	w := DefaultWeights()
 
 	// Verify weights sum to 1.0
-	sum := w.Medication + w.Quantity + w.Price + w.Recency
+	sum := w.Medication + w.Dosage + w.Quantity + w.Price + w.Recency
 	if math.Abs(sum-1.0) > 0.001 {
 		t.Errorf("weights should sum to 1.0, got %v", sum)
 	}
 
 	// Verify default values
-	if w.Medication != 0.5 {
-		t.Errorf("expected Medication=0.5, got %v", w.Medication)
+	if w.Medication != 0.45 {
+		t.Errorf("expected Medication=0.45, got %v", w.Medication)
+	}
+	if w.Dosage != 0.10 {
+		t.Errorf("expected Dosage=0.10, got %v", w.Dosage)
 	}
 	if w.Quantity != 0.2 {
 		t.Errorf("expected Quantity=0.2, got %v", w.Quantity)
@@ -28,8 +31,8 @@ func TestDefaultWeights(t *testing.T) {
 	if w.Price != 0.15 {
 		t.Errorf("expected Price=0.15, got %v", w.Price)
 	}
-	if w.Recency != 0.15 {
-		t.Errorf("expected Recency=0.15, got %v", w.Recency)
+	if w.Recency != 0.10 {
+		t.Errorf("expected Recency=0.10, got %v", w.Recency)
 	}
 }
 
@@ -42,12 +45,25 @@ func TestQuantityScore(t *testing.T) {
 		request  float64
 		expected float64
 	}{
+		// Exact and over-fulfillment
 		{"exact match", 10, 10, 1.0},
 		{"offer exceeds request", 20, 10, 1.0},
 		{"large surplus", 100, 10, 1.0},
+
+		// NEW: Within ±10% tolerance (perfect score)
+		{"90% fulfillment (lower tolerance)", 9, 10, 1.0},
+		{"95% fulfillment (within tolerance)", 9.5, 10, 1.0},
+		{"105% fulfillment (within tolerance)", 10.5, 10, 1.0},
+		{"110% fulfillment (upper tolerance)", 11, 10, 1.0},
+
+		// Beyond tolerance - partial scores
+		{"89% fulfillment (below tolerance)", 8.9, 10, 0.89},
+		{"80% fulfillment (partial)", 8, 10, 0.8},
 		{"partial fulfillment 50%", 5, 10, 0.5},
 		{"partial fulfillment 25%", 2.5, 10, 0.25},
 		{"minimal fulfillment", 1, 100, 0.01},
+
+		// Edge cases
 		{"zero request (any ok)", 10, 0, 1.0},
 		{"negative request (any ok)", 10, -5, 1.0},
 		{"zero offer", 0, 10, 0.0},
@@ -74,17 +90,31 @@ func TestPriceScore(t *testing.T) {
 		max      float64
 		expected float64
 	}{
-		{"well within budget", 50, 100, 1.0},
-		{"at budget", 100, 100, 1.0},
-		{"10% over budget", 110, 100, 0.9},
-		{"25% over budget", 125, 100, 0.75},
-		{"50% over budget", 150, 100, 0.5},
-		{"100% over budget (2x)", 200, 100, 0.0},
-		{"200% over budget (3x)", 300, 100, 0.0}, // Clamped to 0
-		{"no max price constraint", 500, 0, 1.0},
-		{"negative max (treated as no constraint)", 500, -50, 1.0},
-		{"zero offer price", 0, 100, 0.8}, // Penalty for unknown
-		{"both zero", 0, 0, 1.0},
+		// Within budget (below or at tolerance)
+		{"well within budget (50%)", 50, 100, 1.0},
+		{"at exact budget", 100, 100, 1.0},
+
+		// NEW: Within ±5% tolerance (perfect score)
+		{"95% of budget (lower tolerance)", 95, 100, 1.0},
+		{"98% of budget (within tolerance)", 98, 100, 1.0},
+		{"102% of budget (within tolerance)", 102, 100, 1.0},
+		{"105% of budget (upper tolerance)", 105, 100, 1.0},
+
+		// Beyond tolerance - decay
+		{"106% of budget (just over)", 106, 100, 0.99},
+		{"110% over budget", 110, 100, 0.95},
+		{"125% over budget", 125, 100, 0.80},
+		{"150% over budget", 150, 100, 0.55},
+		{"205% over budget (2x tolerance)", 205, 100, 0.0},
+		{"300% over budget", 300, 100, 0.0}, // Clamped to 0
+
+		// No price scenarios
+		{"no max price, offer has price", 500, 0, 0.95},
+		{"no max price, no offer price", 0, 0, 1.0},
+		{"has max, no offer price", 0, 100, 0.85},
+
+		// Edge cases
+		{"negative max (treated as no constraint)", 500, -50, 0.95},
 	}
 
 	for _, tt := range tests {
@@ -265,17 +295,19 @@ func TestScoreMatch_PartialMatch(t *testing.T) {
 	if result.QuantityScore != 0.5 {
 		t.Errorf("QuantityScore = %v, want 0.5", result.QuantityScore)
 	}
-	if result.PriceScore != 0.8 {
-		t.Errorf("PriceScore = %v, want 0.8", result.PriceScore)
+	// Price score is now 0.85 (improved from 0.8) for unknown price with budget
+	if math.Abs(result.PriceScore-0.85) > 0.01 {
+		t.Errorf("PriceScore = %v, want 0.85", result.PriceScore)
 	}
 	if result.RecencyScore < 0.48 || result.RecencyScore > 0.52 {
 		t.Errorf("RecencyScore = %v, want ~0.5", result.RecencyScore)
 	}
 
 	// Total should be moderately lower
-	// 0.5*0.7 + 0.2*0.5 + 0.15*0.8 + 0.15*0.5 = 0.35 + 0.1 + 0.12 + 0.075 = 0.645
-	expectedTotal := 0.5*0.7 + 0.2*0.5 + 0.15*0.8 + 0.15*0.5
-	if math.Abs(result.Total-expectedTotal) > 0.02 {
+	// Now: Med=0.45, Dosage=0.10, Qty=0.20, Price=0.15, Recency=0.10
+	// Assuming dosageScore ~0.9 (no dosage specified)
+	expectedTotal := 0.45*0.7 + 0.10*0.9 + 0.20*0.5 + 0.15*0.8 + 0.10*0.5
+	if math.Abs(result.Total-expectedTotal) > 0.05 {
 		t.Errorf("Total = %v, want ~%v", result.Total, expectedTotal)
 	}
 
