@@ -57,3 +57,38 @@ tasks:
         platforms: [linux, darwin]
       - cmd: rm -rf {{.DIST_DIR}}
         platforms: [linux, darwin]
+
+  embeddings:refresh:
+    desc: Refresh medication embeddings from database
+    cmds:
+      - go run ./cmd/tools/refresh_embeddings
+
+  playground:normalization:
+    desc: Test Arabic normalization
+    cmds:
+      - go run ./cmd/playground/normalization
+
+  playground:fuzzy:
+    desc: Test fuzzy matching with Levenshtein distance
+    cmds:
+      - go run ./cmd/playground/fuzzy_match
+
+  playground:mapping:
+    desc: Test full medication mapping pipeline
+    cmds:
+      - go run ./cmd/playground/mapping_check
+
+  monitor:
+    desc: Run the application in monitor mode
+    cmds:
+      - go run ./cmd/app/main.go monitor
+
+  db:reset:
+    desc: Reset the database (delete and reseed)
+    cmds:
+      - go run ./cmd/app/main.go reset-db -f
+
+  db:seed:
+    desc: Seed the database with medications from JSON
+    cmds:
+      - go run ./cmd/playground/mapping_check

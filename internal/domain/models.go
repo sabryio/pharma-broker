@@ -139,16 +139,16 @@ type Stats struct {
 
 // ParsedItem represents a single item extracted by AI from a message
 type ParsedItem struct {
-	Type          MessageType `json:"type" jsonschema:"enum=OFFER,enum=REQUEST,description=Type of the listing (OFFER or REQUEST)"`
-	Medication    string      `json:"medication" jsonschema_description:"Normalized medication name (English preferred)"`
-	MedicationRaw string      `json:"medication_raw" jsonschema_description:"Exact text from message referring to medication"`
-	Quantity      float64     `json:"quantity,omitempty" jsonschema_description:"Numeric quantity (supports decimals like 0.5)"`
-	Unit          *string     `json:"unit,omitempty" jsonschema_description:"Unit of measure (e.g. boxes, strips, ampoules)"`
-	Price         float64     `json:"price,omitempty" jsonschema_description:"Price per unit if specified"`
-	MaxPrice      float64     `json:"max_price,omitempty" jsonschema_description:"Maximum price willing to pay (for requests)"`
-	// Removed: Currency, ExpiryDate, BatchNumber (moved to Notes)
-	Urgent bool   `json:"urgent,omitempty" jsonschema_description:"If the user explicitly mentions urgent/emergency"`
-	Notes  string `json:"notes,omitempty" jsonschema_description:"Any other details (expiry, batch, currency, location, unknown text)"`
+	Type            MessageType `json:"type" jsonschema:"enum=OFFER,enum=REQUEST,description=Type of the listing (OFFER or REQUEST)"`
+	Medication      string      `json:"medication" jsonschema_description:"Normalized medication name (English preferred)"`
+	MedicationRaw   string      `json:"medication_raw" jsonschema_description:"Exact text from message referring to medication"`
+	MatchConfidence string      `json:"match_confidence,omitempty" jsonschema_description:"How the medication was matched: EXACT, FUZZY, VECTOR, or TRANSLITERATED"`
+	Quantity        float64     `json:"quantity,omitempty" jsonschema_description:"Numeric quantity (supports decimals like 0.5)"`
+	Unit            *string     `json:"unit,omitempty" jsonschema_description:"Unit of measure (e.g. boxes, strips, ampoules)"`
+	Price           float64     `json:"price,omitempty" jsonschema_description:"Price per unit if specified"`
+	MaxPrice        float64     `json:"max_price,omitempty" jsonschema_description:"Maximum price willing to pay (for requests)"`
+	Urgent          bool        `json:"urgent,omitempty" jsonschema_description:"If the user explicitly mentions urgent/emergency"`
+	Notes           string      `json:"notes,omitempty" jsonschema_description:"Any other details (expiry, batch, currency, location, unknown text)"`
 }
 
 // AIParseResult represents the AI response for a message

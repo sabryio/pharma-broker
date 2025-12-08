@@ -7,6 +7,7 @@ import (
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/metrics"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -301,61 +302,92 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 
 // enforceMappings iterates over results and strictly applies known mappings
 // overwriting the AI's output if a known Arabic term is found in the Raw field.
+// Uses Arabic normalization and fuzzy matching for improved accuracy.
 func enforceMappings(results []*domain.AIParseResult, mappings map[string]string) {
 	if len(mappings) == 0 {
 		return
 	}
 
+	const maxFuzzyDistance = 2 // Allow up to 2 character edits for fuzzy matching
+
 	for _, res := range results {
 		for i := range res.Items {
 			item := &res.Items[i]
-			rawLower := strings.ToLower(item.MedicationRaw)
+			rawNormalized := NormalizeForMatching(item.MedicationRaw)
+			matched := false
 
-			// Check all mappings
-			// Note: This O(N*M) look up is fine associated with the small size of mappings/items per message
-			for arabic, english := range mappings {
-				// If the raw text contains the known Arabic brand
-				if strings.Contains(rawLower, strings.ToLower(arabic)) {
-					// Check if the current English output is "incorrect" (doesn't contain the mapped term)
-					// We use a loose check: if the English term isn't part of the output, we force it.
+			// Step 1: Try exact match (with normalization)
+			// Sort keys by length (longest first) so more specific matches take priority
+			// e.g., "ابيجونال" should match before "جونال"
+			sortedKeys := make([]string, 0, len(mappings))
+			for k := range mappings {
+				sortedKeys = append(sortedKeys, k)
+			}
+			sort.Slice(sortedKeys, func(i, j int) bool {
+				return len(sortedKeys[i]) > len(sortedKeys[j])
+			})
+
+			for _, arabic := range sortedKeys {
+				english := mappings[arabic]
+				arabicNormalized := NormalizeForMatching(arabic)
+				if strings.Contains(rawNormalized, arabicNormalized) {
 					if !strings.Contains(strings.ToLower(item.Medication), strings.ToLower(english)) {
-						// Heuristic: Reconstruct the name by replacing the Arabic part in Raw with the English part
-						// This preserves dosage/strength info usually present in Raw "زولادكس 3.6" -> "Zoladex 3.6"
-						// We use the original Case form of Arabic if possible, but map keys are usually normalized.
-						// Let's use string replacement on the Raw string.
+						applyMapping(item, arabic, english, ConfidenceExact)
+						matched = true
+						break
+					} else {
+						matched = true // Already correct
+						break
+					}
+				}
+			}
 
-						// Replace all occurrences if repetition exists
-						newItem := strings.ReplaceAll(item.MedicationRaw, arabic, english)
-
-						// If the replacing didn't work (case mismatch), just prepend the English name?
-						// Or simpler: just set Medication = English + " " + (rest of raw?).
-						// Safe bet: strings.Replace is good if the Arabic matches the key.
-						// To handle case insensitivity of Arabic (rare but possible), we might need regex.
-						// But for now, simple replace.
-						if newItem == item.MedicationRaw {
-							// Replace failed (case mismatch?), try simple overwrite
-							// Or try to just use the mapped value + (maybe parsing logic?).
-							// Let's just set it to properties we know + raw remainder?
-							// Actually, if replace failed, maybe the AI Hallucinated the Raw too?
-							// Assuming Raw is correct (extracted from text).
-
-							// Fallback: Just use the English name.
-							// Risk: Losing "3.6" or "500ml".
-							// Better: Append Raw? "Zoladex (زولادكس 3.6)"?
-							// Let's stick to the mapped name if logic fails.
-							item.Medication = english
-							// DEBUG: Log this
-							fmt.Printf("[ENFORCE] Forced %q to %q (Raw: %q)\n", item.MedicationRaw, english, item.MedicationRaw)
-						} else {
-							item.Medication = newItem
-							// DEBUG: Log this
-							fmt.Printf("[ENFORCE] Replaced %q -> %q (Raw: %q)\n", item.MedicationRaw, newItem, item.MedicationRaw)
-						}
+			// Step 2: If no exact match, try fuzzy matching
+			if !matched {
+				fuzzyResult := FuzzyFindBest(item.MedicationRaw, mappings, maxFuzzyDistance)
+				if fuzzyResult != nil {
+					if !strings.Contains(strings.ToLower(item.Medication), strings.ToLower(fuzzyResult.EnglishName)) {
+						applyMapping(item, fuzzyResult.ArabicKey, fuzzyResult.EnglishName, ConfidenceFuzzy)
 					}
 				}
 			}
 		}
 	}
+}
+
+// applyMapping updates an item with the correct English mapping
+func applyMapping(item *domain.ParsedItem, arabic, english string, confidence MatchConfidence) {
+	// Try to replace Arabic with English in the raw text
+	newItem := strings.ReplaceAll(item.MedicationRaw, arabic, english)
+
+	// Set the match confidence
+	item.MatchConfidence = string(confidence)
+
+	if newItem == item.MedicationRaw {
+		// Replace failed, just use the English name
+		item.Medication = english
+		fmt.Printf("[ENFORCE-%s] Forced %q to %q\n", confidence, item.MedicationRaw, english)
+	} else {
+		// Check for mixed Arabic/English content - if detected, use pure English name
+		if containsArabic(newItem) {
+			item.Medication = english
+			fmt.Printf("[ENFORCE-%s] Mixed content detected, forced %q to %q\n", confidence, newItem, english)
+		} else {
+			item.Medication = newItem
+			fmt.Printf("[ENFORCE-%s] Replaced %q -> %q\n", confidence, item.MedicationRaw, newItem)
+		}
+	}
+}
+
+// containsArabic checks if a string contains any Arabic characters
+func containsArabic(s string) bool {
+	for _, r := range s {
+		// Arabic Unicode range: U+0600 to U+06FF
+		if r >= 0x0600 && r <= 0x06FF {
+			return true
+		}
+	}
+	return false
 }
 
 // processBatch processes a small batch of messages

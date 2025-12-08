@@ -15,12 +15,14 @@ type Embedder interface {
 }
 
 // FilterMappingsByKeyword returns only mappings where Arabic key appears in content
+// Uses Arabic normalization for better matching of alef variants, diacritics, etc.
 func FilterMappingsByKeyword(content string, mappings map[string]string) map[string]string {
 	result := make(map[string]string)
-	contentLower := strings.ToLower(content)
+	contentNormalized := NormalizeForMatching(content)
 
 	for arabic, english := range mappings {
-		if strings.Contains(contentLower, strings.ToLower(arabic)) {
+		arabicNormalized := NormalizeForMatching(arabic)
+		if strings.Contains(contentNormalized, arabicNormalized) {
 			result[arabic] = english
 		}
 	}
