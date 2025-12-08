@@ -182,8 +182,13 @@ func (p *Parser) shouldQueueForReview(result *domain.AIParseResult) bool {
 		return false // Review queue not configured
 	}
 
-	// Empty results with no error might need review
-	if len(result.Items) == 0 && result.Error == "" {
+	// Errors are handled separately (dead letter queue, etc.)
+	if result.Error != "" {
+		return false
+	}
+
+	// Empty results (no items, no error) might need review
+	if len(result.Items) == 0 {
 		return p.multiPassConfig.EnableReviewQueue
 	}
 
