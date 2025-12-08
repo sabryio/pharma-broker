@@ -32,12 +32,10 @@ func setupIntegrationClient(t *testing.T) (*DockerModelClient, map[string]string
 	cfg := &config.DockerModelConfig{
 		BaseURL:            aiURL,
 		Model:              "ai/qwen3-vl:latest",
-		EmbeddingBaseURL:   aiURL,
 		EmbeddingModelName: "ai/embeddinggemma",
-		MaxTokens:          2048,
-		Temperature:        0.1,
 		MaxRetries:         3,
 		RetryBaseDelay:     time.Second,
+		RequestTimeout:     60 * time.Second,
 	}
 
 	log := zerolog.New(os.Stdout).With().Timestamp().Logger()

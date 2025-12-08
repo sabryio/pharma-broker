@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"pharmabroker/internal/ai"
@@ -26,6 +27,15 @@ func main() {
 	// Load config
 	cfg := config.Load()
 	cfg.AI.Provider = "docker"
+
+	// Override base URL for local development if not set
+	if cfg.DockerModel.BaseURL == "" || strings.Contains(cfg.DockerModel.BaseURL, "docker.internal") {
+		aiURL := os.Getenv("LLM_URL")
+		if aiURL == "" {
+			aiURL = "http://localhost:12434/engines/llama.cpp/v1"
+		}
+		cfg.DockerModel.BaseURL = aiURL
+	}
 
 	ctx := context.Background()
 
