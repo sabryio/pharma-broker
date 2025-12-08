@@ -334,7 +334,7 @@ func enforceMappings(results []*domain.AIParseResult, mappings map[string]string
 						// But for now, simple replace.
 						if newItem == item.MedicationRaw {
 							// Replace failed (case mismatch?), try simple overwrite
-							// Or try to just use the mapped value + (maybe parsing logic?)
+							// Or try to just use the mapped value + (maybe parsing logic?).
 							// Let's just set it to properties we know + raw remainder?
 							// Actually, if replace failed, maybe the AI Hallucinated the Raw too?
 							// Assuming Raw is correct (extracted from text).
@@ -344,8 +344,12 @@ func enforceMappings(results []*domain.AIParseResult, mappings map[string]string
 							// Better: Append Raw? "Zoladex (زولادكس 3.6)"?
 							// Let's stick to the mapped name if logic fails.
 							item.Medication = english
+							// DEBUG: Log this
+							fmt.Printf("[ENFORCE] Forced %q to %q (Raw: %q)\n", item.MedicationRaw, english, item.MedicationRaw)
 						} else {
 							item.Medication = newItem
+							// DEBUG: Log this
+							fmt.Printf("[ENFORCE] Replaced %q -> %q (Raw: %q)\n", item.MedicationRaw, newItem, item.MedicationRaw)
 						}
 					}
 				}

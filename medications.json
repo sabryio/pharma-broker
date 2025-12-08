@@ -4,11 +4,14 @@
   "فيزكو بلس": "ViscoPlus",
   "جونابيور": "Gonapure",
   "اوفتريل": "Ovitrelle",
+  "أوفتريل": "Ovitrelle",
   "جادينو": "Jadenu",
   "اوزمبك": "Ozempic",
   "كوريومون": "Choriomon",
   "ديكابيبتيل": "Decapeptyl",
+  "ديكابيبتايل": "Decapeptyl",
   "ميريوفيرت": "Mireofert",
+  "مريوفيرت": "Mireofert",
   "ابيفاسي": "Epifasi",
   "ابيجونال": "Epigonal",
   "فوستيمون": "Fostimon",
@@ -162,5 +165,8 @@
   "ازومبك": "Ozempic",
   "بيبراسلين": "Piperacillin",
   "انسولين تارد": "Insulatard",
-  "ريبلسوس": "Rybelsus"
+  "ريبلسوس": "Rybelsus",
+  "ريبلسس": "Rybelsus",
+  "تريبتوفيم": "Triptofem",
+  "برولوتكس": "Prolutex"
 }

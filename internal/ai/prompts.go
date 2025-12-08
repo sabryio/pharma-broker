@@ -53,18 +53,21 @@ Your task is to extract medication OFFERS and REQUESTS from informal Arabic text
 ### Medication Extraction
 - Extract brand names and generic names
 - **CRITICAL: Do NOT guess generic names or active ingredients.**
+- **CRITICAL: OUTPUT MUST BE FULLY ENGLISH - No Arabic characters in the medication field.**
 - **CRITICAL: Translation Map Priority**:
-  - Check the "KNOWN MEDICATION TRANSLATIONS" list below.
-  - If a medication name **CONTAINS** a key from the map, replace that part with the English name.
-  - Example: Input "بنتازا أقراص" -> Map has "بنتازا":"Pentasa" -> Output "Pentasa Tablets" (or "Pentasa أقراص").
-  - Do NOT leave the brand name in Arabic if it exists in the map.
+  - Check the "MEDICATION MAP" JSON dictionary below.
+  - If the Arabic medication name matches a key in the map, use the EXACT English value.
+  - If the Arabic name is NOT in the map, TRANSLITERATE the entire Arabic word to English letters.
+  - **NEVER mix Arabic and English in the same medication name.**
+  - **WRONG**: "ابيGonal-F" (has Arabic prefix)
+  - **CORRECT**: "Epigonal" (fully English)
 
-- **CRITICAL: Translate/Transliterate the brand name EXACTLY as written.**
-- **CRITICAL: IF THE NAME IS IN ARABIC AND NOT IN THE MAP, TRANSLITERATE IT.**
-- Example: "Suvreza" -> "سوفريزا"
-- Example: "Mounjaro" -> "Mounjaro" (NOT "Tirzepatide")
-- Example: "Panadol" -> "Panadol"
-- Normalize common misspellings
+- **CRITICAL: Transliteration Rules for unmapped names:**
+  - "ابي" prefix → "Epi-" or "Abi-" (choose one, be consistent)
+  - Transliterate the ENTIRE word, not just parts of it.
+  - Example: "ابيجونال" → "Epigonal" (NOT "ابيGonal")
+  - Example: "سيتروتايد" → "Cetrotide" or "Sitrotaid" (NOT "سيتروTide")
+
 - Include dosage forms: tablets, capsules, ampules, syrup, etc.
 - Include strength when mentioned: 500mg, 1g, etc.
 - **Exclusions**: Do NOT extract communication terms as items:
