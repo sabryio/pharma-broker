@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,6 +18,7 @@ import (
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/janitor"
+	"pharmabroker/internal/metrics"
 	"pharmabroker/internal/monitor"
 	"pharmabroker/internal/notify"
 	"pharmabroker/internal/reports"
@@ -335,8 +337,69 @@ func runServe(cmd *cobra.Command, args []string) {
 	// Wire audit repo
 	handlers.SetAuditRepo(auditRepo)
 
-	// Create HTTP router
-	router := api.NewRouter(handlers, &cfg.API, log)
+	// ========== Adaptive Learning System Setup ==========
+	var learningHandlers *api.LearningHandlers
+	var learningScheduler *ai.LearningScheduler
+
+	if cfg.AdaptiveLearning.Enabled {
+		log.Info().Msg("Initializing adaptive learning system...")
+
+		// Create learning repositories
+		feedbackRecordRepo := storage.NewFeedbackRecordRepo(db)
+		weightHistoryRepo := storage.NewWeightHistoryRepo(db)
+
+		// Create scorer (shared with parser for live weight updates)
+		scorer := ai.NewScorer(nil, nil)
+
+		// Create weight learner
+		learner := ai.NewWeightLearnerWithConfig(
+			feedbackRecordRepo,
+			weightHistoryRepo,
+			scorer,
+			ai.LearningConfig{
+				LearningRate:   cfg.AdaptiveLearning.Algorithm.LearningRate,
+				MinWeight:      cfg.AdaptiveLearning.Algorithm.MinWeight,
+				MaxWeight:      cfg.AdaptiveLearning.Algorithm.MaxWeight,
+				MinChange:      cfg.AdaptiveLearning.Algorithm.MinChange,
+				MinSamples:     cfg.AdaptiveLearning.Algorithm.MinSamples,
+				AnalysisWindow: cfg.AdaptiveLearning.Algorithm.AnalysisWindowDays,
+			},
+		)
+
+		// Create learning scheduler
+		learningScheduler = ai.NewLearningScheduler(
+			learner,
+			cfg.AdaptiveLearning,
+			slogFromZerolog(log),
+		)
+
+		// Start scheduler
+		if err := learningScheduler.Start(); err != nil {
+			log.Error().Err(err).Msg("Failed to start learning scheduler")
+		} else {
+			log.Info().
+				Str("schedule", cfg.AdaptiveLearning.Schedule).
+				Bool("auto_apply", cfg.AdaptiveLearning.AutoApply.Enabled).
+				Msg("Learning scheduler started")
+		}
+
+		// Create learning handlers for admin API
+		learningHandlers = api.NewLearningHandlers(
+			learningScheduler,
+			feedbackRecordRepo,
+			weightHistoryRepo,
+		)
+
+		// Update Prometheus metrics for scheduler state
+		updateLearningMetrics(learningScheduler)
+
+		log.Info().Msg("Adaptive learning system initialized")
+	} else {
+		log.Info().Msg("Adaptive learning disabled (set adaptive_learning.enabled: true to enable)")
+	}
+
+	// Create HTTP router with optional learning handlers
+	router := api.NewRouterWithLearning(handlers, learningHandlers, &cfg.API, log)
 
 	// Start WhatsApp connection (async)
 	go func() {
@@ -434,6 +497,90 @@ func runServe(cmd *cobra.Command, args []string) {
 	if reportScheduler != nil {
 		reportScheduler.Stop()
 	}
+	if learningScheduler != nil {
+		learningScheduler.Stop()
+	}
 	waManager.Disconnect()
 	server.Close()
+}
+
+// slogFromZerolog creates an slog.Logger that wraps zerolog
+// This allows the learning scheduler (which uses slog) to log through zerolog
+func slogFromZerolog(zlog zerolog.Logger) *slog.Logger {
+	return slog.New(&zerologSlogHandler{zlog: zlog})
+}
+
+// zerologSlogHandler adapts slog to zerolog
+type zerologSlogHandler struct {
+	zlog zerolog.Logger
+}
+
+func (h *zerologSlogHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return true
+}
+
+func (h *zerologSlogHandler) Handle(_ context.Context, record slog.Record) error {
+	event := h.zlog.Info()
+
+	switch record.Level {
+	case slog.LevelDebug:
+		event = h.zlog.Debug()
+	case slog.LevelInfo:
+		event = h.zlog.Info()
+	case slog.LevelWarn:
+		event = h.zlog.Warn()
+	case slog.LevelError:
+		event = h.zlog.Error()
+	}
+
+	record.Attrs(func(attr slog.Attr) bool {
+		event = event.Interface(attr.Key, attr.Value.Any())
+		return true
+	})
+
+	event.Msg(record.Message)
+	return nil
+}
+
+func (h *zerologSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h
+}
+
+func (h *zerologSlogHandler) WithGroup(name string) slog.Handler {
+	return h
+}
+
+// updateLearningMetrics updates Prometheus metrics for the learning system
+func updateLearningMetrics(scheduler *ai.LearningScheduler) {
+	if scheduler == nil {
+		return
+	}
+
+	status := scheduler.Status()
+
+	// Update scheduler state
+	if status.Enabled {
+		metrics.LearningSchedulerEnabled.Set(1)
+	} else {
+		metrics.LearningSchedulerEnabled.Set(0)
+	}
+
+	// Update pending weights indicator
+	if status.PendingApply != nil {
+		metrics.PendingWeightsAvailable.Set(1)
+	} else {
+		metrics.PendingWeightsAvailable.Set(0)
+	}
+
+	// Update last run timestamp
+	if !status.LastRun.IsZero() {
+		metrics.LastLearningJobTimestamp.Set(float64(status.LastRun.Unix()))
+	}
+
+	// Update metrics if we have them
+	if status.LastMetrics != nil {
+		metrics.ConfirmationRate.Set(status.LastMetrics.ConfirmationRate)
+		metrics.ScoreSeparation.Set(status.LastMetrics.AvgScoreConfirmed - status.LastMetrics.AvgScoreRejected)
+		metrics.FeedbackSamplesAnalyzed.Set(float64(status.LastMetrics.SampleSize))
+	}
 }

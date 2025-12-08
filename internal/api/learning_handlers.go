@@ -20,7 +20,7 @@ type LearningHandlers struct {
 // LearningFeedbackRepository interface for learning feedback
 type LearningFeedbackRepository interface {
 	GetFeedbackStats(ctx context.Context, startDate, endDate time.Time) (*domain.FeedbackStats, error)
-	CountByAction(ctx context.Context, action domain.FeedbackAction, startDate, endDate time.Time) (int, error)
+	CountByAction(ctx context.Context, action domain.FeedbackAction, startDate, endDate time.Time) (int64, error)
 }
 
 // LearningWeightHistoryRepository interface for weight history

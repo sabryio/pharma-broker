@@ -24,7 +24,7 @@ func (m *mockLearningFeedbackRepo) GetFeedbackStats(ctx context.Context, startDa
 	return m.stats, m.err
 }
 
-func (m *mockLearningFeedbackRepo) CountByAction(ctx context.Context, action domain.FeedbackAction, startDate, endDate time.Time) (int, error) {
+func (m *mockLearningFeedbackRepo) CountByAction(ctx context.Context, action domain.FeedbackAction, startDate, endDate time.Time) (int64, error) {
 	return 0, nil
 }
 
