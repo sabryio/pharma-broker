@@ -6,4 +6,6 @@ use (
 	./pkg
 	./ai
 	./storage
+	./api
+	./app
 )
