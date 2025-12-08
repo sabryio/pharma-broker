@@ -295,7 +295,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 	}
 
 	// Post-process to enforce mappings (Fix for AI hallucinations)
-	enforceMappings(finalResults, effectiveMappings)
+	enforceMappings(finalResults, effectiveMappings, c.log)
 
 	return finalResults, nil
 }
@@ -303,12 +303,24 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 // enforceMappings iterates over results and strictly applies known mappings
 // overwriting the AI's output if a known Arabic term is found in the Raw field.
 // Uses Arabic normalization and fuzzy matching for improved accuracy.
-func enforceMappings(results []*domain.AIParseResult, mappings map[string]string) {
+// The log parameter enables auto-learn logging for unmapped medications.
+func enforceMappings(results []*domain.AIParseResult, mappings map[string]string, log zerolog.Logger) {
 	if len(mappings) == 0 {
 		return
 	}
 
 	const maxFuzzyDistance = 2 // Allow up to 2 character edits for fuzzy matching
+
+	// Pre-sort keys by length (longest first) so more specific matches take priority
+	// e.g., "ابيجونال" should match before "جونال"
+	// This is done once per batch for performance
+	sortedKeys := make([]string, 0, len(mappings))
+	for k := range mappings {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Slice(sortedKeys, func(i, j int) bool {
+		return len(sortedKeys[i]) > len(sortedKeys[j])
+	})
 
 	for _, res := range results {
 		for i := range res.Items {
@@ -317,22 +329,12 @@ func enforceMappings(results []*domain.AIParseResult, mappings map[string]string
 			matched := false
 
 			// Step 1: Try exact match (with normalization)
-			// Sort keys by length (longest first) so more specific matches take priority
-			// e.g., "ابيجونال" should match before "جونال"
-			sortedKeys := make([]string, 0, len(mappings))
-			for k := range mappings {
-				sortedKeys = append(sortedKeys, k)
-			}
-			sort.Slice(sortedKeys, func(i, j int) bool {
-				return len(sortedKeys[i]) > len(sortedKeys[j])
-			})
-
 			for _, arabic := range sortedKeys {
 				english := mappings[arabic]
 				arabicNormalized := NormalizeForMatching(arabic)
 				if strings.Contains(rawNormalized, arabicNormalized) {
 					if !strings.Contains(strings.ToLower(item.Medication), strings.ToLower(english)) {
-						applyMapping(item, arabic, english, ConfidenceExact)
+						applyMapping(item, arabic, english, ConfidenceExact, log)
 						matched = true
 						break
 					} else {
@@ -347,16 +349,26 @@ func enforceMappings(results []*domain.AIParseResult, mappings map[string]string
 				fuzzyResult := FuzzyFindBest(item.MedicationRaw, mappings, maxFuzzyDistance)
 				if fuzzyResult != nil {
 					if !strings.Contains(strings.ToLower(item.Medication), strings.ToLower(fuzzyResult.EnglishName)) {
-						applyMapping(item, fuzzyResult.ArabicKey, fuzzyResult.EnglishName, ConfidenceFuzzy)
+						applyMapping(item, fuzzyResult.ArabicKey, fuzzyResult.EnglishName, ConfidenceFuzzy, log)
+						matched = true
 					}
 				}
+			}
+
+			// Step 3: Auto-learn logging - log unmapped medications for review
+			if !matched && item.MedicationRaw != "" {
+				log.Warn().
+					Str("raw", item.MedicationRaw).
+					Str("ai_output", item.Medication).
+					Msg("Unmapped medication detected - consider adding to database")
+				item.MatchConfidence = string(ConfidenceTransliterated)
 			}
 		}
 	}
 }
 
 // applyMapping updates an item with the correct English mapping
-func applyMapping(item *domain.ParsedItem, arabic, english string, confidence MatchConfidence) {
+func applyMapping(item *domain.ParsedItem, arabic, english string, confidence MatchConfidence, log zerolog.Logger) {
 	// Try to replace Arabic with English in the raw text
 	newItem := strings.ReplaceAll(item.MedicationRaw, arabic, english)
 
@@ -366,15 +378,28 @@ func applyMapping(item *domain.ParsedItem, arabic, english string, confidence Ma
 	if newItem == item.MedicationRaw {
 		// Replace failed, just use the English name
 		item.Medication = english
-		fmt.Printf("[ENFORCE-%s] Forced %q to %q\n", confidence, item.MedicationRaw, english)
+		log.Debug().
+			Str("raw", item.MedicationRaw).
+			Str("mapped_to", english).
+			Str("confidence", string(confidence)).
+			Msg("Mapping forced (no replacement possible)")
 	} else {
 		// Check for mixed Arabic/English content - if detected, use pure English name
 		if containsArabic(newItem) {
 			item.Medication = english
-			fmt.Printf("[ENFORCE-%s] Mixed content detected, forced %q to %q\n", confidence, newItem, english)
+			log.Debug().
+				Str("raw", item.MedicationRaw).
+				Str("attempted", newItem).
+				Str("mapped_to", english).
+				Str("confidence", string(confidence)).
+				Msg("Mixed content detected, using pure English")
 		} else {
 			item.Medication = newItem
-			fmt.Printf("[ENFORCE-%s] Replaced %q -> %q\n", confidence, item.MedicationRaw, newItem)
+			log.Debug().
+				Str("raw", item.MedicationRaw).
+				Str("mapped_to", newItem).
+				Str("confidence", string(confidence)).
+				Msg("Mapping applied")
 		}
 	}
 }

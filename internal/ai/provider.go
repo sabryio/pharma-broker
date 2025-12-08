@@ -23,6 +23,10 @@ type AIProvider interface {
 
 	// EmbedBatch generates vector embeddings for a batch of texts.
 	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+
+	// SetMappings configures the full medication mappings for hybrid RAG filtering.
+	// This enables keyword + vector similarity search to reduce prompt size.
+	SetMappings(mappings []*domain.MedicationMapping)
 }
 
 // NewAIProvider creates an AI provider based on configuration.

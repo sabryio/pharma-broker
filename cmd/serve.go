@@ -163,6 +163,15 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Info().Msg("Seeding complete")
 	}
 
+	// Load all medication mappings and set them on AI provider for hybrid RAG filtering
+	allDBMappings, err := medicationRepo.GetAll(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load medication mappings for hybrid filtering")
+	} else {
+		aiProvider.SetMappings(allDBMappings)
+		log.Info().Int("count", len(allDBMappings)).Msg("Configured hybrid RAG filtering")
+	}
+
 	// Initialize WhatsApp manager
 	waManager, err := whatsapp.NewManager(ctx, &cfg.WhatsApp, log)
 	if err != nil {

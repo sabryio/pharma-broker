@@ -350,3 +350,10 @@ func (c *GeminiClient) EmbedBatch(ctx context.Context, texts []string) ([][]floa
 	}
 	return results, nil
 }
+
+// SetMappings is a no-op for GeminiClient as it doesn't use hybrid RAG filtering.
+// The Gemini provider uses the full mappings passed to ParseMessages directly.
+func (c *GeminiClient) SetMappings(mappings []*domain.MedicationMapping) {
+	// No-op: Gemini doesn't use hybrid RAG filtering
+	c.log.Debug().Int("count", len(mappings)).Msg("SetMappings called (no-op for Gemini)")
+}

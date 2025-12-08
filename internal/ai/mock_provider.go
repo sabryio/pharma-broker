@@ -37,3 +37,7 @@ func (m *MockAIProvider) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 	}
 	return results, nil
 }
+
+func (m *MockAIProvider) SetMappings(mappings []*domain.MedicationMapping) {
+	// No-op for mock
+}
