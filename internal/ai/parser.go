@@ -363,7 +363,7 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 		return
 	}
 
-	results, err := p.aiProvider.ParseMessages(ctx, batch, mappings)
+	results, err := p.aiProvider.ParseMessages(ctx, batch, MapToMedicationMappings(mappings))
 	if err != nil {
 		p.log.Error().
 			Err(err).

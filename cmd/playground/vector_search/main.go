@@ -201,7 +201,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, filteredMappings)
+	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, ai.MapToMedicationMappings(filteredMappings))
 	duration := time.Since(start)
 
 	if err != nil {

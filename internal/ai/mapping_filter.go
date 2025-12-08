@@ -121,3 +121,26 @@ func cosineSimilarity(a, b []float32) float32 {
 
 	return dot / (float32(math.Sqrt(float64(normA))) * float32(math.Sqrt(float64(normB))))
 }
+
+// MapToMedicationMappings converts map[string]string to []*domain.MedicationMapping
+// Used to bridge between legacy map format and new slice format
+func MapToMedicationMappings(mappings map[string]string) []*domain.MedicationMapping {
+	result := make([]*domain.MedicationMapping, 0, len(mappings))
+	for arabic, english := range mappings {
+		result = append(result, &domain.MedicationMapping{
+			ArabicName:  arabic,
+			EnglishName: english,
+		})
+	}
+	return result
+}
+
+// MedicationMappingsToMap converts []*domain.MedicationMapping to map[string]string
+// Used for backward compatibility
+func MedicationMappingsToMap(mappings []*domain.MedicationMapping) map[string]string {
+	result := make(map[string]string)
+	for _, m := range mappings {
+		result[m.ArabicName] = m.EnglishName
+	}
+	return result
+}

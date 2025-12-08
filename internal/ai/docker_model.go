@@ -108,13 +108,14 @@ func (c *DockerModelClient) SetUnmappedRepo(repo domain.UnmappedMedicationRepo) 
 }
 
 // ParseMessages implements AIProvider.ParseMessages using Docker Model Runner.
-func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
+func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
 	if len(messages) == 0 {
 		return nil, nil
 	}
 
 	// Apply hybrid filtering if allMappings is configured
-	effectiveMappings := mappings
+	// Use map[string]string for internal filtering operations
+	var effectiveMappingsMap map[string]string
 	if len(c.allMappings) > 0 {
 		// Concatenate all message contents for filtering
 		var contentBuilder strings.Builder
@@ -125,12 +126,15 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 		combinedContent := contentBuilder.String()
 
 		// Hybrid filter: keyword + vector (always combined)
-		effectiveMappings = FilterMappingsHybrid(ctx, combinedContent, c.allMappings, c, c.vectorTopK)
+		effectiveMappingsMap = FilterMappingsHybrid(ctx, combinedContent, c.allMappings, c, c.vectorTopK)
 
 		c.log.Info().
 			Int("original_mappings", len(mappings)).
-			Int("filtered_mappings", len(effectiveMappings)).
+			Int("filtered_mappings", len(effectiveMappingsMap)).
 			Msg("Applied hybrid mapping filter")
+	} else {
+		// No filtering, use provided mappings as map
+		effectiveMappingsMap = MedicationMappingsToMap(mappings)
 	}
 
 	// Constants for chunking
@@ -217,7 +221,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 				Int("chunk_size", len(batch)).
 				Msg("Processing chunk batch")
 
-			results, err := c.processBatch(ctx, batch, effectiveMappings)
+			results, err := c.processBatch(ctx, batch, MapToMedicationMappings(effectiveMappingsMap))
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -302,7 +306,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 	}
 
 	// Post-process to enforce mappings (Fix for AI hallucinations)
-	enforceMappings(finalResults, effectiveMappings, c.log, c.unmappedRepo, messages)
+	enforceMappings(finalResults, effectiveMappingsMap, c.log, c.unmappedRepo, messages)
 
 	return finalResults, nil
 }
@@ -439,7 +443,7 @@ func containsArabic(s string) bool {
 }
 
 // processBatch processes a small batch of messages
-func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
+func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
 	// Build prompt with messages
 	prompt := buildParsePrompt(messages, mappings)
 

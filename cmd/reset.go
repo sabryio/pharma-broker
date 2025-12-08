@@ -89,25 +89,27 @@ func runResetDb(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 	medicationRepo := storage.NewMedicationMappingRepo(db)
 
-	// Load medication mappings from file
-	commonMedications, err := domain.LoadMedicationMappings("medications.json")
+	// Load medication mappings from file (supports both legacy and rich format)
+	medicationMappings, err := domain.LoadRichMedicationMappings("medications.json")
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load medications.json")
 	}
 
 	log.Info().Msg("Seeding medication mappings...")
 	count := 0
-	for arabic, english := range commonMedications {
-		if err := medicationRepo.Save(ctx, &domain.MedicationMapping{
-			ArabicName:  arabic,
-			EnglishName: english,
-		}); err != nil {
-			log.Warn().Err(err).Str("arabic", arabic).Msg("Failed to seed mapping")
+	synonymCount := 0
+	for _, mapping := range medicationMappings {
+		if err := medicationRepo.Save(ctx, mapping); err != nil {
+			log.Warn().Err(err).Str("arabic", mapping.ArabicName).Msg("Failed to seed mapping")
 		} else {
 			count++
+			synonymCount += len(mapping.Synonyms)
 		}
 	}
-	log.Info().Int("count", count).Msg("Seeded medication mappings")
+	log.Info().
+		Int("count", count).
+		Int("synonyms", synonymCount).
+		Msg("Seeded medication mappings")
 
 	log.Info().Msg("✅ Database reset complete")
 }

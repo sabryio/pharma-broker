@@ -78,7 +78,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	auditRepo := storage.NewAuditRepo(db)
 
 	// Load medication mappings from file
-	commonMedications, err := domain.LoadMedicationMappings("medications.json")
+	commonMedications, err := domain.LoadRichMedicationMappings("medications.json")
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load medications.json")
 	} else {
@@ -96,16 +96,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	// Seed medication mappings if empty
 	count, err := medicationRepo.Count(ctx)
 	if err == nil && count == 0 {
-		log.Info().Msg("Seeding medication mappings (consolidating synonyms)...")
-
-		// 1. Group by English Name for consolidation
-		// Also collect all texts to embed in batch
-		grouped := make(map[string][]string)
-		var arabicsToEmbed []string
-
-		for arabic, english := range commonMedications {
-			grouped[english] = append(grouped[english], arabic)
-		}
+		log.Info().Msg("Seeding medication mappings from rich JSON format...")
 
 		// Pre-calculate canonical names for batch embedding
 		type seedItem struct {
@@ -114,23 +105,17 @@ func runServe(cmd *cobra.Command, args []string) {
 			Synonyms  []string
 		}
 		var seedQueue []seedItem
+		var arabicsToEmbed []string
 
-		for english, arabics := range grouped {
-			if len(arabics) == 0 {
-				continue
-			}
-			canonical := arabics[0]
-			var synonyms []string
-			if len(arabics) > 1 {
-				synonyms = arabics[1:]
-			}
-
+		// New rich format: commonMedications is []*domain.MedicationMapping
+		// Each entry contains ArabicName, EnglishName, and Synonyms
+		for _, entry := range commonMedications {
 			seedQueue = append(seedQueue, seedItem{
-				Canonical: canonical,
-				English:   english,
-				Synonyms:  synonyms,
+				Canonical: entry.ArabicName,
+				English:   entry.EnglishName,
+				Synonyms:  entry.Synonyms,
 			})
-			arabicsToEmbed = append(arabicsToEmbed, canonical)
+			arabicsToEmbed = append(arabicsToEmbed, entry.ArabicName)
 		}
 
 		// Batch Embed

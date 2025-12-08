@@ -103,7 +103,7 @@ func main() {
 	fmt.Println(separator)
 
 	// Load medication mappings for testing
-	commonMedications, err := domain.LoadMedicationMappings("medications.json")
+	commonMedications, err := domain.LoadRichMedicationMappings("medications.json")
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load medications.json")
 	}

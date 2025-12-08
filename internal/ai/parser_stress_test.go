@@ -38,7 +38,7 @@ func TestParser_Stress_Concurrency(t *testing.T) {
 			{ArabicName: "اوجمنتين", EnglishName: "Augmentin", Embedding: []float32{0.1, 0.2}},
 		}, nil
 	}
-	mockAI.OnParseMessages = func(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
+	mockAI.OnParseMessages = func(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
 		// Simulate AI delay
 		time.Sleep(10 * time.Millisecond)
 		return []*domain.AIParseResult{

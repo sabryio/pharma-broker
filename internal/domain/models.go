@@ -143,6 +143,7 @@ type ParsedItem struct {
 	Medication      string      `json:"medication" jsonschema_description:"Normalized medication name (English preferred)"`
 	MedicationRaw   string      `json:"medication_raw" jsonschema_description:"Exact text from message referring to medication"`
 	MatchConfidence string      `json:"match_confidence,omitempty" jsonschema_description:"How the medication was matched: EXACT, FUZZY, VECTOR, or TRANSLITERATED"`
+	AIConfidence    float64     `json:"ai_confidence,omitempty" jsonschema:"minimum=0,maximum=1,description=AI certainty about extraction quality (0.0-1.0)"`
 	Quantity        float64     `json:"quantity,omitempty" jsonschema_description:"Numeric quantity (supports decimals like 0.5)"`
 	Unit            *string     `json:"unit,omitempty" jsonschema_description:"Unit of measure (e.g. boxes, strips, ampoules)"`
 	Price           float64     `json:"price,omitempty" jsonschema_description:"Price per unit if specified"`

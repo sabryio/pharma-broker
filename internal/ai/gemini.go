@@ -121,7 +121,7 @@ var pharmaParseSchema = map[string]any{
 }
 
 // ParseMessages parses one or more messages and extracts offers/requests
-func (c *GeminiClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
+func (c *GeminiClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
 	// Check rate limit
 	if !c.checkRateLimit() {
 		return nil, fmt.Errorf("rate limit exceeded (%d requests/hour)", c.cfg.RateLimitPerHour)

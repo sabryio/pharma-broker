@@ -109,7 +109,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, mappings)
+	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, ai.MapToMedicationMappings(mappings))
 	duration := time.Since(start)
 
 	if err != nil {
@@ -122,11 +122,12 @@ func main() {
 		for i, item := range res.Items {
 			// Check if correctly mapped
 			status := "?"
-			if item.Medication == "Ovitrelle" || item.Medication == "Ovitrelle 250" {
+			switch item.Medication {
+			case "Ovitrelle", "Ovitrelle 250":
 				status = "✓ Ovitrelle"
-			} else if item.Medication == "Decapeptyl" {
+			case "Decapeptyl":
 				status = "✓ Decapeptyl"
-			} else if item.Medication == "Mireofert" || item.Medication == "Mireofert 150" {
+			case "Mireofert", "Mireofert 150":
 				status = "✓ Mireofert"
 			}
 			fmt.Printf("  [%d] %s (Raw: %s) %s\n", i, item.Medication, item.MedicationRaw, status)

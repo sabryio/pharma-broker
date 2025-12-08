@@ -225,3 +225,60 @@ func TestIntegration_BatchParsing(t *testing.T) {
 		t.Errorf("Expected at least 3 items across all batches, got %d", totalItems)
 	}
 }
+
+func TestIntegration_AIConfidenceScoring(t *testing.T) {
+	client, _, mappings := setupIntegrationClient(t)
+
+	// Test messages with varying clarity
+	messages := []*domain.RawMessage{
+		// Clear, known medication - should have high confidence
+		{ID: "clear-1", Content: "*عندي* *اوزمبك* واحد ونص"},
+		// Known medication - should have high/medium confidence
+		{ID: "clear-2", Content: "*محتاج* *زولادكس 3.6*"},
+		// Ambiguous/unknown - might have lower confidence
+		{ID: "unclear-1", Content: "*عندي* *دواء للسكر*"},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	results, err := client.ParseMessages(ctx, messages, mappings)
+	if err != nil {
+		t.Fatalf("ParseMessages failed: %v", err)
+	}
+
+	if len(results) != 3 {
+		t.Errorf("Expected 3 results, got %d", len(results))
+	}
+
+	// Verify confidence scores are present and in valid range
+	hasConfidence := false
+	for i, result := range results {
+		if result.Error != "" {
+			t.Logf("Result %d has error: %s", i, result.Error)
+			continue
+		}
+
+		for j, item := range result.Items {
+			t.Logf("Message %d, Item %d: %s (confidence: %.2f)", i, j, item.Medication, item.AIConfidence)
+
+			// Check confidence is in valid range
+			if item.AIConfidence < 0.0 || item.AIConfidence > 1.0 {
+				t.Errorf("Item %d confidence out of range: %.2f (should be 0.0-1.0)", j, item.AIConfidence)
+			}
+
+			// If AI returned confidence, mark it
+			if item.AIConfidence > 0.0 {
+				hasConfidence = true
+			}
+
+			// Verify confidence level functions work
+			level := GetConfidenceLevel(item.AIConfidence)
+			t.Logf("  Confidence level: %s, Needs review: %v", level, NeedsReview(item.AIConfidence))
+		}
+	}
+
+	if !hasConfidence {
+		t.Error("No items had confidence scores - AI may not be providing them")
+	}
+}

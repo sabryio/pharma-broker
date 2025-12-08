@@ -166,7 +166,7 @@ func main() {
 
 	write("Sending message to AI...")
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, mappings)
+	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, ai.MapToMedicationMappings(mappings))
 	duration := time.Since(start)
 
 	if err != nil {

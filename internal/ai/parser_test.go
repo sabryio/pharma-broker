@@ -59,7 +59,7 @@ func TestParser_ProcessBatch_HappyPath(t *testing.T) {
 		return []*domain.MedicationMapping{}, nil
 	}
 
-	mockAI.OnParseMessages = func(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
+	mockAI.OnParseMessages = func(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
 		return []*domain.AIParseResult{
 			{
 				Items: []domain.ParsedItem{parsedItem},
@@ -131,7 +131,7 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 		return []*domain.MedicationMapping{}, nil
 	}
 
-	mockAI.OnParseMessages = func(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
+	mockAI.OnParseMessages = func(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
 		return nil, errors.New("AI overloaded")
 	}
 

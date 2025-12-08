@@ -9,7 +9,7 @@ import (
 )
 
 // buildParsePrompt creates the prompt for parsing pharmaceutical messages
-func buildParsePrompt(messages []*domain.RawMessage, mappings map[string]string) string {
+func buildParsePrompt(messages []*domain.RawMessage, mappings []*domain.MedicationMapping) string {
 	var sb strings.Builder
 
 	sb.WriteString(systemPrompt)
@@ -87,7 +87,14 @@ Your task is to extract medication OFFERS and REQUESTS from informal Arabic text
 - If message is general chat or unclear, return empty items array
 
 ### Urgency Detection
-- Mark as urgent if contains: ضروري، عاجل، urgent، ASAP، مستعجل`
+- Mark as urgent if contains: ضروري، عاجل، urgent، ASAP، مستعجل
+
+### Confidence Scoring
+- For EACH item, provide an "ai_confidence" score (0.0-1.0) indicating extraction certainty
+- High confidence (0.8-1.0): Clear medication name, matched in map, unambiguous quantity/price
+- Medium confidence (0.5-0.79): Medication found but with spelling variations, unclear quantity
+- Low confidence (0.0-0.49): Unfamiliar medication, heavy transliteration needed, or ambiguous context
+- Example: "اوزمبك" (in map) → 0.95, "ديكابتايل" (slight variation) → 0.75, "دواء للسكر" (generic) → 0.3`
 
 const parsingExamples = `
 ## Examples
@@ -100,6 +107,7 @@ Output:
       "type": "OFFER",
       "medication": "Augmentin 1g",
       "medication_raw": "اوجمنتين 1 جم",
+      "ai_confidence": 0.95,
       "quantity": 5,
       "unit": "boxes",
       "price": 300,
@@ -116,6 +124,7 @@ Output:
       "type": "REQUEST",
       "medication": "Concor 5mg",
       "medication_raw": "كونكور 5",
+      "ai_confidence": 0.9,
       "quantity": 0,
       "unit": null,
       "max_price": 0,
@@ -126,10 +135,16 @@ Output:
 }`
 
 // FormatMappings creates a compact JSON string for prompt injection
-func FormatMappings(mappings map[string]string) string {
+// Accepts []*domain.MedicationMapping and outputs as {"arabic": "english", ...}
+func FormatMappings(mappings []*domain.MedicationMapping) string {
 	if len(mappings) == 0 {
 		return ""
 	}
-	jsonBytes, _ := json.Marshal(mappings)
+	// Convert to simple map for prompt injection
+	simpleMap := make(map[string]string)
+	for _, m := range mappings {
+		simpleMap[m.ArabicName] = m.EnglishName
+	}
+	jsonBytes, _ := json.Marshal(simpleMap)
 	return fmt.Sprintf("\n## MEDICATION MAP\n%s\n", string(jsonBytes))
 }

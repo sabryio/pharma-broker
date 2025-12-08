@@ -90,7 +90,7 @@ func runBenchmark(ctx context.Context, client *ai.DockerModelClient, messages []
 
 	for i := range iterations {
 		start := time.Now()
-		results, err := client.ParseMessages(ctx, messages, mappings)
+		results, err := client.ParseMessages(ctx, messages, ai.MapToMedicationMappings(mappings))
 		duration := time.Since(start)
 
 		if err != nil {

@@ -7,12 +7,12 @@ import (
 
 // MockAIProvider is a manual mock for AIProvider
 type MockAIProvider struct {
-	OnParseMessages func(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error)
+	OnParseMessages func(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error)
 	OnEmbed         func(ctx context.Context, text string) ([]float32, error)
 	OnEmbedBatch    func(ctx context.Context, texts []string) ([][]float32, error)
 }
 
-func (m *MockAIProvider) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings map[string]string) ([]*domain.AIParseResult, error) {
+func (m *MockAIProvider) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
 	if m.OnParseMessages != nil {
 		return m.OnParseMessages(ctx, messages, mappings)
 	}
