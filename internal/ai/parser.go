@@ -84,6 +84,10 @@ type Parser struct {
 	embeddingMu          sync.RWMutex
 	medicationEmbeddings map[string][]float32
 
+	// Synonym Index for medication matching
+	synonymMu    sync.RWMutex
+	synonymIndex *SynonymIndex
+
 	// Professional Scorer (Phase 1 Matching Enhancement)
 	scorer *Scorer
 }
@@ -835,7 +839,16 @@ func generateTrigrams(s string) []string {
 
 // calculateMedicationScore computes a hybrid lexical + semantic medication match score
 func (p *Parser) calculateMedicationScore(offerMed, requestMed string) float64 {
-	// Lexical scoring using fuzzy match
+	// Step 1: Check if medications are synonyms (instant 1.0 match)
+	p.synonymMu.RLock()
+	idx := p.synonymIndex
+	p.synonymMu.RUnlock()
+
+	if idx != nil && idx.AreSynonyms(offerMed, requestMed) {
+		return 1.0 // Perfect match via synonym lookup
+	}
+
+	// Step 2: Lexical scoring using fuzzy match
 	lexicalScore := fuzzyMatch(offerMed, requestMed)
 
 	// Apply scaling to fuzzy match score to fit 0-1 range better
@@ -853,7 +866,7 @@ func (p *Parser) calculateMedicationScore(offerMed, requestMed string) float64 {
 		normalizedLexical = lexicalScore * 0.5 // Low similarity
 	}
 
-	// Semantic scoring using embeddings
+	// Step 3: Semantic scoring using embeddings
 	semanticScore := 0.0
 	p.embeddingMu.RLock()
 	vecA, okA := p.medicationEmbeddings[strings.ToLower(offerMed)]
@@ -903,7 +916,7 @@ func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
 
-// refreshEmbeddings loads medication embeddings into memory
+// refreshEmbeddings loads medication embeddings and synonym index into memory
 func (p *Parser) refreshEmbeddings(ctx context.Context) error {
 	mappings, err := p.medicationRepo.GetAll(ctx)
 	if err != nil {
@@ -937,7 +950,18 @@ func (p *Parser) refreshEmbeddings(ctx context.Context) error {
 	p.medicationEmbeddings = newEmbeddings
 	p.embeddingMu.Unlock()
 
-	p.log.Info().Int("count", count).Int("keys", len(newEmbeddings)).Msg("Refreshed in-memory embeddings")
+	// Build synonym index from all mappings (not just those with embeddings)
+	newSynonymIndex := NewSynonymIndex(mappings)
+	p.synonymMu.Lock()
+	p.synonymIndex = newSynonymIndex
+	p.synonymMu.Unlock()
+
+	p.log.Info().
+		Int("embeddings", count).
+		Int("embedding_keys", len(newEmbeddings)).
+		Int("synonym_medications", newSynonymIndex.Size()).
+		Int("synonym_mappings", newSynonymIndex.TotalMappings()).
+		Msg("Refreshed in-memory embeddings and synonym index")
 	return nil
 }
 
