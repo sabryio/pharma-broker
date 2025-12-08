@@ -1,204 +1,66 @@
+// Package domain provides backward-compatible type aliases to the new domain/entity types.
+// This allows the existing internal/ code to work with the new clean architecture types.
 package domain
 
 import (
-	"time"
+	"pharmabroker/domain/entity"
 )
 
-// MessageType categorizes incoming WhatsApp messages
-type MessageType string
+// ========================================
+// Type Aliases - Status Enums
+// ========================================
+
+type MessageType = entity.MessageType
 
 const (
-	MessageTypeOffer   MessageType = "OFFER"
-	MessageTypeRequest MessageType = "REQUEST"
-	MessageTypeBoth    MessageType = "BOTH"
-	MessageTypeUnknown MessageType = "UNKNOWN"
+	MessageTypeOffer   = entity.MessageTypeOffer
+	MessageTypeRequest = entity.MessageTypeRequest
+	MessageTypeBoth    = entity.MessageTypeBoth
+	MessageTypeUnknown = entity.MessageTypeUnknown
 )
 
-// ItemStatus tracks lifecycle of offers/requests
-type ItemStatus string
+type ItemStatus = entity.ItemStatus
 
 const (
-	StatusActive   ItemStatus = "ACTIVE"
-	StatusMatched  ItemStatus = "MATCHED"
-	StatusExpired  ItemStatus = "EXPIRED"
-	StatusArchived ItemStatus = "ARCHIVED"
+	StatusActive   = entity.StatusActive
+	StatusMatched  = entity.StatusMatched
+	StatusExpired  = entity.StatusExpired
+	StatusArchived = entity.StatusArchived
 )
 
-// MatchStatus tracks lifecycle of matches
-type MatchStatus string
+type MatchStatus = entity.MatchStatus
 
 const (
-	MatchStatusPending   MatchStatus = "PENDING"
-	MatchStatusConfirmed MatchStatus = "CONFIRMED"
-	MatchStatusRejected  MatchStatus = "REJECTED"
+	MatchStatusPending   = entity.MatchStatusPending
+	MatchStatusConfirmed = entity.MatchStatusConfirmed
+	MatchStatusRejected  = entity.MatchStatusRejected
 )
 
-// RawMessage represents an incoming WhatsApp message before AI processing
-type RawMessage struct {
-	ID          string     `json:"id"`
-	ExternalID  string     `json:"external_id"` // WhatsApp Message ID
-	GroupJID    string     `json:"group_jid"`
-	GroupName   string     `json:"group_name"`
-	SenderJID   string     `json:"sender_jid"`
-	SenderPhone string     `json:"sender_phone"`
-	SenderName  string     `json:"sender_name"`
-	Content     string     `json:"content"`
-	Timestamp   time.Time  `json:"timestamp"`
-	ProcessedAt *time.Time `json:"processed_at,omitempty"`
-	Error       string     `json:"error,omitempty"`
-
-	// Reply context (for messages replying to other messages)
-	ReplyToID      string `json:"reply_to_id,omitempty"`      // WhatsApp ID of quoted message
-	ReplyToContent string `json:"reply_to_content,omitempty"` // Text of quoted message
-	ReplyToSender  string `json:"reply_to_sender,omitempty"`  // Sender JID of quoted message
-}
-
-// Offer represents a medication supply offer
-type Offer struct {
-	ID            string     `json:"id"`
-	RawMessageID  string     `json:"raw_message_id"`
-	SourcePhone   string     `json:"source_phone"`
-	SourceName    string     `json:"source_name"`
-	SourceGroup   string     `json:"source_group"`
-	GroupName     string     `json:"group_name"`
-	Medication    string     `json:"medication"`     // Normalized name
-	MedicationRaw string     `json:"medication_raw"` // Original text
-	Quantity      float64    `json:"quantity"`
-	Unit          *string    `json:"unit,omitempty"` // e.g., "boxes", "strips"
-	Price         float64    `json:"price,omitempty"`
-	Currency      string     `json:"currency,omitempty"` // Default EGP
-	ExpiryDate    *time.Time `json:"expiry_date,omitempty"`
-	BatchNumber   string     `json:"batch_number,omitempty"`
-	Notes         string     `json:"notes,omitempty"`
-	RawMessage    string     `json:"raw_message"`
-	Status        ItemStatus `json:"status"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-}
-
-// Request represents a medication demand request
-type Request struct {
-	ID            string     `json:"id"`
-	RawMessageID  string     `json:"raw_message_id"`
-	SourcePhone   string     `json:"source_phone"`
-	SourceName    string     `json:"source_name"`
-	SourceGroup   string     `json:"source_group"`
-	GroupName     string     `json:"group_name"`
-	Medication    string     `json:"medication"`     // Normalized name
-	MedicationRaw string     `json:"medication_raw"` // Original text
-	Quantity      float64    `json:"quantity"`
-	Unit          *string    `json:"unit,omitempty"`
-	MaxPrice      float64    `json:"max_price,omitempty"`
-	Currency      string     `json:"currency,omitempty"`
-	Urgent        bool       `json:"urgent"`
-	Notes         string     `json:"notes,omitempty"`
-	RawMessage    string     `json:"raw_message"`
-	Status        ItemStatus `json:"status"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-}
-
-// Match represents a potential or confirmed match between offer and request
-type Match struct {
-	ID          string      `json:"id"`
-	OfferID     string      `json:"offer_id"`
-	RequestID   string      `json:"request_id"`
-	Score       float64     `json:"score"`      // AI-computed similarity (0-1)
-	Reasoning   string      `json:"reasoning"`  // AI explanation for match
-	MatchedBy   string      `json:"matched_by"` // Operator who confirmed
-	Status      MatchStatus `json:"status"`
-	CreatedAt   time.Time   `json:"created_at"`
-	ConfirmedAt *time.Time  `json:"confirmed_at,omitempty"`
-	Notes       string      `json:"notes,omitempty"`
-}
-
-// MatchWithDetails includes full offer and request data for display
-type MatchWithDetails struct {
-	Match
-	Offer   *Offer   `json:"offer"`
-	Request *Request `json:"request"`
-}
-
-// Group represents a monitored WhatsApp group
-type Group struct {
-	JID          string     `json:"jid"`
-	Name         string     `json:"name"`
-	Description  string     `json:"description,omitempty"`
-	Monitored    bool       `json:"monitored"`
-	AddedAt      time.Time  `json:"added_at"`
-	LastMessage  *time.Time `json:"last_message,omitempty"`
-	MessageCount int64      `json:"message_count"`
-}
-
-// Stats represents dashboard statistics
-type Stats struct {
-	ActiveOffers     int64   `json:"active_offers"`
-	ActiveRequests   int64   `json:"active_requests"`
-	PendingMatches   int64   `json:"pending_matches"`
-	ConfirmedToday   int64   `json:"confirmed_today"`
-	ProcessedToday   int64   `json:"processed_today"`
-	AvgMatchScore    float64 `json:"avg_match_score"`
-	MonitoredGroups  int     `json:"monitored_groups"`
-	ConnectedClients int     `json:"connected_clients"`
-}
-
-// ParsedItem represents a single item extracted by AI from a message
-type ParsedItem struct {
-	Type            MessageType `json:"type" jsonschema:"enum=OFFER,enum=REQUEST,description=Type of the listing (OFFER or REQUEST)"`
-	Medication      string      `json:"medication" jsonschema_description:"Normalized medication name (English preferred)"`
-	MedicationRaw   string      `json:"medication_raw" jsonschema_description:"Exact text from message referring to medication"`
-	MatchConfidence string      `json:"match_confidence,omitempty" jsonschema_description:"How the medication was matched: EXACT, FUZZY, VECTOR, or TRANSLITERATED"`
-	AIConfidence    float64     `json:"ai_confidence,omitempty" jsonschema:"minimum=0,maximum=1,description=AI certainty about extraction quality (0.0-1.0)"`
-	Quantity        float64     `json:"quantity,omitempty" jsonschema_description:"Numeric quantity (supports decimals like 0.5)"`
-	Unit            *string     `json:"unit,omitempty" jsonschema_description:"Unit of measure (e.g. boxes, strips, ampoules)"`
-	Price           float64     `json:"price,omitempty" jsonschema_description:"Price per unit if specified"`
-	MaxPrice        float64     `json:"max_price,omitempty" jsonschema_description:"Maximum price willing to pay (for requests)"`
-	Urgent          bool        `json:"urgent,omitempty" jsonschema_description:"If the user explicitly mentions urgent/emergency"`
-	Notes           string      `json:"notes,omitempty" jsonschema_description:"Any other details (expiry, batch, currency, location, unknown text)"`
-}
-
-// AIParseResult represents the AI response for a message
-type AIParseResult struct {
-	Items   []ParsedItem `json:"items" jsonschema_description:"List of pharmaceutical items found in the message"`
-	Error   string       `json:"error,omitempty" jsonschema_description:"Error message if parsing failed, otherwise empty"`
-	RawJSON string       `json:"-"` // Raw JSON for debugging
-}
-
-// FailedMessage represents a message that failed AI processing (dead-letter queue)
-type FailedMessage struct {
-	ID            string     `json:"id"`
-	RawMessageID  string     `json:"raw_message_id"`
-	FailureReason string     `json:"failure_reason"`
-	RetryCount    int        `json:"retry_count"`
-	FailedAt      time.Time  `json:"failed_at"`
-	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`
-}
-
-// FeedbackDecision represents the operator's decision on a match
-type FeedbackDecision string
+type FeedbackDecision = entity.FeedbackDecision
 
 const (
-	FeedbackConfirmed FeedbackDecision = "CONFIRMED"
-	FeedbackRejected  FeedbackDecision = "REJECTED"
+	FeedbackConfirmed = entity.FeedbackConfirmed
+	FeedbackRejected  = entity.FeedbackRejected
 )
 
-// MatchFeedback represents operator feedback on a match for learning loop
-type MatchFeedback struct {
-	ID                 string           `json:"id"`
-	MatchID            string           `json:"match_id"`
-	OperatorID         string           `json:"operator_id,omitempty"`
-	Decision           FeedbackDecision `json:"decision"`
-	Reason             string           `json:"reason,omitempty"`
-	OriginalScore      float64          `json:"original_score"`
-	OriginalConfidence string           `json:"original_confidence"`
-	CreatedAt          time.Time        `json:"created_at"`
-}
+// ========================================
+// Type Aliases - Core Entities
+// ========================================
 
-// DemandStats represents medication demand statistics for leaderboard
-type DemandStats struct {
-	Medication   string  `json:"medication"`
-	RequestCount int     `json:"request_count"`
-	OfferCount   int     `json:"offer_count"`
-	DemandRatio  float64 `json:"demand_ratio"` // Higher = more demand
-	Trend        string  `json:"trend"`        // "UP", "DOWN", "STABLE"
-}
+type RawMessage = entity.RawMessage
+type Offer = entity.Offer
+type Request = entity.Request
+type Match = entity.Match
+type MatchWithDetails = entity.MatchWithDetails
+type Group = entity.Group
+type Stats = entity.Stats
+
+// ========================================
+// Type Aliases - AI Processing
+// ========================================
+
+type ParsedItem = entity.ParsedItem
+type AIParseResult = entity.AIParseResult
+type FailedMessage = entity.FailedMessage
+type MatchFeedback = entity.MatchFeedback
+type DemandStats = entity.DemandStats

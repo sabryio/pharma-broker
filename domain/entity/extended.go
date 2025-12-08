@@ -4,24 +4,24 @@ import "time"
 
 // ParsedItem represents a single item extracted by AI from a message
 type ParsedItem struct {
-	Type            MessageType `json:"type"`
-	Medication      string      `json:"medication"`
-	MedicationRaw   string      `json:"medication_raw"`
-	MatchConfidence string      `json:"match_confidence,omitempty"`
-	AIConfidence    float64     `json:"ai_confidence,omitempty"`
-	Quantity        float64     `json:"quantity,omitempty"`
-	Unit            *string     `json:"unit,omitempty"`
-	Price           float64     `json:"price,omitempty"`
-	MaxPrice        float64     `json:"max_price,omitempty"`
-	Urgent          bool        `json:"urgent,omitempty"`
-	Notes           string      `json:"notes,omitempty"`
+	Type            MessageType `json:"type" jsonschema:"enum=OFFER,enum=REQUEST,description=Type of the listing (OFFER or REQUEST)"`
+	Medication      string      `json:"medication" jsonschema_description:"Normalized medication name (English preferred)"`
+	MedicationRaw   string      `json:"medication_raw" jsonschema_description:"Exact text from message referring to medication"`
+	MatchConfidence string      `json:"match_confidence,omitempty" jsonschema_description:"How the medication was matched: EXACT, FUZZY, VECTOR, or TRANSLITERATED"`
+	AIConfidence    float64     `json:"ai_confidence,omitempty" jsonschema:"minimum=0,maximum=1,description=AI certainty about extraction quality (0.0-1.0)"`
+	Quantity        float64     `json:"quantity,omitempty" jsonschema_description:"Numeric quantity (supports decimals like 0.5)"`
+	Unit            *string     `json:"unit,omitempty" jsonschema_description:"Unit of measure (e.g. boxes, strips, ampoules)"`
+	Price           float64     `json:"price,omitempty" jsonschema_description:"Price per unit if specified"`
+	MaxPrice        float64     `json:"max_price,omitempty" jsonschema_description:"Maximum price willing to pay (for requests)"`
+	Urgent          bool        `json:"urgent,omitempty" jsonschema_description:"If the user explicitly mentions urgent/emergency"`
+	Notes           string      `json:"notes,omitempty" jsonschema_description:"Any other details (expiry, batch, currency, location, unknown text)"`
 }
 
 // AIParseResult represents the AI response for a message
 type AIParseResult struct {
-	Items   []ParsedItem `json:"items"`
-	Error   string       `json:"error,omitempty"`
-	RawJSON string       `json:"-"`
+	Items   []ParsedItem `json:"items" jsonschema_description:"List of pharmaceutical items found in the message"`
+	Error   string       `json:"error,omitempty" jsonschema_description:"Error message if parsing failed, otherwise empty"`
+	RawJSON string       `json:"-"` // Raw JSON for debugging
 }
 
 // FailedMessage represents a message that failed AI processing
@@ -61,6 +61,7 @@ type MedicationMapping struct {
 	ArabicName  string    `json:"arabic_name"`
 	EnglishName string    `json:"english_name"`
 	Synonyms    []string  `json:"synonyms,omitempty"`
+	Embedding   []float32 `json:"embedding,omitempty"` // Vector embedding for similarity search
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

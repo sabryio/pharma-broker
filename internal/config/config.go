@@ -44,6 +44,9 @@ type Config struct {
 
 	// AdaptiveLearning settings for automatic weight optimization
 	AdaptiveLearning AdaptiveLearningConfig `mapstructure:"adaptive_learning"`
+
+	// Experimental settings for feature flags during migration
+	Experimental ExperimentalConfig `mapstructure:"experimental"`
 }
 
 // AIConfig selects which AI provider to use
@@ -440,6 +443,14 @@ type LearningNotificationsConfig struct {
 	// LogLevel controls verbosity: "debug", "info", "warn", "error"
 	// Default: "info"
 	LogLevel string `mapstructure:"log_level"`
+}
+
+// ExperimentalConfig contains feature flags for gradual migration
+type ExperimentalConfig struct {
+	// UseNewRepos enables the new storage/gorm repository implementations.
+	// When true, uses pharmabroker/storage/gorm repos instead of internal/storage.
+	// Default: false (use legacy internal/storage repos)
+	UseNewRepos bool `mapstructure:"use_new_repos"`
 }
 
 // Load loads configuration from file, environment, and defaults.
