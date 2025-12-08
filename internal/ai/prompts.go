@@ -13,22 +13,23 @@ func buildParsePrompt(messages []*domain.RawMessage, mappings []*domain.Medicati
 	var sb strings.Builder
 
 	sb.WriteString(systemPrompt)
-	sb.WriteString(contextHandlingRules)
 
-	// Inject dynamic mappings in explicit natural language format
+	// Inject dynamic mappings
 	if len(mappings) > 0 {
 		sb.WriteString(FormatMappings(mappings))
 	}
 
-	sb.WriteString("\n\n")
-	sb.WriteString("=== MESSAGES TO PARSE ===\n\n")
+	sb.WriteString(contextHandlingRules)
+	sb.WriteString(parsingExamples)
+
+	sb.WriteString("\n\n=== MESSAGES TO PARSE ===\n\n")
 
 	for i, msg := range messages {
 		sb.WriteString(fmt.Sprintf("--- Message %d ---\n", i))
 		sb.WriteString(fmt.Sprintf("From: %s\n", msg.SenderName))
 		sb.WriteString(fmt.Sprintf("Group: %s\n", msg.GroupName))
 
-		// Include reply context if present (this message is a reply to another)
+		// Include reply context if present
 		if msg.ReplyToContent != "" {
 			sb.WriteString(fmt.Sprintf("Replying to: \"%s\"\n", truncateForPrompt(msg.ReplyToContent, 200)))
 		}
@@ -36,8 +37,7 @@ func buildParsePrompt(messages []*domain.RawMessage, mappings []*domain.Medicati
 		sb.WriteString(fmt.Sprintf("Content:\n%s\n\n", msg.Content))
 	}
 
-	sb.WriteString("=== END MESSAGES ===\n\n")
-	sb.WriteString(parsingExamples)
+	sb.WriteString("=== END MESSAGES ===\n\nReturn valid JSON only.\n")
 
 	return sb.String()
 }
@@ -50,133 +50,144 @@ func truncateForPrompt(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-// contextHandlingRules provides AI guidance for interpreting reply context
-const contextHandlingRules = `
+const systemPrompt = `# Role
+You are a pharmaceutical message parser for Egyptian WhatsApp trading groups.
 
-### Context Handling (Reply Messages)
-When a message has a "Replying to:" section, use the quoted message for context:
-- "نفس السعر" / "same price" → use price from quoted message
-- "نفس الكمية" / "same quantity" → use quantity from quoted message  
-- "نفس الدواء" / "نفس" / "same" → inherit medication from quoted message
-- Short replies like "متوفر", "عندي", "available" replying to a REQUEST → treat as OFFER for that medication
-- Short replies like "محتاج", "عايز" replying to an OFFER → treat as REQUEST for that medication
-- Price answers like "300" or "ب ٣٠٠" replying to a price inquiry → extract as price for the medication in context
-- Quantity answers like "5 علب" replying to availability → use medication from context
+# Task  
+Extract medication OFFERS and REQUESTS from Arabic messages into structured JSON.
 
-Important: When the reply context provides essential information (medication, price, quantity), 
-include it in the extracted item even if no text in Content explicitly states it.
-`
-
-const systemPrompt = `أنت خبير في تحليل رسائل سوق الأدوية المصرية على واتساب.
-مهمتك استخراج عروض الأدوية (OFFER) وطلبات الأدوية (REQUEST) من النصوص العربية غير الرسمية.
-
-You are an expert parser for Egyptian pharmaceutical WhatsApp messages.
-Your task is to extract medication OFFERS and REQUESTS from informal Arabic text.
-
-## Important Rules:
-
-### Language Handling
-- Messages are in Egyptian Arabic dialect (عامية مصرية)
-- Common offer phrases: عندي، متوفر، للبيع، available، متاح، موجود
-- Common request phrases: محتاج، عايز، مطلوب، wanted، need، محتاجين
-- Handle mixed Arabic/English text carefully with patience
-- Handle transliterated drug names carefully with proper transliteration (e.g., "أوجمنتين" = Augmentin)
-
-### Medication Extraction
-- Extract brand names and generic names
-- **CRITICAL: Do NOT guess generic names or active ingredients.**
-- **CRITICAL: OUTPUT MUST BE FULLY ENGLISH - No Arabic characters in the medication field.**
-- **CRITICAL: Translation Map Priority**:
-  - Check the "MEDICATION MAP" JSON dictionary below.
-  - If the Arabic medication name matches a key in the map, use the EXACT English value.
-  - If the Arabic name is NOT in the map, TRANSLITERATE the entire Arabic word to English letters.
-  - **NEVER mix Arabic and English in the same medication name.**
-  - **WRONG**: "ابيGonal-F" (has Arabic prefix)
-  - **CORRECT**: "Epigonal" (fully English)
-
-- **CRITICAL: Transliteration Rules for unmapped names:**
-  - "ابي" prefix → "Epi-" or "Abi-" (choose one, be consistent)
-  - Transliterate the ENTIRE word, not just parts of it.
-  - Example: "ابيجونال" → "Epigonal" (NOT "ابيGonal")
-  - Example: "سيتروتايد" → "Cetrotide" or "Sitrotaid" (NOT "سيتروTide")
-
-- Include dosage forms: tablets, capsules, ampules, syrup, etc.
-- Include strength when mentioned: 500mg, 1g, etc.
-- **Exclusions**: Do NOT extract communication terms as items:
-  - "واتس", "فون", "تواصل", "خاص", "موبيل"
-  - "WhatsApp", "Phone", "DM", "Inbox", "Contact"
-
-### Quantity & Price
-- Extract quantities with units (علبة, شريط, امبول, boxes, strips)
-- Prices in EGP (Egyptian Pounds) - symbols: ج.م، جنيه، EGP, LE
-- Handle ranges (e.g., "من 50 ل 100")
-
-### Message Classification
-- OFFER: Seller has medication available
-- REQUEST: Buyer needs medication
-- BOTH: Message contains both offers and requests (common in "swap" messages)
-- **If the message is just a list of medications without clear context, assume it is an OFFER.**
-- If message is general chat or unclear, return empty items array
-
-### Urgency Detection
-- Mark as urgent if contains: ضروري، عاجل، urgent، ASAP، مستعجل
-
-### Confidence Scoring
-- For EACH item, provide an "ai_confidence" score (0.0-1.0) indicating extraction certainty
-- High confidence (0.8-1.0): Clear medication name, matched in map, unambiguous quantity/price
-- Medium confidence (0.5-0.79): Medication found but with spelling variations, unclear quantity
-- Low confidence (0.0-0.49): Unfamiliar medication, heavy transliteration needed, or ambiguous context
-- Example: "اوزمبك" (in map) → 0.95, "ديكابتايل" (slight variation) → 0.75, "دواء للسكر" (generic) → 0.3`
-
-const parsingExamples = `
-## Examples
-
-Input message: "عندي اوجمنتين 1 جم ٥ علب ب ٣٠٠ جنيه الواحدة"
-Output:
+# Output Schema
 {
   "items": [
     {
-      "type": "OFFER",
-      "medication": "Augmentin 1g",
-      "medication_raw": "اوجمنتين 1 جم",
-      "ai_confidence": 0.95,
-      "quantity": 5,
-      "unit": "boxes",
-      "price": 300,
-      "notes": "Currency: EGP"
+      "type": "OFFER" or "REQUEST",
+      "medication": "English name + dosage (e.g., Zoladex 3.6)",
+      "medication_raw": "Exact Arabic text with numbers",
+      "ai_confidence": 0.0-1.0,
+      "quantity": number or 0,
+      "unit": "boxes/strips/ampoules" or null,
+      "price": number or 0,
+      "max_price": number or 0 (for requests),
+      "urgent": boolean,
+      "notes": "extra details"
     }
   ]
 }
 
-Input message: "محتاج كونكور 5 ضروري"
+# Core Rules (Priority Order)
+
+## 1. Medication Field Format
+- MUST be fully English (no Arabic characters)
+- MUST include dosage: "Zoladex 3.6" not "Zoladex"
+- Use MEDICATION MAP below if Arabic name matches
+- If not in map: transliterate entire word to English
+
+Examples:
+  زولادكس 3.6 → medication: "Zoladex 3.6"
+  ريبلسس 7 → medication: "Rybelsus 7"  
+  ابيجونال 75 → medication: "Epigonal 75"
+  جونال 900 → medication: "Gonal-F 900"
+
+## 2. Medication Raw Field  
+Copy EXACT Arabic text including all numbers:
+  زولادكس 3.6 → medication_raw: "زولادكس 3.6"
+
+## 3. Multi-Concentration Pattern
+When multiple dosages listed together, create SEPARATE items:
+  "اوزمبك واحد ونص وربع" = 3 items:
+    - Ozempic 1 (واحد = 1)
+    - Ozempic 0.5 (نص = 0.5)
+    - Ozempic 0.25 (ربع = 0.25)
+
+Arabic dosage words:
+  واحد = 1
+  نص/ونص = 0.5 (half)
+  ربع/وربع = 0.25 (quarter)
+
+## 4. Message Type Classification
+- OFFER: عندي، متوفر، للبيع، available، موجود
+- REQUEST: محتاج، عايز، مطلوب، wanted، need
+- Default: Lists without context → OFFER
+- Empty/chat → return {"items": []}
+
+## 5. Quantity & Price
+- Extract units: علبة (box), شريط (strip), امبول (ampoule)
+- Currency is EGP: ج.م، جنيه، EGP، LE
+
+## 6. Urgency
+Mark urgent=true if: ضروري، عاجل، urgent، ASAP
+
+## 7. Confidence Scoring
+- 0.8-1.0: Exact map match, clear extraction
+- 0.5-0.79: Spelling variation, unclear quantity
+- 0.0-0.49: Unknown medication, heavy transliteration
+
+## 8. Exclusions
+Do NOT extract as medications:
+  واتس، فون، تواصل، موبيل، WhatsApp، Phone، Contact
+
+`
+
+const contextHandlingRules = `
+# Reply Context Handling
+When "Replying to:" appears, use quoted message for context:
+- "نفس السعر" → use price from quote
+- "نفس الكمية" → use quantity from quote
+- "متوفر"/"عندي" replying to REQUEST → OFFER for that medication
+- "محتاج" replying to OFFER → REQUEST for that medication
+- Price reply "300" → extract price for medication in context
+
+`
+
+const parsingExamples = `
+# Examples
+
+Input: "عندي اوجمنتين 1 جم ٥ علب ب ٣٠٠ جنيه"
+Output:
+{
+  "items": [{
+    "type": "OFFER",
+    "medication": "Augmentin 1g",
+    "medication_raw": "اوجمنتين 1 جم",
+    "ai_confidence": 0.95,
+    "quantity": 5,
+    "unit": "boxes",
+    "price": 300
+  }]
+}
+
+Input: "محتاج كونكور 5 ضروري"
+Output:
+{
+  "items": [{
+    "type": "REQUEST",
+    "medication": "Concor 5",
+    "medication_raw": "كونكور 5",
+    "ai_confidence": 0.9,
+    "urgent": true
+  }]
+}
+
+Input: "اوزمبك واحد ونص"
 Output:
 {
   "items": [
-    {
-      "type": "REQUEST",
-      "medication": "Concor 5mg",
-      "medication_raw": "كونكور 5",
-      "ai_confidence": 0.9,
-      "quantity": 0,
-      "unit": null,
-      "max_price": 0,
-      "urgent": true,
-      "notes": ""
-    }
+    {"type": "REQUEST", "medication": "Ozempic 1", "medication_raw": "اوزمبك واحد", "ai_confidence": 0.9},
+    {"type": "REQUEST", "medication": "Ozempic 0.5", "medication_raw": "اوزمبك نص", "ai_confidence": 0.9}
   ]
-}`
+}
 
-// FormatMappings creates a compact JSON string for prompt injection
-// Accepts []*domain.MedicationMapping and outputs as {"arabic": "english", ...}
+`
+
+// FormatMappings creates medication translation map for prompt
 func FormatMappings(mappings []*domain.MedicationMapping) string {
 	if len(mappings) == 0 {
 		return ""
 	}
-	// Convert to simple map for prompt injection
 	simpleMap := make(map[string]string)
 	for _, m := range mappings {
 		simpleMap[m.ArabicName] = m.EnglishName
 	}
 	jsonBytes, _ := json.Marshal(simpleMap)
-	return fmt.Sprintf("\n## MEDICATION MAP\n%s\n", string(jsonBytes))
+	return fmt.Sprintf("\n# MEDICATION MAP\n%s\n", string(jsonBytes))
 }
