@@ -121,15 +121,18 @@ func (l *Listener) HandleMessage(msg *IncomingMessage) {
 
 	// Create raw message
 	rawMsg := &domain.RawMessage{
-		ID:          uuid.New().String(),
-		ExternalID:  msg.ID, // WhatsApp Message ID
-		GroupJID:    msg.GroupJID,
-		GroupName:   msg.GroupName,
-		SenderJID:   msg.SenderJID,
-		SenderPhone: msg.SenderPhone,
-		SenderName:  msg.SenderName,
-		Content:     msg.Content,
-		Timestamp:   msg.Timestamp,
+		ID:             uuid.New().String(),
+		ExternalID:     msg.ID, // WhatsApp Message ID
+		GroupJID:       msg.GroupJID,
+		GroupName:      msg.GroupName,
+		SenderJID:      msg.SenderJID,
+		SenderPhone:    msg.SenderPhone,
+		SenderName:     msg.SenderName,
+		Content:        msg.Content,
+		Timestamp:      msg.Timestamp,
+		ReplyToID:      msg.ReplyToID,
+		ReplyToContent: msg.ReplyToContent,
+		ReplyToSender:  msg.ReplyToSender,
 	}
 
 	// Save to database

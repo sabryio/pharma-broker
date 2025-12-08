@@ -58,6 +58,11 @@ type IncomingMessage struct {
 	Content     string
 	Timestamp   time.Time
 	IsFromMe    bool
+
+	// Reply context (for messages that are replies to other messages)
+	ReplyToID      string // WhatsApp ID of the quoted message
+	ReplyToContent string // Text content of the quoted message
+	ReplyToSender  string // JID of the sender of the quoted message
 }
 
 // GroupInfo represents WhatsApp group information
@@ -356,6 +361,29 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 		Content:     content,
 		Timestamp:   evt.Info.Timestamp,
 		IsFromMe:    evt.Info.IsFromMe,
+	}
+
+	// Extract reply context if this is a reply to another message
+	if evt.Message.ExtendedTextMessage != nil {
+		if ctxInfo := evt.Message.ExtendedTextMessage.ContextInfo; ctxInfo != nil {
+			// Extract quoted message ID
+			if ctxInfo.StanzaID != nil {
+				msg.ReplyToID = *ctxInfo.StanzaID
+			}
+			// Extract sender of quoted message
+			if ctxInfo.Participant != nil {
+				msg.ReplyToSender = *ctxInfo.Participant
+			}
+			// Extract quoted message content
+			if ctxInfo.QuotedMessage != nil {
+				if ctxInfo.QuotedMessage.Conversation != nil {
+					msg.ReplyToContent = *ctxInfo.QuotedMessage.Conversation
+				} else if ctxInfo.QuotedMessage.ExtendedTextMessage != nil &&
+					ctxInfo.QuotedMessage.ExtendedTextMessage.Text != nil {
+					msg.ReplyToContent = *ctxInfo.QuotedMessage.ExtendedTextMessage.Text
+				}
+			}
+		}
 	}
 
 	// Check if this is a bot command (before group monitoring check)

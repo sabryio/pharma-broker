@@ -46,6 +46,11 @@ type RawMessage struct {
 	Timestamp   time.Time  `json:"timestamp"`
 	ProcessedAt *time.Time `json:"processed_at,omitempty"`
 	Error       string     `json:"error,omitempty"`
+
+	// Reply context (for messages replying to other messages)
+	ReplyToID      string `json:"reply_to_id,omitempty"`      // WhatsApp ID of quoted message
+	ReplyToContent string `json:"reply_to_content,omitempty"` // Text of quoted message
+	ReplyToSender  string `json:"reply_to_sender,omitempty"`  // Sender JID of quoted message
 }
 
 // Offer represents a medication supply offer

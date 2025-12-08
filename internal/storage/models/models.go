@@ -19,6 +19,11 @@ type RawMessage struct {
 	Error       *string    `gorm:"column:error"`
 	CreatedAt   time.Time  `gorm:"column:created_at;autoCreateTime"`
 
+	// Reply context (for replies to other messages)
+	ReplyToID      *string `gorm:"column:reply_to_id"`
+	ReplyToContent *string `gorm:"column:reply_to_content"`
+	ReplyToSender  *string `gorm:"column:reply_to_sender"`
+
 	// Relationships
 	Offers   []Offer   `gorm:"foreignKey:RawMessageID"`
 	Requests []Request `gorm:"foreignKey:RawMessageID"`

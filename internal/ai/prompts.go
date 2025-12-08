@@ -13,6 +13,7 @@ func buildParsePrompt(messages []*domain.RawMessage, mappings []*domain.Medicati
 	var sb strings.Builder
 
 	sb.WriteString(systemPrompt)
+	sb.WriteString(contextHandlingRules)
 
 	// Inject dynamic mappings in explicit natural language format
 	if len(mappings) > 0 {
@@ -26,6 +27,12 @@ func buildParsePrompt(messages []*domain.RawMessage, mappings []*domain.Medicati
 		sb.WriteString(fmt.Sprintf("--- Message %d ---\n", i))
 		sb.WriteString(fmt.Sprintf("From: %s\n", msg.SenderName))
 		sb.WriteString(fmt.Sprintf("Group: %s\n", msg.GroupName))
+
+		// Include reply context if present (this message is a reply to another)
+		if msg.ReplyToContent != "" {
+			sb.WriteString(fmt.Sprintf("Replying to: \"%s\"\n", truncateForPrompt(msg.ReplyToContent, 200)))
+		}
+
 		sb.WriteString(fmt.Sprintf("Content:\n%s\n\n", msg.Content))
 	}
 
@@ -34,6 +41,31 @@ func buildParsePrompt(messages []*domain.RawMessage, mappings []*domain.Medicati
 
 	return sb.String()
 }
+
+// truncateForPrompt limits string length for prompt inclusion
+func truncateForPrompt(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// contextHandlingRules provides AI guidance for interpreting reply context
+const contextHandlingRules = `
+
+### Context Handling (Reply Messages)
+When a message has a "Replying to:" section, use the quoted message for context:
+- "نفس السعر" / "same price" → use price from quoted message
+- "نفس الكمية" / "same quantity" → use quantity from quoted message  
+- "نفس الدواء" / "نفس" / "same" → inherit medication from quoted message
+- Short replies like "متوفر", "عندي", "available" replying to a REQUEST → treat as OFFER for that medication
+- Short replies like "محتاج", "عايز" replying to an OFFER → treat as REQUEST for that medication
+- Price answers like "300" or "ب ٣٠٠" replying to a price inquiry → extract as price for the medication in context
+- Quantity answers like "5 علب" replying to availability → use medication from context
+
+Important: When the reply context provides essential information (medication, price, quantity), 
+include it in the extracted item even if no text in Content explicitly states it.
+`
 
 const systemPrompt = `أنت خبير في تحليل رسائل سوق الأدوية المصرية على واتساب.
 مهمتك استخراج عروض الأدوية (OFFER) وطلبات الأدوية (REQUEST) من النصوص العربية غير الرسمية.

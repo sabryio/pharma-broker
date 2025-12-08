@@ -14,17 +14,20 @@ import (
 // ToRawMessageModel converts domain.RawMessage to models.RawMessage
 func ToRawMessageModel(d *domain.RawMessage) *models.RawMessage {
 	return &models.RawMessage{
-		ID:          d.ID,
-		ExternalID:  nilIfEmpty(d.ExternalID),
-		GroupJID:    d.GroupJID,
-		GroupName:   d.GroupName,
-		SenderJID:   d.SenderJID,
-		SenderPhone: d.SenderPhone,
-		SenderName:  nilIfEmpty(d.SenderName),
-		Content:     d.Content,
-		Timestamp:   d.Timestamp,
-		ProcessedAt: d.ProcessedAt,
-		Error:       nilIfEmpty(d.Error),
+		ID:             d.ID,
+		ExternalID:     nilIfEmpty(d.ExternalID),
+		GroupJID:       d.GroupJID,
+		GroupName:      d.GroupName,
+		SenderJID:      d.SenderJID,
+		SenderPhone:    d.SenderPhone,
+		SenderName:     nilIfEmpty(d.SenderName),
+		Content:        d.Content,
+		Timestamp:      d.Timestamp,
+		ProcessedAt:    d.ProcessedAt,
+		Error:          nilIfEmpty(d.Error),
+		ReplyToID:      nilIfEmpty(d.ReplyToID),
+		ReplyToContent: nilIfEmpty(d.ReplyToContent),
+		ReplyToSender:  nilIfEmpty(d.ReplyToSender),
 	}
 }
 
@@ -150,17 +153,20 @@ func ToMatchFeedbackModel(d *domain.MatchFeedback) *models.MatchFeedback {
 // ToRawMessageDomain converts models.RawMessage to domain.RawMessage
 func ToRawMessageDomain(m *models.RawMessage) *domain.RawMessage {
 	return &domain.RawMessage{
-		ID:          m.ID,
-		ExternalID:  deref(m.ExternalID),
-		GroupJID:    m.GroupJID,
-		GroupName:   m.GroupName,
-		SenderJID:   m.SenderJID,
-		SenderPhone: m.SenderPhone,
-		SenderName:  deref(m.SenderName),
-		Content:     m.Content,
-		Timestamp:   m.Timestamp,
-		ProcessedAt: m.ProcessedAt,
-		Error:       deref(m.Error),
+		ID:             m.ID,
+		ExternalID:     deref(m.ExternalID),
+		GroupJID:       m.GroupJID,
+		GroupName:      m.GroupName,
+		SenderJID:      m.SenderJID,
+		SenderPhone:    m.SenderPhone,
+		SenderName:     deref(m.SenderName),
+		Content:        m.Content,
+		Timestamp:      m.Timestamp,
+		ProcessedAt:    m.ProcessedAt,
+		Error:          deref(m.Error),
+		ReplyToID:      deref(m.ReplyToID),
+		ReplyToContent: deref(m.ReplyToContent),
+		ReplyToSender:  deref(m.ReplyToSender),
 	}
 }
 
