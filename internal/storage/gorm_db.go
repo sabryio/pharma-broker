@@ -118,6 +118,8 @@ func (g *GormDB) migrate() error {
 		&models.DemandLeaderboard{},
 		&models.AuditLog{},
 		&models.UnmappedMedication{},
+		&models.FeedbackRecord{},
+		&models.WeightHistory{},
 	)
 }
 

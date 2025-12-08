@@ -424,3 +424,85 @@ func deserializeSynonyms(s string) []string {
 	}
 	return synonyms
 }
+
+// ========================================
+// FeedbackRecord Converters
+// ========================================
+
+// ToFeedbackRecordModel converts domain.FeedbackRecord to models.FeedbackRecord
+func ToFeedbackRecordModel(d *domain.FeedbackRecord) *models.FeedbackRecord {
+	return &models.FeedbackRecord{
+		ID:              d.ID,
+		MatchID:         d.MatchID,
+		OfferID:         d.OfferID,
+		RequestID:       d.RequestID,
+		Action:          string(d.Action),
+		MedicationScore: d.MedicationScore,
+		DosageScore:     d.DosageScore,
+		QuantityScore:   d.QuantityScore,
+		PriceScore:      d.PriceScore,
+		RecencyScore:    d.RecencyScore,
+		TotalScore:      d.TotalScore,
+		FeedbackAt:      d.FeedbackAt,
+		UserID:          d.UserID,
+		CreatedAt:       d.CreatedAt,
+	}
+}
+
+// ToFeedbackRecordDomain converts models.FeedbackRecord to domain.FeedbackRecord
+func ToFeedbackRecordDomain(m *models.FeedbackRecord) *domain.FeedbackRecord {
+	return &domain.FeedbackRecord{
+		ID:              m.ID,
+		MatchID:         m.MatchID,
+		OfferID:         m.OfferID,
+		RequestID:       m.RequestID,
+		Action:          domain.FeedbackAction(m.Action),
+		MedicationScore: m.MedicationScore,
+		DosageScore:     m.DosageScore,
+		QuantityScore:   m.QuantityScore,
+		PriceScore:      m.PriceScore,
+		RecencyScore:    m.RecencyScore,
+		TotalScore:      m.TotalScore,
+		FeedbackAt:      m.FeedbackAt,
+		UserID:          m.UserID,
+		CreatedAt:       m.CreatedAt,
+	}
+}
+
+// ========================================
+// WeightHistory Converters
+// ========================================
+
+// ToWeightHistoryModel converts domain.WeightHistory to models.WeightHistory
+func ToWeightHistoryModel(d *domain.WeightHistory) *models.WeightHistory {
+	return &models.WeightHistory{
+		ID:                 d.ID,
+		MedicationWeight:   d.MedicationWeight,
+		DosageWeight:       d.DosageWeight,
+		QuantityWeight:     d.QuantityWeight,
+		PriceWeight:        d.PriceWeight,
+		RecencyWeight:      d.RecencyWeight,
+		Source:             string(d.Source),
+		PerformanceMetrics: d.PerformanceMetrics,
+		AppliedAt:          d.AppliedAt,
+		CreatedAt:          d.CreatedAt,
+		Notes:              d.Notes,
+	}
+}
+
+// ToWeightHistoryDomain converts models.WeightHistory to domain.WeightHistory
+func ToWeightHistoryDomain(m *models.WeightHistory) *domain.WeightHistory {
+	return &domain.WeightHistory{
+		ID:                 m.ID,
+		MedicationWeight:   m.MedicationWeight,
+		DosageWeight:       m.DosageWeight,
+		QuantityWeight:     m.QuantityWeight,
+		PriceWeight:        m.PriceWeight,
+		RecencyWeight:      m.RecencyWeight,
+		Source:             domain.WeightSource(m.Source),
+		PerformanceMetrics: m.PerformanceMetrics,
+		AppliedAt:          m.AppliedAt,
+		CreatedAt:          m.CreatedAt,
+		Notes:              m.Notes,
+	}
+}
