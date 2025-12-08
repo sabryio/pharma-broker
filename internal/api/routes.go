@@ -14,8 +14,13 @@ import (
 //go:embed static/dist/*
 var staticFiles embed.FS
 
-// NewRouter creates the HTTP router with middleware
+// NewRouter creates the HTTP router with middleware (backwards compatible)
 func NewRouter(handlers *Handlers, cfg *config.APIConfig, log zerolog.Logger) http.Handler {
+	return NewRouterWithLearning(handlers, nil, cfg, log)
+}
+
+// NewRouterWithLearning creates the HTTP router with adaptive learning support
+func NewRouterWithLearning(handlers *Handlers, learningHandlers *LearningHandlers, cfg *config.APIConfig, log zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
 
 	// API routes
@@ -49,6 +54,20 @@ func NewRouter(handlers *Handlers, cfg *config.APIConfig, log zerolog.Logger) ht
 
 	// Audit log endpoints
 	mux.HandleFunc("GET /api/audit", handlers.GetAuditLogs)
+
+	// Admin Learning endpoints (adaptive weight learning)
+	// Only registered if learning handlers are provided
+	if learningHandlers != nil {
+		mux.HandleFunc("GET /api/admin/learning/status", learningHandlers.GetLearningStatus)
+		mux.HandleFunc("POST /api/admin/learning/trigger", learningHandlers.TriggerLearning)
+		mux.HandleFunc("POST /api/admin/learning/apply", learningHandlers.ApplyPendingWeights)
+		mux.HandleFunc("POST /api/admin/learning/reject", learningHandlers.RejectPendingWeights)
+		mux.HandleFunc("POST /api/admin/learning/rollback", learningHandlers.RollbackWeights)
+		mux.HandleFunc("GET /api/admin/learning/history", learningHandlers.GetWeightHistory)
+		mux.HandleFunc("GET /api/admin/learning/weights", learningHandlers.GetCurrentWeights)
+		mux.HandleFunc("PUT /api/admin/learning/weights", learningHandlers.UpdateWeightsManually)
+		mux.HandleFunc("GET /api/admin/learning/feedback-stats", learningHandlers.GetFeedbackStats)
+	}
 
 	// SSE endpoint
 	mux.HandleFunc("GET /api/events", handlers.sseHub.ServeHTTP)

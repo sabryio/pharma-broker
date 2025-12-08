@@ -394,3 +394,62 @@ func (ls *LearningScheduler) UpdateConfig(cfg config.AdaptiveLearningConfig) err
 
 	return nil
 }
+
+// Rollback reverts to the previous weight configuration
+func (ls *LearningScheduler) Rollback(ctx context.Context) error {
+	if ls.learner == nil {
+		return fmt.Errorf("learner not configured")
+	}
+
+	err := ls.learner.Rollback(ctx)
+	if err != nil {
+		ls.logger.Error("Rollback failed", "error", err)
+		return err
+	}
+
+	ls.mu.Lock()
+	ls.lastStatus = JobStatusSuccess
+	ls.pendingApply = nil
+	ls.pendingReason = "rolled back to previous weights"
+	ls.mu.Unlock()
+
+	ls.logger.Info("Weights rolled back to previous configuration")
+
+	return nil
+}
+
+// ApplyWeightsManual applies weights directly with manual source
+func (ls *LearningScheduler) ApplyWeightsManual(ctx context.Context, weights ScoringWeights, notes string) error {
+	if ls.learner == nil {
+		return fmt.Errorf("learner not configured")
+	}
+
+	// Get current metrics for context
+	metrics := ls.getCurrentMetrics(ctx)
+
+	err := ls.learner.ApplyWeights(
+		ctx,
+		weights,
+		domain.WeightSourceManual,
+		&metrics,
+		notes,
+	)
+	if err != nil {
+		return err
+	}
+
+	ls.mu.Lock()
+	ls.lastStatus = JobStatusSuccess
+	ls.pendingApply = nil
+	ls.pendingReason = ""
+	ls.mu.Unlock()
+
+	ls.logger.Info("Manual weights applied", "weights", weights, "notes", notes)
+
+	return nil
+}
+
+// GetLearner returns the underlying weight learner for direct operations
+func (ls *LearningScheduler) GetLearner() *WeightLearner {
+	return ls.learner
+}
