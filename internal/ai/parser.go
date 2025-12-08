@@ -90,6 +90,10 @@ type Parser struct {
 
 	// Professional Scorer (Phase 1 Matching Enhancement)
 	scorer *Scorer
+
+	// Multi-Pass Parsing
+	reviewQueueRepo domain.ReviewQueueRepository
+	multiPassConfig MultiPassConfig
 }
 
 // NewParser creates a new Parser instance
@@ -147,6 +151,81 @@ func (p *Parser) SetSSEBroadcaster(broadcaster SSEBroadcaster) {
 // SetAutoParseChecker sets the function to check if auto-parse is enabled
 func (p *Parser) SetAutoParseChecker(fn func() bool) {
 	p.isAutoParseEnabled = fn
+}
+
+// SetReviewQueueRepo sets the review queue repository for multi-pass parsing
+func (p *Parser) SetReviewQueueRepo(repo domain.ReviewQueueRepository) {
+	p.reviewQueueRepo = repo
+	p.multiPassConfig = DefaultMultiPassConfig()
+}
+
+// SetMultiPassConfig sets the multi-pass parsing configuration
+func (p *Parser) SetMultiPassConfig(cfg MultiPassConfig) {
+	p.multiPassConfig = cfg
+}
+
+// calculateAvgConfidence computes the average AI confidence across parsed items
+func (p *Parser) calculateAvgConfidence(items []domain.ParsedItem) float64 {
+	if len(items) == 0 {
+		return 0.0
+	}
+	var sum float64
+	for _, item := range items {
+		sum += item.AIConfidence
+	}
+	return sum / float64(len(items))
+}
+
+// shouldQueueForReview checks if a parse result needs manual review
+func (p *Parser) shouldQueueForReview(result *domain.AIParseResult) bool {
+	if p.reviewQueueRepo == nil {
+		return false // Review queue not configured
+	}
+
+	// Empty results with no error might need review
+	if len(result.Items) == 0 && result.Error == "" {
+		return p.multiPassConfig.EnableReviewQueue
+	}
+
+	// Low confidence results need review
+	avgConf := p.calculateAvgConfidence(result.Items)
+	return avgConf < p.multiPassConfig.RelaxedMinConfidence && p.multiPassConfig.EnableReviewQueue
+}
+
+// queueForReview adds a message to the review queue
+func (p *Parser) queueForReview(ctx context.Context, msg *domain.RawMessage, result *domain.AIParseResult, pass int, reason string) {
+	if p.reviewQueueRepo == nil {
+		return
+	}
+
+	item := &domain.ReviewQueueItem{
+		RawMessageID:  msg.ID,
+		GroupName:     msg.GroupName,
+		SenderName:    msg.SenderName,
+		Content:       msg.Content,
+		ReplyContext:  msg.ReplyToContent,
+		PartialItems:  result.Items,
+		ParsePass:     pass,
+		AvgConfidence: p.calculateAvgConfidence(result.Items),
+		FailureReason: reason,
+		Status:        domain.ReviewStatusPending,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+
+	if err := p.reviewQueueRepo.Save(ctx, item); err != nil {
+		p.log.Error().
+			Err(err).
+			Str("msg_id", msg.ID).
+			Msg("Failed to queue message for review")
+	} else {
+		p.log.Info().
+			Str("msg_id", msg.ID).
+			Int("pass", pass).
+			Float64("avg_confidence", item.AvgConfidence).
+			Str("reason", reason).
+			Msg("📋 Message queued for manual review")
+	}
 }
 
 // Start begins processing messages
@@ -428,6 +507,30 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 				Str("msg_id", msg.ID).
 				Str("content", msg.Content).
 				Msg("⚠️ AI found NO offers/requests in message")
+
+			// Queue for review if message has content but no extractions
+			// (might be a valid medication message the AI missed)
+			if len(msg.Content) > 20 && p.shouldQueueForReview(result) {
+				p.queueForReview(ctx, msg, result, int(ParsePassStrict), "No items extracted from message with content")
+			}
+			p.rawMsgRepo.MarkProcessed(ctx, msg.ID, nil)
+			continue
+		}
+
+		// Check average confidence - queue low-confidence results for review
+		avgConfidence := p.calculateAvgConfidence(result.Items)
+		if avgConfidence < p.multiPassConfig.StrictMinConfidence && p.multiPassConfig.EnableReviewQueue {
+			p.log.Info().
+				Str("step", "8_LOW_CONFIDENCE").
+				Str("msg_id", msg.ID).
+				Float64("avg_confidence", avgConfidence).
+				Float64("threshold", p.multiPassConfig.StrictMinConfidence).
+				Msg("📋 Low confidence result, queuing for review")
+
+			// Queue for review but still process the items (they might be correct)
+			if p.reviewQueueRepo != nil {
+				p.queueForReview(ctx, msg, result, int(ParsePassStrict), "Low average AI confidence")
+			}
 		}
 
 		// Create offers and requests from parsed items
