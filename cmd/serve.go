@@ -230,6 +230,11 @@ func runServe(cmd *cobra.Command, args []string) {
 	janitorService := janitor.NewJanitor(rawMsgRepo, cfg.Database, log)
 	janitorService.Start()
 
+	// Wire review queue repo for multi-pass parsing (Phase D.2)
+	reviewQueueRepo := storage.NewReviewQueueRepo(db)
+	parser.SetReviewQueueRepo(reviewQueueRepo)
+	log.Info().Msg("Multi-pass parsing enabled with review queue")
+
 	// Wire parser to check auto-parse config
 	parser.SetAutoParseChecker(func() bool {
 		config, err := configRepo.GetAll(ctx)

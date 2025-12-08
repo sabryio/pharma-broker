@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // ReviewStatus represents the status of a review queue item
 type ReviewStatus string
@@ -42,23 +45,23 @@ type ReviewQueueItem struct {
 // ReviewQueueRepository defines the interface for review queue persistence
 type ReviewQueueRepository interface {
 	// Save creates or updates a review queue item
-	Save(ctx interface{}, item *ReviewQueueItem) error
+	Save(ctx context.Context, item *ReviewQueueItem) error
 
 	// GetByID retrieves a review queue item by ID
-	GetByID(ctx interface{}, id string) (*ReviewQueueItem, error)
+	GetByID(ctx context.Context, id string) (*ReviewQueueItem, error)
 
 	// GetPending retrieves pending review items with pagination
-	GetPending(ctx interface{}, limit, offset int) ([]*ReviewQueueItem, error)
+	GetPending(ctx context.Context, limit, offset int) ([]*ReviewQueueItem, error)
 
 	// CountPending returns the number of pending reviews
-	CountPending(ctx interface{}) (int64, error)
+	CountPending(ctx context.Context) (int64, error)
 
 	// Approve marks an item as approved with optional corrections
-	Approve(ctx interface{}, id string, reviewedBy string, correctedItems []ParsedItem, note string) error
+	Approve(ctx context.Context, id string, reviewedBy string, correctedItems []ParsedItem, note string) error
 
 	// Reject marks an item as rejected
-	Reject(ctx interface{}, id string, reviewedBy string, reason string) error
+	Reject(ctx context.Context, id string, reviewedBy string, reason string) error
 
 	// GetByRawMessageID finds review items for a specific message
-	GetByRawMessageID(ctx interface{}, rawMessageID string) (*ReviewQueueItem, error)
+	GetByRawMessageID(ctx context.Context, rawMessageID string) (*ReviewQueueItem, error)
 }
