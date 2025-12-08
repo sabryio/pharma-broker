@@ -117,6 +117,7 @@ func (g *GormDB) migrate() error {
 		&models.MatchFeedback{},
 		&models.DemandLeaderboard{},
 		&models.AuditLog{},
+		&models.UnmappedMedication{},
 	)
 }
 

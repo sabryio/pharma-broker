@@ -228,3 +228,24 @@ type AuditLog struct {
 func (AuditLog) TableName() string {
 	return "audit_logs"
 }
+
+// UnmappedMedication represents a medication that couldn't be mapped for review
+type UnmappedMedication struct {
+	ID            uint       `gorm:"column:id;primaryKey;autoIncrement"`
+	RawText       string     `gorm:"column:raw_text;uniqueIndex;not null"`
+	AIOutput      string     `gorm:"column:ai_output"`
+	SourceMessage string     `gorm:"column:source_message;type:text"`
+	SourceGroup   string     `gorm:"column:source_group;index"`
+	MessageID     string     `gorm:"column:message_id;index"`
+	Count         int        `gorm:"column:count;default:1"`
+	Reviewed      bool       `gorm:"column:reviewed;default:false;index"`
+	ApprovedName  string     `gorm:"column:approved_name"`
+	ReviewedAt    *time.Time `gorm:"column:reviewed_at"`
+	ReviewedBy    string     `gorm:"column:reviewed_by"`
+	CreatedAt     time.Time  `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt     time.Time  `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+func (UnmappedMedication) TableName() string {
+	return "unmapped_medications"
+}

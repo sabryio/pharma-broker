@@ -22,12 +22,13 @@ import (
 // DockerModelClient handles communication with Docker Model Runner
 // using the OpenAI-compatible API.
 type DockerModelClient struct {
-	cfg         *config.DockerModelConfig
-	client      openai.Client
-	log         zerolog.Logger
-	cb          *gobreaker.CircuitBreaker
-	allMappings []*domain.MedicationMapping // For hybrid filtering
-	vectorTopK  int                         // Top-K for vector search (default 10)
+	cfg          *config.DockerModelConfig
+	client       openai.Client
+	log          zerolog.Logger
+	cb           *gobreaker.CircuitBreaker
+	allMappings  []*domain.MedicationMapping   // For hybrid filtering
+	vectorTopK   int                           // Top-K for vector search (default 10)
+	unmappedRepo domain.UnmappedMedicationRepo // For active learning (optional)
 }
 
 func GenerateSchema[T any]() interface{} {
@@ -98,6 +99,12 @@ func (c *DockerModelClient) SetMappings(mappings []*domain.MedicationMapping) {
 		c.vectorTopK = 10 // Default top-K
 	}
 	c.log.Info().Int("count", len(mappings)).Msg("Loaded medication mappings for hybrid filtering")
+}
+
+// SetUnmappedRepo sets the repository for saving unmapped medications (active learning)
+func (c *DockerModelClient) SetUnmappedRepo(repo domain.UnmappedMedicationRepo) {
+	c.unmappedRepo = repo
+	c.log.Info().Msg("Active learning enabled - unmapped medications will be saved")
 }
 
 // ParseMessages implements AIProvider.ParseMessages using Docker Model Runner.
@@ -295,7 +302,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 	}
 
 	// Post-process to enforce mappings (Fix for AI hallucinations)
-	enforceMappings(finalResults, effectiveMappings, c.log)
+	enforceMappings(finalResults, effectiveMappings, c.log, c.unmappedRepo, messages)
 
 	return finalResults, nil
 }
@@ -304,7 +311,8 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 // overwriting the AI's output if a known Arabic term is found in the Raw field.
 // Uses Arabic normalization and fuzzy matching for improved accuracy.
 // The log parameter enables auto-learn logging for unmapped medications.
-func enforceMappings(results []*domain.AIParseResult, mappings map[string]string, log zerolog.Logger) {
+// The unmappedRepo (optional) saves unmapped medications for active learning.
+func enforceMappings(results []*domain.AIParseResult, mappings map[string]string, log zerolog.Logger, unmappedRepo domain.UnmappedMedicationRepo, messages []*domain.RawMessage) {
 	if len(mappings) == 0 {
 		return
 	}
@@ -322,7 +330,15 @@ func enforceMappings(results []*domain.AIParseResult, mappings map[string]string
 		return len(sortedKeys[i]) > len(sortedKeys[j])
 	})
 
-	for _, res := range results {
+	for idx, res := range results {
+		// Get message info for context if available
+		var sourceMessage, sourceGroup, messageID string
+		if idx < len(messages) && messages[idx] != nil {
+			sourceMessage = messages[idx].Content
+			sourceGroup = messages[idx].GroupName
+			messageID = messages[idx].ID
+		}
+
 		for i := range res.Items {
 			item := &res.Items[i]
 			rawNormalized := NormalizeForMatching(item.MedicationRaw)
@@ -355,13 +371,20 @@ func enforceMappings(results []*domain.AIParseResult, mappings map[string]string
 				}
 			}
 
-			// Step 3: Auto-learn logging - log unmapped medications for review
+			// Step 3: Auto-learn - log and persist unmapped medications for review
 			if !matched && item.MedicationRaw != "" {
 				log.Warn().
 					Str("raw", item.MedicationRaw).
 					Str("ai_output", item.Medication).
 					Msg("Unmapped medication detected - consider adding to database")
 				item.MatchConfidence = string(ConfidenceTransliterated)
+
+				// Save to DB for active learning review queue
+				if unmappedRepo != nil {
+					if err := unmappedRepo.Save(item.MedicationRaw, item.Medication, sourceMessage, sourceGroup, messageID); err != nil {
+						log.Error().Err(err).Str("raw", item.MedicationRaw).Msg("Failed to save unmapped medication")
+					}
+				}
 			}
 		}
 	}

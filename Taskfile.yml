@@ -78,6 +78,11 @@ tasks:
     cmds:
       - go run ./cmd/playground/mapping_check
 
+  playground:benchmark:
+    desc: Benchmark hybrid RAG filtering performance
+    cmds:
+      - go run ./cmd/playground/benchmark
+
   monitor:
     desc: Run the application in monitor mode
     cmds:
@@ -92,3 +97,13 @@ tasks:
     desc: Seed the database with medications from JSON
     cmds:
       - go run ./cmd/playground/mapping_check
+
+  test:integration:
+    desc: Run integration tests (requires AI service)
+    cmds:
+      - go test -tags=integration ./internal/ai/... -v -timeout 5m
+
+  test:unit:
+    desc: Run unit tests only
+    cmds:
+      - go test ./... -v

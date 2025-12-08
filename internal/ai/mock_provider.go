@@ -41,3 +41,7 @@ func (m *MockAIProvider) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 func (m *MockAIProvider) SetMappings(mappings []*domain.MedicationMapping) {
 	// No-op for mock
 }
+
+func (m *MockAIProvider) SetUnmappedRepo(repo domain.UnmappedMedicationRepo) {
+	// No-op for mock
+}

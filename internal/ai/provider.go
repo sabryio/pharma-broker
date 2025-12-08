@@ -27,6 +27,10 @@ type AIProvider interface {
 	// SetMappings configures the full medication mappings for hybrid RAG filtering.
 	// This enables keyword + vector similarity search to reduce prompt size.
 	SetMappings(mappings []*domain.MedicationMapping)
+
+	// SetUnmappedRepo configures the repository for saving unmapped medications.
+	// This enables active learning - unmapped terms are saved for human review.
+	SetUnmappedRepo(repo domain.UnmappedMedicationRepo)
 }
 
 // NewAIProvider creates an AI provider based on configuration.

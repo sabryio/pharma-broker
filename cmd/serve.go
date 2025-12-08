@@ -172,6 +172,10 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Info().Int("count", len(allDBMappings)).Msg("Configured hybrid RAG filtering")
 	}
 
+	// Initialize unmapped medications repo for active learning
+	unmappedRepo := storage.NewGormUnmappedMedicationRepo(db.DB)
+	aiProvider.SetUnmappedRepo(unmappedRepo)
+
 	// Initialize WhatsApp manager
 	waManager, err := whatsapp.NewManager(ctx, &cfg.WhatsApp, log)
 	if err != nil {

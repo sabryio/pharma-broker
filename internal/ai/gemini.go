@@ -357,3 +357,9 @@ func (c *GeminiClient) SetMappings(mappings []*domain.MedicationMapping) {
 	// No-op: Gemini doesn't use hybrid RAG filtering
 	c.log.Debug().Int("count", len(mappings)).Msg("SetMappings called (no-op for Gemini)")
 }
+
+// SetUnmappedRepo is a no-op for GeminiClient as it doesn't use active learning.
+func (c *GeminiClient) SetUnmappedRepo(repo domain.UnmappedMedicationRepo) {
+	// No-op: Gemini doesn't use active learning
+	c.log.Debug().Msg("SetUnmappedRepo called (no-op for Gemini)")
+}
