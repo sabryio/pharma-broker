@@ -3,4 +3,7 @@ go 1.25.0
 use (
 	.
 	./domain
+	./pkg
+	./ai
+	./storage
 )

@@ -93,3 +93,21 @@ type ReviewQueueItem struct {
 	CreatedAt      time.Time    `json:"created_at"`
 	UpdatedAt      time.Time    `json:"updated_at"`
 }
+
+// UnmappedMedication represents a medication that couldn't be mapped
+// during AI parsing, queued for human review.
+type UnmappedMedication struct {
+	ID            uint       `json:"id"`
+	RawText       string     `json:"raw_text"`
+	AIOutput      string     `json:"ai_output"`
+	SourceMessage string     `json:"source_message"`
+	SourceGroup   string     `json:"source_group"`
+	MessageID     string     `json:"message_id"`
+	Count         int        `json:"count"`
+	Reviewed      bool       `json:"reviewed"`
+	ApprovedName  string     `json:"approved_name,omitempty"`
+	ReviewedAt    *time.Time `json:"reviewed_at,omitempty"`
+	ReviewedBy    string     `json:"reviewed_by,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
