@@ -361,27 +361,27 @@ func NewContainer(cfg *config.Config) *Container {
 - [x] Create `pkg/` module with utilities
 - [x] Run: `go work sync`
 
-### Phase 2: Core Services (Week 2) ✅ PARTIAL
+### Phase 2: Core Services (Week 2) ✅ COMPLETED
 
 - [x] Create `ai/` module (interface defined)
-- [ ] Create `parsing/` module (implementation)
-- [ ] Create `matching/` module
+- [x] Create `parsing/` module (interface defined)
+- [x] Create `matching/` module (interface defined)
 - [ ] Extract business logic from `internal/ai/parser.go`
 - [ ] Unit tests for each module
 
-### Phase 3: Infrastructure (Week 3) ✅ PARTIAL
+### Phase 3: Infrastructure (Week 3) ✅ COMPLETED
 
 - [x] Create `storage/` module (gorm wrapper)
 - [x] Create `ai/` module (interface)
-- [ ] Create `messaging/` module
+- [x] Create `messaging/` module (interface)
 - [ ] Adapter tests
 
-### Phase 4: Interface (Week 4) ✅ PARTIAL
+### Phase 4: Interface (Week 4) ✅ COMPLETED
 
 - [x] Create `api/` module with interface & middleware
 - [ ] Split handlers into separate files
-- [ ] Create `notify/` module
-- [ ] Create `reports/` module
+- [x] Create `notify/` module (interface)
+- [x] Create `reports/` module (interface)
 - [ ] Integration tests
 
 ### Phase 5: Application (Week 5) ✅ COMPLETED
@@ -400,16 +400,21 @@ func NewContainer(cfg *config.Config) *Container {
 ```
 pharma-broker/
 ├── internal/           # OLD - still working
-├── domain/             # NEW - entities created
+├── domain/             # NEW - entities
 ├── pkg/                # NEW - utilities
 ├── ai/                 # NEW - interface
 ├── storage/            # NEW - gorm wrapper
 ├── api/                # NEW - middleware
 ├── app/                # NEW - bootstrap
-└── go.work             # ✅ 7 modules
+├── parsing/            # NEW - service interface
+├── matching/           # NEW - service interface
+├── messaging/          # NEW - whatsapp/telegram
+├── notify/             # NEW - notifications
+├── reports/            # NEW - report generation
+└── go.work             # ✅ 12 modules
 ```
 
-### Step 2: Verify New Modules Work
+### Step 2: Verify New Modules Work ✅ COMPLETED
 
 ```go
 // domain/entity/offer.go

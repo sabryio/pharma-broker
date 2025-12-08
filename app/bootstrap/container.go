@@ -87,9 +87,20 @@ func New(ctx context.Context, cfg *Config, log zerolog.Logger) (*Container, erro
 
 	log.Info().Str("path", cfg.Database.Path).Msg("Database initialized")
 
-	// Repositories will be injected by the legacy code during migration
-	// This is a placeholder for the clean architecture
-	c.Repos = &Repositories{}
+	// Initialize all repositories using new implementations
+	c.Repos = &Repositories{
+		Offers:   storageGorm.NewOfferRepo(db),
+		Requests: storageGorm.NewRequestRepo(db),
+		Matches:  storageGorm.NewMatchRepo(db),
+		Groups:   storageGorm.NewGroupRepo(db),
+		Stats:    storageGorm.NewStatsRepo(db),
+		Messages: storageGorm.NewRawMessageRepo(db),
+		Mappings: storageGorm.NewMedicationMappingRepo(db),
+		Queue:    storageGorm.NewMatchQueueRepo(db),
+		Review:   storageGorm.NewReviewQueueRepo(db),
+	}
+
+	log.Info().Msg("Repositories initialized")
 
 	return c, nil
 }
