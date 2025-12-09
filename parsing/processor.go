@@ -233,32 +233,41 @@ func (p *Parser) parseWithAI(ctx context.Context, batch []*entity.RawMessage) ([
 		Dur("duration", time.Since(filteringStart)).
 		Msg("Retrieved relevant medication mappings from DB (FTS)")
 
-	// Check circuit breaker before AI call
-	if p.aiCircuitBreaker != nil && !p.aiCircuitBreaker.Allow() {
-		p.log.Warn().
-			Str("step", "6_CIRCUIT_OPEN").
-			Str("circuit", p.aiCircuitBreaker.Name()).
-			Msg("⚡ Circuit breaker OPEN - skipping AI call")
-		metrics.CircuitBreakerState.WithLabelValues(p.aiCircuitBreaker.Name()).Set(float64(p.aiCircuitBreaker.State()))
-		return nil, context.DeadlineExceeded // Or custom error
-	}
+	mappingsSlice := mapToMedicationMappings(mappings)
 
-	results, err := p.aiProvider.ParseMessages(ctx, batch, mapToMedicationMappings(mappings))
-
-	if err != nil {
-		// Record failure in circuit breaker
-		if p.aiCircuitBreaker != nil {
-			p.aiCircuitBreaker.RecordFailure()
-			metrics.CircuitBreakerState.WithLabelValues(p.aiCircuitBreaker.Name()).Set(float64(p.aiCircuitBreaker.State()))
-			metrics.CircuitBreakerFailures.WithLabelValues(p.aiCircuitBreaker.Name()).Inc()
-		}
-		return nil, err
-	}
-
-	// Record success in circuit breaker
+	// Use circuit breaker if configured
 	if p.aiCircuitBreaker != nil {
-		p.aiCircuitBreaker.RecordSuccess()
+		result, err := p.aiCircuitBreaker.ExecuteWithContext(ctx, func(ctx context.Context) (any, error) {
+			return p.aiProvider.ParseMessages(ctx, batch, mappingsSlice)
+		})
+
+		// Update metrics
 		metrics.CircuitBreakerState.WithLabelValues(p.aiCircuitBreaker.Name()).Set(float64(p.aiCircuitBreaker.State()))
+
+		if err != nil {
+			p.log.Warn().
+				Err(err).
+				Str("step", "6_CIRCUIT_BREAKER").
+				Str("circuit", p.aiCircuitBreaker.Name()).
+				Bool("is_open", p.aiCircuitBreaker.IsOpen()).
+				Msg("⚡ AI call failed or circuit open")
+			metrics.CircuitBreakerFailures.WithLabelValues(p.aiCircuitBreaker.Name()).Inc()
+			return nil, err
+		}
+
+		results := result.([]*entity.AIParseResult)
+		p.log.Info().
+			Str("step", "7_AI_RESPONSE").
+			Int("result_count", len(results)).
+			Msg("✅ AI response received")
+
+		return results, nil
+	}
+
+	// Fallback: no circuit breaker configured
+	results, err := p.aiProvider.ParseMessages(ctx, batch, mappingsSlice)
+	if err != nil {
+		return nil, err
 	}
 
 	p.log.Info().

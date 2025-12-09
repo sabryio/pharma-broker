@@ -13,8 +13,8 @@ import (
 	aiCircuitBreaker "pharmabroker/ai/circuitbreaker"
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-	"pharmabroker/pkg/config"
 	"pharmabroker/matching"
+	"pharmabroker/pkg/config"
 )
 
 // ProcessMessage queues a message for processing
@@ -60,7 +60,7 @@ type Parser struct {
 	matchPoolSize int // Configurable match worker pool size
 
 	// Circuit Breaker for AI calls
-	aiCircuitBreaker *aiCircuitBreaker.CircuitBreaker
+	aiCircuitBreaker *aiCircuitBreaker.Breaker
 
 	// Real-time updates and Dynamic Config
 	// Real-time updates and Dynamic Config
@@ -113,24 +113,28 @@ func NewParser(
 	)
 
 	return &Parser{
-		rawMsgRepo:         rawMsgRepo,
-		aiProvider:         aiProvider,
-		offerRepo:          offerRepo,
-		requestRepo:        requestRepo,
-		matchRepo:          matchRepo,
-		medicationRepo:     medicationRepo,
-		matchQueueRepo:     matchQueueRepo,
-		configRepo:         configRepo,
-		errorNotifier:      errorNotifier,
-		sseBroadcaster:     broadcaster,
-		log:                logger,
-		workers:            DefaultWorkerCount,
-		inputChan:          make(chan inputJob, DefaultInputChannelSize),
-		stopChan:           make(chan struct{}),
-		matchTicker:        time.NewTicker(2 * time.Second),
-		matchStop:          make(chan struct{}),
-		matchPoolSize:      DefaultMatchPoolSize,
-		aiCircuitBreaker:   aiCircuitBreaker.NewCircuitBreaker("ai_provider", DefaultCircuitBreakerThreshold, DefaultCircuitBreakerTimeout),
+		rawMsgRepo:     rawMsgRepo,
+		aiProvider:     aiProvider,
+		offerRepo:      offerRepo,
+		requestRepo:    requestRepo,
+		matchRepo:      matchRepo,
+		medicationRepo: medicationRepo,
+		matchQueueRepo: matchQueueRepo,
+		configRepo:     configRepo,
+		errorNotifier:  errorNotifier,
+		sseBroadcaster: broadcaster,
+		log:            logger,
+		workers:        DefaultWorkerCount,
+		inputChan:      make(chan inputJob, DefaultInputChannelSize),
+		stopChan:       make(chan struct{}),
+		matchTicker:    time.NewTicker(2 * time.Second),
+		matchStop:      make(chan struct{}),
+		matchPoolSize:  DefaultMatchPoolSize,
+		aiCircuitBreaker: aiCircuitBreaker.New(aiCircuitBreaker.Config{
+			Name:             "ai_provider",
+			Timeout:          DefaultCircuitBreakerTimeout,
+			FailureThreshold: DefaultCircuitBreakerThreshold,
+		}, logger),
 		isAutoParseEnabled: func() bool { return true },
 		embeddingCache:     embeddingCache,
 		matchingService:    matchingService,

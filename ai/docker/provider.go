@@ -14,8 +14,8 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/rs/zerolog"
-	"github.com/sony/gobreaker"
 
+	"pharmabroker/ai/circuitbreaker"
 	"pharmabroker/ai/prompts"
 	arabicPkg "pharmabroker/pkg/arabic"
 	"pharmabroker/pkg/config"
@@ -40,7 +40,7 @@ type Client struct {
 	cfg          *config.DockerModelConfig
 	client       openai.Client
 	log          zerolog.Logger
-	cb           *gobreaker.CircuitBreaker
+	cb           *circuitbreaker.Breaker
 	allMappings  []*entity.MedicationMapping       // For hybrid filtering
 	vectorTopK   int                               // Top-K for vector search (default 10)
 	unmappedRepo repository.UnmappedMedicationRepo // For active learning (optional)
@@ -94,16 +94,8 @@ func NewClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*Client, erro
 	}, nil
 }
 
-// newCircuitBreaker creates a configured circuit breaker with sensible defaults
-func newCircuitBreaker(cfg *config.DockerModelConfig, log zerolog.Logger) *gobreaker.CircuitBreaker {
-	cbMaxRequests := cfg.CBMaxRequests
-	if cbMaxRequests == 0 {
-		cbMaxRequests = DefaultCBMaxRequests
-	}
-	cbInterval := cfg.CBInterval
-	if cbInterval == 0 {
-		cbInterval = DefaultCBInterval
-	}
+// newCircuitBreaker creates a configured circuit breaker with sensible defaults.
+func newCircuitBreaker(cfg *config.DockerModelConfig, log zerolog.Logger) *circuitbreaker.Breaker {
 	cbTimeout := cfg.CBTimeout
 	if cbTimeout == 0 {
 		cbTimeout = DefaultCBTimeout
@@ -113,21 +105,29 @@ func newCircuitBreaker(cfg *config.DockerModelConfig, log zerolog.Logger) *gobre
 		cbFailureRatio = DefaultCBFailureRatio
 	}
 
-	st := gobreaker.Settings{
-		Name:        "DockerModel",
-		MaxRequests: cbMaxRequests,
-		Interval:    cbInterval,
-		Timeout:     cbTimeout,
-		ReadyToTrip: func(counts gobreaker.Counts) bool {
-			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-			return counts.Requests >= DefaultCBMinRequests && failureRatio >= cbFailureRatio
-		},
-		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
-			log.Warn().Str("name", name).Str("from", from.String()).Str("to", to.String()).Msg("Circuit Breaker state changed")
+	cbCfg := circuitbreaker.Config{
+		Name:                "DockerModel",
+		FailureThreshold:    int(cfg.CBMaxRequests),
+		SuccessThreshold:    2,
+		Timeout:             cbTimeout,
+		MaxHalfOpenRequests: int(DefaultCBMaxRequests),
+		FailureRatio:        cbFailureRatio,
+		MinRequests:         int(DefaultCBMinRequests),
+		OnStateChange: func(name string, from, to circuitbreaker.State) {
+			log.Warn().
+				Str("name", name).
+				Str("from", from.String()).
+				Str("to", to.String()).
+				Msg("Circuit Breaker state changed")
 		},
 	}
 
-	return gobreaker.NewCircuitBreaker(st)
+	// Apply defaults if not configured
+	if cbCfg.FailureThreshold == 0 {
+		cbCfg.FailureThreshold = int(DefaultCBMaxRequests)
+	}
+
+	return circuitbreaker.New(cbCfg, log)
 }
 
 // SetMappings sets the full medication mappings for hybrid filtering.
@@ -626,7 +626,7 @@ func (c *Client) logTokenUsage(prompt string, mappings []*entity.MedicationMappi
 func (c *Client) executeWithCircuitBreaker(ctx context.Context, prompt string) (*openai.ChatCompletion, error) {
 	start := time.Now()
 
-	cbResult, err := c.cb.Execute(func() (any, error) {
+	cbResult, err := c.cb.ExecuteWithContext(ctx, func(ctx context.Context) (any, error) {
 		return c.executeWithRetry(ctx, prompt)
 	})
 
