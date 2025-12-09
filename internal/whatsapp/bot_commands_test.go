@@ -8,7 +8,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
 )
 
 // Mock repositories for testing
@@ -67,10 +66,10 @@ func (m *mockStatsRepo) GetProcessedToday(ctx context.Context) (int64, error) {
 }
 
 type mockAuditLogger struct {
-	logs []storage.AuditAction
+	logs []domain.AuditAction
 }
 
-func (m *mockAuditLogger) Log(ctx context.Context, action storage.AuditAction, entityID, details string) error {
+func (m *mockAuditLogger) Log(ctx context.Context, action domain.AuditAction, entityID, details string) error {
 	m.logs = append(m.logs, action)
 	return nil
 }

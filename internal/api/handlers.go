@@ -41,7 +41,7 @@ type ConfigRepository interface {
 type FeedbackRepository interface {
 	RecordFeedback(ctx context.Context, fb *domain.MatchFeedback) error
 	GetFeedbackByMatch(ctx context.Context, matchID string) ([]*domain.MatchFeedback, error)
-	AnalyzeFeedback(ctx context.Context, days int) (*storage.FeedbackAnalysis, error)
+	AnalyzeFeedback(ctx context.Context, days int) (*domain.FeedbackAnalysis, error)
 	GetRecentFeedback(ctx context.Context, limit int) ([]*domain.MatchFeedback, error)
 }
 
@@ -54,10 +54,10 @@ type LeaderboardRepository interface {
 
 // AuditRepository interface for audit logging
 type AuditRepository interface {
-	Log(ctx context.Context, action storage.AuditAction, entityID, details string) error
-	LogWithValues(ctx context.Context, action storage.AuditAction, entityID, oldVal, newVal, details string) error
-	GetRecent(ctx context.Context, limit int) ([]*storage.AuditLog, error)
-	GetByAction(ctx context.Context, action storage.AuditAction, limit int) ([]*storage.AuditLog, error)
+	Log(ctx context.Context, action domain.AuditAction, entityID, details string) error
+	LogWithValues(ctx context.Context, action domain.AuditAction, entityID, oldVal, newVal, details string) error
+	GetRecent(ctx context.Context, limit int) ([]*domain.AuditLog, error)
+	GetByAction(ctx context.Context, action domain.AuditAction, limit int) ([]*domain.AuditLog, error)
 }
 
 // AnalyzeResult represents AI analysis output
@@ -312,7 +312,7 @@ func (h *Handlers) ConfirmMatch(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Audit log
-	h.logAudit(ctx, storage.AuditMatchConfirmed, id, "Offer: "+match.OfferID+", Request: "+match.RequestID)
+	h.logAudit(ctx, domain.AuditMatchConfirmed, id, "Offer: "+match.OfferID+", Request: "+match.RequestID)
 
 	h.success(w, map[string]string{"status": "confirmed"})
 }
@@ -345,7 +345,7 @@ func (h *Handlers) RejectMatch(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Audit log
-	h.logAudit(ctx, storage.AuditMatchRejected, id, "")
+	h.logAudit(ctx, domain.AuditMatchRejected, id, "")
 
 	h.success(w, map[string]string{"status": "rejected"})
 }
@@ -886,11 +886,11 @@ func (h *Handlers) GetAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Filter by action if specified
 	actionFilter := r.URL.Query().Get("action")
-	var logs []*storage.AuditLog
+	var logs []*domain.AuditLog
 	var err error
 
 	if actionFilter != "" {
-		logs, err = h.auditRepo.GetByAction(ctx, storage.AuditAction(actionFilter), limit)
+		logs, err = h.auditRepo.GetByAction(ctx, domain.AuditAction(actionFilter), limit)
 	} else {
 		logs, err = h.auditRepo.GetRecent(ctx, limit)
 	}
@@ -905,7 +905,7 @@ func (h *Handlers) GetAuditLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 // logAudit is a helper to safely log audit events
-func (h *Handlers) logAudit(ctx context.Context, action storage.AuditAction, entityID, details string) {
+func (h *Handlers) logAudit(ctx context.Context, action domain.AuditAction, entityID, details string) {
 	if h.auditRepo != nil {
 		if err := h.auditRepo.Log(ctx, action, entityID, details); err != nil {
 			h.log.Warn().Err(err).Str("action", string(action)).Msg("Failed to log audit event")

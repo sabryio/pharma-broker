@@ -613,3 +613,44 @@ func jsonToWeights(s string) (med, dos, qty, prc, rec float64) {
 	}
 	return
 }
+
+// ========================================
+// MatchFeedback Converters
+// ========================================
+
+// ToMatchFeedbackModel converts entity.MatchFeedback to gorm MatchFeedback
+func ToMatchFeedbackModel(d *entity.MatchFeedback) *MatchFeedback {
+	return &MatchFeedback{
+		ID:                 d.ID,
+		MatchID:            d.MatchID,
+		OperatorID:         nilIfEmpty(d.OperatorID),
+		Decision:           string(d.Decision),
+		Reason:             nilIfEmpty(d.Reason),
+		OriginalScore:      d.OriginalScore,
+		OriginalConfidence: nilIfEmpty(d.OriginalConfidence),
+		CreatedAt:          d.CreatedAt,
+	}
+}
+
+// ToMatchFeedbackEntity converts gorm MatchFeedback to entity.MatchFeedback
+func ToMatchFeedbackEntity(m *MatchFeedback) *entity.MatchFeedback {
+	return &entity.MatchFeedback{
+		ID:                 m.ID,
+		MatchID:            m.MatchID,
+		OperatorID:         deref(m.OperatorID),
+		Decision:           entity.FeedbackDecision(m.Decision),
+		Reason:             deref(m.Reason),
+		OriginalScore:      m.OriginalScore,
+		OriginalConfidence: deref(m.OriginalConfidence),
+		CreatedAt:          m.CreatedAt,
+	}
+}
+
+// ToMatchFeedbacksEntity converts a slice of gorm MatchFeedback to entity MatchFeedback
+func ToMatchFeedbacksEntity(models []MatchFeedback) []*entity.MatchFeedback {
+	result := make([]*entity.MatchFeedback, len(models))
+	for i := range models {
+		result[i] = ToMatchFeedbackEntity(&models[i])
+	}
+	return result
+}

@@ -69,50 +69,27 @@ func runServe(cmd *cobra.Command, args []string) {
 	defer db.Close()
 	log.Info().Str("path", cfg.Database.Path).Msg("Database initialized")
 
-	// Create repositories - conditionally use new or legacy implementations
-	var (
-		rawMsgRepo     domain.RawMessageRepository
-		offerRepo      domain.OfferRepository
-		requestRepo    domain.RequestRepository
-		matchRepo      domain.MatchRepository
-		matchQueueRepo domain.MatchQueueRepository
-		groupRepo      *storage.GormGroupRepo // Keep concrete type for extended methods
-		statsRepo      domain.StatsRepository
-		medicationRepo domain.MedicationMappingRepository
-	)
-
-	if cfg.Experimental.UseNewRepos {
-		log.Info().Msg("Using NEW storage/gorm repository implementations")
-		newDB, err := storageGorm.NewDB(&storageGorm.Config{Path: cfg.Database.Path})
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to initialize new storage layer")
-		}
-		defer newDB.Close()
-
-		rawMsgRepo = storageGorm.NewRawMessageRepo(newDB)
-		offerRepo = storageGorm.NewOfferRepo(newDB)
-		requestRepo = storageGorm.NewRequestRepo(newDB)
-		matchRepo = storageGorm.NewMatchRepo(newDB)
-		matchQueueRepo = storageGorm.NewMatchQueueRepo(newDB)
-		groupRepo = storage.NewGroupRepo(db) // Keep legacy for SaveFromSync/EnableFromConfig
-		statsRepo = storageGorm.NewStatsRepo(newDB)
-		medicationRepo = storageGorm.NewMedicationMappingRepo(newDB)
-	} else {
-		log.Info().Msg("Using legacy internal/storage repository implementations")
-		rawMsgRepo = storage.NewRawMessageRepo(db)
-		offerRepo = storage.NewOfferRepo(db)
-		requestRepo = storage.NewRequestRepo(db)
-		matchRepo = storage.NewMatchRepo(db)
-		matchQueueRepo = storage.NewMatchQueueRepo(db)
-		groupRepo = storage.NewGroupRepo(db)
-		statsRepo = storage.NewStatsRepo(db)
-		medicationRepo = storage.NewMedicationMappingRepo(db)
+	// Create repositories using new storage/gorm implementations
+	newDB, err := storageGorm.NewDB(&storageGorm.Config{Path: cfg.Database.Path})
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize storage layer")
 	}
+	defer newDB.Close()
+	log.Info().Msg("Using storage/gorm repository implementations")
 
-	// Additional legacy repos (not yet migrated to new architecture)
-	feedbackRepo := storage.NewFeedbackRepo(db)
-	leaderboardRepo := storage.NewLeaderboardRepo(db)
-	auditRepo := storage.NewAuditRepo(db)
+	// Core repositories (new implementations)
+	rawMsgRepo := storageGorm.NewRawMessageRepo(newDB)
+	offerRepo := storageGorm.NewOfferRepo(newDB)
+	requestRepo := storageGorm.NewRequestRepo(newDB)
+	matchRepo := storageGorm.NewMatchRepo(newDB)
+	matchQueueRepo := storageGorm.NewMatchQueueRepo(newDB)
+	groupRepo := storage.NewGroupRepo(db) // Keep legacy for SaveFromSync/EnableFromConfig
+	statsRepo := storageGorm.NewStatsRepo(newDB)
+	medicationRepo := storageGorm.NewMedicationMappingRepo(newDB)
+	feedbackRepo := storageGorm.NewFeedbackRepo(newDB)
+	leaderboardRepo := storageGorm.NewLeaderboardRepo(newDB)
+	auditRepo := storageGorm.NewAuditRepo(newDB)
+
 	_ = domain.StatusActive // Ensure domain package is used
 
 	// Load medication mappings from file

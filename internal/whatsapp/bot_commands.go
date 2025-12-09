@@ -9,7 +9,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
 )
 
 // BotConfig holds bot command configuration
@@ -29,7 +28,7 @@ type BotCommandHandler struct {
 
 // AuditLogger interface for audit logging
 type AuditLogger interface {
-	Log(ctx context.Context, action storage.AuditAction, entityID, details string) error
+	Log(ctx context.Context, action domain.AuditAction, entityID, details string) error
 }
 
 // BotCommand represents a parsed command
@@ -226,7 +225,7 @@ func (h *BotCommandHandler) handleConfirm(ctx context.Context, cmd BotCommand) s
 
 	// Audit log
 	if h.auditRepo != nil {
-		h.auditRepo.Log(ctx, storage.AuditMatchConfirmed, match.ID, "Confirmed via WhatsApp bot by "+cmd.Sender)
+		h.auditRepo.Log(ctx, domain.AuditMatchConfirmed, match.ID, "Confirmed via WhatsApp bot by "+cmd.Sender)
 	}
 
 	h.log.Info().Str("match_id", match.ID).Str("by", cmd.Sender).Msg("Match confirmed via bot")
@@ -257,7 +256,7 @@ func (h *BotCommandHandler) handleReject(ctx context.Context, cmd BotCommand) st
 
 	// Audit log
 	if h.auditRepo != nil {
-		h.auditRepo.Log(ctx, storage.AuditMatchRejected, match.ID, "Rejected via WhatsApp bot by "+cmd.Sender)
+		h.auditRepo.Log(ctx, domain.AuditMatchRejected, match.ID, "Rejected via WhatsApp bot by "+cmd.Sender)
 	}
 
 	h.log.Info().Str("match_id", match.ID).Str("by", cmd.Sender).Msg("Match rejected via bot")

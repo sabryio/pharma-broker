@@ -149,23 +149,21 @@ func (m *mockStatsRepo) GetProcessedToday(ctx context.Context) (int64, error) {
 	return 25, nil
 }
 
-type mockConfigRepo struct {
-	config *storage.AppConfig
-}
+type mockConfigRepo struct{}
 
 func (m *mockConfigRepo) GetAll(ctx context.Context) (*storage.AppConfig, error) {
-	return m.config, nil
+	return &storage.AppConfig{AutoParseEnabled: true, SkipOwnMessages: true}, nil
 }
 func (m *mockConfigRepo) UpdateFromMap(ctx context.Context, updates map[string]interface{}) error {
 	return nil
 }
 
 type mockAuditRepo struct {
-	logs []*storage.AuditLog
+	logs []*domain.AuditLog
 }
 
-func (m *mockAuditRepo) Log(ctx context.Context, action storage.AuditAction, entityID, details string) error {
-	m.logs = append(m.logs, &storage.AuditLog{
+func (m *mockAuditRepo) Log(ctx context.Context, action domain.AuditAction, entityID, details string) error {
+	m.logs = append(m.logs, &domain.AuditLog{
 		ID:        "test-id",
 		Action:    action,
 		EntityID:  entityID,
@@ -174,13 +172,13 @@ func (m *mockAuditRepo) Log(ctx context.Context, action storage.AuditAction, ent
 	})
 	return nil
 }
-func (m *mockAuditRepo) LogWithValues(ctx context.Context, action storage.AuditAction, entityID, oldVal, newVal, details string) error {
+func (m *mockAuditRepo) LogWithValues(ctx context.Context, action domain.AuditAction, entityID, oldVal, newVal, details string) error {
 	return nil
 }
-func (m *mockAuditRepo) GetRecent(ctx context.Context, limit int) ([]*storage.AuditLog, error) {
+func (m *mockAuditRepo) GetRecent(ctx context.Context, limit int) ([]*domain.AuditLog, error) {
 	return m.logs, nil
 }
-func (m *mockAuditRepo) GetByAction(ctx context.Context, action storage.AuditAction, limit int) ([]*storage.AuditLog, error) {
+func (m *mockAuditRepo) GetByAction(ctx context.Context, action domain.AuditAction, limit int) ([]*domain.AuditLog, error) {
 	return m.logs, nil
 }
 
@@ -314,11 +312,7 @@ func TestGetConfig_NotConfigured(t *testing.T) {
 
 func TestGetConfig_Success(t *testing.T) {
 	h := newTestHandlers()
-	h.SetConfigRepo(&mockConfigRepo{config: &storage.AppConfig{
-		AutoParseEnabled: true,
-		SkipOwnMessages:  true,
-		AdminPhone:       "1234567890",
-	}})
+	h.SetConfigRepo(&mockConfigRepo{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
 	w := httptest.NewRecorder()
@@ -372,8 +366,8 @@ func TestGetAuditLogs_NotConfigured(t *testing.T) {
 
 func TestGetAuditLogs_Success(t *testing.T) {
 	h := newTestHandlers()
-	h.SetAuditRepo(&mockAuditRepo{logs: []*storage.AuditLog{
-		{ID: "log-1", Action: storage.AuditMatchConfirmed, EntityID: "match-1"},
+	h.SetAuditRepo(&mockAuditRepo{logs: []*domain.AuditLog{
+		{ID: "log-1", Action: domain.AuditMatchConfirmed, EntityID: "match-1"},
 	}})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/audit", nil)

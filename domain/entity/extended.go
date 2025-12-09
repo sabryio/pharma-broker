@@ -241,3 +241,14 @@ type PerformanceMetrics struct {
 	SampleSize        int       `json:"sample_size"`
 	EvaluatedAt       time.Time `json:"evaluated_at"`
 }
+
+// FeedbackAnalysis holds aggregated feedback statistics
+type FeedbackAnalysis struct {
+	TotalFeedback    int            `json:"total_feedback"`
+	PositiveFeedback int            `json:"positive_feedback"`
+	NegativeFeedback int            `json:"negative_feedback"`
+	AccuracyRate     float64        `json:"accuracy_rate"`
+	TopIssues        []string       `json:"top_issues"`
+	TrendByDay       map[string]int `json:"trend_by_day"`
+	FeedbackByType   map[string]int `json:"feedback_by_type"`
+}
