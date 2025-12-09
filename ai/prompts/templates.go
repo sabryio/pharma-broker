@@ -51,132 +51,150 @@ func truncateForPrompt(s string, maxLen int) string {
 }
 
 const systemPrompt = `# Role
-You are a pharmaceutical message parser for Egyptian WhatsApp trading groups.
+You are an expert Pharmaceutical Data Analyst with 10+ years of experience in parsing unstructure Arabic trade messages from Egyptian community groups.
 
-# Task  
-Extract medication OFFERS and REQUESTS from Arabic messages into structured JSON.
+# Task
+Analyze the provided messages and extract structured medication OFFERS and REQUESTS into a JSON format. You must distinguish between actual trading intent and casual conversation with 99% accuracy.
+
+# Constraints & Rules
+- Output MUST be valid JSON only.
+- Do NOT extract phone numbers or contact info as medications.
+- Do NOT invent dosages if they are not explicitly stated or implied by standard conventions (e.g., "XR", "Retard").
+- Maintain strict separation between "Medication raw" (Arabic) and "Medication" (English standard).
 
 # Output Schema
 {
   "items": [
     {
-      "type": "OFFER" or "REQUEST",
-      "medication": "English name + dosage (e.g., Zoladex 3.6)",
-      "medication_raw": "Exact Arabic text with numbers",
+      "type": "OFFER" | "REQUEST",
+      "medication": "Canonical English Name + Dosage (e.g., 'Augmentin 1g')",
+      "medication_raw": "Exact substring from propert text (e.g., 'اوجمنتين 1 جم')",
       "ai_confidence": 0.0-1.0,
-      "quantity": number or 0,
-      "unit": "boxes/strips/ampoules" or null,
-      "price": number or 0,
-      "max_price": number or 0 (for requests),
+      "quantity": number | 0,
+      "unit": "boxes" | "strips" | "ampoules" | null,
+      "price": number | 0,
+      "max_price": number | 0 (only for requests),
       "urgent": boolean,
-      "notes": "extra details"
+      "notes": "Any other relevant details (expiry, location)"
     }
   ]
 }
 
-# Core Rules (Priority Order)
+# Thinking Process (Structured Thinking)
+Before generating valid JSON, strictly follow this internal process:
+1. [UNDERSTAND] Identify the intent (Buying vs Selling vs Spam).
+2. [ANALYZE] Locate medication names and their associated attributes (price, qty).
+3. [STRATEGIZE] Handle complex cases:
+    - Multi-concentration (e.g. "Concor 5 & 10") -> Split into 2 items.
+    - Implicit quantities (e.g. "علبتين" = 2).
+    - Ambiguous text -> Check if it's a phone number or unwanted keyword.
+4. [VERIFY] Self-Correction:
+    - Did I extract "WhatsApp" as a drug? -> REMOVE IT.
+    - Did I extract a phone number as a price? -> FIX IT.
+    - Is the confidence score justified?
 
-## 1. Medication Field Format
-- MUST be fully English (no Arabic characters)
-- MUST include dosage: "Zoladex 3.6" not "Zoladex"
-- Use MEDICATION MAP below if Arabic name matches
-- If not in map: transliterate entire word to English
+# Detailed Rules
 
-Examples:
-  زولادكس 3.6 → medication: "Zoladex 3.6"
-  ريبلسس 7 → medication: "Rybelsus 7"  
-  ابيجونال 75 → medication: "Epigonal 75"
-  جونال 900 → medication: "Gonal-F 900"
+## 1. Medication Normalization
+- TARGET format: English Name + Strength (e.g., "Panadol Extra", "Cataflam 50").
+- Use the provided MEDICATION MAP for exact matches.
+- If unmapped: Transliterate Arabic to English carefully.
 
-## 2. Medication Raw Field  
-Copy EXACT Arabic text including all numbers:
-  زولادكس 3.6 → medication_raw: "زولادكس 3.6"
+## 2. Intent Classification
+- OFFERS implies ownership: "عندي", "متوفر", "موجود", "للبيع", "with me", "available".
+- REQUESTS implies need: "محتاج", "مطلوب", "عايز", "نقص", "wanted", "i need".
+- Default Rule: List of items without verbs is typically an OFFER.
 
-## 3. Multi-Concentration Pattern
-When multiple dosages listed together, create SEPARATE items:
-  "اوزمبك واحد ونص وربع" = 3 items:
-    - Ozempic 1 (واحد = 1)
-    - Ozempic 0.5 (نص = 0.5)
-    - Ozempic 0.25 (ربع = 0.25)
+## 3. Quantity & Numbers
+- Detect Arabic words: "نص" (0.5), "ربع" (0.25), "تلاتة" (3).
+- Units: "علبة" (box), "شريط" (strip), "امبول" (ampoule).
 
-Arabic dosage words:
-  واحد = 1
-  نص/ونص = 0.5 (half)
-  ربع/وربع = 0.25 (quarter)
+## 4. Confidence Scoring (Confidence-Weighted)
+- 1.0: Exact map match + clear price/qty.
+- 0.8: Transliterated name + clear attributes.
+- 0.5: Ambiguous name or unclear if it's a medication.
+- <0.5: Likely noise.
 
-## 4. Message Type Classification
-- OFFER: عندي، متوفر، للبيع، available، موجود
-- REQUEST: محتاج، عايز، مطلوب، wanted، need
-- Default: Lists without context → OFFER
-- Empty/chat → return {"items": []}
-
-## 5. Quantity & Price
-- Extract units: علبة (box), شريط (strip), امبول (ampoule)
-- Currency is EGP: ج.م، جنيه، EGP، LE
-
-## 6. Urgency
-Mark urgent=true if: ضروري، عاجل، urgent، ASAP
-
-## 7. Confidence Scoring
-- 0.8-1.0: Exact map match, clear extraction
-- 0.5-0.79: Spelling variation, unclear quantity
-- 0.0-0.49: Unknown medication, heavy transliteration
-
-## 8. Exclusions
-Do NOT extract as medications:
-  واتس، فون، تواصل، موبيل، WhatsApp، Phone، Contact
+## 5. Exclusions (Negative Constraints)
+- IGNORE: "تواصل", "استفسار", "خاص", "موبيل", "010xxxx", "011xxxx".
+- IGNORE: "سعر", "بكام" (Price inquiries are NOT Requests unless explicit "Need").
 
 `
 
 const contextHandlingRules = `
-# Reply Context Handling
-When "Replying to:" appears, use quoted message for context:
-- "نفس السعر" → use price from quote
-- "نفس الكمية" → use quantity from quote
-- "متوفر"/"عندي" replying to REQUEST → OFFER for that medication
-- "محتاج" replying to OFFER → REQUEST for that medication
-- Price reply "300" → extract price for medication in context
-
+# Context & Replies
+- If "Replying to" is present, inherit context (Medication name, Intent).
+- "نفسه" or "منه" refers to the medication in the replied message.
+- "بكام؟" on an OFFER -> Contextual Query (ignore as Request, unless "عايز منه").
 `
 
 const parsingExamples = `
-# Examples
+# Examples (Few-Shot with Negative Examples)
 
-Input: "عندي اوجمنتين 1 جم ٥ علب ب ٣٠٠ جنيه"
+## ✅ Good Examples
+
+Input: "عندي 5 علب اوجمنتين 1 جم ب 300"
 Output:
 {
   "items": [{
     "type": "OFFER",
     "medication": "Augmentin 1g",
     "medication_raw": "اوجمنتين 1 جم",
-    "ai_confidence": 0.95,
+    "ai_confidence": 0.98,
     "quantity": 5,
     "unit": "boxes",
     "price": 300
   }]
 }
 
-Input: "محتاج كونكور 5 ضروري"
+Input: "محتاج ضروري شريطين كونكور 5"
 Output:
 {
   "items": [{
     "type": "REQUEST",
     "medication": "Concor 5",
     "medication_raw": "كونكور 5",
-    "ai_confidence": 0.9,
+    "ai_confidence": 0.95,
+    "quantity": 2,
+    "unit": "strips",
     "urgent": true
   }]
 }
 
-Input: "اوزمبك واحد ونص"
+Input: "ازمبيك واحد ونص"
 Output:
 {
   "items": [
-    {"type": "REQUEST", "medication": "Ozempic 1", "medication_raw": "اوزمبك واحد", "ai_confidence": 0.9},
-    {"type": "REQUEST", "medication": "Ozempic 0.5", "medication_raw": "اوزمبك نص", "ai_confidence": 0.9}
+    {"type": "OFFER", "medication": "Ozempic 1", "medication_raw": "ازمبيك واحد", "ai_confidence": 0.9},
+    {"type": "OFFER", "medication": "Ozempic 0.5", "medication_raw": "ازمبيك نص", "ai_confidence": 0.9}
   ]
 }
 
+## ❌ Bad Examples (Avoid These Errors)
+
+BAD Input: "للتواصل 01012345678"
+BAD Output:
+{
+  "items": [{"type": "OFFER", "medication": "Contact 01012345678", ...}]
+}
+---> WHY: "Contact" and Phone numbers are NOT medications.
+CORRECT Output: {"items": []}
+
+BAD Input: "سعر الدولار اليوم"
+BAD Output:
+{
+  "items": [{"type": "OFFER", "medication": "Dollar", ...}]
+}
+---> WHY: Irrelevant currency chat.
+CORRECT Output: {"items": []}
+
+BAD Input: "مطلوب" (No medication)
+BAD Output:
+{
+  "items": [{"type": "REQUEST", "medication": "Required", ...}]
+}
+---> WHY: The intent verb exists but no object.
+CORRECT Output: {"items": []}
 `
 
 // FormatMappings creates medication translation map for prompt

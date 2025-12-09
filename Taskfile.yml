@@ -44,7 +44,7 @@ tasks:
   dev:server:
     desc: Run Go server
     cmds:
-      - go run ./cmd/app
+      - go run ./cmd/app serve
 
   clean:
     desc: Clean build artifacts
