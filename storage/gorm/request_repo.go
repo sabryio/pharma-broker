@@ -73,7 +73,7 @@ func (r *RequestRepo) GetActive(ctx context.Context, limit, offset int) ([]*enti
 func (r *RequestRepo) Search(ctx context.Context, query string, limit, offset int) ([]*entity.Request, error) {
 	var requests []Request
 
-	sanitizedQuery := sanitizeFTSQuery(query)
+	sanitizedQuery := SanitizeFTSQuery(query)
 	err := r.db.Conn.WithContext(ctx).
 		Raw(`
 			SELECT r.id, r.raw_message_id, r.source_phone, r.source_name, r.source_group, r.group_name,

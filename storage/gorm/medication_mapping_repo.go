@@ -63,7 +63,7 @@ func (r *MedicationMappingRepo) GetAll(ctx context.Context) ([]*entity.Medicatio
 func (r *MedicationMappingRepo) Search(ctx context.Context, query string) ([]*entity.MedicationMapping, error) {
 	var mappings []MedicationMapping
 
-	sanitizedQuery := sanitizeFTSQuery(query)
+	sanitizedQuery := SanitizeFTSQuery(query)
 	err := r.db.Conn.WithContext(ctx).
 		Raw(`
 			SELECT m.id, m.arabic_name, m.english_name, m.synonyms, m.embedding, m.created_at, m.updated_at

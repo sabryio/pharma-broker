@@ -74,7 +74,7 @@ func (r *OfferRepo) Search(ctx context.Context, query string, limit, offset int)
 	var offers []Offer
 
 	// Sanitize query for FTS
-	sanitizedQuery := sanitizeFTSQuery(query)
+	sanitizedQuery := SanitizeFTSQuery(query)
 	err := r.db.Conn.WithContext(ctx).
 		Raw(`
 			SELECT o.id, o.raw_message_id, o.source_phone, o.source_name, o.source_group, o.group_name,
@@ -113,10 +113,4 @@ func (r *OfferRepo) CountActive(ctx context.Context) (int64, error) {
 		Where("status = ?", "ACTIVE").
 		Count(&count).Error
 	return count, err
-}
-
-// sanitizeFTSQuery escapes special FTS5 characters
-func sanitizeFTSQuery(query string) string {
-	// Simple sanitization - wrap in quotes for phrase search
-	return `"` + query + `"`
 }

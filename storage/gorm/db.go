@@ -183,7 +183,8 @@ func (db *DB) Migrate() error {
 			english_name,
 			synonyms,
 			content='medication_mappings',
-			content_rowid='rowid'
+			content_rowid='rowid',
+			tokenize='trigram'
 		);
 		CREATE TRIGGER IF NOT EXISTS medication_mappings_ai AFTER INSERT ON medication_mappings BEGIN
 			INSERT INTO medication_mappings_fts(rowid, arabic_name, english_name, synonyms)
