@@ -124,3 +124,32 @@ type ReviewQueueRepository interface {
 	Reject(ctx context.Context, id string, reviewedBy string, reason string) error
 	GetByRawMessageID(ctx context.Context, rawMessageID string) (*entity.ReviewQueueItem, error)
 }
+
+// AuditRepository handles audit log storage
+type AuditRepository interface {
+	Log(ctx context.Context, action entity.AuditAction, entityID, details string) error
+	LogWithValues(ctx context.Context, action entity.AuditAction, entityID, oldVal, newVal, details string) error
+	GetByAction(ctx context.Context, action entity.AuditAction, limit int) ([]*entity.AuditLog, error)
+	GetRecent(ctx context.Context, limit int) ([]*entity.AuditLog, error)
+}
+
+// ConfigRepository interface for config storage
+type ConfigRepository interface {
+	GetAll(ctx context.Context) (*entity.AppConfig, error)
+	UpdateFromMap(ctx context.Context, updates map[string]interface{}) error
+}
+
+// FeedbackRepository interface for feedback storage
+type FeedbackRepository interface {
+	RecordFeedback(ctx context.Context, fb *entity.MatchFeedback) error
+	GetFeedbackByMatch(ctx context.Context, matchID string) ([]*entity.MatchFeedback, error)
+	AnalyzeFeedback(ctx context.Context, days int) (*entity.FeedbackAnalysis, error)
+	GetRecentFeedback(ctx context.Context, limit int) ([]*entity.MatchFeedback, error)
+}
+
+// LeaderboardRepository interface for demand leaderboard
+type LeaderboardRepository interface {
+	GetTopDemand(ctx context.Context, limit int) ([]*entity.DemandStats, error)
+	GetDemandForMedication(ctx context.Context, medication string) (*entity.DemandStats, error)
+	RefreshLeaderboard(ctx context.Context) error
+}

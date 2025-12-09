@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"context"
@@ -66,7 +66,6 @@ func (h *HealthChecker) SetAIHealthFunc(fn func(ctx context.Context) error) {
 }
 
 // LiveHandler returns a simple liveness probe (is the process running?)
-// GET /health/live
 func (h *HealthChecker) LiveHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -77,7 +76,6 @@ func (h *HealthChecker) LiveHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ReadyHandler returns readiness probe (is the app ready to serve traffic?)
-// GET /health/ready
 func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -162,7 +160,6 @@ func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Set HTTP status based on overall health
 	statusCode := http.StatusOK
 	if response.Status == HealthDown {
 		statusCode = http.StatusServiceUnavailable
@@ -174,7 +171,6 @@ func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // FullHealthHandler returns detailed health with all metrics
-// GET /health
 func (h *HealthChecker) FullHealthHandler(w http.ResponseWriter, r *http.Request) {
 	h.ReadyHandler(w, r)
 }

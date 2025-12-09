@@ -21,3 +21,7 @@ type GroupRepository = repository.GroupRepository
 type StatsRepository = repository.StatsRepository
 type MedicationMappingRepository = repository.MedicationMappingRepository
 type MatchQueueRepository = repository.MatchQueueRepository
+type ConfigRepository = repository.ConfigRepository
+type FeedbackRepository = repository.FeedbackRepository
+type AuditRepository = repository.AuditRepository
+type LeaderboardRepository = repository.LeaderboardRepository

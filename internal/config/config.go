@@ -261,6 +261,8 @@ type APIConfig struct {
 	// MaxSSEClients is the maximum number of concurrent SSE connections.
 	// Default: 100
 	MaxSSEClients int `mapstructure:"max_sse_clients"`
+
+	
 }
 
 // DatabaseConfig configures SQLite database settings

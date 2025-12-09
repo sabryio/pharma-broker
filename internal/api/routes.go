@@ -8,6 +8,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 
+	apiHandlers "pharmabroker/api/handlers"
+	"pharmabroker/api/middleware"
 	"pharmabroker/internal/config"
 )
 
@@ -73,7 +75,7 @@ func NewRouterWithLearning(handlers *Handlers, learningHandlers *LearningHandler
 	mux.HandleFunc("GET /api/events", handlers.sseHub.ServeHTTP)
 
 	// Health check endpoints
-	healthChecker := NewHealthChecker()
+	healthChecker := apiHandlers.NewHealthChecker()
 	mux.HandleFunc("GET /health", healthChecker.FullHealthHandler)
 	mux.HandleFunc("GET /health/live", healthChecker.LiveHandler)
 	mux.HandleFunc("GET /health/ready", healthChecker.ReadyHandler)
@@ -86,16 +88,16 @@ func NewRouterWithLearning(handlers *Handlers, learningHandlers *LearningHandler
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create static file system")
 	}
-	mux.Handle("GET /", SpaHandler(http.FS(staticFS)))
+	mux.Handle("GET /", middleware.SpaHandler(http.FS(staticFS)))
 
 	// Create rate limiter
-	rateLimiter := NewRateLimiter(cfg)
+	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst)
 
 	// Apply middleware stack: CORS -> Recovery -> Rate Limit -> Tracing -> Handler
-	handler := CorsMiddleware(
-		RecoveryMiddleware(
-			RateLimitMiddleware(rateLimiter)(
-				TracingMiddleware(mux, log),
+	handler := middleware.CorsMiddleware(
+		middleware.RecoveryMiddleware(
+			middleware.RateLimitMiddleware(rateLimiter)(
+				middleware.TracingMiddleware(mux, log),
 			),
 			log,
 		),

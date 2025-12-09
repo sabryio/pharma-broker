@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
+	"pharmabroker/api/sse"
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/api"
 	"pharmabroker/internal/config"
@@ -178,7 +179,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	waManager.RegisterHandler(listener)
 
 	// Create SSE hub for real-time updates (Needed BEFORE parser)
-	sseHub := api.NewSSEHub()
+	sseHub := sse.NewSSEHub()
 
 	// Create config repository for dynamic settings
 	configRepo := storageGorm.NewConfigRepo(newDB)

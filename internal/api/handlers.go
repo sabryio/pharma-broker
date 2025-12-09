@@ -10,6 +10,8 @@ import (
 
 	"github.com/rs/zerolog"
 
+	apiHandlers "pharmabroker/api/handlers"
+	sse "pharmabroker/api/sse"
 	"pharmabroker/internal/domain"
 )
 
@@ -20,43 +22,25 @@ type Handlers struct {
 	matchRepo       domain.MatchRepository
 	groupRepo       domain.GroupRepository
 	statsRepo       domain.StatsRepository
-	configRepo      ConfigRepository
-	feedbackRepo    FeedbackRepository
-	leaderboardRepo LeaderboardRepository
-	auditRepo       AuditRepository
+	configRepo      domain.ConfigRepository
+	feedbackRepo    domain.FeedbackRepository
+	leaderboardRepo domain.LeaderboardRepository
+	auditRepo       domain.AuditRepository
 	log             zerolog.Logger
-	sseHub          *SSEHub
+	sseHub          *sse.SSEHub
 	syncGroups      func() error                              // Function to sync groups from WhatsApp
 	analyzeFunc     func(text string) (*AnalyzeResult, error) // Function to analyze text with AI
-}
 
-// ConfigRepository interface for config storage
-type ConfigRepository interface {
-	GetAll(ctx context.Context) (*domain.AppConfig, error)
-	UpdateFromMap(ctx context.Context, updates map[string]interface{}) error
-}
-
-// FeedbackRepository interface for feedback storage
-type FeedbackRepository interface {
-	RecordFeedback(ctx context.Context, fb *domain.MatchFeedback) error
-	GetFeedbackByMatch(ctx context.Context, matchID string) ([]*domain.MatchFeedback, error)
-	AnalyzeFeedback(ctx context.Context, days int) (*domain.FeedbackAnalysis, error)
-	GetRecentFeedback(ctx context.Context, limit int) ([]*domain.MatchFeedback, error)
-}
-
-// LeaderboardRepository interface for leaderboard storage
-type LeaderboardRepository interface {
-	GetTopDemand(ctx context.Context, limit int) ([]*domain.DemandStats, error)
-	GetDemandForMedication(ctx context.Context, medication string) (*domain.DemandStats, error)
-	RefreshLeaderboard(ctx context.Context) error
-}
-
-// AuditRepository interface for audit logging
-type AuditRepository interface {
-	Log(ctx context.Context, action domain.AuditAction, entityID, details string) error
-	LogWithValues(ctx context.Context, action domain.AuditAction, entityID, oldVal, newVal, details string) error
-	GetRecent(ctx context.Context, limit int) ([]*domain.AuditLog, error)
-	GetByAction(ctx context.Context, action domain.AuditAction, limit int) ([]*domain.AuditLog, error)
+	// Embedded handlers from api/handlers package for delegation
+	offerHandler       *apiHandlers.OfferHandler
+	requestHandler     *apiHandlers.RequestHandler
+	matchHandler       *apiHandlers.MatchHandler
+	groupHandler       *apiHandlers.GroupHandler
+	statsHandler       *apiHandlers.StatsHandler
+	configHandler      *apiHandlers.ConfigHandler
+	feedbackHandler    *apiHandlers.FeedbackHandler
+	leaderboardHandler *apiHandlers.LeaderboardHandler
+	auditHandler       *apiHandlers.AuditHandler
 }
 
 // AnalyzeResult represents AI analysis output
@@ -88,7 +72,7 @@ func NewHandlers(
 	matchRepo domain.MatchRepository,
 	groupRepo domain.GroupRepository,
 	statsRepo domain.StatsRepository,
-	sseHub *SSEHub,
+	sseHub *sse.SSEHub,
 	log zerolog.Logger,
 ) *Handlers {
 	return &Handlers{
@@ -99,12 +83,23 @@ func NewHandlers(
 		statsRepo:   statsRepo,
 		sseHub:      sseHub,
 		log:         log.With().Str("component", "api").Logger(),
+
+		// Initialize embedded handlers for delegation
+		offerHandler:   apiHandlers.NewOfferHandler(offerRepo, log),
+		requestHandler: apiHandlers.NewRequestHandler(requestRepo, log),
+		matchHandler:   apiHandlers.NewMatchHandler(matchRepo, offerRepo, requestRepo, nil, sseHub, log),
+		groupHandler:   apiHandlers.NewGroupHandler(groupRepo, log),
+		statsHandler:   apiHandlers.NewStatsHandler(statsRepo, log),
 	}
 }
 
 // SetGroupSyncFunc sets the function to sync groups from WhatsApp
 func (h *Handlers) SetGroupSyncFunc(fn func() error) {
 	h.syncGroups = fn
+	// Also propagate to embedded group handler
+	if h.groupHandler != nil {
+		h.groupHandler.SetSyncFunc(fn)
+	}
 }
 
 // SetAnalyzeFunc sets the function to analyze text with AI
@@ -113,8 +108,10 @@ func (h *Handlers) SetAnalyzeFunc(fn func(text string) (*AnalyzeResult, error)) 
 }
 
 // SetConfigRepo sets the config repository
-func (h *Handlers) SetConfigRepo(repo ConfigRepository) {
+func (h *Handlers) SetConfigRepo(repo domain.ConfigRepository) {
 	h.configRepo = repo
+	// Also create embedded config handler
+	h.configHandler = apiHandlers.NewConfigHandler(repo, h.log)
 }
 
 // Response helpers
@@ -141,10 +138,6 @@ func (h *Handlers) success(w http.ResponseWriter, data interface{}) {
 	h.writeJSON(w, http.StatusOK, response{Success: true, Data: data})
 }
 
-func (h *Handlers) successWithMeta(w http.ResponseWriter, data interface{}, m *meta) {
-	h.writeJSON(w, http.StatusOK, response{Success: true, Data: data, Meta: m})
-}
-
 func (h *Handlers) error(w http.ResponseWriter, status int, msg string) {
 	// Legacy simple error - converts to structured format
 	h.errorWithCode(w, status, ErrBadRequest(msg))
@@ -156,301 +149,57 @@ func (h *Handlers) errorWithCode(w http.ResponseWriter, status int, apiErr *APIE
 
 // GetOffers returns active offers with pagination
 func (h *Handlers) GetOffers(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	limit, offset := h.getPagination(r)
-	query := r.URL.Query().Get("q")
-
-	var offers []*domain.Offer
-	var err error
-
-	if query != "" {
-		offers, err = h.offerRepo.Search(ctx, query, limit, offset)
-	} else {
-		offers, err = h.offerRepo.GetActive(ctx, limit, offset)
-	}
-
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to get offers")
-		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch offers"))
-		return
-	}
-
-	total, _ := h.offerRepo.CountActive(ctx)
-	h.successWithMeta(w, offers, &meta{Total: total, Limit: limit, Offset: offset})
+	h.offerHandler.GetOffers(w, r)
 }
 
 // GetOffer returns a single offer by ID
 func (h *Handlers) GetOffer(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == "" {
-		h.error(w, http.StatusBadRequest, "Missing offer ID")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	offer, err := h.offerRepo.GetByID(ctx, id)
-	if err != nil {
-		h.errorWithCode(w, http.StatusNotFound, ErrOfferNotFound())
-		return
-	}
-
-	h.success(w, offer)
+	h.offerHandler.GetOffer(w, r)
 }
 
 // GetRequests returns active requests with pagination
 func (h *Handlers) GetRequests(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	limit, offset := h.getPagination(r)
-	query := r.URL.Query().Get("q")
-
-	var requests []*domain.Request
-	var err error
-
-	if query != "" {
-		requests, err = h.requestRepo.Search(ctx, query, limit, offset)
-	} else {
-		requests, err = h.requestRepo.GetActive(ctx, limit, offset)
-	}
-
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to get requests")
-		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch requests"))
-		return
-	}
-
-	total, _ := h.requestRepo.CountActive(ctx)
-	h.successWithMeta(w, requests, &meta{Total: total, Limit: limit, Offset: offset})
+	h.requestHandler.GetRequests(w, r)
 }
 
 // GetRequest returns a single request by ID
 func (h *Handlers) GetRequest(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == "" {
-		h.error(w, http.StatusBadRequest, "Missing request ID")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	request, err := h.requestRepo.GetByID(ctx, id)
-	if err != nil {
-		h.errorWithCode(w, http.StatusNotFound, ErrRequestNotFound())
-		return
-	}
-
-	h.success(w, request)
+	h.requestHandler.GetRequest(w, r)
 }
 
 // GetMatches returns pending matches
 func (h *Handlers) GetMatches(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	limit, offset := h.getPagination(r)
-
-	matches, err := h.matchRepo.GetPending(ctx, limit, offset)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to get matches")
-		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch matches"))
-		return
-	}
-
-	total, _ := h.matchRepo.CountPending(ctx)
-	h.successWithMeta(w, matches, &meta{Total: total, Limit: limit, Offset: offset})
+	h.matchHandler.GetMatches(w, r)
 }
 
 // ConfirmMatch confirms a pending match
 func (h *Handlers) ConfirmMatch(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == "" {
-		h.error(w, http.StatusBadRequest, "Missing match ID")
-		return
-	}
-
-	var req struct {
-		MatchedBy string `json:"matched_by"`
-		Notes     string `json:"notes"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.error(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	// Get the match first
-	match, err := h.matchRepo.GetByID(ctx, id)
-	if err != nil {
-		h.error(w, http.StatusNotFound, "Match not found")
-		return
-	}
-
-	// Update match status
-	if err := h.matchRepo.UpdateStatus(ctx, id, domain.MatchStatusConfirmed, req.MatchedBy); err != nil {
-		h.log.Error().Err(err).Msg("Failed to confirm match")
-		h.error(w, http.StatusInternalServerError, "Failed to confirm match")
-		return
-	}
-
-	// Update offer and request status
-	h.offerRepo.UpdateStatus(ctx, match.OfferID, domain.StatusMatched)
-	h.requestRepo.UpdateStatus(ctx, match.RequestID, domain.StatusMatched)
-
-	// Broadcast update
-	h.sseHub.Broadcast(SSEEvent{
-		Type: "match_confirmed",
-		Data: map[string]string{"match_id": id, "offer_id": match.OfferID, "request_id": match.RequestID},
-	})
-
-	// Audit log
-	h.logAudit(ctx, domain.AuditMatchConfirmed, id, "Offer: "+match.OfferID+", Request: "+match.RequestID)
-
-	h.success(w, map[string]string{"status": "confirmed"})
+	h.matchHandler.ConfirmMatch(w, r)
 }
 
 // RejectMatch rejects a pending match
 func (h *Handlers) RejectMatch(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == "" {
-		h.error(w, http.StatusBadRequest, "Missing match ID")
-		return
-	}
-
-	var req struct {
-		MatchedBy string `json:"matched_by"`
-	}
-	json.NewDecoder(r.Body).Decode(&req)
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	if err := h.matchRepo.UpdateStatus(ctx, id, domain.MatchStatusRejected, req.MatchedBy); err != nil {
-		h.log.Error().Err(err).Msg("Failed to reject match")
-		h.error(w, http.StatusInternalServerError, "Failed to reject match")
-		return
-	}
-
-	h.sseHub.Broadcast(SSEEvent{
-		Type: "match_rejected",
-		Data: map[string]string{"match_id": id},
-	})
-
-	// Audit log
-	h.logAudit(ctx, domain.AuditMatchRejected, id, "")
-
-	h.success(w, map[string]string{"status": "rejected"})
+	h.matchHandler.RejectMatch(w, r)
 }
 
 // GetStats returns dashboard statistics
 func (h *Handlers) GetStats(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	stats, err := h.statsRepo.GetStats(ctx)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to get stats")
-		h.error(w, http.StatusInternalServerError, "Failed to fetch stats")
-		return
-	}
-
-	h.success(w, stats)
+	h.statsHandler.GetStats(w, r)
 }
 
 // GetGroups returns all groups
 func (h *Handlers) GetGroups(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	groups, err := h.groupRepo.GetAll(ctx)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to get groups")
-		h.error(w, http.StatusInternalServerError, "Failed to fetch groups")
-		return
-	}
-
-	h.success(w, groups)
+	h.groupHandler.GetGroups(w, r)
 }
 
 // SyncGroups fetches groups from WhatsApp and syncs to database
 func (h *Handlers) SyncGroups(w http.ResponseWriter, r *http.Request) {
-	if h.syncGroups == nil {
-		h.error(w, http.StatusServiceUnavailable, "WhatsApp not connected")
-		return
-	}
-
-	if err := h.syncGroups(); err != nil {
-		h.log.Error().Err(err).Msg("Failed to sync groups")
-		h.error(w, http.StatusInternalServerError, "Failed to sync groups: "+err.Error())
-		return
-	}
-
-	// Return updated groups list
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	groups, err := h.groupRepo.GetAll(ctx)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to get groups after sync")
-		h.error(w, http.StatusInternalServerError, "Synced but failed to fetch groups")
-		return
-	}
-
-	h.success(w, groups)
+	h.groupHandler.SyncGroups(w, r)
 }
 
 // UpdateGroupMonitoring toggles group monitoring
 func (h *Handlers) UpdateGroupMonitoring(w http.ResponseWriter, r *http.Request) {
-	jid := r.PathValue("jid")
-	if jid == "" {
-		h.error(w, http.StatusBadRequest, "Missing group JID")
-		return
-	}
-
-	var req struct {
-		Monitored bool `json:"monitored"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.error(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	if err := h.groupRepo.SetMonitored(ctx, jid, req.Monitored); err != nil {
-		h.log.Error().Err(err).Msg("Failed to update group")
-		h.error(w, http.StatusInternalServerError, "Failed to update group")
-		return
-	}
-
-	h.success(w, map[string]bool{"monitored": req.Monitored})
-}
-
-func (h *Handlers) getPagination(r *http.Request) (limit, offset int) {
-	limit = 50
-	offset = 0
-
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
-			limit = parsed
-		}
-	}
-
-	if o := r.URL.Query().Get("offset"); o != "" {
-		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
-			offset = parsed
-		}
-	}
-
-	return
+	h.groupHandler.UpdateGroupMonitoring(w, r)
 }
 
 // Analyze handles manual text analysis with AI
@@ -487,49 +236,20 @@ func (h *Handlers) Analyze(w http.ResponseWriter, r *http.Request) {
 
 // GetConfig returns current configuration
 func (h *Handlers) GetConfig(w http.ResponseWriter, r *http.Request) {
-	if h.configRepo == nil {
+	if h.configHandler == nil {
 		h.error(w, http.StatusServiceUnavailable, "Config not available")
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	config, err := h.configRepo.GetAll(ctx)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to get config")
-		h.error(w, http.StatusInternalServerError, "Failed to get config")
-		return
-	}
-
-	h.success(w, config)
+	h.configHandler.GetConfig(w, r)
 }
 
 // UpdateConfig updates configuration
 func (h *Handlers) UpdateConfig(w http.ResponseWriter, r *http.Request) {
-	if h.configRepo == nil {
+	if h.configHandler == nil {
 		h.error(w, http.StatusServiceUnavailable, "Config not available")
 		return
 	}
-
-	var updates map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
-		h.error(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	if err := h.configRepo.UpdateFromMap(ctx, updates); err != nil {
-		h.log.Error().Err(err).Msg("Failed to update config")
-		h.error(w, http.StatusInternalServerError, "Failed to update config")
-		return
-	}
-
-	// Return updated config
-	config, _ := h.configRepo.GetAll(ctx)
-	h.success(w, config)
+	h.configHandler.UpdateConfig(w, r)
 }
 
 // ExportMatchesCSV exports matched pairs to CSV format
@@ -656,258 +376,85 @@ func safeFloatReq(req *domain.Request, getter func(*domain.Request) float64) str
 }
 
 // SetFeedbackRepo sets the feedback repository
-func (h *Handlers) SetFeedbackRepo(repo FeedbackRepository) {
+func (h *Handlers) SetFeedbackRepo(repo domain.FeedbackRepository) {
 	h.feedbackRepo = repo
+	// Also create embedded feedback handler
+	h.feedbackHandler = apiHandlers.NewFeedbackHandler(repo, h.matchRepo, h.log)
 }
 
 // SetLeaderboardRepo sets the leaderboard repository
-func (h *Handlers) SetLeaderboardRepo(repo LeaderboardRepository) {
+func (h *Handlers) SetLeaderboardRepo(repo domain.LeaderboardRepository) {
 	h.leaderboardRepo = repo
+	// Also create embedded leaderboard handler
+	h.leaderboardHandler = apiHandlers.NewLeaderboardHandler(repo, h.log)
 }
 
 // RecordFeedback records operator feedback on a match
 func (h *Handlers) RecordFeedback(w http.ResponseWriter, r *http.Request) {
-	if h.feedbackRepo == nil {
+	if h.feedbackHandler == nil {
 		h.error(w, http.StatusServiceUnavailable, "Feedback service not configured")
 		return
 	}
-
-	matchID := r.PathValue("id")
-	if matchID == "" {
-		h.error(w, http.StatusBadRequest, "Missing match ID")
-		return
-	}
-
-	var req struct {
-		Decision   string `json:"decision"`
-		Reason     string `json:"reason,omitempty"`
-		OperatorID string `json:"operator_id,omitempty"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.error(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	if req.Decision != "CONFIRMED" && req.Decision != "REJECTED" {
-		h.error(w, http.StatusBadRequest, "Decision must be CONFIRMED or REJECTED")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	// Get the match to record original score
-	match, err := h.matchRepo.GetByID(ctx, matchID)
-	if err != nil {
-		h.log.Error().Err(err).Str("match_id", matchID).Msg("Failed to get match for feedback")
-		h.error(w, http.StatusNotFound, "Match not found")
-		return
-	}
-
-	feedback := &domain.MatchFeedback{
-		MatchID:            matchID,
-		OperatorID:         req.OperatorID,
-		Decision:           domain.FeedbackDecision(req.Decision),
-		Reason:             req.Reason,
-		OriginalScore:      match.Score,
-		OriginalConfidence: match.MatchedBy, // This stores the confidence band
-	}
-
-	if err := h.feedbackRepo.RecordFeedback(ctx, feedback); err != nil {
-		h.log.Error().Err(err).Msg("Failed to record feedback")
-		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to record feedback"))
-		return
-	}
-
-	h.log.Info().
-		Str("match_id", matchID).
-		Str("decision", req.Decision).
-		Float64("original_score", match.Score).
-		Msg("Feedback recorded")
-
-	h.success(w, map[string]interface{}{
-		"success":  true,
-		"feedback": feedback,
-	})
+	h.feedbackHandler.RecordFeedback(w, r)
 }
 
 // GetFeedbackAnalysis returns aggregated feedback statistics
 func (h *Handlers) GetFeedbackAnalysis(w http.ResponseWriter, r *http.Request) {
-	if h.feedbackRepo == nil {
+	if h.feedbackHandler == nil {
 		h.error(w, http.StatusServiceUnavailable, "Feedback service not configured")
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	// Default to last 30 days
-	days := 30
-	if d := r.URL.Query().Get("days"); d != "" {
-		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 {
-			days = parsed
-		}
-	}
-
-	analysis, err := h.feedbackRepo.AnalyzeFeedback(ctx, days)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to analyze feedback")
-		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to analyze feedback"))
-		return
-	}
-
-	h.success(w, analysis)
+	h.feedbackHandler.GetFeedbackAnalysis(w, r)
 }
 
 // GetRecentFeedback returns recent feedback entries
 func (h *Handlers) GetRecentFeedback(w http.ResponseWriter, r *http.Request) {
-	if h.feedbackRepo == nil {
+	if h.feedbackHandler == nil {
 		h.error(w, http.StatusServiceUnavailable, "Feedback service not configured")
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	limit := 20
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
-			limit = parsed
-		}
-	}
-
-	feedback, err := h.feedbackRepo.GetRecentFeedback(ctx, limit)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to get recent feedback")
-		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to get feedback"))
-		return
-	}
-
-	h.success(w, feedback)
+	h.feedbackHandler.GetRecentFeedback(w, r)
 }
 
 // GetDemandLeaderboard returns top medications by demand ratio
 func (h *Handlers) GetDemandLeaderboard(w http.ResponseWriter, r *http.Request) {
-	if h.leaderboardRepo == nil {
+	if h.leaderboardHandler == nil {
 		h.error(w, http.StatusServiceUnavailable, "Leaderboard service not configured")
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	limit := 20
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
-			limit = parsed
-		}
-	}
-
-	stats, err := h.leaderboardRepo.GetTopDemand(ctx, limit)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to get demand leaderboard")
-		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to get leaderboard"))
-		return
-	}
-
-	h.success(w, stats)
+	h.leaderboardHandler.GetDemandLeaderboard(w, r)
 }
 
 // GetMedicationDemand returns demand stats for a specific medication
 func (h *Handlers) GetMedicationDemand(w http.ResponseWriter, r *http.Request) {
-	if h.leaderboardRepo == nil {
+	if h.leaderboardHandler == nil {
 		h.error(w, http.StatusServiceUnavailable, "Leaderboard service not configured")
 		return
 	}
-
-	medication := r.PathValue("medication")
-	if medication == "" {
-		h.error(w, http.StatusBadRequest, "Missing medication name")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	stats, err := h.leaderboardRepo.GetDemandForMedication(ctx, medication)
-	if err != nil {
-		h.log.Error().Err(err).Str("medication", medication).Msg("Failed to get medication demand")
-		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to get demand"))
-		return
-	}
-
-	h.success(w, stats)
+	h.leaderboardHandler.GetMedicationDemand(w, r)
 }
 
 // RefreshLeaderboard triggers a leaderboard refresh
 func (h *Handlers) RefreshLeaderboard(w http.ResponseWriter, r *http.Request) {
-	if h.leaderboardRepo == nil {
+	if h.leaderboardHandler == nil {
 		h.error(w, http.StatusServiceUnavailable, "Leaderboard service not configured")
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	if err := h.leaderboardRepo.RefreshLeaderboard(ctx); err != nil {
-		h.log.Error().Err(err).Msg("Failed to refresh leaderboard")
-		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to refresh leaderboard"))
-		return
-	}
-
-	h.success(w, map[string]interface{}{
-		"success":      true,
-		"refreshed_at": time.Now(),
-	})
+	h.leaderboardHandler.RefreshLeaderboard(w, r)
 }
 
 // SetAuditRepo sets the audit repository
-func (h *Handlers) SetAuditRepo(repo AuditRepository) {
+func (h *Handlers) SetAuditRepo(repo domain.AuditRepository) {
 	h.auditRepo = repo
+	// Also create embedded audit handler
+	h.auditHandler = apiHandlers.NewAuditHandler(repo, h.log)
 }
 
 // GetAuditLogs returns recent audit log entries
 func (h *Handlers) GetAuditLogs(w http.ResponseWriter, r *http.Request) {
-	if h.auditRepo == nil {
+	if h.auditHandler == nil {
 		h.error(w, http.StatusServiceUnavailable, "Audit service not configured")
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	limit := 50
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 200 {
-			limit = parsed
-		}
-	}
-
-	// Filter by action if specified
-	actionFilter := r.URL.Query().Get("action")
-	var logs []*domain.AuditLog
-	var err error
-
-	if actionFilter != "" {
-		logs, err = h.auditRepo.GetByAction(ctx, domain.AuditAction(actionFilter), limit)
-	} else {
-		logs, err = h.auditRepo.GetRecent(ctx, limit)
-	}
-
-	if err != nil {
-		h.log.Error().Err(err).Msg("Failed to get audit logs")
-		h.errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to get audit logs"))
-		return
-	}
-
-	h.success(w, logs)
-}
-
-// logAudit is a helper to safely log audit events
-func (h *Handlers) logAudit(ctx context.Context, action domain.AuditAction, entityID, details string) {
-	if h.auditRepo != nil {
-		if err := h.auditRepo.Log(ctx, action, entityID, details); err != nil {
-			h.log.Warn().Err(err).Str("action", string(action)).Msg("Failed to log audit event")
-		}
-	}
+	h.auditHandler.GetAuditLogs(w, r)
 }
