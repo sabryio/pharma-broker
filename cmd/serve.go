@@ -19,7 +19,6 @@ import (
 	"pharmabroker/api/sse"
 	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	"pharmabroker/internal/janitor"
 	"pharmabroker/internal/metrics"
 	"pharmabroker/internal/monitor"
@@ -87,7 +86,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	auditRepo := storageGorm.NewAuditRepo(newDB)
 
 	// Load medication mappings from file
-	commonMedications, err := domain.LoadRichMedicationMappings("medications.json")
+	commonMedications, err := entity.LoadRichMedicationMappings("medications.json")
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load medications.json")
 	} else {

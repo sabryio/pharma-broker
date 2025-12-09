@@ -22,7 +22,6 @@ import (
 	"pharmabroker/ai"
 	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 )
 
 // TestMessage represents a message loaded from JSON
@@ -104,7 +103,7 @@ func main() {
 	fmt.Println(separator)
 
 	// Load medication mappings for testing
-	commonMedications, err := domain.LoadRichMedicationMappings("medications.json")
+	commonMedications, err := entity.LoadRichMedicationMappings("medications.json")
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load medications.json")
 	}

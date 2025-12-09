@@ -9,8 +9,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	storageGorm "pharmabroker/storage/gorm"
 )
 
@@ -90,7 +90,7 @@ func runResetDb(cmd *cobra.Command, args []string) {
 	medicationRepo := storageGorm.NewMedicationMappingRepo(db)
 
 	// Load medication mappings from file (supports both legacy and rich format)
-	medicationMappings, err := domain.LoadRichMedicationMappings("medications.json")
+	medicationMappings, err := entity.LoadRichMedicationMappings("medications.json")
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load medications.json")
 	}
