@@ -12,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
 )
 
 // Mock repositories for testing
@@ -151,8 +150,8 @@ func (m *mockStatsRepo) GetProcessedToday(ctx context.Context) (int64, error) {
 
 type mockConfigRepo struct{}
 
-func (m *mockConfigRepo) GetAll(ctx context.Context) (*storage.AppConfig, error) {
-	return &storage.AppConfig{AutoParseEnabled: true, SkipOwnMessages: true}, nil
+func (m *mockConfigRepo) GetAll(ctx context.Context) (*domain.AppConfig, error) {
+	return &domain.AppConfig{AutoParseEnabled: true, SkipOwnMessages: true}, nil
 }
 func (m *mockConfigRepo) UpdateFromMap(ctx context.Context, updates map[string]interface{}) error {
 	return nil

@@ -3,7 +3,7 @@ package monitor
 import (
 	"context"
 	"fmt"
-	"pharmabroker/internal/storage"
+	"pharmabroker/internal/domain"
 	"pharmabroker/internal/whatsapp"
 	"strings"
 	"sync"
@@ -16,7 +16,7 @@ import (
 type WarRoom struct {
 	waManager  *whatsapp.Manager
 	configRepo interface {
-		GetAll(ctx context.Context) (*storage.AppConfig, error)
+		GetAll(ctx context.Context) (*domain.AppConfig, error)
 	}
 	log zerolog.Logger
 
@@ -28,7 +28,7 @@ type WarRoom struct {
 
 // NewWarRoom creates a new monitor
 func NewWarRoom(wa *whatsapp.Manager, cfgRepo interface {
-	GetAll(ctx context.Context) (*storage.AppConfig, error)
+	GetAll(ctx context.Context) (*domain.AppConfig, error)
 }, log zerolog.Logger) *WarRoom {
 	return &WarRoom{
 		waManager:   wa,

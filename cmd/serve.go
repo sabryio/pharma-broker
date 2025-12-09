@@ -173,7 +173,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	// Initialize unmapped medications repo for active learning
-	unmappedRepo := storage.NewGormUnmappedMedicationRepo(db.DB)
+	unmappedRepo := storageGorm.NewUnmappedRepo(newDB)
 	aiProvider.SetUnmappedRepo(unmappedRepo)
 
 	// Initialize WhatsApp manager
@@ -190,7 +190,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	sseHub := api.NewSSEHub()
 
 	// Create config repository for dynamic settings
-	configRepo := storage.NewConfigRepo(db)
+	configRepo := storageGorm.NewConfigRepo(newDB)
 
 	// Seed AdminPhone from static config if not present in DB
 	// This allows setting initial alert contact via config.yaml
@@ -244,7 +244,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	janitorService.Start()
 
 	// Wire review queue repo for multi-pass parsing (Phase D.2)
-	reviewQueueRepo := storage.NewReviewQueueRepo(db)
+	reviewQueueRepo := storageGorm.NewReviewQueueRepo(newDB)
 	parser.SetReviewQueueRepo(reviewQueueRepo)
 	log.Info().Msg("Multi-pass parsing enabled with review queue")
 
@@ -363,8 +363,8 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Info().Msg("Initializing adaptive learning system...")
 
 		// Create learning repositories
-		feedbackRecordRepo := storage.NewFeedbackRecordRepo(db)
-		weightHistoryRepo := storage.NewWeightHistoryRepo(db)
+		feedbackRecordRepo := storageGorm.NewFeedbackRecordRepo(newDB)
+		weightHistoryRepo := storageGorm.NewWeightHistoryRepo(newDB)
 
 		// Create scorer (shared with parser for live weight updates)
 		scorer := ai.NewScorer(nil, nil)
@@ -432,7 +432,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	// Initialize and start report scheduler if enabled
 	var reportScheduler *reports.Scheduler
 	if cfg.Reports.Enabled {
-		reportRepo := storage.NewReportRepo(db)
+		reportRepo := storageGorm.NewReportRepo(newDB)
 		reportGenerator := reports.NewGenerator(reportRepo, log)
 
 		// Configure notification service

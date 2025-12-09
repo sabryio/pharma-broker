@@ -96,6 +96,7 @@ func (r *WeightHistoryRepo) GetByDateRange(ctx context.Context, startDate, endDa
 func (r *WeightHistoryRepo) SaveWithMetrics(ctx context.Context,
 	medicationWeight, dosageWeight, quantityWeight, priceWeight, recencyWeight float64,
 	source entity.WeightSource,
+	metrics *entity.PerformanceMetrics,
 	notes string) error {
 
 	history := &entity.WeightHistory{
@@ -108,6 +109,11 @@ func (r *WeightHistoryRepo) SaveWithMetrics(ctx context.Context,
 		Source:           source,
 		AppliedAt:        time.Now(),
 		Notes:            notes,
+	}
+
+	// Note: metrics can be stored in notes field or a separate table if needed
+	if metrics != nil {
+		// Could serialize metrics to notes or store separately
 	}
 
 	return r.Save(ctx, history)

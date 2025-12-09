@@ -654,3 +654,56 @@ func ToMatchFeedbacksEntity(models []MatchFeedback) []*entity.MatchFeedback {
 	}
 	return result
 }
+
+// ========================================
+// FeedbackRecord Converters
+// ========================================
+
+// ToFeedbackRecordModel converts entity.FeedbackRecord to gorm FeedbackRecord
+func ToFeedbackRecordModel(d *entity.FeedbackRecord) *FeedbackRecord {
+	return &FeedbackRecord{
+		ID:              d.ID,
+		MatchID:         d.MatchID,
+		OfferID:         d.OfferID,
+		RequestID:       d.RequestID,
+		Action:          string(d.Action),
+		MedicationScore: d.MedicationScore,
+		DosageScore:     d.DosageScore,
+		QuantityScore:   d.QuantityScore,
+		PriceScore:      d.PriceScore,
+		RecencyScore:    d.RecencyScore,
+		TotalScore:      d.TotalScore,
+		FeedbackAt:      d.FeedbackAt,
+		UserID:          nilIfEmpty(d.UserID),
+		CreatedAt:       d.CreatedAt,
+	}
+}
+
+// ToFeedbackRecordEntity converts gorm FeedbackRecord to entity.FeedbackRecord
+func ToFeedbackRecordEntity(m *FeedbackRecord) *entity.FeedbackRecord {
+	return &entity.FeedbackRecord{
+		ID:              m.ID,
+		MatchID:         m.MatchID,
+		OfferID:         m.OfferID,
+		RequestID:       m.RequestID,
+		Action:          entity.FeedbackAction(m.Action),
+		MedicationScore: m.MedicationScore,
+		DosageScore:     m.DosageScore,
+		QuantityScore:   m.QuantityScore,
+		PriceScore:      m.PriceScore,
+		RecencyScore:    m.RecencyScore,
+		TotalScore:      m.TotalScore,
+		FeedbackAt:      m.FeedbackAt,
+		UserID:          deref(m.UserID),
+		CreatedAt:       m.CreatedAt,
+	}
+}
+
+// ToFeedbackRecordsEntity converts slice of gorm FeedbackRecord to entity
+func ToFeedbackRecordsEntity(models []FeedbackRecord) []*entity.FeedbackRecord {
+	result := make([]*entity.FeedbackRecord, len(models))
+	for i := range models {
+		result[i] = ToFeedbackRecordEntity(&models[i])
+	}
+	return result
+}

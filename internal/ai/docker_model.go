@@ -306,7 +306,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 	}
 
 	// Post-process to enforce mappings (Fix for AI hallucinations)
-	enforceMappings(finalResults, effectiveMappingsMap, c.log, c.unmappedRepo, messages)
+	enforceMappings(ctx, finalResults, effectiveMappingsMap, c.log, c.unmappedRepo, messages)
 
 	return finalResults, nil
 }
@@ -316,7 +316,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 // Uses Arabic normalization and fuzzy matching for improved accuracy.
 // The log parameter enables auto-learn logging for unmapped medications.
 // The unmappedRepo (optional) saves unmapped medications for active learning.
-func enforceMappings(results []*domain.AIParseResult, mappings map[string]string, log zerolog.Logger, unmappedRepo domain.UnmappedMedicationRepo, messages []*domain.RawMessage) {
+func enforceMappings(ctx context.Context, results []*domain.AIParseResult, mappings map[string]string, log zerolog.Logger, unmappedRepo domain.UnmappedMedicationRepo, messages []*domain.RawMessage) {
 	if len(mappings) == 0 {
 		return
 	}
@@ -385,7 +385,7 @@ func enforceMappings(results []*domain.AIParseResult, mappings map[string]string
 
 				// Save to DB for active learning review queue
 				if unmappedRepo != nil {
-					if err := unmappedRepo.Save(item.MedicationRaw, item.Medication, sourceMessage, sourceGroup, messageID); err != nil {
+					if err := unmappedRepo.Save(ctx, item.MedicationRaw, item.Medication, sourceMessage, sourceGroup, messageID); err != nil {
 						log.Error().Err(err).Str("raw", item.MedicationRaw).Msg("Failed to save unmapped medication")
 					}
 				}

@@ -21,7 +21,7 @@ func NewUnmappedRepo(db *DB) *UnmappedRepo {
 }
 
 // Save creates or updates an unmapped medication record
-func (r *UnmappedRepo) Save(rawText, aiOutput, sourceMessage, sourceGroup, messageID string) error {
+func (r *UnmappedRepo) Save(ctx context.Context, rawText, aiOutput, sourceMessage, sourceGroup, messageID string) error {
 	record := &UnmappedMedication{
 		RawText:       rawText,
 		AIOutput:      aiOutput,
@@ -33,7 +33,7 @@ func (r *UnmappedRepo) Save(rawText, aiOutput, sourceMessage, sourceGroup, messa
 		UpdatedAt:     time.Now(),
 	}
 
-	return r.db.Conn.Clauses(clause.OnConflict{
+	return r.db.Conn.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "raw_text"}},
 		DoUpdates: clause.Assignments(map[string]any{
 			"count":      clause.Expr{SQL: "count + 1"},

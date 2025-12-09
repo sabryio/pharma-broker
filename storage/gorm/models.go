@@ -255,11 +255,20 @@ func (ReviewQueue) TableName() string { return "review_queue" }
 
 // FeedbackRecord represents structured feedback for learning
 type FeedbackRecord struct {
-	ID        string    `gorm:"column:id;primaryKey"`
-	MatchID   string    `gorm:"column:match_id;not null;index"`
-	Decision  string    `gorm:"column:decision;not null"`
-	Weights   string    `gorm:"column:weights;type:text"`
-	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
+	ID              string    `gorm:"column:id;primaryKey"`
+	MatchID         string    `gorm:"column:match_id;not null;index"`
+	OfferID         string    `gorm:"column:offer_id;not null"`
+	RequestID       string    `gorm:"column:request_id;not null"`
+	Action          string    `gorm:"column:action;not null"`
+	MedicationScore float64   `gorm:"column:medication_score"`
+	DosageScore     float64   `gorm:"column:dosage_score"`
+	QuantityScore   float64   `gorm:"column:quantity_score"`
+	PriceScore      float64   `gorm:"column:price_score"`
+	RecencyScore    float64   `gorm:"column:recency_score"`
+	TotalScore      float64   `gorm:"column:total_score"`
+	FeedbackAt      time.Time `gorm:"column:feedback_at"`
+	UserID          *string   `gorm:"column:user_id"`
+	CreatedAt       time.Time `gorm:"column:created_at;autoCreateTime"`
 }
 
 func (FeedbackRecord) TableName() string { return "feedback_records" }

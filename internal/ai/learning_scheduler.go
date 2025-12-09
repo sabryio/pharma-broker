@@ -210,11 +210,7 @@ func (ls *LearningScheduler) shouldApply(current, new domain.PerformanceMetrics)
 
 	// Check confirmation rate drop
 	rateDrop := current.ConfirmationRate - new.ConfirmationRate
-	if rateDrop > ls.config.AutoApply.MaxConfirmationRateDrop {
-		return false
-	}
-
-	return true
+	return rateDrop <= ls.config.AutoApply.MaxConfirmationRateDrop
 }
 
 // getSkipReason explains why weights weren't applied

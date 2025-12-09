@@ -252,3 +252,10 @@ type FeedbackAnalysis struct {
 	TrendByDay       map[string]int `json:"trend_by_day"`
 	FeedbackByType   map[string]int `json:"feedback_by_type"`
 }
+
+// AppConfig holds aggregated application configuration
+type AppConfig struct {
+	AutoParseEnabled bool   `json:"auto_parse_enabled"`
+	SkipOwnMessages  bool   `json:"skip_own_messages"`
+	AdminPhone       string `json:"admin_phone"`
+}

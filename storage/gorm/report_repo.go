@@ -6,68 +6,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"pharmabroker/internal/reports"
 )
-
-// ReportConfig holds configuration for report generation
-type ReportConfig struct {
-	PeriodHours      int
-	MinScore         float64
-	Limit            int
-	IncludePending   bool
-	IncludeConfirmed bool
-	IncludeRejected  bool
-}
-
-// MatchReport represents a match with full details for reporting
-type MatchReport struct {
-	MatchID           string
-	CreatedAt         time.Time
-	Status            string
-	Confidence        string
-	Score             float64
-	Breakdown         string
-	OfferMedication   string
-	OfferQty          float64
-	OfferUnit         string
-	OfferPrice        float64
-	SellerName        string
-	SellerPhone       string
-	SellerGroupJID    string
-	SellerGroup       string
-	SellerWhatsApp    string
-	OfferCreatedAt    time.Time
-	RequestMedication string
-	RequestQty        float64
-	RequestMaxPrice   float64
-	RequestUrgent     bool
-	BuyerName         string
-	BuyerPhone        string
-	BuyerGroupJID     string
-	BuyerGroup        string
-	BuyerWhatsApp     string
-	RequestCreatedAt  time.Time
-}
-
-// ReportSummary holds summary statistics
-type ReportSummary struct {
-	PeriodStart    time.Time
-	PeriodEnd      time.Time
-	TotalMatches   int
-	ConfirmedCount int
-	PendingCount   int
-	RejectedCount  int
-	HighConfidence int
-	MedConfidence  int
-	LowConfidence  int
-	TopMedications []string
-}
-
-// Alert represents an item requiring attention
-type Alert struct {
-	Type     string
-	Priority string
-	Message  string
-}
 
 // ReportRepo implements report data fetching
 type ReportRepo struct {
@@ -80,7 +21,7 @@ func NewReportRepo(db *DB) *ReportRepo {
 }
 
 // GetMatchesForReport fetches matches with full contact details
-func (r *ReportRepo) GetMatchesForReport(ctx context.Context, config ReportConfig) ([]*MatchReport, error) {
+func (r *ReportRepo) GetMatchesForReport(ctx context.Context, config reports.ReportConfig) ([]*reports.MatchReport, error) {
 	periodStart := time.Now().Add(-time.Duration(config.PeriodHours) * time.Hour)
 
 	var statusConditions []string
@@ -177,9 +118,9 @@ func (r *ReportRepo) GetMatchesForReport(ctx context.Context, config ReportConfi
 		return nil, err
 	}
 
-	matchReports := make([]*MatchReport, len(results))
+	matchReports := make([]*reports.MatchReport, len(results))
 	for i, res := range results {
-		matchReports[i] = &MatchReport{
+		matchReports[i] = &reports.MatchReport{
 			MatchID:           res.MatchID,
 			CreatedAt:         res.CreatedAt,
 			Status:            res.Status,
@@ -211,12 +152,13 @@ func (r *ReportRepo) GetMatchesForReport(ctx context.Context, config ReportConfi
 }
 
 // GetReportSummary generates summary statistics
-func (r *ReportRepo) GetReportSummary(ctx context.Context, periodHours int) (*ReportSummary, error) {
+func (r *ReportRepo) GetReportSummary(ctx context.Context, periodHours int) (*reports.ReportSummary, error) {
 	periodStart := time.Now().Add(-time.Duration(periodHours) * time.Hour)
 
-	summary := &ReportSummary{
+	summary := &reports.ReportSummary{
 		PeriodStart: periodStart,
 		PeriodEnd:   time.Now(),
+		GeneratedAt: time.Now(),
 	}
 
 	var matchStats struct {
@@ -269,9 +211,9 @@ func (r *ReportRepo) GetReportSummary(ctx context.Context, periodHours int) (*Re
 }
 
 // GetAlerts fetches items requiring attention
-func (r *ReportRepo) GetAlerts(ctx context.Context, periodHours int) ([]Alert, error) {
+func (r *ReportRepo) GetAlerts(ctx context.Context, periodHours int) ([]reports.Alert, error) {
 	periodStart := time.Now().Add(-time.Duration(periodHours) * time.Hour)
-	var alerts []Alert
+	var alerts []reports.Alert
 
 	var urgentCount int64
 	r.db.Conn.WithContext(ctx).Raw(`
@@ -285,8 +227,8 @@ func (r *ReportRepo) GetAlerts(ctx context.Context, periodHours int) ([]Alert, e
 	`, periodStart).Scan(&urgentCount)
 
 	if urgentCount > 0 {
-		alerts = append(alerts, Alert{
-			Type:     "URGENT_UNMATCHED",
+		alerts = append(alerts, reports.Alert{
+			Type:     reports.AlertUrgentUnmatched,
 			Priority: "HIGH",
 			Message:  fmt.Sprintf("%d urgent requests without confirmed matches", urgentCount),
 		})
@@ -299,7 +241,7 @@ func (r *ReportRepo) GetAlerts(ctx context.Context, periodHours int) ([]Alert, e
 		Count(&lowScoreCount)
 
 	if lowScoreCount > 0 {
-		alerts = append(alerts, Alert{
+		alerts = append(alerts, reports.Alert{
 			Type:     "LOW_SCORE_PENDING",
 			Priority: "MEDIUM",
 			Message:  fmt.Sprintf("%d low-confidence matches need review", lowScoreCount),

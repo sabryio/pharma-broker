@@ -13,7 +13,6 @@ import (
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/metrics"
-	"pharmabroker/internal/storage"
 )
 
 // ErrorNotifier interface for reporting system errors
@@ -76,7 +75,7 @@ type Parser struct {
 	// Real-time updates and Dynamic Config
 	sseBroadcaster SSEBroadcaster
 	configRepo     interface {
-		GetAll(ctx context.Context) (*storage.AppConfig, error)
+		GetAll(ctx context.Context) (*domain.AppConfig, error)
 	}
 	errorNotifier ErrorNotifier
 
@@ -106,7 +105,7 @@ func NewParser(
 	medicationRepo domain.MedicationMappingRepository,
 	matchQueueRepo domain.MatchQueueRepository,
 	configRepo interface {
-		GetAll(ctx context.Context) (*storage.AppConfig, error)
+		GetAll(ctx context.Context) (*domain.AppConfig, error)
 	},
 	errorNotifier ErrorNotifier,
 	broadcaster SSEBroadcaster,

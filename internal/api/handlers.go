@@ -11,7 +11,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
 )
 
 // Handlers contains all HTTP handlers
@@ -33,7 +32,7 @@ type Handlers struct {
 
 // ConfigRepository interface for config storage
 type ConfigRepository interface {
-	GetAll(ctx context.Context) (*storage.AppConfig, error)
+	GetAll(ctx context.Context) (*domain.AppConfig, error)
 	UpdateFromMap(ctx context.Context, updates map[string]interface{}) error
 }
 

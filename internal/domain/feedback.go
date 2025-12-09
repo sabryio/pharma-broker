@@ -44,3 +44,4 @@ const (
 
 type AuditLog = entity.AuditLog
 type FeedbackAnalysis = entity.FeedbackAnalysis
+type AppConfig = entity.AppConfig

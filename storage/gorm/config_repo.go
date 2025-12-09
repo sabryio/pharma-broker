@@ -4,14 +4,9 @@ package gorm
 import (
 	"context"
 	"fmt"
-)
 
-// AppSettings holds aggregated application configuration
-type AppSettings struct {
-	AutoParseEnabled bool   `json:"auto_parse_enabled"`
-	SkipOwnMessages  bool   `json:"skip_own_messages"`
-	AdminPhone       string `json:"admin_phone"`
-}
+	"pharmabroker/domain/entity"
+)
 
 // ConfigRepo implements configuration storage
 type ConfigRepo struct {
@@ -23,15 +18,15 @@ func NewConfigRepo(db *DB) *ConfigRepo {
 	return &ConfigRepo{db: db}
 }
 
-// GetAll retrieves all configuration as AppSettings
-func (r *ConfigRepo) GetAll(ctx context.Context) (*AppSettings, error) {
+// GetAll retrieves all configuration as AppConfig
+func (r *ConfigRepo) GetAll(ctx context.Context) (*entity.AppConfig, error) {
 	var configs []AppConfig
 	err := r.db.Conn.WithContext(ctx).Find(&configs).Error
 	if err != nil {
 		return nil, err
 	}
 
-	cfg := &AppSettings{
+	cfg := &entity.AppConfig{
 		AutoParseEnabled: true, // Default
 		SkipOwnMessages:  true, // Default
 	}
