@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"pharmabroker/internal/domain"
+	arabicPkg "pharmabroker/pkg/arabic"
 )
 
 // Embedder interface for generating text embeddings
@@ -18,12 +19,12 @@ type Embedder interface {
 // Uses Arabic normalization for better matching of alef variants, diacritics, etc.
 func FilterMappingsByKeyword(content string, mappings map[string]string) map[string]string {
 	result := make(map[string]string)
-	contentNormalized := NormalizeForMatching(content)
+	contentNormalized := arabicPkg.NormalizeForMatching(content)
 
-	for arabic, english := range mappings {
-		arabicNormalized := NormalizeForMatching(arabic)
+	for arabicKey, english := range mappings {
+		arabicNormalized := arabicPkg.NormalizeForMatching(arabicKey)
 		if strings.Contains(contentNormalized, arabicNormalized) {
-			result[arabic] = english
+			result[arabicKey] = english
 		}
 	}
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"pharmabroker/internal/domain"
+	"pharmabroker/pkg/dosage"
 )
 
 // ScoringWeights holds configurable weights for each scoring field
@@ -235,8 +236,8 @@ func (s *Scorer) RecencyScoreWithParams(createdAt time.Time, halfLifeHours float
 // DosageScore compares dosages between offer and request medications
 // Returns 1.0 for equivalent dosages, 0 for  very different, uses CompareDosages internally
 func (s *Scorer) DosageScore(offerMedication, requestMedication string) float64 {
-	offerDosage := ParseDosage(offerMedication)
-	requestDosage := ParseDosage(requestMedication)
+	offerDosage := dosage.ParseDosage(offerMedication)
+	requestDosage := dosage.ParseDosage(requestMedication)
 
 	// If neither has dosage info, consider neutral (don't penalize)
 	if offerDosage == nil && requestDosage == nil {
@@ -249,7 +250,7 @@ func (s *Scorer) DosageScore(offerMedication, requestMedication string) float64 
 	}
 
 	// Both have dosages - compare them
-	return CompareDosages(offerDosage, requestDosage)
+	return dosage.CompareDosages(offerDosage, requestDosage)
 }
 
 // GetConfidenceBand returns the confidence band for a given total score

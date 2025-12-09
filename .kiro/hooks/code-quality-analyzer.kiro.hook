@@ -1,0 +1,31 @@
+{
+  "enabled": true,
+  "name": "Code Quality Analyzer",
+  "description": "Monitors source code files for changes and provides suggestions for code quality improvements, including identifying code smells, recommending design patterns, and highlighting best practices for better readability, maintainability, and performance.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*.go",
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.js",
+      "**/*.jsx",
+      "**/*.py",
+      "**/*.java",
+      "**/*.cpp",
+      "**/*.c",
+      "**/*.h",
+      "**/*.cs",
+      "**/*.rb",
+      "**/*.php",
+      "**/*.swift",
+      "**/*.kt",
+      "**/*.rs"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Analyze the modified code in the changed file for potential improvements. Focus on:\n\n1. **Code Smells**: Identify any code smells such as duplicated code, long methods, large classes, excessive parameters, or inappropriate intimacy between classes.\n\n2. **Design Patterns**: Suggest applicable design patterns that could improve the code structure and maintainability.\n\n3. **Best Practices**: Check for adherence to language-specific best practices, naming conventions, and coding standards.\n\n4. **Readability**: Evaluate code clarity, comment quality, and suggest improvements for better understanding.\n\n5. **Maintainability**: Identify areas that could be refactored for easier maintenance, testing, and extension.\n\n6. **Performance**: Spot potential performance issues like inefficient algorithms, unnecessary computations, or resource leaks.\n\n7. **Error Handling**: Review error handling patterns and suggest improvements for robustness.\n\n8. **Security**: Flag any obvious security concerns or vulnerabilities.\n\nProvide specific, actionable suggestions with code examples where appropriate. Maintain the existing functionality while proposing improvements. Prioritize the most impactful suggestions first."
+  }
+}

@@ -9,6 +9,7 @@ import (
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
+	arabicPkg "pharmabroker/pkg/arabic"
 	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
@@ -46,7 +47,7 @@ func main() {
 
 	fmt.Println("Normalization Tests:")
 	for _, tc := range testCases {
-		result := ai.NormalizeArabic(tc.input)
+		result := arabicPkg.NormalizeForMatching(tc.input)
 		status := "✓"
 		if result != tc.expected {
 			status = fmt.Sprintf("✗ (got: %s)", result)

@@ -7,6 +7,9 @@ import (
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/metrics"
+	arabicPkg "pharmabroker/pkg/arabic"
+	fuzzyPkg "pharmabroker/pkg/fuzzy"
+	textPkg "pharmabroker/pkg/text"
 	"sort"
 	"strings"
 	"sync"
@@ -345,16 +348,16 @@ func enforceMappings(ctx context.Context, results []*domain.AIParseResult, mappi
 
 		for i := range res.Items {
 			item := &res.Items[i]
-			rawNormalized := NormalizeForMatching(item.MedicationRaw)
+			rawNormalized := arabicPkg.NormalizeForMatching(item.MedicationRaw)
 			matched := false
 
 			// Step 1: Try exact match (with normalization)
-			for _, arabic := range sortedKeys {
-				english := mappings[arabic]
-				arabicNormalized := NormalizeForMatching(arabic)
+			for _, arabicKey := range sortedKeys {
+				english := mappings[arabicKey]
+				arabicNormalized := arabicPkg.NormalizeForMatching(arabicKey)
 				if strings.Contains(rawNormalized, arabicNormalized) {
 					if !strings.Contains(strings.ToLower(item.Medication), strings.ToLower(english)) {
-						applyMapping(item, arabic, english, ConfidenceExact, log)
+						applyMapping(item, arabicKey, english, fuzzyPkg.ConfidenceExact, log)
 						matched = true
 						break
 					} else {
@@ -366,10 +369,10 @@ func enforceMappings(ctx context.Context, results []*domain.AIParseResult, mappi
 
 			// Step 2: If no exact match, try fuzzy matching
 			if !matched {
-				fuzzyResult := FuzzyFindBest(item.MedicationRaw, mappings, maxFuzzyDistance)
+				fuzzyResult := fuzzyPkg.FindBest(item.MedicationRaw, mappings, maxFuzzyDistance)
 				if fuzzyResult != nil {
-					if !strings.Contains(strings.ToLower(item.Medication), strings.ToLower(fuzzyResult.EnglishName)) {
-						applyMapping(item, fuzzyResult.ArabicKey, fuzzyResult.EnglishName, ConfidenceFuzzy, log)
+					if !strings.Contains(strings.ToLower(item.Medication), strings.ToLower(fuzzyResult.Value)) {
+						applyMapping(item, fuzzyResult.Key, fuzzyResult.Value, fuzzyPkg.ConfidenceFuzzy, log)
 						matched = true
 					}
 				}
@@ -381,7 +384,7 @@ func enforceMappings(ctx context.Context, results []*domain.AIParseResult, mappi
 					Str("raw", item.MedicationRaw).
 					Str("ai_output", item.Medication).
 					Msg("Unmapped medication detected - consider adding to database")
-				item.MatchConfidence = string(ConfidenceTransliterated)
+				item.MatchConfidence = string(fuzzyPkg.ConfidenceTransliterated)
 
 				// Save to DB for active learning review queue
 				if unmappedRepo != nil {
@@ -395,7 +398,7 @@ func enforceMappings(ctx context.Context, results []*domain.AIParseResult, mappi
 }
 
 // applyMapping updates an item with the correct English mapping
-func applyMapping(item *domain.ParsedItem, arabic, english string, confidence MatchConfidence, log zerolog.Logger) {
+func applyMapping(item *domain.ParsedItem, arabic, english string, confidence fuzzyPkg.MatchConfidence, log zerolog.Logger) {
 	// Try to replace Arabic with English in the raw text
 	newItem := strings.ReplaceAll(item.MedicationRaw, arabic, english)
 
@@ -448,7 +451,7 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 	prompt := buildParsePrompt(messages, mappings)
 
 	// Count tokens
-	tokenCount, err := CountTokens(c.cfg.Model, prompt)
+	tokenCount, err := textPkg.CountTokens(prompt)
 	if err != nil {
 		c.log.Warn().Err(err).Msg("Failed to count tokens")
 	}
@@ -456,7 +459,7 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 	// Log mapping specific tokens
 	if len(mappings) > 0 {
 		mappingStr := FormatMappings(mappings)
-		mappingTokens, _ := CountTokens(c.cfg.Model, mappingStr)
+		mappingTokens, _ := textPkg.CountTokens(mappingStr)
 		c.log.Info().Int("mapping_tokens", mappingTokens).Int("total_prompt_tokens", tokenCount).Msg("Token usage breakdown")
 	}
 

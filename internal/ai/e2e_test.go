@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"pharmabroker/internal/domain"
+	"pharmabroker/pkg/dosage"
 )
 
 // TestEndToEnd_AllEnhancements tests all Phase A and B enhancements working together
@@ -79,15 +80,15 @@ func TestEndToEnd_AllEnhancements(t *testing.T) {
 
 	t.Run("Dosage normalization works across languages", func(t *testing.T) {
 		// English dosage
-		dosage1 := ParseDosage("Ozempic 2mg")
+		dosage1 := dosage.ParseDosage("Ozempic 2mg")
 		// Arabic dosage
-		dosage2 := ParseDosage("أوزمبك ٢ملغ")
+		dosage2 := dosage.ParseDosage("أوزمبك ٢ملغ")
 
 		if dosage1 == nil || dosage2 == nil {
 			t.Fatal("Dosage parsing failed")
 		}
 
-		similarity := CompareDosages(dosage1, dosage2)
+		similarity := dosage.CompareDosages(dosage1, dosage2)
 		t.Logf("English '2mg' vs Arabic '٢ملغ': %.2f similarity", similarity)
 
 		if similarity < 0.95 {

@@ -13,6 +13,7 @@ import (
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/metrics"
+	synonymsPkg "pharmabroker/pkg/synonyms"
 )
 
 // ErrorNotifier interface for reporting system errors
@@ -85,7 +86,7 @@ type Parser struct {
 
 	// Synonym Index for medication matching
 	synonymMu    sync.RWMutex
-	synonymIndex *SynonymIndex
+	synonymIndex *synonymsPkg.SynonymIndex
 
 	// Professional Scorer (Phase 1 Matching Enhancement)
 	scorer *Scorer
@@ -1058,7 +1059,7 @@ func (p *Parser) refreshEmbeddings(ctx context.Context) error {
 	p.embeddingMu.Unlock()
 
 	// Build synonym index from all mappings (not just those with embeddings)
-	newSynonymIndex := NewSynonymIndex(mappings)
+	newSynonymIndex := synonymsPkg.NewSynonymIndex(mappings)
 	p.synonymMu.Lock()
 	p.synonymIndex = newSynonymIndex
 	p.synonymMu.Unlock()

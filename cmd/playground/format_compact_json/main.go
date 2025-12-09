@@ -11,6 +11,7 @@ import (
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
+	textPkg "pharmabroker/pkg/text"
 	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
@@ -194,7 +195,7 @@ func formatPipe(mappings map[string]string) string {
 }
 
 func estimateTokens(s string) int {
-	count, _ := ai.CountTokens("ai/qwen3-vl:latest", s)
+	count, _ := textPkg.CountTokens(s)
 	return count
 }
 

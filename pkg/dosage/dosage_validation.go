@@ -1,4 +1,4 @@
-package ai
+package dosage
 
 import (
 	"pharmabroker/internal/domain"
