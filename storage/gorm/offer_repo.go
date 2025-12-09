@@ -73,8 +73,8 @@ func (r *OfferRepo) GetActive(ctx context.Context, limit, offset int) ([]*entity
 func (r *OfferRepo) Search(ctx context.Context, query string, limit, offset int) ([]*entity.Offer, error) {
 	var offers []Offer
 
-	// Sanitize query for FTS
-	sanitizedQuery := SanitizeFTSQuery(query)
+	// Use medication-optimized search query (Arabic normalization + OR-based)
+	sanitizedQuery := BuildMedicationSearchQuery(query)
 	err := r.db.Conn.WithContext(ctx).
 		Raw(`
 			SELECT o.id, o.raw_message_id, o.source_phone, o.source_name, o.source_group, o.group_name,
