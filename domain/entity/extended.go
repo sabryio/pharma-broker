@@ -112,3 +112,132 @@ type UnmappedMedication struct {
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
+
+// ========================================
+// Audit Log Types
+// ========================================
+
+// AuditAction represents the type of audited action
+type AuditAction string
+
+const (
+	AuditMatchConfirmed  AuditAction = "MATCH_CONFIRMED"
+	AuditMatchRejected   AuditAction = "MATCH_REJECTED"
+	AuditConfigChanged   AuditAction = "CONFIG_CHANGED"
+	AuditGroupEnabled    AuditAction = "GROUP_ENABLED"
+	AuditGroupDisabled   AuditAction = "GROUP_DISABLED"
+	AuditReportGenerated AuditAction = "REPORT_GENERATED"
+)
+
+// AuditLog represents a system audit log entry
+type AuditLog struct {
+	ID        string      `json:"id"`
+	Action    AuditAction `json:"action"`
+	EntityID  string      `json:"entity_id,omitempty"`
+	OldValue  string      `json:"old_value,omitempty"`
+	NewValue  string      `json:"new_value,omitempty"`
+	Details   string      `json:"details,omitempty"`
+	IPAddress string      `json:"ip_address,omitempty"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
+// ========================================
+// Weight History Types
+// ========================================
+
+// WeightSource indicates how weights were determined
+type WeightSource string
+
+const (
+	WeightSourceDefault     WeightSource = "DEFAULT"
+	WeightSourceManual      WeightSource = "MANUAL"
+	WeightSourceAutoLearned WeightSource = "AUTO_LEARNED"
+)
+
+// WeightHistory tracks changes to scoring weights over time
+type WeightHistory struct {
+	ID                 string       `json:"id"`
+	MedicationWeight   float64      `json:"medication_weight"`
+	DosageWeight       float64      `json:"dosage_weight"`
+	QuantityWeight     float64      `json:"quantity_weight"`
+	PriceWeight        float64      `json:"price_weight"`
+	RecencyWeight      float64      `json:"recency_weight"`
+	Source             WeightSource `json:"source"`
+	PerformanceMetrics string       `json:"performance_metrics,omitempty"` // JSON serialized
+	AppliedAt          time.Time    `json:"applied_at"`
+	CreatedAt          time.Time    `json:"created_at"`
+	Notes              string       `json:"notes,omitempty"`
+}
+
+// ========================================
+// Feedback Types
+// ========================================
+
+// FeedbackAction represents the type of user feedback on a match
+type FeedbackAction string
+
+const (
+	FeedbackActionConfirmed FeedbackAction = "CONFIRMED"
+	FeedbackActionRejected  FeedbackAction = "REJECTED"
+)
+
+// FeedbackRecord stores structured user feedback on a specific match
+type FeedbackRecord struct {
+	ID              string         `json:"id"`
+	MatchID         string         `json:"match_id"`
+	OfferID         string         `json:"offer_id"`
+	RequestID       string         `json:"request_id"`
+	Action          FeedbackAction `json:"action"`
+	MedicationScore float64        `json:"medication_score"`
+	DosageScore     float64        `json:"dosage_score"`
+	QuantityScore   float64        `json:"quantity_score"`
+	PriceScore      float64        `json:"price_score"`
+	RecencyScore    float64        `json:"recency_score"`
+	TotalScore      float64        `json:"total_score"`
+	FeedbackAt      time.Time      `json:"feedback_at"`
+	UserID          string         `json:"user_id,omitempty"`
+	CreatedAt       time.Time      `json:"created_at"`
+}
+
+// FeedbackStats represents aggregated statistics for learning
+type FeedbackStats struct {
+	TotalFeedbacks   int     `json:"total_feedbacks"`
+	ConfirmedCount   int     `json:"confirmed_count"`
+	RejectedCount    int     `json:"rejected_count"`
+	ConfirmationRate float64 `json:"confirmation_rate"`
+
+	// Average scores for confirmed matches
+	ConfirmedAvgMedication float64 `json:"confirmed_avg_medication"`
+	ConfirmedAvgDosage     float64 `json:"confirmed_avg_dosage"`
+	ConfirmedAvgQuantity   float64 `json:"confirmed_avg_quantity"`
+	ConfirmedAvgPrice      float64 `json:"confirmed_avg_price"`
+	ConfirmedAvgRecency    float64 `json:"confirmed_avg_recency"`
+	ConfirmedAvgTotal      float64 `json:"confirmed_avg_total"`
+
+	// Average scores for rejected matches
+	RejectedAvgMedication float64 `json:"rejected_avg_medication"`
+	RejectedAvgDosage     float64 `json:"rejected_avg_dosage"`
+	RejectedAvgQuantity   float64 `json:"rejected_avg_quantity"`
+	RejectedAvgPrice      float64 `json:"rejected_avg_price"`
+	RejectedAvgRecency    float64 `json:"rejected_avg_recency"`
+	RejectedAvgTotal      float64 `json:"rejected_avg_total"`
+
+	// Difference (indicator of importance)
+	MedicationDiff float64 `json:"medication_diff"`
+	DosageDiff     float64 `json:"dosage_diff"`
+	QuantityDiff   float64 `json:"quantity_diff"`
+	PriceDiff      float64 `json:"price_diff"`
+	RecencyDiff    float64 `json:"recency_diff"`
+}
+
+// PerformanceMetrics holds evaluation metrics for weight configurations
+type PerformanceMetrics struct {
+	Precision         float64   `json:"precision"`
+	Recall            float64   `json:"recall"`
+	F1Score           float64   `json:"f1_score"`
+	ConfirmationRate  float64   `json:"confirmation_rate"`
+	AvgScoreConfirmed float64   `json:"avg_score_confirmed"`
+	AvgScoreRejected  float64   `json:"avg_score_rejected"`
+	SampleSize        int       `json:"sample_size"`
+	EvaluatedAt       time.Time `json:"evaluated_at"`
+}

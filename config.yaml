@@ -210,3 +210,11 @@ adaptive_learning:
     on_success: true
     on_failure: true
     on_recommendation: true
+
+# ---------------------------------
+# Experimental Features
+# ---------------------------------
+experimental:
+  # Use new storage/gorm repositories instead of internal/storage
+  # Set to true to test new clean architecture repos
+  use_new_repos: true

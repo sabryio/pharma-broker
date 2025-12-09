@@ -502,3 +502,114 @@ func bytesToFloat32Slice(data []byte) []float32 {
 	}
 	return floats
 }
+
+// ========================================
+// AuditLog Converters
+// ========================================
+
+// ToAuditLogModel converts entity.AuditLog to gorm AuditLog
+func ToAuditLogModel(d *entity.AuditLog) *AuditLog {
+	return &AuditLog{
+		ID:        d.ID,
+		Action:    string(d.Action),
+		EntityID:  nilIfEmpty(d.EntityID),
+		OldValue:  nilIfEmpty(d.OldValue),
+		NewValue:  nilIfEmpty(d.NewValue),
+		Details:   nilIfEmpty(d.Details),
+		IPAddress: nilIfEmpty(d.IPAddress),
+		CreatedAt: d.CreatedAt,
+	}
+}
+
+// ToAuditLogEntity converts gorm AuditLog to entity.AuditLog
+func ToAuditLogEntity(m *AuditLog) *entity.AuditLog {
+	return &entity.AuditLog{
+		ID:        m.ID,
+		Action:    entity.AuditAction(m.Action),
+		EntityID:  deref(m.EntityID),
+		OldValue:  deref(m.OldValue),
+		NewValue:  deref(m.NewValue),
+		Details:   deref(m.Details),
+		IPAddress: deref(m.IPAddress),
+		CreatedAt: m.CreatedAt,
+	}
+}
+
+// ToAuditLogsEntity converts a slice of gorm AuditLogs to entity AuditLogs
+func ToAuditLogsEntity(models []AuditLog) []*entity.AuditLog {
+	result := make([]*entity.AuditLog, len(models))
+	for i := range models {
+		result[i] = ToAuditLogEntity(&models[i])
+	}
+	return result
+}
+
+// ========================================
+// WeightHistory Converters
+// ========================================
+
+// ToWeightHistoryModel converts entity.WeightHistory to gorm WeightHistory
+func ToWeightHistoryModel(d *entity.WeightHistory) *WeightHistory {
+	return &WeightHistory{
+		ID:        d.ID,
+		Weights:   weightsToJSON(d.MedicationWeight, d.DosageWeight, d.QuantityWeight, d.PriceWeight, d.RecencyWeight),
+		Source:    string(d.Source),
+		AppliedAt: d.AppliedAt,
+	}
+}
+
+// ToWeightHistoryEntity converts gorm WeightHistory to entity.WeightHistory
+func ToWeightHistoryEntity(m *WeightHistory) *entity.WeightHistory {
+	medW, dosW, qtyW, prcW, recW := jsonToWeights(m.Weights)
+	return &entity.WeightHistory{
+		ID:               m.ID,
+		MedicationWeight: medW,
+		DosageWeight:     dosW,
+		QuantityWeight:   qtyW,
+		PriceWeight:      prcW,
+		RecencyWeight:    recW,
+		Source:           entity.WeightSource(m.Source),
+		AppliedAt:        m.AppliedAt,
+	}
+}
+
+// ToWeightHistoriesEntity converts a slice of gorm WeightHistory to entity WeightHistory
+func ToWeightHistoriesEntity(models []WeightHistory) []*entity.WeightHistory {
+	result := make([]*entity.WeightHistory, len(models))
+	for i := range models {
+		result[i] = ToWeightHistoryEntity(&models[i])
+	}
+	return result
+}
+
+// weightsToJSON serializes weights to JSON
+func weightsToJSON(med, dos, qty, prc, rec float64) string {
+	type weights struct {
+		Medication float64 `json:"medication"`
+		Dosage     float64 `json:"dosage"`
+		Quantity   float64 `json:"quantity"`
+		Price      float64 `json:"price"`
+		Recency    float64 `json:"recency"`
+	}
+	data, _ := json.Marshal(weights{med, dos, qty, prc, rec})
+	return string(data)
+}
+
+// jsonToWeights deserializes weights from JSON
+func jsonToWeights(s string) (med, dos, qty, prc, rec float64) {
+	if s == "" {
+		return
+	}
+	type weights struct {
+		Medication float64 `json:"medication"`
+		Dosage     float64 `json:"dosage"`
+		Quantity   float64 `json:"quantity"`
+		Price      float64 `json:"price"`
+		Recency    float64 `json:"recency"`
+	}
+	var w weights
+	if err := json.Unmarshal([]byte(s), &w); err == nil {
+		return w.Medication, w.Dosage, w.Quantity, w.Price, w.Recency
+	}
+	return
+}
