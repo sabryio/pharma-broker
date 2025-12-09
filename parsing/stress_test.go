@@ -94,7 +94,7 @@ func TestParser_Stress_Concurrency(t *testing.T) {
 	wg.Go(func() {
 		for time.Since(startTime) < 2*time.Second {
 			// Simulate frequent updates to shared map
-			_ = parser.refreshEmbeddings(ctx)
+			_ = parser.embeddingCache.Refresh(ctx)
 			time.Sleep(100 * time.Millisecond)
 		}
 	})

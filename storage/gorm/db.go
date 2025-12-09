@@ -81,6 +81,12 @@ func NewDB(cfg *Config) (*DB, error) {
 		return nil, fmt.Errorf("set pragmas: %w", err)
 	}
 
+	// Auto-migrate all models
+	if err := gdb.Migrate(); err != nil {
+		gdb.Close()
+		return nil, fmt.Errorf("auto-migrate: %w", err)
+	}
+
 	return gdb, nil
 }
 
@@ -120,4 +126,102 @@ func (db *DB) Transaction(fn func(tx *gorm.DB) error) error {
 // GORM returns the underlying GORM connection
 func (db *DB) GORM() *gorm.DB {
 	return db.Conn
+}
+
+// Migrate runs database migrations for all models
+func (db *DB) Migrate() error {
+	// Run migrations for all models
+	err := db.Conn.AutoMigrate(
+		&RawMessage{},
+		&Offer{},
+		&Request{},
+		&Match{},
+		&MatchQueue{},
+		&AppConfig{},
+		&Group{},
+		&MedicationMapping{},
+		&FailedMessage{},
+		&MatchFeedback{},
+		&DemandLeaderboard{},
+		&AuditLog{},
+		&UnmappedMedication{},
+		&ReviewQueue{},
+		&FeedbackRecord{},
+		&WeightHistory{},
+	)
+	if err != nil {
+		return err
+	}
+
+	// Create FTS virtual tables
+	ftsSQL := `
+		CREATE VIRTUAL TABLE IF NOT EXISTS requests_fts USING fts5(
+			medication,
+			notes,
+			raw_message,
+			medication_raw,
+			content='requests',
+			content_rowid='rowid'
+		);
+		CREATE TRIGGER IF NOT EXISTS requests_ai AFTER INSERT ON requests BEGIN
+			INSERT INTO requests_fts(rowid, medication, notes, raw_message, medication_raw)
+			VALUES (new.rowid, new.medication, new.notes, new.raw_message, new.medication_raw);
+		END;
+		CREATE TRIGGER IF NOT EXISTS requests_ad AFTER DELETE ON requests BEGIN
+			INSERT INTO requests_fts(requests_fts, rowid, medication, notes, raw_message, medication_raw)
+			VALUES('delete', old.rowid, old.medication, old.notes, old.raw_message, old.medication_raw);
+		END;
+		CREATE TRIGGER IF NOT EXISTS requests_au AFTER UPDATE ON requests BEGIN
+			INSERT INTO requests_fts(requests_fts, rowid, medication, notes, raw_message, medication_raw)
+			VALUES('delete', old.rowid, old.medication, old.notes, old.raw_message, old.medication_raw);
+			INSERT INTO requests_fts(rowid, medication, notes, raw_message, medication_raw)
+			VALUES (new.rowid, new.medication, new.notes, new.raw_message, new.medication_raw);
+		END;
+
+		CREATE VIRTUAL TABLE IF NOT EXISTS medication_mappings_fts USING fts5(
+			arabic_name,
+			english_name,
+			synonyms,
+			content='medication_mappings',
+			content_rowid='rowid'
+		);
+		CREATE TRIGGER IF NOT EXISTS medication_mappings_ai AFTER INSERT ON medication_mappings BEGIN
+			INSERT INTO medication_mappings_fts(rowid, arabic_name, english_name, synonyms)
+			VALUES (new.rowid, new.arabic_name, new.english_name, new.synonyms);
+		END;
+		CREATE TRIGGER IF NOT EXISTS medication_mappings_ad AFTER DELETE ON medication_mappings BEGIN
+			INSERT INTO medication_mappings_fts(medication_mappings_fts, rowid, arabic_name, english_name, synonyms)
+			VALUES('delete', old.rowid, old.arabic_name, old.english_name, old.synonyms);
+		END;
+		CREATE TRIGGER IF NOT EXISTS medication_mappings_au AFTER UPDATE ON medication_mappings BEGIN
+			INSERT INTO medication_mappings_fts(medication_mappings_fts, rowid, arabic_name, english_name, synonyms)
+			VALUES('delete', old.rowid, old.arabic_name, old.english_name, old.synonyms);
+			INSERT INTO medication_mappings_fts(rowid, arabic_name, english_name, synonyms)
+			VALUES (new.rowid, new.arabic_name, new.english_name, new.synonyms);
+		END;
+
+		CREATE VIRTUAL TABLE IF NOT EXISTS offers_fts USING fts5(
+			medication,
+			medication_raw,
+			notes,
+			raw_message,
+			content='offers',
+			content_rowid='rowid'
+		);
+		CREATE TRIGGER IF NOT EXISTS offers_ai AFTER INSERT ON offers BEGIN
+			INSERT INTO offers_fts(rowid, medication, medication_raw, notes, raw_message)
+			VALUES (new.rowid, new.medication, new.medication_raw, new.notes, new.raw_message);
+		END;
+		CREATE TRIGGER IF NOT EXISTS offers_ad AFTER DELETE ON offers BEGIN
+			INSERT INTO offers_fts(offers_fts, rowid, medication, medication_raw, notes, raw_message)
+			VALUES('delete', old.rowid, old.medication, old.medication_raw, old.notes, old.raw_message);
+		END;
+		CREATE TRIGGER IF NOT EXISTS offers_au AFTER UPDATE ON offers BEGIN
+			INSERT INTO offers_fts(offers_fts, rowid, medication, medication_raw, notes, raw_message)
+			VALUES('delete', old.rowid, old.medication, old.medication_raw, old.notes, old.raw_message);
+			INSERT INTO offers_fts(rowid, medication, medication_raw, notes, raw_message)
+			VALUES (new.rowid, new.medication, new.medication_raw, new.notes, new.raw_message);
+		END;
+	`
+	return db.Conn.Exec(ftsSQL).Error
 }
