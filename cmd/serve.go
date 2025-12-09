@@ -83,7 +83,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	requestRepo := storageGorm.NewRequestRepo(newDB)
 	matchRepo := storageGorm.NewMatchRepo(newDB)
 	matchQueueRepo := storageGorm.NewMatchQueueRepo(newDB)
-	groupRepo := storage.NewGroupRepo(db) // Keep legacy for SaveFromSync/EnableFromConfig
+	groupRepo := storageGorm.NewGroupRepo(newDB)
 	statsRepo := storageGorm.NewStatsRepo(newDB)
 	medicationRepo := storageGorm.NewMedicationMappingRepo(newDB)
 	feedbackRepo := storageGorm.NewFeedbackRepo(newDB)

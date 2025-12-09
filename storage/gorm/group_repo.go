@@ -76,3 +76,43 @@ func (r *GroupRepo) IncrementMessageCount(ctx context.Context, jid string) error
 		Where("jid = ?", jid).
 		UpdateColumn("message_count", gorm.Expr("message_count + 1")).Error
 }
+
+// SaveFromSync creates or updates a group from WhatsApp sync
+func (r *GroupRepo) SaveFromSync(ctx context.Context, jid, name, description string) error {
+	now := time.Now()
+	var descPtr *string
+	if description != "" {
+		descPtr = &description
+	}
+
+	group := &Group{
+		JID:         jid,
+		Name:        name,
+		Description: descPtr,
+		Monitored:   false, // New groups are not monitored by default
+		AddedAt:     now,
+	}
+
+	// Upsert: update name/description if exists, otherwise create
+	return r.db.Conn.WithContext(ctx).
+		Where("jid = ?", jid).
+		Assign(map[string]any{
+			"name":        name,
+			"description": descPtr,
+		}).
+		FirstOrCreate(group).Error
+}
+
+// EnableFromConfig enables monitoring for groups from config
+func (r *GroupRepo) EnableFromConfig(ctx context.Context, jids []string) (int, error) {
+	if len(jids) == 0 {
+		return 0, nil
+	}
+
+	result := r.db.Conn.WithContext(ctx).
+		Model(&Group{}).
+		Where("jid IN ?", jids).
+		Update("monitored", true)
+
+	return int(result.RowsAffected), result.Error
+}
