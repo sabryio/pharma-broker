@@ -24,9 +24,10 @@ type Handlers struct {
 	Feedback    *handlers.FeedbackHandler
 	Leaderboard *handlers.LeaderboardHandler
 	Audit       *handlers.AuditHandler
+	Review      *handlers.ReviewHandler
 	// Learning    *handlers.LearningHandler
-	SSE         *sse.SSEHub
-	Health      *handlers.HealthChecker
+	SSE    *sse.SSEHub
+	Health *handlers.HealthChecker
 }
 
 // NewRouter creates the HTTP router with middleware
@@ -84,6 +85,14 @@ func NewRouter(h *Handlers, cfg *config.APIConfig, log zerolog.Logger) http.Hand
 
 	if h.Audit != nil {
 		mux.HandleFunc("GET /api/audit", h.Audit.GetAuditLogs)
+	}
+
+	if h.Review != nil {
+		mux.HandleFunc("GET /api/review/queue", h.Review.GetPendingReviews)
+		mux.HandleFunc("GET /api/review/count", h.Review.GetReviewCount)
+		mux.HandleFunc("GET /api/review/{id}", h.Review.GetReviewItem)
+		mux.HandleFunc("POST /api/review/{id}/approve", h.Review.ApproveReview)
+		mux.HandleFunc("POST /api/review/{id}/reject", h.Review.RejectReview)
 	}
 
 	// if h.Learning != nil {

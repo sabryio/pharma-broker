@@ -13,9 +13,11 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
+	"pharmabroker/api"
+	apiHandlers "pharmabroker/api/handlers"
 	"pharmabroker/api/sse"
 	"pharmabroker/internal/ai"
-	"pharmabroker/internal/api"
+	internalApi "pharmabroker/internal/api"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/janitor"
@@ -317,38 +319,38 @@ func runServe(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	// Create API handlers
-	handlers := api.NewHandlers(
-		offerRepo,
-		requestRepo,
-		matchRepo,
-		groupRepo,
-		statsRepo,
-		sseHub,
-		log,
-	)
+	// Create individual API handlers from api/handlers package
+	offerHandler := apiHandlers.NewOfferHandler(offerRepo, log)
+	requestHandler := apiHandlers.NewRequestHandler(requestRepo, log)
+	matchHandler := apiHandlers.NewMatchHandler(matchRepo, offerRepo, requestRepo, nil, sseHub, log)
+	groupHandler := apiHandlers.NewGroupHandler(groupRepo, log)
+	statsHandler := apiHandlers.NewStatsHandler(statsRepo, log)
+	configHandler := apiHandlers.NewConfigHandler(configRepo, log)
+	feedbackHandler := apiHandlers.NewFeedbackHandler(feedbackRepo, matchRepo, log)
+	leaderboardHandler := apiHandlers.NewLeaderboardHandler(leaderboardRepo, log)
+	auditHandler := apiHandlers.NewAuditHandler(auditRepo, log)
+	healthChecker := apiHandlers.NewHealthChecker()
 
-	// Wire config repo to handlers
-	handlers.SetConfigRepo(configRepo)
+	// Wire sync function to group handler
+	groupHandler.SetSyncFunc(syncGroups)
 
-	// Wire sync function to handlers (reuse syncGroups defined earlier)
-	handlers.SetGroupSyncFunc(syncGroups)
-
-	// Wire analyze function
-	handlers.SetAnalyzeFunc(func(text string) (*api.AnalyzeResult, error) {
-		// Use the AI provider directly for analysis
-		return nil, fmt.Errorf("analyze not implemented for provider interface yet")
-	})
-
-	// Wire feedback and leaderboard repos
-	handlers.SetFeedbackRepo(feedbackRepo)
-	handlers.SetLeaderboardRepo(leaderboardRepo)
-
-	// Wire audit repo
-	handlers.SetAuditRepo(auditRepo)
+	// Create api.Handlers struct for router
+	appHandlers := &api.Handlers{
+		Offer:       offerHandler,
+		Request:     requestHandler,
+		Match:       matchHandler,
+		Group:       groupHandler,
+		Stats:       statsHandler,
+		Config:      configHandler,
+		Feedback:    feedbackHandler,
+		Leaderboard: leaderboardHandler,
+		Audit:       auditHandler,
+		SSE:         sseHub,
+		Health:      healthChecker,
+	}
 
 	// ========== Adaptive Learning System Setup ==========
-	var learningHandlers *api.LearningHandlers
+	var learningHandlers *internalApi.LearningHandlers
 	var learningScheduler *ai.LearningScheduler
 
 	if cfg.AdaptiveLearning.Enabled {
@@ -394,7 +396,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		}
 
 		// Create learning handlers for admin API
-		learningHandlers = api.NewLearningHandlers(
+		learningHandlers = internalApi.NewLearningHandlers(
 			learningScheduler,
 			feedbackRecordRepo,
 			weightHistoryRepo,
@@ -408,8 +410,10 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Info().Msg("Adaptive learning disabled (set adaptive_learning.enabled: true to enable)")
 	}
 
-	// Create HTTP router with optional learning handlers
-	router := api.NewRouterWithLearning(handlers, learningHandlers, &cfg.API, log)
+	// Create HTTP router using the new api module
+	// Note: learningHandlers routes are not yet migrated to api module
+	_ = learningHandlers // Suppress unused warning until learning routes are migrated
+	router := api.NewRouter(appHandlers, &cfg.API, log)
 
 	// Start WhatsApp connection (async)
 	go func() {

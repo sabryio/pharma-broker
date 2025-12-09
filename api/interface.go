@@ -39,28 +39,6 @@ type Repositories struct {
 	Review   repository.ReviewQueueRepository
 }
 
-// AnalyzeResult represents AI analysis output
-type AnalyzeResult struct {
-	Items   []AnalyzeItem `json:"items"`
-	RawJSON string        `json:"raw_json,omitempty"`
-}
-
-// AnalyzeItem represents a single parsed item
-type AnalyzeItem struct {
-	Type          string  `json:"type"`
-	Medication    string  `json:"medication"`
-	MedicationRaw string  `json:"medication_raw"`
-	Quantity      int     `json:"quantity"`
-	Unit          string  `json:"unit,omitempty"`
-	Price         float64 `json:"price,omitempty"`
-	MaxPrice      float64 `json:"max_price,omitempty"`
-	Currency      string  `json:"currency,omitempty"`
-	ExpiryDate    string  `json:"expiry_date,omitempty"`
-	BatchNumber   string  `json:"batch_number,omitempty"`
-	Urgent        bool    `json:"urgent,omitempty"`
-	Notes         string  `json:"notes,omitempty"`
-}
-
 // Response represents a standard API response
 type Response struct {
 	Success bool      `json:"success"`
