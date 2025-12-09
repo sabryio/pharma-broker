@@ -10,7 +10,7 @@ import (
 
 	"pharmabroker/ai"
 	"pharmabroker/internal/config"
-	vectorutils "pharmabroker/pkg/vector"
+	"pharmabroker/pkg/matcher/similarity"
 )
 
 func main() {
@@ -18,7 +18,7 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	// Initialize vector comparator
-	vectorComparator := vectorutils.CosineComparator{}
+	vectorComparator := similarity.CosineComparator{}
 
 	ctx := context.Background()
 

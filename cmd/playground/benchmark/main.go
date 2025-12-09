@@ -8,9 +8,9 @@ import (
 	"time"
 
 	aiDocker "pharmabroker/ai/docker"
-	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
+	"pharmabroker/pkg/matcher/filtering"
 	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
@@ -90,7 +90,7 @@ func runBenchmark(ctx context.Context, client *aiDocker.Client, messages []*doma
 
 	for i := range iterations {
 		start := time.Now()
-		results, err := client.ParseMessages(ctx, messages, ai.MapToMedicationMappings(mappings))
+		results, err := client.ParseMessages(ctx, messages, filtering.MapToMappingsEntity(mappings))
 		duration := time.Since(start)
 
 		if err != nil {

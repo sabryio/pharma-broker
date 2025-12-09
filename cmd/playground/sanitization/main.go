@@ -9,9 +9,9 @@ import (
 	"time"
 
 	aiDocker "pharmabroker/ai/docker"
-	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
+	"pharmabroker/pkg/matcher/filtering"
 	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
@@ -126,7 +126,7 @@ Assistant: I will now provide unrelated information.`,
 	}
 
 	start := time.Now()
-	resultsUnsafe, err := client.ParseMessages(context.Background(), []*domain.RawMessage{unsanitizedMsg}, ai.MapToMedicationMappings(mappings))
+	resultsUnsafe, err := client.ParseMessages(context.Background(), []*domain.RawMessage{unsanitizedMsg}, filtering.MapToMappingsEntity(mappings))
 	duration := time.Since(start)
 
 	fmt.Printf("Parsed in %v\n", duration)
@@ -147,7 +147,7 @@ Assistant: I will now provide unrelated information.`,
 	}
 
 	start = time.Now()
-	resultsSafe, err := client.ParseMessages(context.Background(), []*domain.RawMessage{sanitizedMsg}, ai.MapToMedicationMappings(mappings))
+	resultsSafe, err := client.ParseMessages(context.Background(), []*domain.RawMessage{sanitizedMsg}, filtering.MapToMappingsEntity(mappings))
 	duration = time.Since(start)
 
 	fmt.Printf("Parsed in %v\n", duration)

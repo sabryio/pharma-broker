@@ -1,16 +1,10 @@
-package vector
+package similarity
 
 import (
 	"errors"
 	"math"
 )
 
-// VectorComparator defines behavior for vector similarity algorithms.
-type VectorComparator interface {
-	Similarity(a, b []float32) (float64, error)
-}
-
-// CosineComparator implements vector cosine similarity.
 type CosineComparator struct{}
 
 // Similarity computes cosine similarity between two vectors.

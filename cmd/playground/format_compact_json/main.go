@@ -9,9 +9,9 @@ import (
 	"time"
 
 	aiDocker "pharmabroker/ai/docker"
-	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
+	"pharmabroker/pkg/matcher/filtering"
 	textPkg "pharmabroker/pkg/text"
 	storageGorm "pharmabroker/storage/gorm"
 
@@ -136,7 +136,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, ai.MapToMedicationMappings(mappings))
+	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, filtering.MapToMappingsEntity(mappings))
 	duration := time.Since(start)
 
 	if err != nil {

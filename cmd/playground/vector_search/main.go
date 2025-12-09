@@ -11,9 +11,9 @@ import (
 	"time"
 
 	aiDocker "pharmabroker/ai/docker"
-	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
+	"pharmabroker/pkg/matcher/filtering"
 	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
@@ -201,7 +201,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, ai.MapToMedicationMappings(filteredMappings))
+	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, filtering.MapToMappingsEntity(filteredMappings))
 	duration := time.Since(start)
 
 	if err != nil {

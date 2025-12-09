@@ -7,10 +7,10 @@ import (
 	"time"
 
 	aiDocker "pharmabroker/ai/docker"
-	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	arabicPkg "pharmabroker/pkg/arabic"
+	"pharmabroker/pkg/matcher/filtering"
 	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
@@ -78,7 +78,7 @@ func main() {
 	fmt.Println("Testing FilterMappingsByKeyword with normalization:")
 	fmt.Printf("Content: %s\n\n", content)
 
-	filtered := ai.FilterMappingsByKeyword(content, mappings)
+	filtered := filtering.KeywordFilter(content, mappings)
 	fmt.Printf("Matched %d mappings:\n", len(filtered))
 	for arabic, english := range filtered {
 		fmt.Printf("  ✓ %s → %s\n", arabic, english)
@@ -111,7 +111,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, ai.MapToMedicationMappings(mappings))
+	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, filtering.MapToMappingsEntity(mappings))
 	duration := time.Since(start)
 
 	if err != nil {

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"pharmabroker/internal/domain"
-	"pharmabroker/pkg/vector"
+	"pharmabroker/pkg/matcher/similarity"
 )
 
 // ---- Mock implementations for matching tests ----
@@ -261,7 +261,7 @@ func TestMatchRepo_GetByRequestID(t *testing.T) {
 }
 
 func TestCosineSimilarity_Vectors(t *testing.T) {
-	comparator := vector.CosineComparator{}
+	comparator := similarity.CosineComparator{}
 	tests := []struct {
 		name     string
 		a, b     []float32
