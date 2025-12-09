@@ -25,9 +25,9 @@ type Handlers struct {
 	Leaderboard *handlers.LeaderboardHandler
 	Audit       *handlers.AuditHandler
 	Review      *handlers.ReviewHandler
-	// Learning    *handlers.LearningHandler
-	SSE    *sse.SSEHub
-	Health *handlers.HealthChecker
+	Learning    *handlers.LearningHandler
+	SSE         *sse.SSEHub
+	Health      *handlers.HealthChecker
 }
 
 // NewRouter creates the HTTP router with middleware
@@ -95,17 +95,17 @@ func NewRouter(h *Handlers, cfg *config.APIConfig, log zerolog.Logger) http.Hand
 		mux.HandleFunc("POST /api/review/{id}/reject", h.Review.RejectReview)
 	}
 
-	// if h.Learning != nil {
-	// 	mux.HandleFunc("GET /api/admin/learning/status", h.Learning.GetLearningStatus)
-	// 	mux.HandleFunc("POST /api/admin/learning/trigger", h.Learning.TriggerLearning)
-	// 	mux.HandleFunc("POST /api/admin/learning/apply", h.Learning.ApplyPendingWeights)
-	// 	mux.HandleFunc("POST /api/admin/learning/reject", h.Learning.RejectPendingWeights)
-	// 	mux.HandleFunc("POST /api/admin/learning/rollback", h.Learning.RollbackWeights)
-	// 	mux.HandleFunc("GET /api/admin/learning/history", h.Learning.GetWeightHistory)
-	// 	mux.HandleFunc("GET /api/admin/learning/weights", h.Learning.GetCurrentWeights)
-	// 	mux.HandleFunc("PUT /api/admin/learning/weights", h.Learning.UpdateWeightsManually)
-	// 	mux.HandleFunc("GET /api/admin/learning/feedback-stats", h.Learning.GetFeedbackStats)
-	// }
+	if h.Learning != nil {
+		mux.HandleFunc("GET /api/admin/learning/status", h.Learning.GetLearningStatus)
+		mux.HandleFunc("POST /api/admin/learning/trigger", h.Learning.TriggerLearning)
+		mux.HandleFunc("POST /api/admin/learning/apply", h.Learning.ApplyPendingWeights)
+		mux.HandleFunc("POST /api/admin/learning/reject", h.Learning.RejectPendingWeights)
+		mux.HandleFunc("POST /api/admin/learning/rollback", h.Learning.RollbackWeights)
+		mux.HandleFunc("GET /api/admin/learning/history", h.Learning.GetWeightHistory)
+		mux.HandleFunc("GET /api/admin/learning/weights", h.Learning.GetCurrentWeights)
+		mux.HandleFunc("PUT /api/admin/learning/weights", h.Learning.UpdateWeightsManually)
+		mux.HandleFunc("GET /api/admin/learning/feedback-stats", h.Learning.GetFeedbackStats)
+	}
 
 	if h.SSE != nil {
 		mux.HandleFunc("GET /api/events", h.SSE.ServeHTTP)

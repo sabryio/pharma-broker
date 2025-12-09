@@ -13,11 +13,11 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
+	publicAI "pharmabroker/ai"
 	"pharmabroker/api"
 	apiHandlers "pharmabroker/api/handlers"
 	"pharmabroker/api/sse"
 	"pharmabroker/internal/ai"
-	internalApi "pharmabroker/internal/api"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/janitor"
@@ -350,7 +350,6 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	// ========== Adaptive Learning System Setup ==========
-	var learningHandlers *internalApi.LearningHandlers
 	var learningScheduler *ai.LearningScheduler
 
 	if cfg.AdaptiveLearning.Enabled {
@@ -395,12 +394,16 @@ func runServe(cmd *cobra.Command, args []string) {
 				Msg("Learning scheduler started")
 		}
 
-		// Create learning handlers for admin API
-		learningHandlers = internalApi.NewLearningHandlers(
-			learningScheduler,
+		// Create learning handler using public AI interface
+		// Wrap internal scheduler with adapter to implement public interface
+		publicScheduler := publicAI.WrapLearningScheduler(learningScheduler)
+		learningHandler := apiHandlers.NewLearningHandler(
+			publicScheduler,
 			feedbackRecordRepo,
 			weightHistoryRepo,
+			log,
 		)
+		appHandlers.Learning = learningHandler
 
 		// Update Prometheus metrics for scheduler state
 		updateLearningMetrics(learningScheduler)
@@ -411,8 +414,6 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	// Create HTTP router using the new api module
-	// Note: learningHandlers routes are not yet migrated to api module
-	_ = learningHandlers // Suppress unused warning until learning routes are migrated
 	router := api.NewRouter(appHandlers, &cfg.API, log)
 
 	// Start WhatsApp connection (async)
