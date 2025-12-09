@@ -11,8 +11,8 @@ import (
 	"time"
 
 	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	"pharmabroker/pkg/matcher/filtering"
 	storageGorm "pharmabroker/storage/gorm"
 
@@ -193,7 +193,7 @@ func main() {
 		filteredMappings[s.mapping.ArabicName] = s.mapping.EnglishName
 	}
 
-	msg := &domain.RawMessage{
+	msg := &entity.RawMessage{
 		ID:         "vector-search-test",
 		Content:    content,
 		SenderName: "Test",
@@ -201,7 +201,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, filtering.MapToMappingsEntity(filteredMappings))
+	results, err := client.ParseMessages(context.Background(), []*entity.RawMessage{msg}, filtering.MapToMappingsEntity(filteredMappings))
 	duration := time.Since(start)
 
 	if err != nil {
@@ -218,11 +218,11 @@ func main() {
 }
 
 type scoredMapping struct {
-	mapping *domain.MedicationMapping
+	mapping *entity.MedicationMapping
 	score   float32
 }
 
-func findSimilar(mappings []*domain.MedicationMapping, queryEmbedding []float32, topK int) []scoredMapping {
+func findSimilar(mappings []*entity.MedicationMapping, queryEmbedding []float32, topK int) []scoredMapping {
 	var results []scoredMapping
 
 	for _, m := range mappings {

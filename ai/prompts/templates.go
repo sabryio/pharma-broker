@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // BuildParsePrompt creates the prompt for parsing pharmaceutical messages
-func BuildParsePrompt(messages []*domain.RawMessage, mappings []*domain.MedicationMapping) string {
+func BuildParsePrompt(messages []*entity.RawMessage, mappings []*entity.MedicationMapping) string {
 	var sb strings.Builder
 
 	sb.WriteString(systemPrompt)
@@ -180,7 +180,7 @@ Output:
 `
 
 // FormatMappings creates medication translation map for prompt
-func FormatMappings(mappings []*domain.MedicationMapping) string {
+func FormatMappings(mappings []*entity.MedicationMapping) string {
 	if len(mappings) == 0 {
 		return ""
 	}

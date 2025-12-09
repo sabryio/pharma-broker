@@ -1,9 +1,9 @@
-package ai
+package synonyms
 
 import (
 	"strings"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // SynonymIndex provides efficient synonym lookup for medication matching.
@@ -16,7 +16,7 @@ type SynonymIndex struct {
 }
 
 // NewSynonymIndex builds a synonym index from medication mappings.
-func NewSynonymIndex(mappings []*domain.MedicationMapping) *SynonymIndex {
+func NewSynonymIndex(mappings []*entity.MedicationMapping) *SynonymIndex {
 	idx := &SynonymIndex{
 		toCanonical:   make(map[string]string),
 		fromCanonical: make(map[string][]string),

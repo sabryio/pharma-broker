@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // =============================================================================
@@ -40,14 +40,14 @@ func TestRawMessageRepo_Save_Duplicate_ExternalID(t *testing.T) {
 	externalID := "shared-external-id"
 
 	// Save first message
-	msg1 := NewTestRawMessage(func(m *domain.RawMessage) {
+	msg1 := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.ExternalID = externalID
 	})
 	err := repo.Save(ctx, msg1)
 	assertNoError(t, err, "First save should succeed")
 
 	// Save second message with same ExternalID (should fail due to unique constraint)
-	msg2 := NewTestRawMessage(func(m *domain.RawMessage) {
+	msg2 := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.ExternalID = externalID
 	})
 	err = repo.Save(ctx, msg2)
@@ -95,13 +95,13 @@ func TestRawMessageRepo_GetUnprocessed_Ordering(t *testing.T) {
 
 	// Create messages with different timestamps (oldest first)
 	now := time.Now()
-	msg1 := NewTestRawMessage(func(m *domain.RawMessage) {
+	msg1 := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.Timestamp = now.Add(-2 * time.Hour)
 	})
-	msg2 := NewTestRawMessage(func(m *domain.RawMessage) {
+	msg2 := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.Timestamp = now.Add(-1 * time.Hour)
 	})
-	msg3 := NewTestRawMessage(func(m *domain.RawMessage) {
+	msg3 := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.Timestamp = now
 	})
 
@@ -177,12 +177,12 @@ func TestRawMessageRepo_GetLastMessageBySender(t *testing.T) {
 
 	// Create multiple messages from same sender
 	now := time.Now()
-	msg1 := NewTestRawMessage(func(m *domain.RawMessage) {
+	msg1 := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.GroupJID = groupJID
 		m.SenderJID = senderJID
 		m.Timestamp = now.Add(-1 * time.Hour)
 	})
-	msg2 := NewTestRawMessage(func(m *domain.RawMessage) {
+	msg2 := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.GroupJID = groupJID
 		m.SenderJID = senderJID
 		m.Timestamp = now // Latest

@@ -2,18 +2,18 @@ package parsing
 
 import (
 	"context"
+	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-	"pharmabroker/internal/domain"
 )
 
 // MockAIProvider is a manual mock for AIProvider
 type MockAIProvider struct {
-	OnParseMessages func(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error)
+	OnParseMessages func(ctx context.Context, messages []*entity.RawMessage, mappings []*entity.MedicationMapping) ([]*entity.AIParseResult, error)
 	OnEmbed         func(ctx context.Context, text string) ([]float32, error)
 	OnEmbedBatch    func(ctx context.Context, texts []string) ([][]float32, error)
 }
 
-func (m *MockAIProvider) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
+func (m *MockAIProvider) ParseMessages(ctx context.Context, messages []*entity.RawMessage, mappings []*entity.MedicationMapping) ([]*entity.AIParseResult, error) {
 	if m.OnParseMessages != nil {
 		return m.OnParseMessages(ctx, messages, mappings)
 	}
@@ -39,7 +39,7 @@ func (m *MockAIProvider) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 	return results, nil
 }
 
-func (m *MockAIProvider) SetMappings(mappings []*domain.MedicationMapping) {
+func (m *MockAIProvider) SetMappings(mappings []*entity.MedicationMapping) {
 	// No-op for mock
 }
 

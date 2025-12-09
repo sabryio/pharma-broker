@@ -8,8 +8,8 @@ import (
 	"time"
 
 	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	"pharmabroker/pkg/matcher/filtering"
 	storageGorm "pharmabroker/storage/gorm"
 
@@ -63,7 +63,7 @@ func main() {
 	}
 
 	// Test messages
-	testMessages := []*domain.RawMessage{
+	testMessages := []*entity.RawMessage{
 		{ID: "bench-1", Content: "*عندي*\n*زولادكس 3.6*\n*سكسندا*\n*اوزمبك*"},
 		{ID: "bench-2", Content: "*محتاج*\n*ديكابيبتيل*\n*فوستيمون*"},
 		{ID: "bench-3", Content: "*متوفر*\n*مريوفيرت*\n*سيتروتايد*\n*اوفتريل*"},
@@ -76,7 +76,7 @@ func main() {
 	runBenchmark(ctx, client, testMessages, fullMappings, true, allMappings)
 }
 
-func runBenchmark(ctx context.Context, client *aiDocker.Client, messages []*domain.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*domain.MedicationMapping) {
+func runBenchmark(ctx context.Context, client *aiDocker.Client, messages []*entity.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*entity.MedicationMapping) {
 	iterations := 3
 
 	if useHybrid {
@@ -118,7 +118,7 @@ func runBenchmark(ctx context.Context, client *aiDocker.Client, messages []*doma
 	fmt.Printf("  Estimated prompt tokens: ~%d\n", promptTokens)
 }
 
-func estimatePromptTokens(messages []*domain.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*domain.MedicationMapping) int {
+func estimatePromptTokens(messages []*entity.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*entity.MedicationMapping) int {
 	// Rough estimate: 4 chars per token
 	var textLen int
 

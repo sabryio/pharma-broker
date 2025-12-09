@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 
 	"github.com/robfig/cron/v3"
 )
@@ -25,9 +25,9 @@ type LearningScheduler struct {
 	lastRun       time.Time
 	lastStatus    JobStatus
 	lastError     error
-	lastMetrics   *domain.PerformanceMetrics
+	lastMetrics   *entity.PerformanceMetrics
 	pendingApply  *Weights // Calculated but not applied weights
-	pendingReason string          // Why pending (e.g., "manual review required")
+	pendingReason string   // Why pending (e.g., "manual review required")
 }
 
 // JobStatus represents the status of the last learning job
@@ -146,7 +146,7 @@ func (ls *LearningScheduler) runJob() {
 		err = ls.learner.ApplyWeights(
 			ctx,
 			*newWeights,
-			domain.WeightSourceAutoLearned,
+			entity.WeightSourceAutoLearned,
 			newMetrics,
 			ls.buildNote(currentWeights, *newWeights, *newMetrics),
 		)
@@ -193,7 +193,7 @@ func (ls *LearningScheduler) runJob() {
 }
 
 // shouldApply determines if weights should be auto-applied
-func (ls *LearningScheduler) shouldApply(current, new domain.PerformanceMetrics) bool {
+func (ls *LearningScheduler) shouldApply(current, new entity.PerformanceMetrics) bool {
 	if !ls.config.AutoApply.RequireImprovement {
 		return true
 	}
@@ -239,7 +239,7 @@ func (ls *LearningScheduler) handleError(err error, logger *slog.Logger) {
 }
 
 // getCurrentMetrics fetches or estimates current performance metrics
-func (ls *LearningScheduler) getCurrentMetrics(ctx context.Context) domain.PerformanceMetrics {
+func (ls *LearningScheduler) getCurrentMetrics(ctx context.Context) entity.PerformanceMetrics {
 	// Try to get from last run or estimate from current data
 	ls.mu.RLock()
 	if ls.lastMetrics != nil {
@@ -250,7 +250,7 @@ func (ls *LearningScheduler) getCurrentMetrics(ctx context.Context) domain.Perfo
 	ls.mu.RUnlock()
 
 	// Return neutral metrics if no history
-	return domain.PerformanceMetrics{
+	return entity.PerformanceMetrics{
 		ConfirmationRate:  0.5,
 		AvgScoreConfirmed: 0.7,
 		AvgScoreRejected:  0.3,
@@ -258,7 +258,7 @@ func (ls *LearningScheduler) getCurrentMetrics(ctx context.Context) domain.Perfo
 }
 
 // buildNote creates a descriptive note for the weight change
-func (ls *LearningScheduler) buildNote(old, new Weights, metrics domain.PerformanceMetrics) string {
+func (ls *LearningScheduler) buildNote(old, new Weights, metrics entity.PerformanceMetrics) string {
 	return fmt.Sprintf(
 		"Auto-learned from %d samples. Separation: %.3f. "+
 			"Weights changed: med %.2f→%.2f, dosage %.2f→%.2f, qty %.2f→%.2f, price %.2f→%.2f, recency %.2f→%.2f",
@@ -273,7 +273,7 @@ func (ls *LearningScheduler) buildNote(old, new Weights, metrics domain.Performa
 }
 
 // Notification stubs (can be expanded with actual notification implementation)
-func (ls *LearningScheduler) notifySuccess(weights Weights, metrics domain.PerformanceMetrics) {
+func (ls *LearningScheduler) notifySuccess(weights Weights, metrics entity.PerformanceMetrics) {
 	ls.logger.Info("NOTIFICATION: Weights applied",
 		"new_weights", weights,
 		"metrics", metrics,
@@ -286,7 +286,7 @@ func (ls *LearningScheduler) notifyFailure(err error) {
 	)
 }
 
-func (ls *LearningScheduler) notifyRecommendation(weights Weights, metrics domain.PerformanceMetrics, reason string) {
+func (ls *LearningScheduler) notifyRecommendation(weights Weights, metrics entity.PerformanceMetrics, reason string) {
 	ls.logger.Info("NOTIFICATION: New weights recommended",
 		"recommended_weights", weights,
 		"metrics", metrics,
@@ -318,7 +318,7 @@ type SchedulerStatus struct {
 	LastRun       time.Time
 	LastStatus    JobStatus
 	LastError     error
-	LastMetrics   *domain.PerformanceMetrics
+	LastMetrics   *entity.PerformanceMetrics
 	PendingApply  *Weights
 	PendingReason string
 }
@@ -338,7 +338,7 @@ func (ls *LearningScheduler) ApplyPending(ctx context.Context) error {
 	err := ls.learner.ApplyWeights(
 		ctx,
 		*pending,
-		domain.WeightSourceManual, // Since manually triggered
+		entity.WeightSourceManual, // Since manually triggered
 		&metrics,
 		"Manually approved from scheduler recommendation",
 	)
@@ -426,7 +426,7 @@ func (ls *LearningScheduler) ApplyWeightsManual(ctx context.Context, weights Wei
 	err := ls.learner.ApplyWeights(
 		ctx,
 		weights,
-		domain.WeightSourceManual,
+		entity.WeightSourceManual,
 		&metrics,
 		notes,
 	)

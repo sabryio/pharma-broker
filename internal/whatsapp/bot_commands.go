@@ -8,7 +8,8 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
+	"pharmabroker/domain/repository"
 )
 
 // BotConfig holds bot command configuration
@@ -19,8 +20,8 @@ type BotConfig struct {
 
 // BotCommandHandler handles WhatsApp bot commands
 type BotCommandHandler struct {
-	matchRepo        domain.MatchRepository
-	statsRepo        domain.StatsRepository
+	matchRepo        repository.MatchRepository
+	statsRepo        repository.StatsRepository
 	auditRepo        AuditLogger
 	authorizedPhones map[string]bool
 	log              zerolog.Logger
@@ -28,7 +29,7 @@ type BotCommandHandler struct {
 
 // AuditLogger interface for audit logging
 type AuditLogger interface {
-	Log(ctx context.Context, action domain.AuditAction, entityID, details string) error
+	Log(ctx context.Context, action entity.AuditAction, entityID, details string) error
 }
 
 // BotCommand represents a parsed command
@@ -40,8 +41,8 @@ type BotCommand struct {
 
 // NewBotCommandHandler creates a new bot command handler
 func NewBotCommandHandler(
-	matchRepo domain.MatchRepository,
-	statsRepo domain.StatsRepository,
+	matchRepo repository.MatchRepository,
+	statsRepo repository.StatsRepository,
 	auditRepo AuditLogger,
 	authorizedPhones []string,
 	log zerolog.Logger,
@@ -217,7 +218,7 @@ func (h *BotCommandHandler) handleConfirm(ctx context.Context, cmd BotCommand) s
 	}
 
 	// Update status
-	err = h.matchRepo.UpdateStatus(ctx, match.ID, domain.MatchStatusConfirmed, "bot:"+extractPhoneFromJID(cmd.Sender))
+	err = h.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "bot:"+extractPhoneFromJID(cmd.Sender))
 	if err != nil {
 		h.log.Error().Err(err).Str("match_id", match.ID).Msg("Failed to confirm match")
 		return "❌ Error confirming match. Please try again."
@@ -225,7 +226,7 @@ func (h *BotCommandHandler) handleConfirm(ctx context.Context, cmd BotCommand) s
 
 	// Audit log
 	if h.auditRepo != nil {
-		h.auditRepo.Log(ctx, domain.AuditMatchConfirmed, match.ID, "Confirmed via WhatsApp bot by "+cmd.Sender)
+		h.auditRepo.Log(ctx, entity.AuditMatchConfirmed, match.ID, "Confirmed via WhatsApp bot by "+cmd.Sender)
 	}
 
 	h.log.Info().Str("match_id", match.ID).Str("by", cmd.Sender).Msg("Match confirmed via bot")
@@ -248,7 +249,7 @@ func (h *BotCommandHandler) handleReject(ctx context.Context, cmd BotCommand) st
 	}
 
 	// Update status
-	err = h.matchRepo.UpdateStatus(ctx, match.ID, domain.MatchStatusRejected, "bot:"+extractPhoneFromJID(cmd.Sender))
+	err = h.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusRejected, "bot:"+extractPhoneFromJID(cmd.Sender))
 	if err != nil {
 		h.log.Error().Err(err).Str("match_id", match.ID).Msg("Failed to reject match")
 		return "❌ Error rejecting match. Please try again."
@@ -256,7 +257,7 @@ func (h *BotCommandHandler) handleReject(ctx context.Context, cmd BotCommand) st
 
 	// Audit log
 	if h.auditRepo != nil {
-		h.auditRepo.Log(ctx, domain.AuditMatchRejected, match.ID, "Rejected via WhatsApp bot by "+cmd.Sender)
+		h.auditRepo.Log(ctx, entity.AuditMatchRejected, match.ID, "Rejected via WhatsApp bot by "+cmd.Sender)
 	}
 
 	h.log.Info().Str("match_id", match.ID).Str("by", cmd.Sender).Msg("Match rejected via bot")
@@ -282,7 +283,7 @@ func (h *BotCommandHandler) handleHelp() string {
 }
 
 // findMatchByPartialID finds a match by partial ID prefix
-func (h *BotCommandHandler) findMatchByPartialID(ctx context.Context, partialID string) (*domain.Match, error) {
+func (h *BotCommandHandler) findMatchByPartialID(ctx context.Context, partialID string) (*entity.Match, error) {
 	// Try to get pending matches and find one that starts with partialID
 	matches, err := h.matchRepo.GetPending(ctx, 50, 0)
 	if err != nil {

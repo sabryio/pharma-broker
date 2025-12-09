@@ -7,29 +7,30 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
+	"pharmabroker/domain/repository"
 )
 
 // Listener listens for WhatsApp messages and queues them for processing
 type Listener struct {
 	log                    zerolog.Logger
-	rawMsgRepo             domain.RawMessageRepository
-	groupRepo              domain.GroupRepository
-	msgChannel             chan *domain.RawMessage
+	rawMsgRepo             repository.RawMessageRepository
+	groupRepo              repository.GroupRepository
+	msgChannel             chan *entity.RawMessage
 	skipOwnMessagesChecker func() bool // Check if should skip own messages
 }
 
 // NewListener creates a new message listener
 func NewListener(
 	log zerolog.Logger,
-	rawMsgRepo domain.RawMessageRepository,
-	groupRepo domain.GroupRepository,
+	rawMsgRepo repository.RawMessageRepository,
+	groupRepo repository.GroupRepository,
 ) *Listener {
 	return &Listener{
 		log:                    log.With().Str("component", "listener").Logger(),
 		rawMsgRepo:             rawMsgRepo,
 		groupRepo:              groupRepo,
-		msgChannel:             make(chan *domain.RawMessage, 1000), // Buffer for burst handling
+		msgChannel:             make(chan *entity.RawMessage, 1000), // Buffer for burst handling
 		skipOwnMessagesChecker: func() bool { return true },         // Default: skip own messages
 	}
 }
@@ -40,7 +41,7 @@ func (l *Listener) SetSkipOwnMessagesChecker(fn func() bool) {
 }
 
 // MessageChannel returns channel that receives raw messages
-func (l *Listener) MessageChannel() <-chan *domain.RawMessage {
+func (l *Listener) MessageChannel() <-chan *entity.RawMessage {
 	return l.msgChannel
 }
 
@@ -120,7 +121,7 @@ func (l *Listener) HandleMessage(msg *IncomingMessage) {
 		Msg("✅ Group is monitored - processing")
 
 	// Create raw message
-	rawMsg := &domain.RawMessage{
+	rawMsg := &entity.RawMessage{
 		ID:             uuid.New().String(),
 		ExternalID:     msg.ID, // WhatsApp Message ID
 		GroupJID:       msg.GroupJID,
@@ -193,7 +194,7 @@ func (l *Listener) HandleGroupJoined(group *GroupInfo) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	g := &domain.Group{
+	g := &entity.Group{
 		JID:         group.JID,
 		Name:        group.Name,
 		Description: group.Description,
@@ -212,7 +213,7 @@ func (l *Listener) HandleGroupJoined(group *GroupInfo) {
 // SyncGroups synchronizes known groups with database (defaults to not monitored)
 func (l *Listener) SyncGroups(ctx context.Context, groups []*GroupInfo) error {
 	for _, g := range groups {
-		group := &domain.Group{
+		group := &entity.Group{
 			JID:         g.JID,
 			Name:        g.Name,
 			Description: g.Description,

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	"pharmabroker/pkg/matcher/filtering"
 	storageGorm "pharmabroker/storage/gorm"
 	"strings"
@@ -101,7 +101,7 @@ func main() {
 
 		count := 0
 		for k, v := range jsonMap {
-			mapping := &domain.MedicationMapping{
+			mapping := &entity.MedicationMapping{
 				ArabicName:  k,
 				EnglishName: v,
 			}
@@ -157,7 +157,7 @@ func main() {
 	// Enable hybrid filtering (keyword + vector)
 	client.SetMappings(allMappings)
 
-	msg := &domain.RawMessage{
+	msg := &entity.RawMessage{
 		ID:         "test-repro-db",
 		Content:    content,
 		SenderName: "Test User",
@@ -166,7 +166,7 @@ func main() {
 
 	write("Sending message to AI...")
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, filtering.MapToMappingsEntity(mappings))
+	results, err := client.ParseMessages(context.Background(), []*entity.RawMessage{msg}, filtering.MapToMappingsEntity(mappings))
 	duration := time.Since(start)
 
 	if err != nil {

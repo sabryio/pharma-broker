@@ -3,7 +3,7 @@ package gorm
 import (
 	"testing"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // =============================================================================
@@ -38,14 +38,14 @@ func TestStatsRepo_GetStats(t *testing.T) {
 	request := CreateTestRequestWithRawMessage(t, db)
 	assertNoError(t, offerRepo.Save(ctx, offer), "Save offer for match")
 	assertNoError(t, requestRepo.Save(ctx, request), "Save request for match")
-	match := NewTestMatch(offer.ID, request.ID, func(m *domain.Match) {
-		m.Status = domain.MatchStatusPending
+	match := NewTestMatch(offer.ID, request.ID, func(m *entity.Match) {
+		m.Status = entity.MatchStatusPending
 	})
 	assertNoError(t, matchRepo.Save(ctx, match), "Save match")
 
 	// Create 2 monitored groups
 	for i := 0; i < 2; i++ {
-		assertNoError(t, groupRepo.Save(ctx, NewTestGroup(func(g *domain.Group) {
+		assertNoError(t, groupRepo.Save(ctx, NewTestGroup(func(g *entity.Group) {
 			g.Monitored = true
 		})), "Save group")
 	}

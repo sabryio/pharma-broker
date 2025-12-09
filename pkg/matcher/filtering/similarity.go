@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 	"pharmabroker/pkg/matcher"
 	"pharmabroker/pkg/matcher/similarity"
 )
@@ -12,7 +12,7 @@ import (
 func SimilarityFilter(
 	ctx context.Context,
 	content string,
-	mappings []*domain.MedicationMapping,
+	mappings []*entity.MedicationMapping,
 	embedder matcher.Embedder,
 	comparator similarity.Comparator,
 	topK int,
@@ -28,7 +28,7 @@ func SimilarityFilter(
 	}
 
 	type scored struct {
-		m *domain.MedicationMapping
+		m *entity.MedicationMapping
 		s float32
 	}
 

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 	"pharmabroker/pkg/dosage"
 )
 
@@ -32,7 +32,6 @@ type Scorer struct {
 	decayType       DecayType // Type of decay curve (default: Exponential)
 	semanticWeight  float64   // Alpha for semantic vs lexical balance (Phase 2)
 }
-
 
 // NewScorer creates a new Scorer with the given configuration
 func NewScorer(weights *Weights, thresholds *Thresholds) *Scorer {
@@ -218,7 +217,7 @@ func (s *Scorer) GetConfidenceBand(score float64) ConfidenceBand {
 }
 
 // ScoreMatch calculates the full multi-field match score between an offer and request
-func (s *Scorer) ScoreMatch(offer *domain.Offer, request *domain.Request, medicationScore float64) *MatchScore {
+func (s *Scorer) ScoreMatch(offer *entity.Offer, request *entity.Request, medicationScore float64) *MatchScore {
 	// Calculate individual scores
 	dosageScore := s.DosageScore(offer.Medication, request.Medication)
 	qtyScore := s.QuantityScore(offer.Quantity, request.Quantity)

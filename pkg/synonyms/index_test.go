@@ -1,13 +1,13 @@
-package ai
+package synonyms
 
 import (
 	"testing"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 func TestNewSynonymIndex(t *testing.T) {
-	mappings := []*domain.MedicationMapping{
+	mappings := []*entity.MedicationMapping{
 		{
 			EnglishName: "Ozempic",
 			ArabicName:  "اوزمبك",
@@ -34,7 +34,7 @@ func TestNewSynonymIndex(t *testing.T) {
 }
 
 func TestSynonymIndex_GetCanonical(t *testing.T) {
-	mappings := []*domain.MedicationMapping{
+	mappings := []*entity.MedicationMapping{
 		{
 			EnglishName: "Ozempic",
 			ArabicName:  "اوزمبك",
@@ -69,7 +69,7 @@ func TestSynonymIndex_GetCanonical(t *testing.T) {
 }
 
 func TestSynonymIndex_GetAllSynonyms(t *testing.T) {
-	mappings := []*domain.MedicationMapping{
+	mappings := []*entity.MedicationMapping{
 		{
 			EnglishName: "Ozempic",
 			ArabicName:  "اوزمبك",
@@ -98,7 +98,7 @@ func TestSynonymIndex_GetAllSynonyms(t *testing.T) {
 }
 
 func TestSynonymIndex_AreSynonyms(t *testing.T) {
-	mappings := []*domain.MedicationMapping{
+	mappings := []*entity.MedicationMapping{
 		{
 			EnglishName: "Ozempic",
 			ArabicName:  "اوزمبك",

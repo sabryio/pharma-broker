@@ -9,8 +9,8 @@ import (
 	"time"
 
 	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	"pharmabroker/pkg/matcher/filtering"
 	textPkg "pharmabroker/pkg/text"
 	storageGorm "pharmabroker/storage/gorm"
@@ -128,7 +128,7 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create client")
 	}
 
-	msg := &domain.RawMessage{
+	msg := &entity.RawMessage{
 		ID:         "compact-test",
 		Content:    content,
 		SenderName: "Test",
@@ -136,7 +136,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, filtering.MapToMappingsEntity(mappings))
+	results, err := client.ParseMessages(context.Background(), []*entity.RawMessage{msg}, filtering.MapToMappingsEntity(mappings))
 	duration := time.Since(start)
 
 	if err != nil {

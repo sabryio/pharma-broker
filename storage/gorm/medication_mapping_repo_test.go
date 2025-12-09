@@ -1,10 +1,9 @@
 package gorm
 
 import (
+	"pharmabroker/domain/entity"
 	"testing"
 	"time"
-
-	"pharmabroker/internal/domain"
 )
 
 // =============================================================================
@@ -37,7 +36,7 @@ func TestMedicationMappingRepo_GetByArabicName_Found(t *testing.T) {
 	ctx := testCtx()
 
 	// Create mapping
-	mapping := NewTestMedicationMapping(func(m *domain.MedicationMapping) {
+	mapping := NewTestMedicationMapping(func(m *entity.MedicationMapping) {
 		m.ArabicName = "بانادول"
 		m.EnglishName = "Panadol"
 	})
@@ -71,7 +70,7 @@ func TestMedicationMappingRepo_GetAll(t *testing.T) {
 
 	// Create 3 mappings
 	for i := 0; i < 3; i++ {
-		mapping := NewTestMedicationMapping(func(m *domain.MedicationMapping) {
+		mapping := NewTestMedicationMapping(func(m *entity.MedicationMapping) {
 			m.ArabicName = "دواء " + string(rune('أ'+i))
 		})
 		assertNoError(t, repo.Save(ctx, mapping), "Save should succeed")
@@ -137,7 +136,7 @@ func TestMedicationMappingRepo_ArabicUnicode(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		mapping := NewTestMedicationMapping(func(m *domain.MedicationMapping) {
+		mapping := NewTestMedicationMapping(func(m *entity.MedicationMapping) {
 			m.ArabicName = tc.arabic
 			m.EnglishName = tc.english
 		})

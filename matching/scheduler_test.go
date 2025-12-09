@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 )
 
 func TestNewLearningScheduler(t *testing.T) {
@@ -62,8 +62,8 @@ func TestLearningScheduler_ShouldApply(t *testing.T) {
 	tests := []struct {
 		name   string
 		config config.AutoApplyConfig
-		old    domain.PerformanceMetrics
-		new    domain.PerformanceMetrics
+		old    entity.PerformanceMetrics
+		new    entity.PerformanceMetrics
 		want   bool
 	}{
 		{
@@ -72,8 +72,8 @@ func TestLearningScheduler_ShouldApply(t *testing.T) {
 				Enabled:            true,
 				RequireImprovement: false,
 			},
-			old:  domain.PerformanceMetrics{},
-			new:  domain.PerformanceMetrics{},
+			old:  entity.PerformanceMetrics{},
+			new:  entity.PerformanceMetrics{},
 			want: true,
 		},
 		{
@@ -84,12 +84,12 @@ func TestLearningScheduler_ShouldApply(t *testing.T) {
 				MinSeparationGain:       0.01,
 				MaxConfirmationRateDrop: 0.05,
 			},
-			old: domain.PerformanceMetrics{
+			old: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.85,
 				AvgScoreRejected:  0.65,
 				ConfirmationRate:  0.75,
 			},
-			new: domain.PerformanceMetrics{
+			new: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.88,
 				AvgScoreRejected:  0.62,
 				ConfirmationRate:  0.76,
@@ -104,12 +104,12 @@ func TestLearningScheduler_ShouldApply(t *testing.T) {
 				MinSeparationGain:       0.10, // Need 10% gain
 				MaxConfirmationRateDrop: 0.05,
 			},
-			old: domain.PerformanceMetrics{
+			old: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.85,
 				AvgScoreRejected:  0.65,
 				ConfirmationRate:  0.75,
 			},
-			new: domain.PerformanceMetrics{
+			new: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.86,
 				AvgScoreRejected:  0.64,
 				ConfirmationRate:  0.75,
@@ -124,12 +124,12 @@ func TestLearningScheduler_ShouldApply(t *testing.T) {
 				MinSeparationGain:       0.01,
 				MaxConfirmationRateDrop: 0.05,
 			},
-			old: domain.PerformanceMetrics{
+			old: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.80,
 				AvgScoreRejected:  0.60,
 				ConfirmationRate:  0.80,
 			},
-			new: domain.PerformanceMetrics{
+			new: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.90,
 				AvgScoreRejected:  0.55,
 				ConfirmationRate:  0.70, // Dropped by 0.10
@@ -249,7 +249,7 @@ func TestLearningScheduler_BuildNote(t *testing.T) {
 	new := Weights{
 		Medication: 0.48, Dosage: 0.10, Quantity: 0.18, Price: 0.14, Recency: 0.10,
 	}
-	metrics := domain.PerformanceMetrics{
+	metrics := entity.PerformanceMetrics{
 		SampleSize:        200,
 		AvgScoreConfirmed: 0.88,
 		AvgScoreRejected:  0.65,
@@ -283,7 +283,7 @@ func containsHelper(s, substr string) bool {
 
 func TestLearningScheduler_RunNow_InsufficientData(t *testing.T) {
 	feedbackRepo := &mockFeedbackRepo{
-		stats: &domain.FeedbackStats{
+		stats: &entity.FeedbackStats{
 			TotalFeedbacks: 50, // Less than minimum
 		},
 	}
@@ -316,7 +316,7 @@ func TestLearningScheduler_RunNow_InsufficientData(t *testing.T) {
 
 func TestLearningScheduler_RunNow_Success_AutoApplyDisabled(t *testing.T) {
 	feedbackRepo := &mockFeedbackRepo{
-		stats: &domain.FeedbackStats{
+		stats: &entity.FeedbackStats{
 			TotalFeedbacks:         200,
 			ConfirmedCount:         150,
 			ConfirmationRate:       0.75,
@@ -386,7 +386,7 @@ func TestLearningScheduler_RunNow_Success_AutoApplyDisabled(t *testing.T) {
 
 func TestSchedulerStatus_AllFields(t *testing.T) {
 	now := time.Now()
-	metrics := &domain.PerformanceMetrics{SampleSize: 100}
+	metrics := &entity.PerformanceMetrics{SampleSize: 100}
 	pending := &Weights{Medication: 0.5}
 
 	status := SchedulerStatus{

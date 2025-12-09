@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-	"pharmabroker/internal/domain"
 
 	"github.com/rs/zerolog"
 )
@@ -67,10 +67,10 @@ func (h *FeedbackHandler) RecordFeedback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	feedback := &domain.MatchFeedback{
+	feedback := &entity.MatchFeedback{
 		MatchID:            matchID,
 		OperatorID:         req.OperatorID,
-		Decision:           domain.FeedbackDecision(req.Decision),
+		Decision:           entity.FeedbackDecision(req.Decision),
 		Reason:             req.Reason,
 		OriginalScore:      match.Score,
 		OriginalConfidence: match.MatchedBy,

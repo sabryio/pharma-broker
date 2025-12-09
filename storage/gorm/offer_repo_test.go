@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // =============================================================================
@@ -122,8 +122,8 @@ func TestOfferRepo_GetActive_ExcludesInactive(t *testing.T) {
 	assertNoError(t, repo.Save(ctx, activeOffer), "Save active should succeed")
 
 	// Create expired offer
-	expiredOffer := CreateTestOfferWithRawMessage(t, db, func(o *domain.Offer) {
-		o.Status = domain.StatusExpired
+	expiredOffer := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.Status = entity.StatusExpired
 	})
 	assertNoError(t, repo.Save(ctx, expiredOffer), "Save expired should succeed")
 
@@ -145,13 +145,13 @@ func TestOfferRepo_UpdateStatus(t *testing.T) {
 	assertNoError(t, repo.Save(ctx, offer), "Save should succeed")
 
 	// Update status
-	err := repo.UpdateStatus(ctx, offer.ID, domain.StatusMatched)
+	err := repo.UpdateStatus(ctx, offer.ID, entity.StatusMatched)
 	assertNoError(t, err, "UpdateStatus should succeed")
 
 	// Verify status change
 	saved, err := repo.GetByID(ctx, offer.ID)
 	assertNoError(t, err, "GetByID should succeed")
-	assertEqual(t, saved.Status, domain.StatusMatched, "Status should be updated")
+	assertEqual(t, saved.Status, entity.StatusMatched, "Status should be updated")
 }
 
 func TestOfferRepo_CountActive(t *testing.T) {
@@ -168,8 +168,8 @@ func TestOfferRepo_CountActive(t *testing.T) {
 	}
 
 	// Create 1 expired offer
-	expiredOffer := CreateTestOfferWithRawMessage(t, db, func(o *domain.Offer) {
-		o.Status = domain.StatusExpired
+	expiredOffer := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.Status = entity.StatusExpired
 	})
 	assertNoError(t, repo.Save(ctx, expiredOffer), "Save expired should succeed")
 
@@ -188,13 +188,13 @@ func TestOfferRepo_GetActive_OrderByCreatedAtDesc(t *testing.T) {
 
 	// Create offers with different timestamps
 	now := time.Now()
-	offer1 := CreateTestOfferWithRawMessage(t, db, func(o *domain.Offer) {
+	offer1 := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
 		o.CreatedAt = now.Add(-2 * time.Hour)
 	})
-	offer2 := CreateTestOfferWithRawMessage(t, db, func(o *domain.Offer) {
+	offer2 := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
 		o.CreatedAt = now.Add(-1 * time.Hour)
 	})
-	offer3 := CreateTestOfferWithRawMessage(t, db, func(o *domain.Offer) {
+	offer3 := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
 		o.CreatedAt = now
 	})
 

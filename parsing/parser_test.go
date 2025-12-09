@@ -4,12 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"pharmabroker/domain/entity"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
-
-	"pharmabroker/internal/domain"
 )
 
 func TestParser_ProcessBatch_HappyPath(t *testing.T) {
@@ -38,14 +37,14 @@ func TestParser_ProcessBatch_HappyPath(t *testing.T) {
 	)
 
 	// Test Data
-	msg := &domain.RawMessage{
+	msg := &entity.RawMessage{
 		ID:        "msg-1",
 		Content:   "I have Panadol",
 		Timestamp: time.Now(),
 	}
 
-	parsedItem := domain.ParsedItem{
-		Type:       domain.MessageTypeOffer,
+	parsedItem := entity.ParsedItem{
+		Type:       entity.MessageTypeOffer,
 		Medication: "Panadol",
 		Quantity:   10,
 	}
@@ -55,19 +54,19 @@ func TestParser_ProcessBatch_HappyPath(t *testing.T) {
 	msgMarked := false
 
 	// FTS Mock
-	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
-		return []*domain.MedicationMapping{}, nil
+	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*entity.MedicationMapping, error) {
+		return []*entity.MedicationMapping{}, nil
 	}
 
-	mockAI.OnParseMessages = func(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
-		return []*domain.AIParseResult{
+	mockAI.OnParseMessages = func(ctx context.Context, messages []*entity.RawMessage, mappings []*entity.MedicationMapping) ([]*entity.AIParseResult, error) {
+		return []*entity.AIParseResult{
 			{
-				Items: []domain.ParsedItem{parsedItem},
+				Items: []entity.ParsedItem{parsedItem},
 			},
 		}, nil
 	}
 
-	mockOfferRepo.OnSave = func(ctx context.Context, offer *domain.Offer) error {
+	mockOfferRepo.OnSave = func(ctx context.Context, offer *entity.Offer) error {
 		if offer.Medication == "Panadol" {
 			offerSaved = true
 		}
@@ -75,8 +74,8 @@ func TestParser_ProcessBatch_HappyPath(t *testing.T) {
 	}
 
 	// Mock Search for matches (avoid panic in go routine)
-	mockRequestRepo.OnSearch = func(ctx context.Context, query string, limit, offset int) ([]*domain.Request, error) {
-		return []*domain.Request{}, nil
+	mockRequestRepo.OnSearch = func(ctx context.Context, query string, limit, offset int) ([]*entity.Request, error) {
+		return []*entity.Request{}, nil
 	}
 
 	mockRawRepo.OnMarkProcessed = func(ctx context.Context, id string, err error) error {
@@ -87,7 +86,7 @@ func TestParser_ProcessBatch_HappyPath(t *testing.T) {
 	}
 
 	// Execute (Privately, via white-box testing since in same package)
-	parser.processBatch(context.Background(), []*domain.RawMessage{msg})
+	parser.processBatch(context.Background(), []*entity.RawMessage{msg})
 
 	// Wait for async matching (if any)
 	time.Sleep(50 * time.Millisecond)
@@ -124,14 +123,14 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 		zerolog.Nop(),
 	)
 
-	msg := &domain.RawMessage{ID: "msg-error"}
+	msg := &entity.RawMessage{ID: "msg-error"}
 
 	// Expectations
-	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
-		return []*domain.MedicationMapping{}, nil
+	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*entity.MedicationMapping, error) {
+		return []*entity.MedicationMapping{}, nil
 	}
 
-	mockAI.OnParseMessages = func(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
+	mockAI.OnParseMessages = func(ctx context.Context, messages []*entity.RawMessage, mappings []*entity.MedicationMapping) ([]*entity.AIParseResult, error) {
 		return nil, errors.New("AI overloaded")
 	}
 
@@ -144,14 +143,14 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 	}
 
 	// Expect Enqueue instead of internal channel
-	mockQueueRepo.OnEnqueue = func(ctx context.Context, item *domain.MatchQueueItem) error {
+	mockQueueRepo.OnEnqueue = func(ctx context.Context, item *entity.MatchQueueItem) error {
 		if item.SourceType == "OFFER" && item.SourceID == "offer-123" {
 			return nil
 		}
 		return fmt.Errorf("unexpected enqueue")
 	}
 
-	mockOfferRepo.OnSave = func(ctx context.Context, offer *domain.Offer) error {
+	mockOfferRepo.OnSave = func(ctx context.Context, offer *entity.Offer) error {
 		offer.ID = "offer-123" // Simulate ID generation
 		return nil
 	}
@@ -161,7 +160,7 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 
 	// Wait for workers (async) - in unit test, we might typically call processBatch directly
 	// But let's verify processBatch logic directly for simplicity as before
-	parser.processBatch(context.Background(), []*domain.RawMessage{msg})
+	parser.processBatch(context.Background(), []*entity.RawMessage{msg})
 }
 
 func TestGenerateTrigrams(t *testing.T) {
@@ -202,7 +201,7 @@ func TestParser_GetRelevantMappings_Fuzzy(t *testing.T) {
 		// matchQueueRepo not used here
 	}
 
-	messages := []*domain.RawMessage{
+	messages := []*entity.RawMessage{
 		{Content: "augmentin"}, // Typos handled by trigrams? "augmentin" -> "aug", "ugm"...
 	}
 
@@ -210,11 +209,11 @@ func TestParser_GetRelevantMappings_Fuzzy(t *testing.T) {
 	// 2. Fuzzy search returns result
 
 	callCount := 0
-	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
+	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*entity.MedicationMapping, error) {
 		callCount++
 		if callCount == 1 {
 			// Exact match query
-			return []*domain.MedicationMapping{}, nil
+			return []*entity.MedicationMapping{}, nil
 		}
 		if callCount == 2 {
 			// Fuzzy match query
@@ -222,7 +221,7 @@ func TestParser_GetRelevantMappings_Fuzzy(t *testing.T) {
 			if len(query) == 0 {
 				t.Error("Expected fuzzy query to be non-empty")
 			}
-			return []*domain.MedicationMapping{
+			return []*entity.MedicationMapping{
 				{ArabicName: "اوجمنتين", EnglishName: "Augmentin"},
 			}, nil
 		}

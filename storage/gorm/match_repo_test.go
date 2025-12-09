@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // =============================================================================
@@ -98,8 +98,8 @@ func TestMatchRepo_GetPending_WithPreload(t *testing.T) {
 	assertNoError(t, requestRepo.Save(ctx, request), "Save request")
 
 	// Create pending match
-	match := NewTestMatch(offer.ID, request.ID, func(m *domain.Match) {
-		m.Status = domain.MatchStatusPending
+	match := NewTestMatch(offer.ID, request.ID, func(m *entity.Match) {
+		m.Status = entity.MatchStatusPending
 	})
 	assertNoError(t, matchRepo.Save(ctx, match), "Save match")
 
@@ -135,13 +135,13 @@ func TestMatchRepo_UpdateStatus_Confirm(t *testing.T) {
 	assertNoError(t, matchRepo.Save(ctx, match), "Save match")
 
 	// Confirm match
-	err := matchRepo.UpdateStatus(ctx, match.ID, domain.MatchStatusConfirmed, "OPERATOR")
+	err := matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "OPERATOR")
 	assertNoError(t, err, "UpdateStatus should succeed")
 
 	// Verify status and confirmed_at
 	saved, err := matchRepo.GetByID(ctx, match.ID)
 	assertNoError(t, err, "GetByID should succeed")
-	assertEqual(t, saved.Status, domain.MatchStatusConfirmed, "Status should be CONFIRMED")
+	assertEqual(t, saved.Status, entity.MatchStatusConfirmed, "Status should be CONFIRMED")
 	assertNotNil(t, saved.ConfirmedAt, "ConfirmedAt should be set")
 }
 
@@ -165,13 +165,13 @@ func TestMatchRepo_UpdateStatus_Reject(t *testing.T) {
 	assertNoError(t, matchRepo.Save(ctx, match), "Save match")
 
 	// Reject match
-	err := matchRepo.UpdateStatus(ctx, match.ID, domain.MatchStatusRejected, "OPERATOR")
+	err := matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusRejected, "OPERATOR")
 	assertNoError(t, err, "UpdateStatus should succeed")
 
 	// Verify status
 	saved, err := matchRepo.GetByID(ctx, match.ID)
 	assertNoError(t, err, "GetByID should succeed")
-	assertEqual(t, saved.Status, domain.MatchStatusRejected, "Status should be REJECTED")
+	assertEqual(t, saved.Status, entity.MatchStatusRejected, "Status should be REJECTED")
 }
 
 func TestMatchRepo_GetRecentConfirmed(t *testing.T) {
@@ -191,8 +191,8 @@ func TestMatchRepo_GetRecentConfirmed(t *testing.T) {
 
 	// Create confirmed match
 	now := time.Now()
-	match := NewTestMatch(offer.ID, request.ID, func(m *domain.Match) {
-		m.Status = domain.MatchStatusConfirmed
+	match := NewTestMatch(offer.ID, request.ID, func(m *entity.Match) {
+		m.Status = entity.MatchStatusConfirmed
 		m.ConfirmedAt = &now
 	})
 	assertNoError(t, matchRepo.Save(ctx, match), "Save match")
@@ -219,8 +219,8 @@ func TestMatchRepo_GetPending_ExcludesConfirmed(t *testing.T) {
 	assertNoError(t, requestRepo.Save(ctx, request), "Save request")
 
 	// Create pending match
-	pendingMatch := NewTestMatch(offer.ID, request.ID, func(m *domain.Match) {
-		m.Status = domain.MatchStatusPending
+	pendingMatch := NewTestMatch(offer.ID, request.ID, func(m *entity.Match) {
+		m.Status = entity.MatchStatusPending
 	})
 	assertNoError(t, matchRepo.Save(ctx, pendingMatch), "Save pending match")
 
@@ -231,8 +231,8 @@ func TestMatchRepo_GetPending_ExcludesConfirmed(t *testing.T) {
 	assertNoError(t, requestRepo.Save(ctx, request2), "Save request2")
 
 	now := time.Now()
-	confirmedMatch := NewTestMatch(offer2.ID, request2.ID, func(m *domain.Match) {
-		m.Status = domain.MatchStatusConfirmed
+	confirmedMatch := NewTestMatch(offer2.ID, request2.ID, func(m *entity.Match) {
+		m.Status = entity.MatchStatusConfirmed
 		m.ConfirmedAt = &now
 	})
 	assertNoError(t, matchRepo.Save(ctx, confirmedMatch), "Save confirmed match")

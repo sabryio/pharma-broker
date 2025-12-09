@@ -5,31 +5,31 @@ import (
 	"testing"
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 	"pharmabroker/pkg/matcher/similarity"
 )
 
 // ---- Mock implementations for matching tests ----
 
 type matchingMatchRepo struct {
-	matches []*domain.Match
-	saved   []*domain.Match
+	matches []*entity.Match
+	saved   []*entity.Match
 }
 
 func newMatchingMatchRepo() *matchingMatchRepo {
 	return &matchingMatchRepo{
-		matches: make([]*domain.Match, 0),
-		saved:   make([]*domain.Match, 0),
+		matches: make([]*entity.Match, 0),
+		saved:   make([]*entity.Match, 0),
 	}
 }
 
-func (m *matchingMatchRepo) Save(ctx context.Context, match *domain.Match) error {
+func (m *matchingMatchRepo) Save(ctx context.Context, match *entity.Match) error {
 	m.saved = append(m.saved, match)
 	m.matches = append(m.matches, match)
 	return nil
 }
 
-func (m *matchingMatchRepo) GetByID(ctx context.Context, id string) (*domain.Match, error) {
+func (m *matchingMatchRepo) GetByID(ctx context.Context, id string) (*entity.Match, error) {
 	for _, match := range m.matches {
 		if match.ID == id {
 			return match, nil
@@ -38,11 +38,11 @@ func (m *matchingMatchRepo) GetByID(ctx context.Context, id string) (*domain.Mat
 	return nil, nil
 }
 
-func (m *matchingMatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*domain.MatchWithDetails, error) {
-	var results []*domain.MatchWithDetails
+func (m *matchingMatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*entity.MatchWithDetails, error) {
+	var results []*entity.MatchWithDetails
 	for _, match := range m.matches {
-		if match.Status == domain.MatchStatusPending {
-			results = append(results, &domain.MatchWithDetails{Match: *match})
+		if match.Status == entity.MatchStatusPending {
+			results = append(results, &entity.MatchWithDetails{Match: *match})
 		}
 	}
 	return results, nil
@@ -51,14 +51,14 @@ func (m *matchingMatchRepo) GetPending(ctx context.Context, limit, offset int) (
 func (m *matchingMatchRepo) CountPending(ctx context.Context) (int64, error) {
 	var count int64
 	for _, match := range m.matches {
-		if match.Status == domain.MatchStatusPending {
+		if match.Status == entity.MatchStatusPending {
 			count++
 		}
 	}
 	return count, nil
 }
 
-func (m *matchingMatchRepo) UpdateStatus(ctx context.Context, id string, status domain.MatchStatus, matchedBy string) error {
+func (m *matchingMatchRepo) UpdateStatus(ctx context.Context, id string, status entity.MatchStatus, matchedBy string) error {
 	for _, match := range m.matches {
 		if match.ID == id {
 			match.Status = status
@@ -69,8 +69,8 @@ func (m *matchingMatchRepo) UpdateStatus(ctx context.Context, id string, status 
 	return nil
 }
 
-func (m *matchingMatchRepo) GetByOfferID(ctx context.Context, offerID string) ([]*domain.Match, error) {
-	var results []*domain.Match
+func (m *matchingMatchRepo) GetByOfferID(ctx context.Context, offerID string) ([]*entity.Match, error) {
+	var results []*entity.Match
 	for _, match := range m.matches {
 		if match.OfferID == offerID {
 			results = append(results, match)
@@ -79,8 +79,8 @@ func (m *matchingMatchRepo) GetByOfferID(ctx context.Context, offerID string) ([
 	return results, nil
 }
 
-func (m *matchingMatchRepo) GetByRequestID(ctx context.Context, requestID string) ([]*domain.Match, error) {
-	var results []*domain.Match
+func (m *matchingMatchRepo) GetByRequestID(ctx context.Context, requestID string) ([]*entity.Match, error) {
+	var results []*entity.Match
 	for _, match := range m.matches {
 		if match.RequestID == requestID {
 			results = append(results, match)
@@ -99,13 +99,13 @@ func TestMatchRepo_SaveAndRetrieve(t *testing.T) {
 	ctx := context.Background()
 	repo := newMatchingMatchRepo()
 
-	match := &domain.Match{
+	match := &entity.Match{
 		ID:        "match-001",
 		OfferID:   "offer-001",
 		RequestID: "req-001",
 		Score:     0.85,
 		Reasoning: "High medication similarity",
-		Status:    domain.MatchStatusPending,
+		Status:    entity.MatchStatusPending,
 		CreatedAt: time.Now(),
 	}
 
@@ -134,9 +134,9 @@ func TestMatchRepo_GetPending(t *testing.T) {
 	repo := newMatchingMatchRepo()
 
 	// Add pending matches
-	repo.Save(ctx, &domain.Match{ID: "m1", Status: domain.MatchStatusPending, Score: 0.9})
-	repo.Save(ctx, &domain.Match{ID: "m2", Status: domain.MatchStatusConfirmed, Score: 0.8})
-	repo.Save(ctx, &domain.Match{ID: "m3", Status: domain.MatchStatusPending, Score: 0.7})
+	repo.Save(ctx, &entity.Match{ID: "m1", Status: entity.MatchStatusPending, Score: 0.9})
+	repo.Save(ctx, &entity.Match{ID: "m2", Status: entity.MatchStatusConfirmed, Score: 0.8})
+	repo.Save(ctx, &entity.Match{ID: "m3", Status: entity.MatchStatusPending, Score: 0.7})
 
 	pending, err := repo.GetPending(ctx, 10, 0)
 	if err != nil {
@@ -152,10 +152,10 @@ func TestMatchRepo_CountPending(t *testing.T) {
 	ctx := context.Background()
 	repo := newMatchingMatchRepo()
 
-	repo.Save(ctx, &domain.Match{ID: "m1", Status: domain.MatchStatusPending})
-	repo.Save(ctx, &domain.Match{ID: "m2", Status: domain.MatchStatusConfirmed})
-	repo.Save(ctx, &domain.Match{ID: "m3", Status: domain.MatchStatusPending})
-	repo.Save(ctx, &domain.Match{ID: "m4", Status: domain.MatchStatusRejected})
+	repo.Save(ctx, &entity.Match{ID: "m1", Status: entity.MatchStatusPending})
+	repo.Save(ctx, &entity.Match{ID: "m2", Status: entity.MatchStatusConfirmed})
+	repo.Save(ctx, &entity.Match{ID: "m3", Status: entity.MatchStatusPending})
+	repo.Save(ctx, &entity.Match{ID: "m4", Status: entity.MatchStatusRejected})
 
 	count, err := repo.CountPending(ctx)
 	if err != nil {
@@ -171,25 +171,25 @@ func TestMatchStatus_Confirm(t *testing.T) {
 	ctx := context.Background()
 	repo := newMatchingMatchRepo()
 
-	match := &domain.Match{
+	match := &entity.Match{
 		ID:        "match-confirm",
 		OfferID:   "offer-c1",
 		RequestID: "req-c1",
 		Score:     0.85,
-		Status:    domain.MatchStatusPending,
+		Status:    entity.MatchStatusPending,
 		CreatedAt: time.Now(),
 	}
 	repo.Save(ctx, match)
 
 	// Confirm match
-	err := repo.UpdateStatus(ctx, match.ID, domain.MatchStatusConfirmed, "operator@phone")
+	err := repo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "operator@phone")
 	if err != nil {
 		t.Fatalf("Failed to confirm match: %v", err)
 	}
 
 	// Verify status changed
 	updated, _ := repo.GetByID(ctx, match.ID)
-	if updated.Status != domain.MatchStatusConfirmed {
+	if updated.Status != entity.MatchStatusConfirmed {
 		t.Errorf("Match status = %s, want CONFIRMED", updated.Status)
 	}
 	if updated.MatchedBy != "operator@phone" {
@@ -201,25 +201,25 @@ func TestMatchStatus_Reject(t *testing.T) {
 	ctx := context.Background()
 	repo := newMatchingMatchRepo()
 
-	match := &domain.Match{
+	match := &entity.Match{
 		ID:        "match-reject",
 		OfferID:   "offer-r1",
 		RequestID: "req-r1",
 		Score:     0.60,
-		Status:    domain.MatchStatusPending,
+		Status:    entity.MatchStatusPending,
 		CreatedAt: time.Now(),
 	}
 	repo.Save(ctx, match)
 
 	// Reject match
-	err := repo.UpdateStatus(ctx, match.ID, domain.MatchStatusRejected, "admin")
+	err := repo.UpdateStatus(ctx, match.ID, entity.MatchStatusRejected, "admin")
 	if err != nil {
 		t.Fatalf("Failed to reject match: %v", err)
 	}
 
 	// Verify status changed
 	updated, _ := repo.GetByID(ctx, match.ID)
-	if updated.Status != domain.MatchStatusRejected {
+	if updated.Status != entity.MatchStatusRejected {
 		t.Errorf("Match status = %s, want REJECTED", updated.Status)
 	}
 }
@@ -228,9 +228,9 @@ func TestMatchRepo_GetByOfferID(t *testing.T) {
 	ctx := context.Background()
 	repo := newMatchingMatchRepo()
 
-	repo.Save(ctx, &domain.Match{ID: "m1", OfferID: "offer-x", RequestID: "r1", Status: domain.MatchStatusPending})
-	repo.Save(ctx, &domain.Match{ID: "m2", OfferID: "offer-x", RequestID: "r2", Status: domain.MatchStatusPending})
-	repo.Save(ctx, &domain.Match{ID: "m3", OfferID: "offer-y", RequestID: "r3", Status: domain.MatchStatusPending})
+	repo.Save(ctx, &entity.Match{ID: "m1", OfferID: "offer-x", RequestID: "r1", Status: entity.MatchStatusPending})
+	repo.Save(ctx, &entity.Match{ID: "m2", OfferID: "offer-x", RequestID: "r2", Status: entity.MatchStatusPending})
+	repo.Save(ctx, &entity.Match{ID: "m3", OfferID: "offer-y", RequestID: "r3", Status: entity.MatchStatusPending})
 
 	matches, err := repo.GetByOfferID(ctx, "offer-x")
 	if err != nil {
@@ -246,9 +246,9 @@ func TestMatchRepo_GetByRequestID(t *testing.T) {
 	ctx := context.Background()
 	repo := newMatchingMatchRepo()
 
-	repo.Save(ctx, &domain.Match{ID: "m1", OfferID: "o1", RequestID: "req-a", Status: domain.MatchStatusPending})
-	repo.Save(ctx, &domain.Match{ID: "m2", OfferID: "o2", RequestID: "req-a", Status: domain.MatchStatusConfirmed})
-	repo.Save(ctx, &domain.Match{ID: "m3", OfferID: "o3", RequestID: "req-b", Status: domain.MatchStatusPending})
+	repo.Save(ctx, &entity.Match{ID: "m1", OfferID: "o1", RequestID: "req-a", Status: entity.MatchStatusPending})
+	repo.Save(ctx, &entity.Match{ID: "m2", OfferID: "o2", RequestID: "req-a", Status: entity.MatchStatusConfirmed})
+	repo.Save(ctx, &entity.Match{ID: "m3", OfferID: "o3", RequestID: "req-b", Status: entity.MatchStatusPending})
 
 	matches, err := repo.GetByRequestID(ctx, "req-a")
 	if err != nil {
@@ -292,17 +292,17 @@ func TestCosineSimilarity_Vectors(t *testing.T) {
 }
 
 func TestMatchScoring_Fields(t *testing.T) {
-	// Test domain.Match struct fields for scoring compatibility
-	match := &domain.Match{
+	// Test entity.Match struct fields for scoring compatibility
+	match := &entity.Match{
 		Score:  0.87,
-		Status: domain.MatchStatusPending,
+		Status: entity.MatchStatusPending,
 	}
 
 	if match.Score < 0 || match.Score > 1 {
 		t.Errorf("Score should be between 0 and 1, got %.2f", match.Score)
 	}
 
-	if match.Status != domain.MatchStatusPending {
+	if match.Status != entity.MatchStatusPending {
 		t.Errorf("Expected PENDING status, got %s", match.Status)
 	}
 }
@@ -311,46 +311,46 @@ func TestMatchStatus_Transitions(t *testing.T) {
 	ctx := context.Background()
 	repo := newMatchingMatchRepo()
 
-	match := &domain.Match{
+	match := &entity.Match{
 		ID:     "trans-001",
-		Status: domain.MatchStatusPending,
+		Status: entity.MatchStatusPending,
 	}
 	repo.Save(ctx, match)
 
 	// Pending -> Confirmed
-	repo.UpdateStatus(ctx, match.ID, domain.MatchStatusConfirmed, "user1")
+	repo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "user1")
 	retrieved, _ := repo.GetByID(ctx, match.ID)
-	if retrieved.Status != domain.MatchStatusConfirmed {
+	if retrieved.Status != entity.MatchStatusConfirmed {
 		t.Error("Failed transition: Pending -> Confirmed")
 	}
 
 	// Reset and test Pending -> Rejected
-	match2 := &domain.Match{ID: "trans-002", Status: domain.MatchStatusPending}
+	match2 := &entity.Match{ID: "trans-002", Status: entity.MatchStatusPending}
 	repo.Save(ctx, match2)
-	repo.UpdateStatus(ctx, match2.ID, domain.MatchStatusRejected, "user2")
+	repo.UpdateStatus(ctx, match2.ID, entity.MatchStatusRejected, "user2")
 	retrieved2, _ := repo.GetByID(ctx, match2.ID)
-	if retrieved2.Status != domain.MatchStatusRejected {
+	if retrieved2.Status != entity.MatchStatusRejected {
 		t.Error("Failed transition: Pending -> Rejected")
 	}
 }
 
 func TestMatchWithDetails_Embedding(t *testing.T) {
 	// Test MatchWithDetails struct for reporting
-	mwd := &domain.MatchWithDetails{
-		Match: domain.Match{
+	mwd := &entity.MatchWithDetails{
+		Match: entity.Match{
 			ID:        "detail-001",
 			OfferID:   "o1",
 			RequestID: "r1",
 			Score:     0.92,
-			Status:    domain.MatchStatusPending,
+			Status:    entity.MatchStatusPending,
 		},
-		Offer: &domain.Offer{
+		Offer: &entity.Offer{
 			ID:         "o1",
 			Medication: "Paracetamol 500mg",
 			Quantity:   100,
 			Price:      25.50,
 		},
-		Request: &domain.Request{
+		Request: &entity.Request{
 			ID:         "r1",
 			Medication: "Paracetamol",
 			Quantity:   50,

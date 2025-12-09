@@ -31,8 +31,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"pharmabroker/ai"
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	"pharmabroker/internal/notify"
 	"pharmabroker/internal/reports"
 	"pharmabroker/internal/whatsapp"
@@ -283,7 +283,7 @@ func main() {
 	// ============================================================
 	workflow.StartPhase("Group Setup")
 
-	testGroups := []*domain.Group{
+	testGroups := []*entity.Group{
 		{JID: "120363012345678901@g.us", Name: "مجموعة صيادلة القاهرة", Monitored: true, AddedAt: time.Now()},
 		{JID: "120363098765432109@g.us", Name: "موردين الأدوية", Monitored: true, AddedAt: time.Now()},
 		{JID: "120363055555555555@g.us", Name: "صيادلة الإسكندرية", Monitored: true, AddedAt: time.Now()},

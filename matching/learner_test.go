@@ -3,42 +3,41 @@ package matching
 import (
 	"context"
 	"math"
+	"pharmabroker/domain/entity"
 	"testing"
 	"time"
-
-	"pharmabroker/internal/domain"
 )
 
 // Mock repositories for testing
 type mockFeedbackRepo struct {
-	stats *domain.FeedbackStats
+	stats *entity.FeedbackStats
 	err   error
 }
 
-func (m *mockFeedbackRepo) GetFeedbackStats(ctx context.Context, startDate, endDate time.Time) (*domain.FeedbackStats, error) {
+func (m *mockFeedbackRepo) GetFeedbackStats(ctx context.Context, startDate, endDate time.Time) (*entity.FeedbackStats, error) {
 	return m.stats, m.err
 }
 
-func (m *mockFeedbackRepo) GetByDateRange(ctx context.Context, startDate, endDate time.Time) ([]*domain.FeedbackRecord, error) {
+func (m *mockFeedbackRepo) GetByDateRange(ctx context.Context, startDate, endDate time.Time) ([]*entity.FeedbackRecord, error) {
 	return nil, nil
 }
 
 type mockWeightHistoryRepo struct {
-	saved   []*domain.WeightHistory
-	current *domain.WeightHistory
+	saved   []*entity.WeightHistory
+	current *entity.WeightHistory
 	err     error
 }
 
-func (m *mockWeightHistoryRepo) Save(ctx context.Context, history *domain.WeightHistory) error {
+func (m *mockWeightHistoryRepo) Save(ctx context.Context, history *entity.WeightHistory) error {
 	m.saved = append(m.saved, history)
 	return m.err
 }
 
-func (m *mockWeightHistoryRepo) GetCurrent(ctx context.Context) (*domain.WeightHistory, error) {
+func (m *mockWeightHistoryRepo) GetCurrent(ctx context.Context) (*entity.WeightHistory, error) {
 	return m.current, m.err
 }
 
-func (m *mockWeightHistoryRepo) GetHistory(ctx context.Context, limit int) ([]*domain.WeightHistory, error) {
+func (m *mockWeightHistoryRepo) GetHistory(ctx context.Context, limit int) ([]*entity.WeightHistory, error) {
 	if len(m.saved) <= limit {
 		return m.saved, m.err
 	}
@@ -47,8 +46,8 @@ func (m *mockWeightHistoryRepo) GetHistory(ctx context.Context, limit int) ([]*d
 
 func (m *mockWeightHistoryRepo) SaveWithMetrics(ctx context.Context,
 	medicationWeight, dosageWeight, quantityWeight, priceWeight, recencyWeight float64,
-	source domain.WeightSource,
-	metrics *domain.PerformanceMetrics,
+	source entity.WeightSource,
+	metrics *entity.PerformanceMetrics,
 	notes string) error {
 	return m.err
 }
@@ -81,7 +80,7 @@ func TestCalculateCorrelations(t *testing.T) {
 		config: DefaultLearningConfig(),
 	}
 
-	stats := &domain.FeedbackStats{
+	stats := &entity.FeedbackStats{
 		// Medication: strong positive correlation (confirmed much higher)
 		ConfirmedAvgMedication: 0.90,
 		RejectedAvgMedication:  0.60,
@@ -251,7 +250,7 @@ func TestNormalizeWeights_ZeroSum(t *testing.T) {
 
 func TestCalculateOptimalWeights_InsufficientData(t *testing.T) {
 	feedbackRepo := &mockFeedbackRepo{
-		stats: &domain.FeedbackStats{
+		stats: &entity.FeedbackStats{
 			TotalFeedbacks: 50, // Less than minimum (100)
 		},
 	}
@@ -275,7 +274,7 @@ func TestCalculateOptimalWeights_InsufficientData(t *testing.T) {
 
 func TestCalculateOptimalWeights_Success(t *testing.T) {
 	feedbackRepo := &mockFeedbackRepo{
-		stats: &domain.FeedbackStats{
+		stats: &entity.FeedbackStats{
 			TotalFeedbacks:   200,
 			ConfirmedCount:   150,
 			RejectedCount:    50,
@@ -352,18 +351,18 @@ func TestShouldApply(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		oldMetrics  domain.PerformanceMetrics
-		newMetrics  domain.PerformanceMetrics
+		oldMetrics  entity.PerformanceMetrics
+		newMetrics  entity.PerformanceMetrics
 		shouldApply bool
 	}{
 		{
 			name: "Better separation, stable confirmation rate",
-			oldMetrics: domain.PerformanceMetrics{
+			oldMetrics: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.85,
 				AvgScoreRejected:  0.65,
 				ConfirmationRate:  0.75,
 			},
-			newMetrics: domain.PerformanceMetrics{
+			newMetrics: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.88,
 				AvgScoreRejected:  0.63,
 				ConfirmationRate:  0.76,
@@ -372,12 +371,12 @@ func TestShouldApply(t *testing.T) {
 		},
 		{
 			name: "Worse separation",
-			oldMetrics: domain.PerformanceMetrics{
+			oldMetrics: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.85,
 				AvgScoreRejected:  0.65,
 				ConfirmationRate:  0.75,
 			},
-			newMetrics: domain.PerformanceMetrics{
+			newMetrics: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.82,
 				AvgScoreRejected:  0.68,
 				ConfirmationRate:  0.75,
@@ -386,12 +385,12 @@ func TestShouldApply(t *testing.T) {
 		},
 		{
 			name: "Better separation but confirmation rate dropped too much",
-			oldMetrics: domain.PerformanceMetrics{
+			oldMetrics: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.85,
 				AvgScoreRejected:  0.65,
 				ConfirmationRate:  0.75,
 			},
-			newMetrics: domain.PerformanceMetrics{
+			newMetrics: entity.PerformanceMetrics{
 				AvgScoreConfirmed: 0.90,
 				AvgScoreRejected:  0.60,
 				ConfirmationRate:  0.65, // Dropped by 0.10 (> 0.05 threshold)
@@ -437,7 +436,7 @@ func TestSetGetConfig(t *testing.T) {
 func TestCalculateMetrics(t *testing.T) {
 	wl := &WeightLearner{}
 
-	stats := &domain.FeedbackStats{
+	stats := &entity.FeedbackStats{
 		TotalFeedbacks:    200,
 		ConfirmedCount:    150,
 		ConfirmationRate:  0.75,

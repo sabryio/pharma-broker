@@ -11,9 +11,9 @@ import (
 	"google.golang.org/genai"
 
 	"pharmabroker/ai/prompts"
+	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 )
 
 // Client handles communication with Gemini API using official SDK
@@ -123,7 +123,7 @@ var pharmaParseSchema = map[string]any{
 }
 
 // ParseMessages parses one or more messages and extracts offers/requests
-func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
+func (c *Client) ParseMessages(ctx context.Context, messages []*entity.RawMessage, mappings []*entity.MedicationMapping) ([]*entity.AIParseResult, error) {
 	// Check rate limit
 	if !c.checkRateLimit() {
 		return nil, fmt.Errorf("rate limit exceeded (%d requests/hour)", c.cfg.RateLimitPerHour)
@@ -214,18 +214,18 @@ func (c *Client) checkRateLimit() bool {
 	return true
 }
 
-func (c *Client) parseResponse(responseText string, messages []*domain.RawMessage) ([]*domain.AIParseResult, error) {
+func (c *Client) parseResponse(responseText string, messages []*entity.RawMessage) ([]*entity.AIParseResult, error) {
 	// Expected format: array of results, one per message
 	var rawResults []struct {
 		MessageIndex int                 `json:"message_index"`
-		Items        []domain.ParsedItem `json:"items"`
+		Items        []entity.ParsedItem `json:"items"`
 		Error        string              `json:"error,omitempty"`
 	}
 
 	if err := json.Unmarshal([]byte(responseText), &rawResults); err != nil {
 		// Try to parse as single result for single message
 		var singleResult struct {
-			Items []domain.ParsedItem `json:"items"`
+			Items []entity.ParsedItem `json:"items"`
 			Error string              `json:"error,omitempty"`
 		}
 		if err2 := json.Unmarshal([]byte(responseText), &singleResult); err2 != nil {
@@ -235,7 +235,7 @@ func (c *Client) parseResponse(responseText string, messages []*domain.RawMessag
 		// Convert to array format
 		rawResults = []struct {
 			MessageIndex int                 `json:"message_index"`
-			Items        []domain.ParsedItem `json:"items"`
+			Items        []entity.ParsedItem `json:"items"`
 			Error        string              `json:"error,omitempty"`
 		}{
 			{MessageIndex: 0, Items: singleResult.Items, Error: singleResult.Error},
@@ -243,10 +243,10 @@ func (c *Client) parseResponse(responseText string, messages []*domain.RawMessag
 	}
 
 	// Map results back to messages
-	results := make([]*domain.AIParseResult, len(messages))
+	results := make([]*entity.AIParseResult, len(messages))
 	for i := range messages {
-		results[i] = &domain.AIParseResult{
-			Items:   []domain.ParsedItem{},
+		results[i] = &entity.AIParseResult{
+			Items:   []entity.ParsedItem{},
 			RawJSON: responseText,
 		}
 	}
@@ -355,7 +355,7 @@ func (c *Client) EmbedBatch(ctx context.Context, texts []string) ([][]float32, e
 
 // SetMappings is a no-op for GeminiClient as it doesn't use hybrid RAG filtering.
 // The Gemini provider uses the full mappings passed to ParseMessages directly.
-func (c *Client) SetMappings(mappings []*domain.MedicationMapping) {
+func (c *Client) SetMappings(mappings []*entity.MedicationMapping) {
 	// No-op: Gemini doesn't use hybrid RAG filtering
 	c.log.Debug().Int("count", len(mappings)).Msg("SetMappings called (no-op for Gemini)")
 }

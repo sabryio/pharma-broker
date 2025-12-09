@@ -7,8 +7,8 @@ import (
 	"time"
 
 	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	arabicPkg "pharmabroker/pkg/arabic"
 	"pharmabroker/pkg/matcher/filtering"
 	storageGorm "pharmabroker/storage/gorm"
@@ -103,7 +103,7 @@ func main() {
 
 	client.SetMappings(allMappings)
 
-	msg := &domain.RawMessage{
+	msg := &entity.RawMessage{
 		ID:         "normalization-test",
 		Content:    content,
 		SenderName: "Test",
@@ -111,7 +111,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, filtering.MapToMappingsEntity(mappings))
+	results, err := client.ParseMessages(context.Background(), []*entity.RawMessage{msg}, filtering.MapToMappingsEntity(mappings))
 	duration := time.Since(start)
 
 	if err != nil {

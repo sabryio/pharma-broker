@@ -2,9 +2,7 @@
 package gorm
 
 import (
-	"encoding/binary"
 	"encoding/json"
-	"math"
 
 	"pharmabroker/domain/entity"
 )
@@ -476,31 +474,6 @@ func deserializeSynonyms(s string) []string {
 	var result []string
 	json.Unmarshal([]byte(s), &result)
 	return result
-}
-
-// float32SliceToBytes converts []float32 to []byte for storage
-func float32SliceToBytes(floats []float32) []byte {
-	if len(floats) == 0 {
-		return nil
-	}
-	buf := make([]byte, len(floats)*4)
-	for i, f := range floats {
-		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(f))
-	}
-	return buf
-}
-
-// bytesToFloat32Slice converts []byte to []float32
-func bytesToFloat32Slice(data []byte) []float32 {
-	if len(data) == 0 {
-		return nil
-	}
-	floats := make([]float32, len(data)/4)
-	for i := range floats {
-		bits := binary.LittleEndian.Uint32(data[i*4:])
-		floats[i] = math.Float32frombits(bits)
-	}
-	return floats
 }
 
 // ========================================

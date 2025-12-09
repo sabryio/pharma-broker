@@ -17,6 +17,7 @@ import (
 	"pharmabroker/api"
 	apiHandlers "pharmabroker/api/handlers"
 	"pharmabroker/api/sse"
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/janitor"
@@ -85,8 +86,6 @@ func runServe(cmd *cobra.Command, args []string) {
 	leaderboardRepo := storageGorm.NewLeaderboardRepo(newDB)
 	auditRepo := storageGorm.NewAuditRepo(newDB)
 
-	_ = domain.StatusActive // Ensure domain package is used
-
 	// Load medication mappings from file
 	commonMedications, err := domain.LoadRichMedicationMappings("medications.json")
 	if err != nil {
@@ -140,7 +139,7 @@ func runServe(cmd *cobra.Command, args []string) {
 
 		// Save mapped data
 		for i, item := range seedQueue {
-			mapping := &domain.MedicationMapping{
+			mapping := &entity.MedicationMapping{
 				ArabicName:  item.Canonical,
 				EnglishName: item.English,
 				Synonyms:    item.Synonyms,

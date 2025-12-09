@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	"pharmabroker/pkg/matcher/filtering"
 	storageGorm "pharmabroker/storage/gorm"
 	"strings"
@@ -120,7 +120,7 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create client")
 	}
 
-	msg := &domain.RawMessage{
+	msg := &entity.RawMessage{
 		ID:         "keyword-filter-test",
 		Content:    content,
 		SenderName: "Test",
@@ -128,7 +128,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, filtering.MapToMappingsEntity(filteredMappings))
+	results, err := client.ParseMessages(context.Background(), []*entity.RawMessage{msg}, filtering.MapToMappingsEntity(filteredMappings))
 	duration := time.Since(start)
 
 	if err != nil {

@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"os"
+	"pharmabroker/domain/entity"
 )
 
 // MedicationEntry represents a medication in the rich JSON format
@@ -13,11 +14,11 @@ type MedicationEntry struct {
 
 // LoadRichMedicationMappings loads the new format with synonyms
 // Format: { "arabic_name": { "english": "...", "synonyms": ["...", "..."] } }
-func LoadRichMedicationMappings(path string) ([]*MedicationMapping, error) {
+func LoadRichMedicationMappings(path string) ([]*entity.MedicationMapping, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []*MedicationMapping{}, nil
+			return []*entity.MedicationMapping{}, nil
 		}
 		return nil, err
 	}
@@ -28,9 +29,9 @@ func LoadRichMedicationMappings(path string) ([]*MedicationMapping, error) {
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&richMappings); err == nil {
 		// Successfully parsed as rich format
-		var result []*MedicationMapping
+		var result []*entity.MedicationMapping
 		for arabic, entry := range richMappings {
-			result = append(result, &MedicationMapping{
+			result = append(result, &entity.MedicationMapping{
 				ArabicName:  arabic,
 				EnglishName: entry.English,
 				Synonyms:    entry.Synonyms,
@@ -46,9 +47,9 @@ func LoadRichMedicationMappings(path string) ([]*MedicationMapping, error) {
 		return nil, err
 	}
 
-	var result []*MedicationMapping
+	var result []*entity.MedicationMapping
 	for arabic, english := range flatMappings {
-		result = append(result, &MedicationMapping{
+		result = append(result, &entity.MedicationMapping{
 			ArabicName:  arabic,
 			EnglishName: english,
 		})

@@ -3,7 +3,7 @@ package filtering
 import (
 	"context"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 	"pharmabroker/pkg/matcher"
 	"pharmabroker/pkg/matcher/similarity"
 )
@@ -11,7 +11,7 @@ import (
 func HybridFilter(
 	ctx context.Context,
 	content string,
-	allMappings []*domain.MedicationMapping,
+	allMappings []*entity.MedicationMapping,
 	embedder matcher.Embedder,
 	comparator similarity.Comparator,
 	topK int,

@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // LearningConfig holds configuration for the weight learning algorithm
@@ -41,19 +41,19 @@ type WeightLearner struct {
 
 // FeedbackRecordRepository defines the interface for feedback storage
 type FeedbackRecordRepository interface {
-	GetFeedbackStats(ctx context.Context, startDate, endDate time.Time) (*domain.FeedbackStats, error)
-	GetByDateRange(ctx context.Context, startDate, endDate time.Time) ([]*domain.FeedbackRecord, error)
+	GetFeedbackStats(ctx context.Context, startDate, endDate time.Time) (*entity.FeedbackStats, error)
+	GetByDateRange(ctx context.Context, startDate, endDate time.Time) ([]*entity.FeedbackRecord, error)
 }
 
 // WeightHistoryRepository defines the interface for weight history storage
 type WeightHistoryRepository interface {
-	Save(ctx context.Context, history *domain.WeightHistory) error
-	GetCurrent(ctx context.Context) (*domain.WeightHistory, error)
-	GetHistory(ctx context.Context, limit int) ([]*domain.WeightHistory, error)
+	Save(ctx context.Context, history *entity.WeightHistory) error
+	GetCurrent(ctx context.Context) (*entity.WeightHistory, error)
+	GetHistory(ctx context.Context, limit int) ([]*entity.WeightHistory, error)
 	SaveWithMetrics(ctx context.Context,
 		medicationWeight, dosageWeight, quantityWeight, priceWeight, recencyWeight float64,
-		source domain.WeightSource,
-		metrics *domain.PerformanceMetrics,
+		source entity.WeightSource,
+		metrics *entity.PerformanceMetrics,
 		notes string) error
 }
 
@@ -87,7 +87,7 @@ func NewWeightLearnerWithConfig(
 }
 
 // CalculateOptimalWeights analyzes feedback and computes optimal weights
-func (wl *WeightLearner) CalculateOptimalWeights(ctx context.Context, startDate, endDate time.Time) (*Weights, *domain.PerformanceMetrics, error) {
+func (wl *WeightLearner) CalculateOptimalWeights(ctx context.Context, startDate, endDate time.Time) (*Weights, *entity.PerformanceMetrics, error) {
 	// Get feedback statistics
 	stats, err := wl.feedbackRepo.GetFeedbackStats(ctx, startDate, endDate)
 	if err != nil {
@@ -121,7 +121,7 @@ func (wl *WeightLearner) CalculateOptimalWeights(ctx context.Context, startDate,
 }
 
 // calculateCorrelations computes correlation coefficients for each factor
-func (wl *WeightLearner) calculateCorrelations(stats *domain.FeedbackStats) map[string]float64 {
+func (wl *WeightLearner) calculateCorrelations(stats *entity.FeedbackStats) map[string]float64 {
 	correlations := make(map[string]float64)
 
 	// For each factor, calculate: (confirmed_avg - rejected_avg) / max(confirmed_avg, rejected_avg)
@@ -225,8 +225,8 @@ func (wl *WeightLearner) normalizeWeights(weights Weights) Weights {
 }
 
 // calculateMetrics computes performance metrics from feedback stats
-func (wl *WeightLearner) calculateMetrics(stats *domain.FeedbackStats) domain.PerformanceMetrics {
-	metrics := domain.PerformanceMetrics{
+func (wl *WeightLearner) calculateMetrics(stats *entity.FeedbackStats) entity.PerformanceMetrics {
+	metrics := entity.PerformanceMetrics{
 		ConfirmationRate:  stats.ConfirmationRate,
 		AvgScoreConfirmed: stats.ConfirmedAvgTotal,
 		AvgScoreRejected:  stats.RejectedAvgTotal,
@@ -249,7 +249,7 @@ func (wl *WeightLearner) calculateMetrics(stats *domain.FeedbackStats) domain.Pe
 }
 
 // ApplyWeights saves and applies new weights to the scorer
-func (wl *WeightLearner) ApplyWeights(ctx context.Context, weights Weights, source domain.WeightSource, metrics *domain.PerformanceMetrics, notes string) error {
+func (wl *WeightLearner) ApplyWeights(ctx context.Context, weights Weights, source entity.WeightSource, metrics *entity.PerformanceMetrics, notes string) error {
 	// Save to history
 	err := wl.historyRepo.SaveWithMetrics(ctx,
 		weights.Medication,
@@ -273,7 +273,7 @@ func (wl *WeightLearner) ApplyWeights(ctx context.Context, weights Weights, sour
 
 // ShouldApply determines if new weights should be auto-applied
 // Returns true if new weights show improvement
-func (wl *WeightLearner) ShouldApply(oldMetrics, newMetrics domain.PerformanceMetrics) bool {
+func (wl *WeightLearner) ShouldApply(oldMetrics, newMetrics entity.PerformanceMetrics) bool {
 	// Calculate separation (how well we distinguish confirmed from rejected)
 	oldSeparation := oldMetrics.AvgScoreConfirmed - oldMetrics.AvgScoreRejected
 	newSeparation := newMetrics.AvgScoreConfirmed - newMetrics.AvgScoreRejected

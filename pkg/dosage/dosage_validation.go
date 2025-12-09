@@ -1,12 +1,12 @@
 package dosage
 
 import (
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // ValidateDosages validates and enriches parsed items with dosage information
 // Extracts dosages from medication names and logs warnings for mismatches
-func ValidateDosages(items []domain.ParsedItem) {
+func ValidateDosages(items []entity.ParsedItem) {
 	for i := range items {
 		item := &items[i]
 
@@ -34,7 +34,7 @@ func ValidateDosages(items []domain.ParsedItem) {
 }
 
 // EnrichWithDosageInfo adds dosage information to ParsedItem notes if available
-func EnrichWithDosageInfo(item *domain.ParsedItem) {
+func EnrichWithDosageInfo(item *entity.ParsedItem) {
 	dosage := ParseDosage(item.Medication)
 	if dosage != nil {
 		// Dosage found - could add to structured field if we extend ParsedItem

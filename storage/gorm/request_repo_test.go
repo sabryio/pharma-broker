@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // =============================================================================
@@ -88,13 +88,13 @@ func TestRequestRepo_GetActive_UrgentFirst(t *testing.T) {
 	ctx := testCtx()
 
 	// Create non-urgent request first
-	nonUrgent := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
+	nonUrgent := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {
 		r.Urgent = false
 	})
 	assertNoError(t, repo.Save(ctx, nonUrgent), "Save non-urgent")
 
 	// Create urgent request second
-	urgent := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
+	urgent := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {
 		r.Urgent = true
 	})
 	assertNoError(t, repo.Save(ctx, urgent), "Save urgent")
@@ -143,8 +143,8 @@ func TestRequestRepo_GetActive_ExcludesInactive(t *testing.T) {
 	assertNoError(t, repo.Save(ctx, activeReq), "Save active should succeed")
 
 	// Create matched request
-	matchedReq := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
-		r.Status = domain.StatusMatched
+	matchedReq := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {
+		r.Status = entity.StatusMatched
 	})
 	assertNoError(t, repo.Save(ctx, matchedReq), "Save matched should succeed")
 
@@ -166,13 +166,13 @@ func TestRequestRepo_UpdateStatus(t *testing.T) {
 	assertNoError(t, repo.Save(ctx, req), "Save should succeed")
 
 	// Update status
-	err := repo.UpdateStatus(ctx, req.ID, domain.StatusMatched)
+	err := repo.UpdateStatus(ctx, req.ID, entity.StatusMatched)
 	assertNoError(t, err, "UpdateStatus should succeed")
 
 	// Verify status change
 	saved, err := repo.GetByID(ctx, req.ID)
 	assertNoError(t, err, "GetByID should succeed")
-	assertEqual(t, saved.Status, domain.StatusMatched, "Status should be updated")
+	assertEqual(t, saved.Status, entity.StatusMatched, "Status should be updated")
 }
 
 func TestRequestRepo_CountActive(t *testing.T) {
@@ -189,8 +189,8 @@ func TestRequestRepo_CountActive(t *testing.T) {
 	}
 
 	// Create 1 expired request
-	expiredReq := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
-		r.Status = domain.StatusExpired
+	expiredReq := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {
+		r.Status = entity.StatusExpired
 	})
 	assertNoError(t, repo.Save(ctx, expiredReq), "Save expired should succeed")
 
@@ -210,17 +210,17 @@ func TestRequestRepo_GetActive_UrgentThenByCreatedAt(t *testing.T) {
 	now := time.Now()
 
 	// Create older urgent
-	olderUrgent := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
+	olderUrgent := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {
 		r.Urgent = true
 		r.CreatedAt = now.Add(-2 * time.Hour)
 	})
 	// Create newer urgent
-	newerUrgent := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
+	newerUrgent := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {
 		r.Urgent = true
 		r.CreatedAt = now
 	})
 	// Create non-urgent
-	nonUrgent := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
+	nonUrgent := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {
 		r.Urgent = false
 		r.CreatedAt = now.Add(-1 * time.Hour)
 	})
@@ -246,13 +246,13 @@ func TestRequestRepo_Search_WithSpecialCharacters(t *testing.T) {
 	ctx := testCtx()
 
 	// Create requests with special characters in medication name
-	req1 := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
+	req1 := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {
 		r.Medication = "Zoladex 3.6"
 		r.Notes = "Urgent need"
 	})
 	assertNoError(t, repo.Save(ctx, req1), "Save req1")
 
-	req2 := CreateTestRequestWithRawMessage(t, db, func(r *domain.Request) {
+	req2 := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {
 		r.Medication = "Augmentin-1.2g"
 	})
 	assertNoError(t, repo.Save(ctx, req2), "Save req2")

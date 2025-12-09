@@ -3,7 +3,7 @@ package matching
 import (
 	"fmt"
 	"math"
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 	"testing"
 	"time"
 )
@@ -218,7 +218,7 @@ func TestScoreMatch(t *testing.T) {
 	now := time.Now()
 
 	// Create test offer
-	offer := &domain.Offer{
+	offer := &entity.Offer{
 		Medication: "Panadol",
 		Quantity:   10,
 		Price:      50,
@@ -226,7 +226,7 @@ func TestScoreMatch(t *testing.T) {
 	}
 
 	// Create test request
-	request := &domain.Request{
+	request := &entity.Request{
 		Medication: "Panadol",
 		Quantity:   10,
 		MaxPrice:   100,
@@ -272,14 +272,14 @@ func TestScoreMatch_PartialMatch(t *testing.T) {
 	now := time.Now()
 
 	// Offer with partial fulfillment
-	offer := &domain.Offer{
+	offer := &entity.Offer{
 		Medication: "Panadol",
 		Quantity:   5,                        // Only 50% of requested
 		Price:      120,                      // 20% over budget
 		CreatedAt:  now.Add(-24 * time.Hour), // 24h old (half-life)
 	}
 
-	request := &domain.Request{
+	request := &entity.Request{
 		Medication: "Panadol",
 		Quantity:   10,
 		MaxPrice:   100,
@@ -321,14 +321,14 @@ func TestScoreMatch_NoMatch(t *testing.T) {
 	now := time.Now()
 
 	// Poor offer
-	offer := &domain.Offer{
+	offer := &entity.Offer{
 		Medication: "Aspirin",
 		Quantity:   1,                            // Only 10%
 		Price:      250,                          // 150% over budget
 		CreatedAt:  now.Add(-7 * 24 * time.Hour), // Week old
 	}
 
-	request := &domain.Request{
+	request := &entity.Request{
 		Medication: "Panadol",
 		Quantity:   10,
 		MaxPrice:   100,
@@ -396,13 +396,13 @@ func TestCustomWeights(t *testing.T) {
 	s := NewScorer(weights, nil)
 
 	now := time.Now()
-	offer := &domain.Offer{
+	offer := &entity.Offer{
 		Medication: "Test",
 		Quantity:   10,
 		Price:      50,
 		CreatedAt:  now,
 	}
-	request := &domain.Request{
+	request := &entity.Request{
 		Medication: "Test",
 		Quantity:   10,
 		MaxPrice:   100,
@@ -446,13 +446,13 @@ func BenchmarkRecencyScore(b *testing.B) {
 func BenchmarkScoreMatch(b *testing.B) {
 	s := NewScorer(nil, nil)
 	now := time.Now()
-	offer := &domain.Offer{
+	offer := &entity.Offer{
 		Medication: "Test",
 		Quantity:   10,
 		Price:      50,
 		CreatedAt:  now,
 	}
-	request := &domain.Request{
+	request := &entity.Request{
 		Medication: "Test",
 		Quantity:   10,
 		MaxPrice:   100,

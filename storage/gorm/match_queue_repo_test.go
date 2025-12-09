@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // =============================================================================
@@ -18,7 +18,7 @@ func TestMatchQueueRepo_Enqueue(t *testing.T) {
 	repo := NewMatchQueueRepo(db.DB)
 	ctx := testCtx()
 
-	item := &domain.MatchQueueItem{
+	item := &entity.MatchQueueItem{
 		SourceType: "OFFER",
 		SourceID:   "offer-123",
 	}
@@ -45,7 +45,7 @@ func TestMatchQueueRepo_Enqueue_WithID(t *testing.T) {
 	ctx := testCtx()
 
 	customID := "custom-id-123"
-	item := &domain.MatchQueueItem{
+	item := &entity.MatchQueueItem{
 		ID:         customID,
 		SourceType: "REQUEST",
 		SourceID:   "request-123",
@@ -68,7 +68,7 @@ func TestMatchQueueRepo_DequeueBatch(t *testing.T) {
 
 	// Enqueue 5 items
 	for i := 0; i < 5; i++ {
-		item := &domain.MatchQueueItem{
+		item := &entity.MatchQueueItem{
 			SourceType: "OFFER",
 			SourceID:   "offer-" + string(rune('a'+i)),
 		}
@@ -95,7 +95,7 @@ func TestMatchQueueRepo_DequeueBatch_FIFO(t *testing.T) {
 
 	// Enqueue items with specific order
 	now := time.Now()
-	items := []*domain.MatchQueueItem{
+	items := []*entity.MatchQueueItem{
 		{SourceType: "OFFER", SourceID: "first", CreatedAt: now.Add(-2 * time.Second)},
 		{SourceType: "OFFER", SourceID: "second", CreatedAt: now.Add(-1 * time.Second)},
 		{SourceType: "OFFER", SourceID: "third", CreatedAt: now},
@@ -120,7 +120,7 @@ func TestMatchQueueRepo_Delete(t *testing.T) {
 	ctx := testCtx()
 
 	// Enqueue an item
-	item := &domain.MatchQueueItem{
+	item := &entity.MatchQueueItem{
 		SourceType: "OFFER",
 		SourceID:   "offer-123",
 	}

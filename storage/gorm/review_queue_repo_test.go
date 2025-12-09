@@ -2,13 +2,12 @@ package gorm
 
 import (
 	"context"
+	"pharmabroker/domain/entity"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"pharmabroker/internal/domain"
 )
 
 func TestReviewQueueRepo_Save(t *testing.T) {
@@ -19,22 +18,22 @@ func TestReviewQueueRepo_Save(t *testing.T) {
 
 	// Create raw message first
 	rmRepo := NewRawMessageRepo(db.DB)
-	rm := NewTestRawMessage(func(m *domain.RawMessage) {
+	rm := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.ID = "msg-123"
 	})
 	require.NoError(t, rmRepo.Save(context.Background(), rm))
 
-	item := &domain.ReviewQueueItem{
+	item := &entity.ReviewQueueItem{
 		RawMessageID:  "msg-123",
 		GroupName:     "Test Group",
 		SenderName:    "Test Sender",
 		Content:       "عندي اوجمنتين",
 		ReplyContext:  "محتاج اوجمنتين",
-		PartialItems:  []domain.ParsedItem{{Type: domain.MessageTypeOffer, Medication: "Augmentin"}},
+		PartialItems:  []entity.ParsedItem{{Type: entity.MessageTypeOffer, Medication: "Augmentin"}},
 		ParsePass:     1,
 		AvgConfidence: 0.65,
 		FailureReason: "Low confidence",
-		Status:        domain.ReviewStatusPending,
+		Status:        entity.ReviewStatusPending,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
@@ -52,7 +51,7 @@ func TestReviewQueueRepo_Save(t *testing.T) {
 	assert.Equal(t, item.GroupName, retrieved.GroupName)
 	assert.Equal(t, item.Content, retrieved.Content)
 	assert.Equal(t, item.ReplyContext, retrieved.ReplyContext)
-	assert.Equal(t, domain.ReviewStatusPending, retrieved.Status)
+	assert.Equal(t, entity.ReviewStatusPending, retrieved.Status)
 	assert.Len(t, retrieved.PartialItems, 1)
 	assert.Equal(t, "Augmentin", retrieved.PartialItems[0].Medication)
 }
@@ -79,15 +78,15 @@ func TestReviewQueueRepo_GetPending(t *testing.T) {
 	rmRepo := NewRawMessageRepo(db.DB)
 	for i := 0; i < 3; i++ {
 		msgID := "msg-" + string(rune('a'+i))
-		rm := NewTestRawMessage(func(m *domain.RawMessage) {
+		rm := NewTestRawMessage(func(m *entity.RawMessage) {
 			m.ID = msgID
 		})
 		require.NoError(t, rmRepo.Save(ctx, rm))
 
-		item := &domain.ReviewQueueItem{
+		item := &entity.ReviewQueueItem{
 			RawMessageID: msgID,
 			Content:      "Test content",
-			Status:       domain.ReviewStatusPending,
+			Status:       entity.ReviewStatusPending,
 			CreatedAt:    time.Now().Add(time.Duration(i) * time.Second),
 			UpdatedAt:    time.Now(),
 		}
@@ -95,15 +94,15 @@ func TestReviewQueueRepo_GetPending(t *testing.T) {
 	}
 
 	// Create one approved item
-	rmApproved := NewTestRawMessage(func(m *domain.RawMessage) {
+	rmApproved := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.ID = "msg-approved"
 	})
 	require.NoError(t, rmRepo.Save(ctx, rmApproved))
 
-	approved := &domain.ReviewQueueItem{
+	approved := &entity.ReviewQueueItem{
 		RawMessageID: "msg-approved",
 		Content:      "Approved content",
-		Status:       domain.ReviewStatusApproved,
+		Status:       entity.ReviewStatusApproved,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -134,15 +133,15 @@ func TestReviewQueueRepo_CountPending(t *testing.T) {
 	rmRepo := NewRawMessageRepo(db.DB)
 	for i := 0; i < 5; i++ {
 		msgID := "msg-" + string(rune('a'+i))
-		rm := NewTestRawMessage(func(m *domain.RawMessage) {
+		rm := NewTestRawMessage(func(m *entity.RawMessage) {
 			m.ID = msgID
 		})
 		require.NoError(t, rmRepo.Save(ctx, rm))
 
-		item := &domain.ReviewQueueItem{
+		item := &entity.ReviewQueueItem{
 			RawMessageID: msgID,
 			Content:      "Test",
-			Status:       domain.ReviewStatusPending,
+			Status:       entity.ReviewStatusPending,
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
 		}
@@ -163,23 +162,23 @@ func TestReviewQueueRepo_Approve(t *testing.T) {
 
 	// Create pending item
 	rmRepo := NewRawMessageRepo(db.DB)
-	rm := NewTestRawMessage(func(m *domain.RawMessage) {
+	rm := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.ID = "msg-to-approve"
 	})
 	require.NoError(t, rmRepo.Save(ctx, rm))
 
-	item := &domain.ReviewQueueItem{
+	item := &entity.ReviewQueueItem{
 		RawMessageID: "msg-to-approve",
 		Content:      "Content to approve",
-		Status:       domain.ReviewStatusPending,
+		Status:       entity.ReviewStatusPending,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
 	require.NoError(t, repo.Save(ctx, item))
 
 	// Approve with corrections
-	correctedItems := []domain.ParsedItem{
-		{Type: domain.MessageTypeOffer, Medication: "Corrected Medication"},
+	correctedItems := []entity.ParsedItem{
+		{Type: entity.MessageTypeOffer, Medication: "Corrected Medication"},
 	}
 	err := repo.Approve(ctx, item.ID, "admin@test.com", correctedItems, "Manually corrected")
 	require.NoError(t, err)
@@ -187,7 +186,7 @@ func TestReviewQueueRepo_Approve(t *testing.T) {
 	// Verify
 	approved, err := repo.GetByID(ctx, item.ID)
 	require.NoError(t, err)
-	assert.Equal(t, domain.ReviewStatusApproved, approved.Status)
+	assert.Equal(t, entity.ReviewStatusApproved, approved.Status)
 	assert.Equal(t, "admin@test.com", approved.ReviewedBy)
 	assert.NotNil(t, approved.ReviewedAt)
 	assert.Equal(t, "Manually corrected", approved.ReviewNote)
@@ -204,15 +203,15 @@ func TestReviewQueueRepo_Reject(t *testing.T) {
 
 	// Create pending item
 	rmRepo := NewRawMessageRepo(db.DB)
-	rm := NewTestRawMessage(func(m *domain.RawMessage) {
+	rm := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.ID = "msg-to-reject"
 	})
 	require.NoError(t, rmRepo.Save(ctx, rm))
 
-	item := &domain.ReviewQueueItem{
+	item := &entity.ReviewQueueItem{
 		RawMessageID: "msg-to-reject",
 		Content:      "Spam content",
-		Status:       domain.ReviewStatusPending,
+		Status:       entity.ReviewStatusPending,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -225,7 +224,7 @@ func TestReviewQueueRepo_Reject(t *testing.T) {
 	// Verify
 	rejected, err := repo.GetByID(ctx, item.ID)
 	require.NoError(t, err)
-	assert.Equal(t, domain.ReviewStatusRejected, rejected.Status)
+	assert.Equal(t, entity.ReviewStatusRejected, rejected.Status)
 	assert.Equal(t, "moderator", rejected.ReviewedBy)
 	assert.Equal(t, "Not a medication message", rejected.ReviewNote)
 }
@@ -239,15 +238,15 @@ func TestReviewQueueRepo_GetByRawMessageID(t *testing.T) {
 
 	// Create item
 	rmRepo := NewRawMessageRepo(db.DB)
-	rm := NewTestRawMessage(func(m *domain.RawMessage) {
+	rm := NewTestRawMessage(func(m *entity.RawMessage) {
 		m.ID = "unique-msg-id"
 	})
 	require.NoError(t, rmRepo.Save(ctx, rm))
 
-	item := &domain.ReviewQueueItem{
+	item := &entity.ReviewQueueItem{
 		RawMessageID: "unique-msg-id",
 		Content:      "Test content",
-		Status:       domain.ReviewStatusPending,
+		Status:       entity.ReviewStatusPending,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -276,15 +275,15 @@ func TestReviewQueueRepo_Pagination(t *testing.T) {
 	rmRepo := NewRawMessageRepo(db.DB)
 	for i := 0; i < 10; i++ {
 		msgID := "msg-" + string(rune('a'+i))
-		rm := NewTestRawMessage(func(m *domain.RawMessage) {
+		rm := NewTestRawMessage(func(m *entity.RawMessage) {
 			m.ID = msgID
 		})
 		require.NoError(t, rmRepo.Save(ctx, rm))
 
-		item := &domain.ReviewQueueItem{
+		item := &entity.ReviewQueueItem{
 			RawMessageID: msgID,
 			Content:      "Test",
-			Status:       domain.ReviewStatusPending,
+			Status:       entity.ReviewStatusPending,
 			CreatedAt:    time.Now().Add(time.Duration(i) * time.Second),
 			UpdatedAt:    time.Now(),
 		}

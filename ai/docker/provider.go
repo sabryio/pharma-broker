@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"math"
 	"pharmabroker/ai/prompts"
+	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	"pharmabroker/internal/metrics"
 	arabicPkg "pharmabroker/pkg/arabic"
 	fuzzyPkg "pharmabroker/pkg/fuzzy"
@@ -32,7 +32,7 @@ type Client struct {
 	client       openai.Client
 	log          zerolog.Logger
 	cb           *gobreaker.CircuitBreaker
-	allMappings  []*domain.MedicationMapping       // For hybrid filtering
+	allMappings  []*entity.MedicationMapping       // For hybrid filtering
 	vectorTopK   int                               // Top-K for vector search (default 10)
 	unmappedRepo repository.UnmappedMedicationRepo // For active learning (optional)
 }
@@ -47,7 +47,7 @@ func GenerateSchema[T any]() interface{} {
 }
 
 // Cached schema to avoid reflection on every call
-var aiParseResultSchema = GenerateSchema[domain.AIParseResult]()
+var aiParseResultSchema = GenerateSchema[entity.AIParseResult]()
 
 // NewClient creates a new Docker Model Runner client.
 // It connects to the OpenAI-compatible API endpoint exposed by Docker Model Runner.
@@ -99,7 +99,7 @@ func NewClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*Client, erro
 
 // SetMappings sets the full medication mappings for hybrid filtering
 // This enables keyword + vector search when ParseMessages is called
-func (c *Client) SetMappings(mappings []*domain.MedicationMapping) {
+func (c *Client) SetMappings(mappings []*entity.MedicationMapping) {
 	c.allMappings = mappings
 	if c.vectorTopK == 0 {
 		c.vectorTopK = 10 // Default top-K
@@ -114,7 +114,7 @@ func (c *Client) SetUnmappedRepo(repo repository.UnmappedMedicationRepo) {
 }
 
 // ParseMessages implements AIProvider.ParseMessages using Docker Model Runner.
-func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
+func (c *Client) ParseMessages(ctx context.Context, messages []*entity.RawMessage, mappings []*entity.MedicationMapping) ([]*entity.AIParseResult, error) {
 	if len(messages) == 0 {
 		return nil, nil
 	}
@@ -155,11 +155,11 @@ func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessag
 	// We need to preserve the order of original messages
 	type splitMap struct {
 		originalIdx int
-		chunks      []*domain.RawMessage
+		chunks      []*entity.RawMessage
 	}
 	originalToChunks := make(map[int]*splitMap) // index -> chunks
 
-	var workingSet []*domain.RawMessage
+	var workingSet []*entity.RawMessage
 
 	for i, msg := range messages {
 		// Calculate lines
@@ -167,7 +167,7 @@ func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessag
 
 		if lines <= maxMessageLines {
 			workingSet = append(workingSet, msg)
-			originalToChunks[i] = &splitMap{originalIdx: i, chunks: []*domain.RawMessage{msg}}
+			originalToChunks[i] = &splitMap{originalIdx: i, chunks: []*entity.RawMessage{msg}}
 			continue
 		}
 
@@ -178,7 +178,7 @@ func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessag
 			Msg("Message too long, splitting content")
 
 		contentLines := strings.Split(msg.Content, "\n")
-		var chunks []*domain.RawMessage
+		var chunks []*entity.RawMessage
 
 		for j := 0; j < len(contentLines); j += maxMessageLines {
 			end := min(j+maxMessageLines, len(contentLines))
@@ -194,7 +194,7 @@ func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessag
 
 	// Create a single flat list of all results
 	// Use a map for thread-safe collection, then flatten
-	flatResultsMap := make(map[int][]*domain.AIParseResult)
+	flatResultsMap := make(map[int][]*entity.AIParseResult)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
@@ -215,7 +215,7 @@ func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessag
 		batchIdx := i // Capture for closure
 
 		wg.Add(1)
-		go func(bgIdx int, batch []*domain.RawMessage) {
+		go func(bgIdx int, batch []*entity.RawMessage) {
 			defer wg.Done()
 
 			// Acquire semaphore
@@ -234,9 +234,9 @@ func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessag
 
 			if err != nil {
 				c.log.Error().Err(err).Int("chunk_start", bgIdx).Msg("Failed to process batch")
-				var errResults []*domain.AIParseResult
+				var errResults []*entity.AIParseResult
 				for range batch {
-					errResults = append(errResults, &domain.AIParseResult{
+					errResults = append(errResults, &entity.AIParseResult{
 						Error: fmt.Sprintf("Processing failed: %v", err),
 					})
 				}
@@ -250,7 +250,7 @@ func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessag
 	wg.Wait()
 
 	// Flatten results in order
-	var flatResults []*domain.AIParseResult
+	var flatResults []*entity.AIParseResult
 	// Iterate in steps of maxBatchSize to match the loop above
 	for i := 0; i < len(workingSet); i += maxBatchSize {
 		if res, ok := flatResultsMap[i]; ok {
@@ -262,32 +262,32 @@ func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessag
 			end := min(i+maxBatchSize, len(workingSet))
 			count := end - i
 			for range count {
-				flatResults = append(flatResults, &domain.AIParseResult{Error: "Internal error: missing batch result"})
+				flatResults = append(flatResults, &entity.AIParseResult{Error: "Internal error: missing batch result"})
 			}
 		}
 	}
 
 	// Now merge flatResults back to original structure
-	finalResults := make([]*domain.AIParseResult, len(messages))
+	finalResults := make([]*entity.AIParseResult, len(messages))
 	flatIdx := 0
 
 	for i := range messages {
 		origMap := originalToChunks[i]
 		if origMap == nil {
 			// Should not happen
-			finalResults[i] = &domain.AIParseResult{Error: "Internal error: missing mapping"}
+			finalResults[i] = &entity.AIParseResult{Error: "Internal error: missing mapping"}
 			continue
 		}
 
 		numChunks := len(origMap.chunks)
 		if numChunks == 0 {
-			finalResults[i] = &domain.AIParseResult{}
+			finalResults[i] = &entity.AIParseResult{}
 			continue
 		}
 
 		// Collect results for this message
-		mergedResult := &domain.AIParseResult{}
-		mergedItems := []domain.ParsedItem{}
+		mergedResult := &entity.AIParseResult{}
+		mergedItems := []entity.ParsedItem{}
 		var errors []string
 
 		for j := range numChunks {
@@ -322,7 +322,7 @@ func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessag
 // Uses Arabic normalization and fuzzy matching for improved accuracy.
 // The log parameter enables auto-learn logging for unmapped medications.
 // The unmappedRepo (optional) saves unmapped medications for active learning.
-func enforceMappings(ctx context.Context, results []*domain.AIParseResult, mappings map[string]string, log zerolog.Logger, unmappedRepo repository.UnmappedMedicationRepo, messages []*domain.RawMessage) {
+func enforceMappings(ctx context.Context, results []*entity.AIParseResult, mappings map[string]string, log zerolog.Logger, unmappedRepo repository.UnmappedMedicationRepo, messages []*entity.RawMessage) {
 	if len(mappings) == 0 {
 		return
 	}
@@ -401,7 +401,7 @@ func enforceMappings(ctx context.Context, results []*domain.AIParseResult, mappi
 }
 
 // applyMapping updates an item with the correct English mapping
-func applyMapping(item *domain.ParsedItem, arabic, english string, confidence fuzzyPkg.MatchConfidence, log zerolog.Logger) {
+func applyMapping(item *entity.ParsedItem, arabic, english string, confidence fuzzyPkg.MatchConfidence, log zerolog.Logger) {
 	// Try to replace Arabic with English in the raw text
 	newItem := strings.ReplaceAll(item.MedicationRaw, arabic, english)
 
@@ -449,7 +449,7 @@ func containsArabic(s string) bool {
 }
 
 // processBatch processes a small batch of messages
-func (c *Client) processBatch(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
+func (c *Client) processBatch(ctx context.Context, messages []*entity.RawMessage, mappings []*entity.MedicationMapping) ([]*entity.AIParseResult, error) {
 	// Build prompt with messages
 	prompt := prompts.BuildParsePrompt(messages, mappings)
 
@@ -553,13 +553,13 @@ func (c *Client) processBatch(ctx context.Context, messages []*domain.RawMessage
 	// Parse JSON response - handle both formats:
 	// 1. Single object: {"items": [...]} (what AI typically returns)
 	// 2. Array: [{"items": [...]}, ...] (original expectation)
-	var parseResults []*domain.AIParseResult
+	var parseResults []*entity.AIParseResult
 
 	// First try: single AIParseResult object (most common from structured output)
-	var singleResult domain.AIParseResult
+	var singleResult entity.AIParseResult
 	if err := json.Unmarshal([]byte(responseText), &singleResult); err == nil && singleResult.Items != nil {
 		// Successfully parsed as single object with items field (even if empty)
-		parseResults = []*domain.AIParseResult{&singleResult}
+		parseResults = []*entity.AIParseResult{&singleResult}
 	} else {
 		// Second try: array of AIParseResult
 		if err := json.Unmarshal([]byte(responseText), &parseResults); err != nil {
@@ -577,7 +577,7 @@ func (c *Client) processBatch(ctx context.Context, messages []*domain.RawMessage
 }
 
 // countTotalItems counts total items in results
-func countTotalItems(results []*domain.AIParseResult) int {
+func countTotalItems(results []*entity.AIParseResult) int {
 	count := 0
 	for _, res := range results {
 		count += len(res.Items)
@@ -697,7 +697,7 @@ func filterMappingsByKeyword(content string, mappings map[string]string) map[str
 }
 
 // filterMappingsBySimilarity returns top-K semantically similar mappings
-func filterMappingsBySimilarity(ctx context.Context, content string, allMappings []*domain.MedicationMapping, emb embedder, topK int) (map[string]string, error) {
+func filterMappingsBySimilarity(ctx context.Context, content string, allMappings []*entity.MedicationMapping, emb embedder, topK int) (map[string]string, error) {
 	if len(allMappings) == 0 || topK <= 0 {
 		return make(map[string]string), nil
 	}
@@ -710,7 +710,7 @@ func filterMappingsBySimilarity(ctx context.Context, content string, allMappings
 
 	// Score all mappings by similarity
 	type scoredMapping struct {
-		mapping *domain.MedicationMapping
+		mapping *entity.MedicationMapping
 		score   float32
 	}
 	var scored []scoredMapping
@@ -739,7 +739,7 @@ func filterMappingsBySimilarity(ctx context.Context, content string, allMappings
 }
 
 // filterMappingsHybrid combines keyword matching and vector similarity
-func filterMappingsHybrid(ctx context.Context, content string, allMappings []*domain.MedicationMapping, emb embedder, vectorTopK int) map[string]string {
+func filterMappingsHybrid(ctx context.Context, content string, allMappings []*entity.MedicationMapping, emb embedder, vectorTopK int) map[string]string {
 	// Build map for keyword filtering
 	fullMap := make(map[string]string)
 	for _, m := range allMappings {
@@ -787,11 +787,11 @@ func cosineSimilarity(a, b []float32) float32 {
 	return dot / (float32(math.Sqrt(float64(normA))) * float32(math.Sqrt(float64(normB))))
 }
 
-// mapToMedicationMappings converts map[string]string to []*domain.MedicationMapping
-func mapToMedicationMappings(mappings map[string]string) []*domain.MedicationMapping {
-	result := make([]*domain.MedicationMapping, 0, len(mappings))
+// mapToMedicationMappings converts map[string]string to []*entity.MedicationMapping
+func mapToMedicationMappings(mappings map[string]string) []*entity.MedicationMapping {
+	result := make([]*entity.MedicationMapping, 0, len(mappings))
 	for arabic, english := range mappings {
-		result = append(result, &domain.MedicationMapping{
+		result = append(result, &entity.MedicationMapping{
 			ArabicName:  arabic,
 			EnglishName: english,
 		})
@@ -799,8 +799,8 @@ func mapToMedicationMappings(mappings map[string]string) []*domain.MedicationMap
 	return result
 }
 
-// medicationMappingsToMap converts []*domain.MedicationMapping to map[string]string
-func medicationMappingsToMap(mappings []*domain.MedicationMapping) map[string]string {
+// medicationMappingsToMap converts []*entity.MedicationMapping to map[string]string
+func medicationMappingsToMap(mappings []*entity.MedicationMapping) map[string]string {
 	result := make(map[string]string)
 	for _, m := range mappings {
 		result[m.ArabicName] = m.EnglishName

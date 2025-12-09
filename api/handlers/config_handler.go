@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/repository"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -12,12 +12,12 @@ import (
 
 // ConfigHandler handles configuration-related operations
 type ConfigHandler struct {
-	repo domain.ConfigRepository
+	repo repository.ConfigRepository
 	log  zerolog.Logger
 }
 
 // NewConfigHandler creates a new ConfigHandler
-func NewConfigHandler(repo domain.ConfigRepository, log zerolog.Logger) *ConfigHandler {
+func NewConfigHandler(repo repository.ConfigRepository, log zerolog.Logger) *ConfigHandler {
 	return &ConfigHandler{
 		repo: repo,
 		log:  log.With().Str("component", "ConfigHandler").Logger(),

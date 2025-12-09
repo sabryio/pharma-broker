@@ -2,22 +2,21 @@ package whatsapp
 
 import (
 	"context"
+	"pharmabroker/domain/entity"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
-
-	"pharmabroker/internal/domain"
 )
 
 // Mock repositories for testing
 
 type mockMatchRepo struct {
-	matches []*domain.MatchWithDetails
+	matches []*entity.MatchWithDetails
 }
 
-func (m *mockMatchRepo) Save(ctx context.Context, match *domain.Match) error { return nil }
-func (m *mockMatchRepo) GetByID(ctx context.Context, id string) (*domain.Match, error) {
+func (m *mockMatchRepo) Save(ctx context.Context, match *entity.Match) error { return nil }
+func (m *mockMatchRepo) GetByID(ctx context.Context, id string) (*entity.Match, error) {
 	for _, match := range m.matches {
 		if match.ID == id {
 			return &match.Match, nil
@@ -25,7 +24,7 @@ func (m *mockMatchRepo) GetByID(ctx context.Context, id string) (*domain.Match, 
 	}
 	return nil, nil
 }
-func (m *mockMatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*domain.MatchWithDetails, error) {
+func (m *mockMatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*entity.MatchWithDetails, error) {
 	if offset >= len(m.matches) {
 		return nil, nil
 	}
@@ -38,13 +37,13 @@ func (m *mockMatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*d
 func (m *mockMatchRepo) CountPending(ctx context.Context) (int64, error) {
 	return int64(len(m.matches)), nil
 }
-func (m *mockMatchRepo) UpdateStatus(ctx context.Context, id string, status domain.MatchStatus, matchedBy string) error {
+func (m *mockMatchRepo) UpdateStatus(ctx context.Context, id string, status entity.MatchStatus, matchedBy string) error {
 	return nil
 }
-func (m *mockMatchRepo) GetByOfferID(ctx context.Context, offerID string) ([]*domain.Match, error) {
+func (m *mockMatchRepo) GetByOfferID(ctx context.Context, offerID string) ([]*entity.Match, error) {
 	return nil, nil
 }
-func (m *mockMatchRepo) GetByRequestID(ctx context.Context, requestID string) ([]*domain.Match, error) {
+func (m *mockMatchRepo) GetByRequestID(ctx context.Context, requestID string) ([]*entity.Match, error) {
 	return nil, nil
 }
 func (m *mockMatchRepo) CountConfirmedToday(ctx context.Context) (int64, error) {
@@ -53,8 +52,8 @@ func (m *mockMatchRepo) CountConfirmedToday(ctx context.Context) (int64, error) 
 
 type mockStatsRepo struct{}
 
-func (m *mockStatsRepo) GetStats(ctx context.Context) (*domain.Stats, error) {
-	return &domain.Stats{
+func (m *mockStatsRepo) GetStats(ctx context.Context) (*entity.Stats, error) {
+	return &entity.Stats{
 		ActiveOffers:   10,
 		ActiveRequests: 5,
 		PendingMatches: 3,
@@ -66,10 +65,10 @@ func (m *mockStatsRepo) GetProcessedToday(ctx context.Context) (int64, error) {
 }
 
 type mockAuditLogger struct {
-	logs []domain.AuditAction
+	logs []entity.AuditAction
 }
 
-func (m *mockAuditLogger) Log(ctx context.Context, action domain.AuditAction, entityID, details string) error {
+func (m *mockAuditLogger) Log(ctx context.Context, action entity.AuditAction, entityID, details string) error {
 	m.logs = append(m.logs, action)
 	return nil
 }
@@ -77,28 +76,28 @@ func (m *mockAuditLogger) Log(ctx context.Context, action domain.AuditAction, en
 func newTestBotHandler() *BotCommandHandler {
 	log := zerolog.Nop()
 	matchRepo := &mockMatchRepo{
-		matches: []*domain.MatchWithDetails{
+		matches: []*entity.MatchWithDetails{
 			{
-				Match: domain.Match{
+				Match: entity.Match{
 					ID:        "abc12345-def6-7890",
 					OfferID:   "offer-1",
 					RequestID: "req-1",
 					Score:     0.85,
-					Status:    domain.MatchStatusPending,
+					Status:    entity.MatchStatusPending,
 				},
-				Offer:   &domain.Offer{Medication: "Paracetamol 500mg", Quantity: 100},
-				Request: &domain.Request{Medication: "Paracetamol", Quantity: 50, Urgent: true},
+				Offer:   &entity.Offer{Medication: "Paracetamol 500mg", Quantity: 100},
+				Request: &entity.Request{Medication: "Paracetamol", Quantity: 50, Urgent: true},
 			},
 			{
-				Match: domain.Match{
+				Match: entity.Match{
 					ID:        "xyz99999-abc1-2345",
 					OfferID:   "offer-2",
 					RequestID: "req-2",
 					Score:     0.72,
-					Status:    domain.MatchStatusPending,
+					Status:    entity.MatchStatusPending,
 				},
-				Offer:   &domain.Offer{Medication: "Ibuprofen 400mg", Quantity: 50},
-				Request: &domain.Request{Medication: "Ibuprofen", Quantity: 30},
+				Offer:   &entity.Offer{Medication: "Ibuprofen 400mg", Quantity: 50},
+				Request: &entity.Request{Medication: "Ibuprofen", Quantity: 30},
 			},
 		},
 	}

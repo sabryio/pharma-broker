@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"pharmabroker/domain/entity"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-
-	"pharmabroker/internal/domain"
 )
 
 // TestParser_Stress_Concurrency simulates high load to check for race conditions and panics
@@ -25,27 +24,27 @@ func TestParser_Stress_Concurrency(t *testing.T) {
 	mockQueueRepo := &MockMatchQueueRepo{}
 
 	// Config Mocks
-	mockRawRepo.OnSave = func(ctx context.Context, msg *domain.RawMessage) error { return nil }
+	mockRawRepo.OnSave = func(ctx context.Context, msg *entity.RawMessage) error { return nil }
 	mockRawRepo.OnMarkProcessed = func(ctx context.Context, id string, err error) error { return nil }
-	mockOfferRepo.OnSave = func(ctx context.Context, offer *domain.Offer) error { return nil }
-	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*domain.MedicationMapping, error) {
-		return []*domain.MedicationMapping{
+	mockOfferRepo.OnSave = func(ctx context.Context, offer *entity.Offer) error { return nil }
+	mockMedRepo.OnSearch = func(ctx context.Context, query string) ([]*entity.MedicationMapping, error) {
+		return []*entity.MedicationMapping{
 			{ArabicName: "اوجمنتين", EnglishName: "Augmentin", Embedding: []float32{0.1, 0.2}},
 		}, nil
 	}
-	mockMedRepo.OnGetAll = func(ctx context.Context) ([]*domain.MedicationMapping, error) {
-		return []*domain.MedicationMapping{
+	mockMedRepo.OnGetAll = func(ctx context.Context) ([]*entity.MedicationMapping, error) {
+		return []*entity.MedicationMapping{
 			{ArabicName: "اوجمنتين", EnglishName: "Augmentin", Embedding: []float32{0.1, 0.2}},
 		}, nil
 	}
-	mockAI.OnParseMessages = func(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
+	mockAI.OnParseMessages = func(ctx context.Context, messages []*entity.RawMessage, mappings []*entity.MedicationMapping) ([]*entity.AIParseResult, error) {
 		// Simulate AI delay
 		time.Sleep(10 * time.Millisecond)
-		return []*domain.AIParseResult{
-			{Items: []domain.ParsedItem{{Type: "OFFER", Medication: "Augmentin", Quantity: 5}}},
+		return []*entity.AIParseResult{
+			{Items: []entity.ParsedItem{{Type: "OFFER", Medication: "Augmentin", Quantity: 5}}},
 		}, nil
 	}
-	mockQueueRepo.OnEnqueue = func(ctx context.Context, item *domain.MatchQueueItem) error { return nil }
+	mockQueueRepo.OnEnqueue = func(ctx context.Context, item *entity.MatchQueueItem) error { return nil }
 
 	// Create Parser
 	parser := NewParser(
@@ -78,7 +77,7 @@ func TestParser_Stress_Concurrency(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < messagesPerWorker; j++ {
-				msg := &domain.RawMessage{
+				msg := &entity.RawMessage{
 					ID:        uuid.New().String(),
 					Content:   fmt.Sprintf("Concurrent message %d-%d", id, j),
 					Timestamp: time.Now(),

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 
 	"github.com/rs/zerolog"
 )
@@ -26,12 +26,12 @@ func TestNewEmbeddingCache(t *testing.T) {
 func TestEmbeddingCache_Refresh(t *testing.T) {
 	tests := []struct {
 		name         string
-		mappings     []*domain.MedicationMapping
+		mappings     []*entity.MedicationMapping
 		expectedKeys int
 	}{
 		{
 			name: "with embeddings",
-			mappings: []*domain.MedicationMapping{
+			mappings: []*entity.MedicationMapping{
 				{
 					ArabicName:  "باراسيتامول",
 					EnglishName: "Paracetamol",
@@ -43,7 +43,7 @@ func TestEmbeddingCache_Refresh(t *testing.T) {
 		},
 		{
 			name: "without embeddings",
-			mappings: []*domain.MedicationMapping{
+			mappings: []*entity.MedicationMapping{
 				{
 					ArabicName:  "أسبرين",
 					EnglishName: "Aspirin",
@@ -54,7 +54,7 @@ func TestEmbeddingCache_Refresh(t *testing.T) {
 		},
 		{
 			name:         "empty mappings",
-			mappings:     []*domain.MedicationMapping{},
+			mappings:     []*entity.MedicationMapping{},
 			expectedKeys: 0,
 		},
 	}
@@ -62,7 +62,7 @@ func TestEmbeddingCache_Refresh(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &MockMedicationRepo{
-				OnGetAll: func(ctx context.Context) ([]*domain.MedicationMapping, error) {
+				OnGetAll: func(ctx context.Context) ([]*entity.MedicationMapping, error) {
 					return tt.mappings, nil
 				},
 			}
@@ -87,8 +87,8 @@ func TestEmbeddingCache_Refresh(t *testing.T) {
 
 func TestEmbeddingCache_GetEmbedding(t *testing.T) {
 	repo := &MockMedicationRepo{
-		OnGetAll: func(ctx context.Context) ([]*domain.MedicationMapping, error) {
-			return []*domain.MedicationMapping{
+		OnGetAll: func(ctx context.Context) ([]*entity.MedicationMapping, error) {
+			return []*entity.MedicationMapping{
 				{
 					ArabicName:  "test",
 					EnglishName: "Test",
@@ -128,8 +128,8 @@ func TestEmbeddingCache_GetEmbedding(t *testing.T) {
 
 func TestEmbeddingCache_AreSynonyms(t *testing.T) {
 	repo := &MockMedicationRepo{
-		OnGetAll: func(ctx context.Context) ([]*domain.MedicationMapping, error) {
-			return []*domain.MedicationMapping{
+		OnGetAll: func(ctx context.Context) ([]*entity.MedicationMapping, error) {
+			return []*entity.MedicationMapping{
 				{
 					ArabicName:  "باراسيتامول",
 					EnglishName: "Paracetamol",
@@ -180,8 +180,8 @@ func TestEmbeddingCache_AreSynonyms_NilIndex(t *testing.T) {
 // Benchmark tests
 func BenchmarkEmbeddingCache_GetEmbedding(b *testing.B) {
 	repo := &MockMedicationRepo{
-		OnGetAll: func(ctx context.Context) ([]*domain.MedicationMapping, error) {
-			return []*domain.MedicationMapping{
+		OnGetAll: func(ctx context.Context) ([]*entity.MedicationMapping, error) {
+			return []*entity.MedicationMapping{
 				{
 					ArabicName:  "test",
 					EnglishName: "Test",

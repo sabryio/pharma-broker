@@ -2,13 +2,12 @@ package gorm
 
 import (
 	"context"
+	"pharmabroker/domain/entity"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-
-	"pharmabroker/internal/domain"
 )
 
 // =============================================================================
@@ -100,9 +99,9 @@ func (tdb *TestDB) Close() {
 // Test Data Factories
 // =============================================================================
 
-// NewTestRawMessage creates a domain.RawMessage with test data
-func NewTestRawMessage(opts ...func(*domain.RawMessage)) *domain.RawMessage {
-	msg := &domain.RawMessage{
+// NewTestRawMessage creates a entity.RawMessage with test data
+func NewTestRawMessage(opts ...func(*entity.RawMessage)) *entity.RawMessage {
+	msg := &entity.RawMessage{
 		ID:          uuid.New().String(),
 		ExternalID:  uuid.New().String(),
 		GroupJID:    "test-group@g.us",
@@ -119,10 +118,10 @@ func NewTestRawMessage(opts ...func(*domain.RawMessage)) *domain.RawMessage {
 	return msg
 }
 
-// NewTestOffer creates a domain.Offer with test data
+// NewTestOffer creates a entity.Offer with test data
 // NOTE: RawMessageID is set to empty string - use NewTestOfferWithRawMessage for FK compliance
-func NewTestOffer(opts ...func(*domain.Offer)) *domain.Offer {
-	offer := &domain.Offer{
+func NewTestOffer(opts ...func(*entity.Offer)) *entity.Offer {
+	offer := &entity.Offer{
 		ID:            uuid.New().String(),
 		RawMessageID:  "", // Empty to avoid FK issues - tests should use helper
 		SourcePhone:   "+201234567890",
@@ -136,7 +135,7 @@ func NewTestOffer(opts ...func(*domain.Offer)) *domain.Offer {
 		Price:         150.0,
 		Currency:      "EGP",
 		RawMessage:    "للبيع: Augmentin 1g - 50 علبة",
-		Status:        domain.StatusActive,
+		Status:        entity.StatusActive,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
@@ -146,10 +145,10 @@ func NewTestOffer(opts ...func(*domain.Offer)) *domain.Offer {
 	return offer
 }
 
-// NewTestRequest creates a domain.Request with test data
+// NewTestRequest creates a entity.Request with test data
 // NOTE: RawMessageID is set to empty string - use NewTestRequestWithRawMessage for FK compliance
-func NewTestRequest(opts ...func(*domain.Request)) *domain.Request {
-	req := &domain.Request{
+func NewTestRequest(opts ...func(*entity.Request)) *entity.Request {
+	req := &entity.Request{
 		ID:            uuid.New().String(),
 		RawMessageID:  "", // Empty to avoid FK issues - tests should use helper
 		SourcePhone:   "+201098765432",
@@ -164,7 +163,7 @@ func NewTestRequest(opts ...func(*domain.Request)) *domain.Request {
 		Currency:      "EGP",
 		Urgent:        false,
 		RawMessage:    "مطلوب: أوجمنتين 1 جرام - 20 علبة",
-		Status:        domain.StatusActive,
+		Status:        entity.StatusActive,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
@@ -175,7 +174,7 @@ func NewTestRequest(opts ...func(*domain.Request)) *domain.Request {
 }
 
 // CreateTestOfferWithRawMessage creates a raw message first, then an offer referencing it
-func CreateTestOfferWithRawMessage(t *testing.T, db *TestDB, opts ...func(*domain.Offer)) *domain.Offer {
+func CreateTestOfferWithRawMessage(t *testing.T, db *TestDB, opts ...func(*entity.Offer)) *entity.Offer {
 	t.Helper()
 	ctx := testCtx()
 	rawMsgRepo := NewRawMessageRepo(db.DB)
@@ -187,7 +186,7 @@ func CreateTestOfferWithRawMessage(t *testing.T, db *TestDB, opts ...func(*domai
 	}
 
 	// Create offer with valid raw_message_id
-	offer := NewTestOffer(func(o *domain.Offer) {
+	offer := NewTestOffer(func(o *entity.Offer) {
 		o.RawMessageID = rawMsg.ID
 	})
 	for _, opt := range opts {
@@ -197,7 +196,7 @@ func CreateTestOfferWithRawMessage(t *testing.T, db *TestDB, opts ...func(*domai
 }
 
 // CreateTestRequestWithRawMessage creates a raw message first, then a request referencing it
-func CreateTestRequestWithRawMessage(t *testing.T, db *TestDB, opts ...func(*domain.Request)) *domain.Request {
+func CreateTestRequestWithRawMessage(t *testing.T, db *TestDB, opts ...func(*entity.Request)) *entity.Request {
 	t.Helper()
 	ctx := testCtx()
 	rawMsgRepo := NewRawMessageRepo(db.DB)
@@ -209,7 +208,7 @@ func CreateTestRequestWithRawMessage(t *testing.T, db *TestDB, opts ...func(*dom
 	}
 
 	// Create request with valid raw_message_id
-	req := NewTestRequest(func(r *domain.Request) {
+	req := NewTestRequest(func(r *entity.Request) {
 		r.RawMessageID = rawMsg.ID
 	})
 	for _, opt := range opts {
@@ -218,16 +217,16 @@ func CreateTestRequestWithRawMessage(t *testing.T, db *TestDB, opts ...func(*dom
 	return req
 }
 
-// NewTestMatch creates a domain.Match with test data
-func NewTestMatch(offerID, requestID string, opts ...func(*domain.Match)) *domain.Match {
-	match := &domain.Match{
+// NewTestMatch creates a entity.Match with test data
+func NewTestMatch(offerID, requestID string, opts ...func(*entity.Match)) *entity.Match {
+	match := &entity.Match{
 		ID:        uuid.New().String(),
 		OfferID:   offerID,
 		RequestID: requestID,
 		Score:     0.85,
 		Reasoning: "Strong medication match",
 		MatchedBy: "AUTO",
-		Status:    domain.MatchStatusPending,
+		Status:    entity.MatchStatusPending,
 		CreatedAt: time.Now(),
 	}
 	for _, opt := range opts {
@@ -236,9 +235,9 @@ func NewTestMatch(offerID, requestID string, opts ...func(*domain.Match)) *domai
 	return match
 }
 
-// NewTestGroup creates a domain.Group with test data
-func NewTestGroup(opts ...func(*domain.Group)) *domain.Group {
-	group := &domain.Group{
+// NewTestGroup creates a entity.Group with test data
+func NewTestGroup(opts ...func(*entity.Group)) *entity.Group {
+	group := &entity.Group{
 		JID:         uuid.New().String() + "@g.us",
 		Name:        "Test Group",
 		Description: "Test group description",
@@ -251,9 +250,9 @@ func NewTestGroup(opts ...func(*domain.Group)) *domain.Group {
 	return group
 }
 
-// NewTestMedicationMapping creates a domain.MedicationMapping with test data
-func NewTestMedicationMapping(opts ...func(*domain.MedicationMapping)) *domain.MedicationMapping {
-	mapping := &domain.MedicationMapping{
+// NewTestMedicationMapping creates a entity.MedicationMapping with test data
+func NewTestMedicationMapping(opts ...func(*entity.MedicationMapping)) *entity.MedicationMapping {
+	mapping := &entity.MedicationMapping{
 		ID:          uuid.New().String(),
 		ArabicName:  "أوجمنتين",
 		EnglishName: "Augmentin",
@@ -267,13 +266,13 @@ func NewTestMedicationMapping(opts ...func(*domain.MedicationMapping)) *domain.M
 	return mapping
 }
 
-// NewTestMatchFeedback creates a domain.MatchFeedback with test data
-func NewTestMatchFeedback(matchID string, opts ...func(*domain.MatchFeedback)) *domain.MatchFeedback {
-	fb := &domain.MatchFeedback{
+// NewTestMatchFeedback creates a entity.MatchFeedback with test data
+func NewTestMatchFeedback(matchID string, opts ...func(*entity.MatchFeedback)) *entity.MatchFeedback {
+	fb := &entity.MatchFeedback{
 		ID:                 uuid.New().String(),
 		MatchID:            matchID,
 		OperatorID:         "operator-1",
-		Decision:           domain.FeedbackConfirmed,
+		Decision:           entity.FeedbackConfirmed,
 		OriginalScore:      0.85,
 		OriginalConfidence: "HIGH",
 		CreatedAt:          time.Now(),

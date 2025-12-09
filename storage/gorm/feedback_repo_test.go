@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // =============================================================================
@@ -131,13 +131,13 @@ func TestFeedbackRepo_GetRecent_Ordering(t *testing.T) {
 
 	// Create feedbacks with different times
 	now := time.Now()
-	fb1 := NewTestMatchFeedback(match.ID, func(f *domain.MatchFeedback) {
+	fb1 := NewTestMatchFeedback(match.ID, func(f *entity.MatchFeedback) {
 		f.CreatedAt = now.Add(-2 * time.Hour)
 	})
-	fb2 := NewTestMatchFeedback(match.ID, func(f *domain.MatchFeedback) {
+	fb2 := NewTestMatchFeedback(match.ID, func(f *entity.MatchFeedback) {
 		f.CreatedAt = now.Add(-1 * time.Hour)
 	})
-	fb3 := NewTestMatchFeedback(match.ID, func(f *domain.MatchFeedback) {
+	fb3 := NewTestMatchFeedback(match.ID, func(f *entity.MatchFeedback) {
 		f.CreatedAt = now
 	})
 
@@ -203,13 +203,13 @@ func TestFeedbackRepo_AnalyzeFeedback_Stats(t *testing.T) {
 
 	// Create 3 confirmed, 1 rejected
 	for i := 0; i < 3; i++ {
-		fb := NewTestMatchFeedback(match.ID, func(f *domain.MatchFeedback) {
-			f.Decision = domain.FeedbackConfirmed
+		fb := NewTestMatchFeedback(match.ID, func(f *entity.MatchFeedback) {
+			f.Decision = entity.FeedbackConfirmed
 		})
 		assertNoError(t, feedbackRepo.Save(ctx, fb), "Save confirmed")
 	}
-	fb := NewTestMatchFeedback(match.ID, func(f *domain.MatchFeedback) {
-		f.Decision = domain.FeedbackRejected
+	fb := NewTestMatchFeedback(match.ID, func(f *entity.MatchFeedback) {
+		f.Decision = entity.FeedbackRejected
 	})
 	assertNoError(t, feedbackRepo.Save(ctx, fb), "Save rejected")
 

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 func TestParsePass_String(t *testing.T) {
@@ -65,22 +65,22 @@ func TestParser_CalculateAvgConfidence(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		items    []domain.ParsedItem
+		items    []entity.ParsedItem
 		expected float64
 	}{
 		{
 			"Empty items",
-			[]domain.ParsedItem{},
+			[]entity.ParsedItem{},
 			0.0,
 		},
 		{
 			"Single item",
-			[]domain.ParsedItem{{AIConfidence: 0.9}},
+			[]entity.ParsedItem{{AIConfidence: 0.9}},
 			0.9,
 		},
 		{
 			"Multiple items",
-			[]domain.ParsedItem{
+			[]entity.ParsedItem{
 				{AIConfidence: 0.8},
 				{AIConfidence: 0.6},
 				{AIConfidence: 0.7},
@@ -89,7 +89,7 @@ func TestParser_CalculateAvgConfidence(t *testing.T) {
 		},
 		{
 			"All zeros",
-			[]domain.ParsedItem{
+			[]entity.ParsedItem{
 				{AIConfidence: 0.0},
 				{AIConfidence: 0.0},
 			},
@@ -97,7 +97,7 @@ func TestParser_CalculateAvgConfidence(t *testing.T) {
 		},
 		{
 			"Mixed",
-			[]domain.ParsedItem{
+			[]entity.ParsedItem{
 				{AIConfidence: 1.0},
 				{AIConfidence: 0.0},
 			},
@@ -120,8 +120,8 @@ func TestParser_ShouldQueueForReview(t *testing.T) {
 		multiPassConfig: DefaultMultiPassConfig(),
 	}
 
-	result := &domain.AIParseResult{
-		Items: []domain.ParsedItem{},
+	result := &entity.AIParseResult{
+		Items: []entity.ParsedItem{},
 	}
 	assert.False(t, pNoRepo.shouldQueueForReview(result), "Should not queue when repo is nil")
 
@@ -133,23 +133,23 @@ func TestParser_ShouldQueueForReview(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		result   *domain.AIParseResult
+		result   *entity.AIParseResult
 		expected bool
 	}{
 		{
 			"Empty items no error - should queue",
-			&domain.AIParseResult{Items: []domain.ParsedItem{}, Error: ""},
+			&entity.AIParseResult{Items: []entity.ParsedItem{}, Error: ""},
 			true,
 		},
 		{
 			"Empty items with error - should not queue (error handled elsewhere)",
-			&domain.AIParseResult{Items: []domain.ParsedItem{}, Error: "AI error"},
+			&entity.AIParseResult{Items: []entity.ParsedItem{}, Error: "AI error"},
 			false,
 		},
 		{
 			"High confidence items - should not queue",
-			&domain.AIParseResult{
-				Items: []domain.ParsedItem{
+			&entity.AIParseResult{
+				Items: []entity.ParsedItem{
 					{AIConfidence: 0.9},
 					{AIConfidence: 0.85},
 				},
@@ -158,8 +158,8 @@ func TestParser_ShouldQueueForReview(t *testing.T) {
 		},
 		{
 			"Low confidence items - should queue",
-			&domain.AIParseResult{
-				Items: []domain.ParsedItem{
+			&entity.AIParseResult{
+				Items: []entity.ParsedItem{
 					{AIConfidence: 0.3},
 					{AIConfidence: 0.2},
 				},
@@ -168,8 +168,8 @@ func TestParser_ShouldQueueForReview(t *testing.T) {
 		},
 		{
 			"Just above threshold - should not queue",
-			&domain.AIParseResult{
-				Items: []domain.ParsedItem{
+			&entity.AIParseResult{
+				Items: []entity.ParsedItem{
 					{AIConfidence: 0.41},
 				},
 			},
@@ -177,8 +177,8 @@ func TestParser_ShouldQueueForReview(t *testing.T) {
 		},
 		{
 			"Just below threshold - should queue",
-			&domain.AIParseResult{
-				Items: []domain.ParsedItem{
+			&entity.AIParseResult{
+				Items: []entity.ParsedItem{
 					{AIConfidence: 0.39},
 				},
 			},
@@ -197,15 +197,15 @@ func TestParser_ShouldQueueForReview(t *testing.T) {
 // mockReviewQueueRepo is a minimal mock for testing
 type mockReviewQueueRepo struct{}
 
-func (m *mockReviewQueueRepo) Save(ctx context.Context, item *domain.ReviewQueueItem) error {
+func (m *mockReviewQueueRepo) Save(ctx context.Context, item *entity.ReviewQueueItem) error {
 	return nil
 }
 
-func (m *mockReviewQueueRepo) GetByID(ctx context.Context, id string) (*domain.ReviewQueueItem, error) {
+func (m *mockReviewQueueRepo) GetByID(ctx context.Context, id string) (*entity.ReviewQueueItem, error) {
 	return nil, nil
 }
 
-func (m *mockReviewQueueRepo) GetPending(ctx context.Context, limit, offset int) ([]*domain.ReviewQueueItem, error) {
+func (m *mockReviewQueueRepo) GetPending(ctx context.Context, limit, offset int) ([]*entity.ReviewQueueItem, error) {
 	return nil, nil
 }
 
@@ -213,7 +213,7 @@ func (m *mockReviewQueueRepo) CountPending(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockReviewQueueRepo) Approve(ctx context.Context, id string, reviewedBy string, correctedItems []domain.ParsedItem, note string) error {
+func (m *mockReviewQueueRepo) Approve(ctx context.Context, id string, reviewedBy string, correctedItems []entity.ParsedItem, note string) error {
 	return nil
 }
 
@@ -221,6 +221,6 @@ func (m *mockReviewQueueRepo) Reject(ctx context.Context, id string, reviewedBy 
 	return nil
 }
 
-func (m *mockReviewQueueRepo) GetByRawMessageID(ctx context.Context, rawMessageID string) (*domain.ReviewQueueItem, error) {
+func (m *mockReviewQueueRepo) GetByRawMessageID(ctx context.Context, rawMessageID string) (*entity.ReviewQueueItem, error) {
 	return nil, nil
 }

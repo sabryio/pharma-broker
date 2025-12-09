@@ -3,7 +3,7 @@ package gorm
 import (
 	"testing"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 )
 
 // =============================================================================
@@ -53,13 +53,13 @@ func TestGroupRepo_GetMonitored_FiltersCorrectly(t *testing.T) {
 	ctx := testCtx()
 
 	// Create monitored group (explicitly set)
-	monitored := NewTestGroup(func(g *domain.Group) {
+	monitored := NewTestGroup(func(g *entity.Group) {
 		g.Monitored = true
 	})
 	assertNoError(t, repo.Save(ctx, monitored), "Save monitored")
 
 	// Create non-monitored group (explicitly set)
-	notMonitored := NewTestGroup(func(g *domain.Group) {
+	notMonitored := NewTestGroup(func(g *entity.Group) {
 		g.Monitored = false
 	})
 	assertNoError(t, repo.Save(ctx, notMonitored), "Save not monitored")
@@ -79,7 +79,7 @@ func TestGroupRepo_SetMonitored_Toggle(t *testing.T) {
 	ctx := testCtx()
 
 	// Create monitored group
-	group := NewTestGroup(func(g *domain.Group) {
+	group := NewTestGroup(func(g *entity.Group) {
 		g.Monitored = true
 	})
 	assertNoError(t, repo.Save(ctx, group), "Save should succeed")
@@ -152,7 +152,7 @@ func TestGroupRepo_EnableFromConfig_Batch(t *testing.T) {
 	// Create 3 groups with Monitored=false
 	jids := []string{}
 	for i := 0; i < 3; i++ {
-		group := NewTestGroup(func(g *domain.Group) {
+		group := NewTestGroup(func(g *entity.Group) {
 			g.Monitored = false // Explicitly not monitored
 		})
 		assertNoError(t, repo.Save(ctx, group), "Save should succeed")
@@ -183,7 +183,7 @@ func TestGroupRepo_IncrementMessageCount(t *testing.T) {
 	ctx := testCtx()
 
 	// Create group with 0 message count
-	group := NewTestGroup(func(g *domain.Group) {
+	group := NewTestGroup(func(g *entity.Group) {
 		g.MessageCount = 0
 	})
 	assertNoError(t, repo.Save(ctx, group), "Save should succeed")

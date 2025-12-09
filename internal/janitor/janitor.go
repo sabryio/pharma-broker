@@ -7,12 +7,12 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"pharmabroker/domain/repository"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 )
 
 type Janitor struct {
-	repo    domain.RawMessageRepository
+	repo    repository.RawMessageRepository
 	cfg     config.DatabaseConfig
 	logger  zerolog.Logger
 	wg      sync.WaitGroup
@@ -21,7 +21,7 @@ type Janitor struct {
 	mu      sync.Mutex
 }
 
-func NewJanitor(repo domain.RawMessageRepository, cfg config.DatabaseConfig, logger zerolog.Logger) *Janitor {
+func NewJanitor(repo repository.RawMessageRepository, cfg config.DatabaseConfig, logger zerolog.Logger) *Janitor {
 	return &Janitor{
 		repo:   repo,
 		cfg:    cfg,
