@@ -3,6 +3,7 @@ package gorm
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -99,21 +100,25 @@ func (r *WeightHistoryRepo) SaveWithMetrics(ctx context.Context,
 	metrics *entity.PerformanceMetrics,
 	notes string) error {
 
-	history := &entity.WeightHistory{
-		ID:               uuid.New().String(),
-		MedicationWeight: medicationWeight,
-		DosageWeight:     dosageWeight,
-		QuantityWeight:   quantityWeight,
-		PriceWeight:      priceWeight,
-		RecencyWeight:    recencyWeight,
-		Source:           source,
-		AppliedAt:        time.Now(),
-		Notes:            notes,
+	var metricsJSON string
+	if metrics != nil {
+		data, err := json.Marshal(metrics)
+		if err == nil {
+			metricsJSON = string(data)
+		}
 	}
 
-	// Note: metrics can be stored in notes field or a separate table if needed
-	if metrics != nil {
-		// Could serialize metrics to notes or store separately
+	history := &entity.WeightHistory{
+		ID:                 uuid.New().String(),
+		MedicationWeight:   medicationWeight,
+		DosageWeight:       dosageWeight,
+		QuantityWeight:     quantityWeight,
+		PriceWeight:        priceWeight,
+		RecencyWeight:      recencyWeight,
+		Source:             source,
+		AppliedAt:          time.Now(),
+		Notes:              notes,
+		PerformanceMetrics: metricsJSON,
 	}
 
 	return r.Save(ctx, history)

@@ -551,10 +551,12 @@ func ToAuditLogsEntity(models []AuditLog) []*entity.AuditLog {
 // ToWeightHistoryModel converts entity.WeightHistory to gorm WeightHistory
 func ToWeightHistoryModel(d *entity.WeightHistory) *WeightHistory {
 	return &WeightHistory{
-		ID:        d.ID,
-		Weights:   weightsToJSON(d.MedicationWeight, d.DosageWeight, d.QuantityWeight, d.PriceWeight, d.RecencyWeight),
-		Source:    string(d.Source),
-		AppliedAt: d.AppliedAt,
+		ID:                 d.ID,
+		Weights:            weightsToJSON(d.MedicationWeight, d.DosageWeight, d.QuantityWeight, d.PriceWeight, d.RecencyWeight),
+		Source:             string(d.Source),
+		Notes:              nilIfEmpty(d.Notes),
+		PerformanceMetrics: nilIfEmpty(d.PerformanceMetrics),
+		AppliedAt:          d.AppliedAt,
 	}
 }
 
@@ -562,14 +564,16 @@ func ToWeightHistoryModel(d *entity.WeightHistory) *WeightHistory {
 func ToWeightHistoryEntity(m *WeightHistory) *entity.WeightHistory {
 	medW, dosW, qtyW, prcW, recW := jsonToWeights(m.Weights)
 	return &entity.WeightHistory{
-		ID:               m.ID,
-		MedicationWeight: medW,
-		DosageWeight:     dosW,
-		QuantityWeight:   qtyW,
-		PriceWeight:      prcW,
-		RecencyWeight:    recW,
-		Source:           entity.WeightSource(m.Source),
-		AppliedAt:        m.AppliedAt,
+		ID:                 m.ID,
+		MedicationWeight:   medW,
+		DosageWeight:       dosW,
+		QuantityWeight:     qtyW,
+		PriceWeight:        prcW,
+		RecencyWeight:      recW,
+		Source:             entity.WeightSource(m.Source),
+		Notes:              deref(m.Notes),
+		PerformanceMetrics: deref(m.PerformanceMetrics),
+		AppliedAt:          m.AppliedAt,
 	}
 }
 

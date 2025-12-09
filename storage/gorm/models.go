@@ -275,11 +275,13 @@ func (FeedbackRecord) TableName() string { return "feedback_records" }
 
 // WeightHistory represents weight change history
 type WeightHistory struct {
-	ID          string    `gorm:"column:id;primaryKey"`
-	Weights     string    `gorm:"column:weights;type:text;not null"`
-	Source      string    `gorm:"column:source;not null"`
-	Improvement *float64  `gorm:"column:improvement"`
-	AppliedAt   time.Time `gorm:"column:applied_at;autoCreateTime;index"`
+	ID                 string    `gorm:"column:id;primaryKey"`
+	Weights            string    `gorm:"column:weights;type:text;not null"`
+	Source             string    `gorm:"column:source;not null"`
+	Improvement        *float64  `gorm:"column:improvement"`
+	Notes              *string   `gorm:"column:notes"`
+	PerformanceMetrics *string   `gorm:"column:performance_metrics;type:text"`
+	AppliedAt          time.Time `gorm:"column:applied_at;autoCreateTime;index"`
 }
 
 func (WeightHistory) TableName() string { return "weight_history" }
