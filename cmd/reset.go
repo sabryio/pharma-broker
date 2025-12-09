@@ -11,7 +11,7 @@ import (
 
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
+	storageGorm "pharmabroker/storage/gorm"
 )
 
 var resetDbCmd = &cobra.Command{
@@ -79,7 +79,7 @@ func runResetDb(cmd *cobra.Command, args []string) {
 	log.Info().Msg("Re-initializing database...")
 
 	// Re-initialize (runs migrations)
-	db, err := storage.New(&cfg.Database)
+	db, err := storageGorm.NewDB(&storageGorm.Config{Path: dbPath})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to re-initialize database")
 	}
@@ -87,7 +87,7 @@ func runResetDb(cmd *cobra.Command, args []string) {
 
 	// Seed data
 	ctx := context.Background()
-	medicationRepo := storage.NewMedicationMappingRepo(db)
+	medicationRepo := storageGorm.NewMedicationMappingRepo(db)
 
 	// Load medication mappings from file (supports both legacy and rich format)
 	medicationMappings, err := domain.LoadRichMedicationMappings("medications.json")

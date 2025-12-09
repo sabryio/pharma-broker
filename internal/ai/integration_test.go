@@ -12,7 +12,7 @@ import (
 
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
+	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
 )

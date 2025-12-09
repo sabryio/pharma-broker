@@ -11,7 +11,7 @@ import (
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
+	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
 )
@@ -70,17 +70,17 @@ func main() {
 		log.Fatal().Str("path", dbPath).Msg("Database file not found. Please run from project root.")
 	}
 
-	dbCfg := &config.DatabaseConfig{
+	dbCfg := &storageGorm.Config{
 		Path: dbPath,
 	}
 
-	gormDB, err := storage.NewGormDB(dbCfg)
+	gormDB, err := storageGorm.NewDB(dbCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize database connection")
 	}
 
 	// 2. Fetch Mappings from DB
-	repo := storage.NewGormMedicationMappingRepo(gormDB)
+	repo := storageGorm.NewMedicationMappingRepo(gormDB)
 	allMappings, err := repo.GetAll(context.Background())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to fetch mappings from DB")

@@ -22,7 +22,6 @@ import (
 	"pharmabroker/internal/monitor"
 	"pharmabroker/internal/notify"
 	"pharmabroker/internal/reports"
-	"pharmabroker/internal/storage"
 	"pharmabroker/internal/whatsapp"
 
 	// New clean architecture modules
@@ -61,23 +60,15 @@ func runServe(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize database
-	db, err := storage.New(&cfg.Database)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize database")
-	}
-	defer db.Close()
-	log.Info().Str("path", cfg.Database.Path).Msg("Database initialized")
-
-	// Create repositories using new storage/gorm implementations
+	// Initialize storage/gorm layer
 	newDB, err := storageGorm.NewDB(&storageGorm.Config{Path: cfg.Database.Path})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize storage layer")
 	}
 	defer newDB.Close()
-	log.Info().Msg("Using storage/gorm repository implementations")
+	log.Info().Str("path", cfg.Database.Path).Msg("Database initialized using storage/gorm")
 
-	// Core repositories (new implementations)
+	// Core repositories
 	rawMsgRepo := storageGorm.NewRawMessageRepo(newDB)
 	offerRepo := storageGorm.NewOfferRepo(newDB)
 	requestRepo := storageGorm.NewRequestRepo(newDB)

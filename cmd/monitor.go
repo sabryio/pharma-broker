@@ -13,8 +13,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/storage"
 	"pharmabroker/internal/whatsapp"
+	storageGorm "pharmabroker/storage/gorm"
 )
 
 var monitorCmd = &cobra.Command{
@@ -81,7 +81,7 @@ type model struct {
 	quitting  bool
 	saved     bool
 	err       error
-	groupRepo *storage.GroupRepo
+	groupRepo *storageGorm.GroupRepo
 	ctx       context.Context
 }
 
@@ -182,14 +182,14 @@ func runMonitor(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
 	// Initialize database
-	db, err := storage.New(&cfg.Database)
+	db, err := storageGorm.NewDB(&storageGorm.Config{Path: cfg.Database.Path})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize database: %v\n", err)
 		os.Exit(1)
 	}
 	defer db.Close()
 
-	groupRepo := storage.NewGroupRepo(db)
+	groupRepo := storageGorm.NewGroupRepo(db)
 
 	// Initialize WhatsApp manager
 	waManager, err := whatsapp.NewManager(ctx, &cfg.WhatsApp, log)

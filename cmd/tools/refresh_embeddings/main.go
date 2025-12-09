@@ -8,7 +8,7 @@ import (
 
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/storage"
+	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
 )
@@ -28,13 +28,13 @@ func main() {
 		dbPath = "data/pharmabroker.db"
 	}
 
-	dbCfg := &config.DatabaseConfig{Path: dbPath}
-	gormDB, err := storage.NewGormDB(dbCfg)
+	dbCfg := &storageGorm.Config{Path: dbPath}
+	gormDB, err := storageGorm.NewDB(dbCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open database")
 	}
 
-	repo := storage.NewGormMedicationMappingRepo(gormDB)
+	repo := storageGorm.NewMedicationMappingRepo(gormDB)
 
 	// Fetch all mappings
 	allMappings, err := repo.GetAll(context.Background())
