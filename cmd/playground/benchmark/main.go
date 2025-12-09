@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	aiDocker "pharmabroker/ai/docker"
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
@@ -56,7 +57,7 @@ func main() {
 	fmt.Printf("Total mappings in database: %d\n\n", len(fullMappings))
 
 	// Create AI client
-	client, err := ai.NewDockerModelClient(&cfg.DockerModel, log)
+	client, err := aiDocker.NewClient(&cfg.DockerModel, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create AI client")
 	}
@@ -75,7 +76,7 @@ func main() {
 	runBenchmark(ctx, client, testMessages, fullMappings, true, allMappings)
 }
 
-func runBenchmark(ctx context.Context, client *ai.DockerModelClient, messages []*domain.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*domain.MedicationMapping) {
+func runBenchmark(ctx context.Context, client *aiDocker.Client, messages []*domain.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*domain.MedicationMapping) {
 	iterations := 3
 
 	if useHybrid {

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
+	"pharmabroker/matching"
 )
 
 // Mock feedback repository
@@ -68,7 +68,7 @@ func TestGetLearningStatus_Success(t *testing.T) {
 		Enabled:  true,
 		Schedule: "0 3 * * *",
 	}
-	scheduler := ai.NewLearningScheduler(nil, cfg, nil)
+	scheduler := matching.NewLearningScheduler(nil, cfg, nil)
 	handlers := NewLearningHandlers(scheduler, nil, nil)
 
 	req := httptest.NewRequest("GET", "/api/admin/learning/status", nil)
@@ -108,7 +108,7 @@ func TestTriggerLearning_NoScheduler(t *testing.T) {
 
 func TestApplyPendingWeights_NoConfirm(t *testing.T) {
 	cfg := config.AdaptiveLearningConfig{Enabled: true}
-	scheduler := ai.NewLearningScheduler(nil, cfg, nil)
+	scheduler := matching.NewLearningScheduler(nil, cfg, nil)
 	handlers := NewLearningHandlers(scheduler, nil, nil)
 
 	body := bytes.NewBufferString(`{"confirm": false}`)
@@ -124,7 +124,7 @@ func TestApplyPendingWeights_NoConfirm(t *testing.T) {
 
 func TestRejectPendingWeights_Success(t *testing.T) {
 	cfg := config.AdaptiveLearningConfig{Enabled: true}
-	scheduler := ai.NewLearningScheduler(nil, cfg, nil)
+	scheduler := matching.NewLearningScheduler(nil, cfg, nil)
 	handlers := NewLearningHandlers(scheduler, nil, nil)
 
 	req := httptest.NewRequest("POST", "/api/admin/learning/reject", nil)
@@ -245,7 +245,7 @@ func TestGetCurrentWeights_Default(t *testing.T) {
 
 func TestUpdateWeightsManually_InvalidSum(t *testing.T) {
 	cfg := config.AdaptiveLearningConfig{Enabled: true}
-	scheduler := ai.NewLearningScheduler(nil, cfg, nil)
+	scheduler := matching.NewLearningScheduler(nil, cfg, nil)
 	handlers := NewLearningHandlers(scheduler, nil, nil)
 
 	// Weights don't sum to 1.0

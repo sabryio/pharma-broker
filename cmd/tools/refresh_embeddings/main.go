@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"pharmabroker/internal/ai"
+	aiDocker "pharmabroker/ai/docker"
 	"pharmabroker/internal/config"
 	storageGorm "pharmabroker/storage/gorm"
 
@@ -58,7 +58,7 @@ func main() {
 		aiCfg.BaseURL = "http://localhost:12434/engines/llama.cpp/v1"
 	}
 
-	client, err := ai.NewDockerModelClient(aiCfg, log)
+	client, err := aiDocker.NewClient(aiCfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create AI client")
 	}

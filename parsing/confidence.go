@@ -1,4 +1,4 @@
-package ai
+package parsing
 
 // AI Confidence Score Constants and Utilities
 // These define thresholds for interpreting AI confidence in medication extraction

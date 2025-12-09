@@ -8,6 +8,7 @@ import (
 
 	"pharmabroker/ai"
 	"pharmabroker/domain/entity"
+	"pharmabroker/matching"
 
 	"github.com/rs/zerolog"
 )
@@ -56,9 +57,9 @@ type LearningStatusResponse struct {
 	LastStatus     string                     `json:"last_status"`
 	LastError      string                     `json:"last_error,omitempty"`
 	LastMetrics    *entity.PerformanceMetrics `json:"last_metrics,omitempty"`
-	PendingApply   *ai.ScoringWeights         `json:"pending_weights,omitempty"`
+	PendingApply   *matching.Weights          `json:"pending_weights,omitempty"`
 	PendingReason  string                     `json:"pending_reason,omitempty"`
-	CurrentWeights *ai.ScoringWeights         `json:"current_weights,omitempty"`
+	CurrentWeights *matching.Weights          `json:"current_weights,omitempty"`
 }
 
 // GetLearningStatus returns current learning system status
@@ -329,7 +330,7 @@ func (h *LearningHandler) GetFeedbackStats(w http.ResponseWriter, r *http.Reques
 
 // CurrentWeightsResponse for current weights
 type CurrentWeightsResponse struct {
-	Weights   ai.ScoringWeights `json:"weights"`
+	Weights   matching.Weights `json:"weights"`
 	Source    string            `json:"source"`
 	AppliedAt *time.Time        `json:"applied_at,omitempty"`
 	Notes     string            `json:"notes,omitempty"`
@@ -348,7 +349,7 @@ func (h *LearningHandler) GetCurrentWeights(w http.ResponseWriter, r *http.Reque
 	current, err := h.weightHistoryRepo.GetCurrent(ctx)
 	if err != nil || current == nil {
 		// Return default weights if no history
-		defaultWeights := ai.DefaultWeights()
+		defaultWeights := matching.DefaultWeights()
 		success(w, CurrentWeightsResponse{
 			Weights: defaultWeights,
 			Source:  "default",
@@ -357,7 +358,7 @@ func (h *LearningHandler) GetCurrentWeights(w http.ResponseWriter, r *http.Reque
 	}
 
 	response := CurrentWeightsResponse{
-		Weights: ai.ScoringWeights{
+		Weights: matching.Weights{
 			Medication: current.MedicationWeight,
 			Dosage:     current.DosageWeight,
 			Quantity:   current.QuantityWeight,
@@ -374,7 +375,7 @@ func (h *LearningHandler) GetCurrentWeights(w http.ResponseWriter, r *http.Reque
 
 // ManualWeightsRequest for manual weight updates
 type ManualWeightsRequest struct {
-	Weights ai.ScoringWeights `json:"weights"`
+	Weights matching.Weights `json:"weights"`
 	Notes   string            `json:"notes"`
 }
 

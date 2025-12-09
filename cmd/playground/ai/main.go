@@ -19,7 +19,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 
-	"pharmabroker/internal/ai"
+	"pharmabroker/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 )

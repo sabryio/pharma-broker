@@ -1,4 +1,4 @@
-package ai
+package matching
 
 import (
 	"context"
@@ -189,7 +189,7 @@ func TestLearningScheduler_RejectPending(t *testing.T) {
 	scheduler := NewLearningScheduler(nil, cfg, slog.Default())
 
 	// Set some pending weights
-	scheduler.pendingApply = &ScoringWeights{Medication: 0.5}
+	scheduler.pendingApply = &Weights{Medication: 0.5}
 	scheduler.pendingReason = "test"
 
 	scheduler.RejectPending()
@@ -243,10 +243,10 @@ func TestLearningScheduler_UpdateConfig(t *testing.T) {
 func TestLearningScheduler_BuildNote(t *testing.T) {
 	scheduler := &LearningScheduler{}
 
-	old := ScoringWeights{
+	old := Weights{
 		Medication: 0.45, Dosage: 0.10, Quantity: 0.20, Price: 0.15, Recency: 0.10,
 	}
-	new := ScoringWeights{
+	new := Weights{
 		Medication: 0.48, Dosage: 0.10, Quantity: 0.18, Price: 0.14, Recency: 0.10,
 	}
 	metrics := domain.PerformanceMetrics{
@@ -387,7 +387,7 @@ func TestLearningScheduler_RunNow_Success_AutoApplyDisabled(t *testing.T) {
 func TestSchedulerStatus_AllFields(t *testing.T) {
 	now := time.Now()
 	metrics := &domain.PerformanceMetrics{SampleSize: 100}
-	pending := &ScoringWeights{Medication: 0.5}
+	pending := &Weights{Medication: 0.5}
 
 	status := SchedulerStatus{
 		Enabled:       true,

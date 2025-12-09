@@ -8,13 +8,17 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"pharmabroker/internal/ai"
+	"pharmabroker/ai"
 	"pharmabroker/internal/config"
+	vectorutils "pharmabroker/pkg/vector"
 )
 
 func main() {
 	// Setup logging
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
+	// Initialize vector comparator
+	vectorComparator := vectorutils.CosineComparator{}
 
 	ctx := context.Background()
 
@@ -74,7 +78,11 @@ func main() {
 			continue
 		}
 
-		score := ai.CosineSimilarity(v1, v2)
+		score, err := vectorComparator.Similarity(v1, v2)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			continue
+		}
 		fmt.Printf("Similarity '%s' <-> '%s': %.4f\n", pair[0], pair[1], score)
 	}
 }

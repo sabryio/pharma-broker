@@ -1,4 +1,4 @@
-package ai
+package matching
 
 import (
 	"context"
@@ -87,7 +87,7 @@ func NewWeightLearnerWithConfig(
 }
 
 // CalculateOptimalWeights analyzes feedback and computes optimal weights
-func (wl *WeightLearner) CalculateOptimalWeights(ctx context.Context, startDate, endDate time.Time) (*ScoringWeights, *domain.PerformanceMetrics, error) {
+func (wl *WeightLearner) CalculateOptimalWeights(ctx context.Context, startDate, endDate time.Time) (*Weights, *domain.PerformanceMetrics, error) {
 	// Get feedback statistics
 	stats, err := wl.feedbackRepo.GetFeedbackStats(ctx, startDate, endDate)
 	if err != nil {
@@ -156,8 +156,8 @@ func (wl *WeightLearner) calculateCorrelations(stats *domain.FeedbackStats) map[
 }
 
 // adjustWeights applies learning rate to adjust weights based on correlations
-func (wl *WeightLearner) adjustWeights(current ScoringWeights, correlations map[string]float64) ScoringWeights {
-	adjusted := ScoringWeights{}
+func (wl *WeightLearner) adjustWeights(current Weights, correlations map[string]float64) Weights {
+	adjusted := Weights{}
 
 	// Apply formula: new_weight = current_weight * (1 + alpha * correlation)
 	adjusted.Medication = current.Medication * (1 + wl.config.LearningRate*correlations["medication"])
@@ -170,8 +170,8 @@ func (wl *WeightLearner) adjustWeights(current ScoringWeights, correlations map[
 }
 
 // applyConstraints enforces safety constraints on weights
-func (wl *WeightLearner) applyConstraints(current, adjusted ScoringWeights) ScoringWeights {
-	constrained := ScoringWeights{}
+func (wl *WeightLearner) applyConstraints(current, adjusted Weights) Weights {
+	constrained := Weights{}
 
 	// Helper to apply constraints to a single weight
 	applyConstraint := func(currentVal, adjustedVal float64) float64 {
@@ -201,12 +201,12 @@ func (wl *WeightLearner) applyConstraints(current, adjusted ScoringWeights) Scor
 }
 
 // normalizeWeights ensures all weights sum to 1.0
-func (wl *WeightLearner) normalizeWeights(weights ScoringWeights) ScoringWeights {
+func (wl *WeightLearner) normalizeWeights(weights Weights) Weights {
 	sum := weights.Medication + weights.Dosage + weights.Quantity + weights.Price + weights.Recency
 
 	if sum == 0 {
 		// Fallback to equal weights
-		return ScoringWeights{
+		return Weights{
 			Medication: 0.20,
 			Dosage:     0.20,
 			Quantity:   0.20,
@@ -215,7 +215,7 @@ func (wl *WeightLearner) normalizeWeights(weights ScoringWeights) ScoringWeights
 		}
 	}
 
-	return ScoringWeights{
+	return Weights{
 		Medication: weights.Medication / sum,
 		Dosage:     weights.Dosage / sum,
 		Quantity:   weights.Quantity / sum,
@@ -249,7 +249,7 @@ func (wl *WeightLearner) calculateMetrics(stats *domain.FeedbackStats) domain.Pe
 }
 
 // ApplyWeights saves and applies new weights to the scorer
-func (wl *WeightLearner) ApplyWeights(ctx context.Context, weights ScoringWeights, source domain.WeightSource, metrics *domain.PerformanceMetrics, notes string) error {
+func (wl *WeightLearner) ApplyWeights(ctx context.Context, weights Weights, source domain.WeightSource, metrics *domain.PerformanceMetrics, notes string) error {
 	// Save to history
 	err := wl.historyRepo.SaveWithMetrics(ctx,
 		weights.Medication,
@@ -300,7 +300,7 @@ func (wl *WeightLearner) Rollback(ctx context.Context) error {
 	}
 
 	// Apply previous weights
-	previousWeights := ScoringWeights{
+	previousWeights := Weights{
 		Medication: history[1].MedicationWeight,
 		Dosage:     history[1].DosageWeight,
 		Quantity:   history[1].QuantityWeight,

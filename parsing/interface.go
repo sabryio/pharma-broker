@@ -66,20 +66,28 @@ type Config struct {
 
 // MultiPassConfig configures multi-pass parsing behavior
 type MultiPassConfig struct {
-	MaxPasses           int
-	ConfidenceThreshold float64
-	EnableReviewQueue   bool
+	// StrictMinConfidence is the minimum average confidence to accept Pass 1 results
+	StrictMinConfidence float64 // Default: 0.7
+
+	// RelaxedMinConfidence is the minimum confidence to accept Pass 2 results
+	RelaxedMinConfidence float64 // Default: 0.4
+
+	// EnablePass2 enables the relaxed fallback pass
+	EnablePass2 bool // Default: true
+
+	// EnableReviewQueue enables queuing low-confidence results for review
+	EnableReviewQueue bool // Default: true
 }
 
-// ErrorNotifier receives error notifications
+// ErrorNotifier interface for reporting system errors
 type ErrorNotifier interface {
 	NotifyError(err error)
 }
 
-// SSEBroadcaster sends real-time updates
+// SSEBroadcaster interface for real-time updates
 type SSEBroadcaster interface {
-	BroadcastNewOffer(offerID, medication string)
-	BroadcastNewRequest(requestID, medication string)
+	BroadcastNewOffer(offerID string, medication string)
+	BroadcastNewRequest(requestID string, medication string)
 	BroadcastNewMatch(matchID string, score float64)
 }
 

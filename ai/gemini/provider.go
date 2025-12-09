@@ -10,12 +10,14 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/genai"
 
+	"pharmabroker/ai/prompts"
+	"pharmabroker/domain/repository"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 )
 
-// GeminiClient handles communication with Gemini API using official SDK
-type GeminiClient struct {
+// Client handles communication with Gemini API using official SDK
+type Client struct {
 	cfg    *config.GeminiConfig
 	client *genai.Client
 	log    zerolog.Logger
@@ -26,8 +28,8 @@ type GeminiClient struct {
 	hourStart        time.Time
 }
 
-// NewGeminiClient creates a new Gemini API client
-func NewGeminiClient(ctx context.Context, cfg *config.GeminiConfig, log zerolog.Logger) (*GeminiClient, error) {
+// NewClient creates a new Gemini API client
+func NewClient(ctx context.Context, cfg *config.GeminiConfig, log zerolog.Logger) (*Client, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey: cfg.APIKey,
 	})
@@ -35,7 +37,7 @@ func NewGeminiClient(ctx context.Context, cfg *config.GeminiConfig, log zerolog.
 		return nil, fmt.Errorf("create genai client: %w", err)
 	}
 
-	return &GeminiClient{
+	return &Client{
 		cfg:       cfg,
 		client:    client,
 		log:       log.With().Str("component", "gemini").Logger(),
@@ -121,14 +123,14 @@ var pharmaParseSchema = map[string]any{
 }
 
 // ParseMessages parses one or more messages and extracts offers/requests
-func (c *GeminiClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
+func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
 	// Check rate limit
 	if !c.checkRateLimit() {
 		return nil, fmt.Errorf("rate limit exceeded (%d requests/hour)", c.cfg.RateLimitPerHour)
 	}
 
 	// Build prompt with all messages
-	prompt := buildParsePrompt(messages, mappings)
+	prompt := prompts.BuildParsePrompt(messages, mappings)
 
 	// Configure generation with JSON schema
 	config := &genai.GenerateContentConfig{
@@ -192,7 +194,7 @@ func (c *GeminiClient) ParseMessages(ctx context.Context, messages []*domain.Raw
 	return c.parseResponse(responseText, messages)
 }
 
-func (c *GeminiClient) checkRateLimit() bool {
+func (c *Client) checkRateLimit() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -212,7 +214,7 @@ func (c *GeminiClient) checkRateLimit() bool {
 	return true
 }
 
-func (c *GeminiClient) parseResponse(responseText string, messages []*domain.RawMessage) ([]*domain.AIParseResult, error) {
+func (c *Client) parseResponse(responseText string, messages []*domain.RawMessage) ([]*domain.AIParseResult, error) {
 	// Expected format: array of results, one per message
 	var rawResults []struct {
 		MessageIndex int                 `json:"message_index"`
@@ -260,7 +262,7 @@ func (c *GeminiClient) parseResponse(responseText string, messages []*domain.Raw
 }
 
 // GetRateLimitStatus returns current rate limit usage
-func (c *GeminiClient) GetRateLimitStatus() (used, limit int, resetIn time.Duration) {
+func (c *Client) GetRateLimitStatus() (used, limit int, resetIn time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -271,13 +273,13 @@ func (c *GeminiClient) GetRateLimitStatus() (used, limit int, resetIn time.Durat
 }
 
 // Close closes the client
-func (c *GeminiClient) Close() error {
+func (c *Client) Close() error {
 	// The genai client doesn't require explicit closing
 	return nil
 }
 
 // Embed generates embeddings for the given text
-func (c *GeminiClient) Embed(ctx context.Context, text string) ([]float32, error) {
+func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	// Use text-embedding-004 for better performance
 	model := "text-embedding-004"
 
@@ -297,7 +299,7 @@ func (c *GeminiClient) Embed(ctx context.Context, text string) ([]float32, error
 // EmbedBatch generates embeddings for a batch of texts by calling Embed concurrently
 // Note: Google GenAI SDK (v0.x) does not yet expose BatchEmbedContents in a stable way.
 // We use a worker pool to simulate batching for performance.
-func (c *GeminiClient) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+func (c *Client) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
@@ -353,13 +355,13 @@ func (c *GeminiClient) EmbedBatch(ctx context.Context, texts []string) ([][]floa
 
 // SetMappings is a no-op for GeminiClient as it doesn't use hybrid RAG filtering.
 // The Gemini provider uses the full mappings passed to ParseMessages directly.
-func (c *GeminiClient) SetMappings(mappings []*domain.MedicationMapping) {
+func (c *Client) SetMappings(mappings []*domain.MedicationMapping) {
 	// No-op: Gemini doesn't use hybrid RAG filtering
 	c.log.Debug().Int("count", len(mappings)).Msg("SetMappings called (no-op for Gemini)")
 }
 
 // SetUnmappedRepo is a no-op for GeminiClient as it doesn't use active learning.
-func (c *GeminiClient) SetUnmappedRepo(repo domain.UnmappedMedicationRepo) {
+func (c *Client) SetUnmappedRepo(repo repository.UnmappedMedicationRepo) {
 	// No-op: Gemini doesn't use active learning
 	c.log.Debug().Msg("SetUnmappedRepo called (no-op for Gemini)")
 }

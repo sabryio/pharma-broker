@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
-	"time"
-
+	aiDocker "pharmabroker/ai/docker"
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	storageGorm "pharmabroker/storage/gorm"
+	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -115,7 +115,7 @@ func main() {
 		RetryBaseDelay: time.Second,
 	}
 
-	client, err := ai.NewDockerModelClient(cfg, log)
+	client, err := aiDocker.NewClient(cfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create client")
 	}

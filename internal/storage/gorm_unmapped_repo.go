@@ -3,7 +3,7 @@ package storage
 import (
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 	"pharmabroker/internal/storage/models"
 
 	"gorm.io/gorm"
@@ -45,7 +45,7 @@ func (r *GormUnmappedMedicationRepo) Save(rawText, aiOutput, sourceMessage, sour
 }
 
 // GetPending returns unmapped medications that haven't been reviewed
-func (r *GormUnmappedMedicationRepo) GetPending(limit, offset int) ([]*domain.UnmappedMedication, error) {
+func (r *GormUnmappedMedicationRepo) GetPending(limit, offset int) ([]*entity.UnmappedMedication, error) {
 	var results []models.UnmappedMedication
 	err := r.db.Where("reviewed = ?", false).
 		Order("count DESC, created_at DESC").
@@ -59,7 +59,7 @@ func (r *GormUnmappedMedicationRepo) GetPending(limit, offset int) ([]*domain.Un
 }
 
 // GetByRawText finds an unmapped medication by raw text
-func (r *GormUnmappedMedicationRepo) GetByRawText(rawText string) (*domain.UnmappedMedication, error) {
+func (r *GormUnmappedMedicationRepo) GetByRawText(rawText string) (*entity.UnmappedMedication, error) {
 	var result models.UnmappedMedication
 	err := r.db.Where("raw_text = ?", rawText).First(&result).Error
 	if err != nil {
@@ -97,8 +97,8 @@ func (r *GormUnmappedMedicationRepo) CountPending() (int64, error) {
 }
 
 // toUnmappedDomain converts model to domain
-func toUnmappedDomain(m *models.UnmappedMedication) *domain.UnmappedMedication {
-	return &domain.UnmappedMedication{
+func toUnmappedDomain(m *models.UnmappedMedication) *entity.UnmappedMedication {
+	return &entity.UnmappedMedication{
 		ID:            m.ID,
 		RawText:       m.RawText,
 		AIOutput:      m.AIOutput,
@@ -116,8 +116,8 @@ func toUnmappedDomain(m *models.UnmappedMedication) *domain.UnmappedMedication {
 }
 
 // toUnmappedDomainSlice converts model slice to domain slice
-func toUnmappedDomainSlice(ms []models.UnmappedMedication) []*domain.UnmappedMedication {
-	result := make([]*domain.UnmappedMedication, len(ms))
+func toUnmappedDomainSlice(ms []models.UnmappedMedication) []*entity.UnmappedMedication {
+	result := make([]*entity.UnmappedMedication, len(ms))
 	for i := range ms {
 		result[i] = toUnmappedDomain(&ms[i])
 	}

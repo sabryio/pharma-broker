@@ -1,4 +1,4 @@
-package ai
+package parsing
 
 import (
 	"context"
@@ -10,26 +10,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
+	ai "pharmabroker/ai"
+	aiCircuitBreaker "pharmabroker/ai/circuitbreaker"
+	"pharmabroker/domain/entity"
+	"pharmabroker/domain/repository"
 	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
 	"pharmabroker/internal/metrics"
+	"pharmabroker/matching"
 	synonymsPkg "pharmabroker/pkg/synonyms"
 )
 
-// ErrorNotifier interface for reporting system errors
-type ErrorNotifier interface {
-	NotifyError(err error)
-}
-
-// SSEBroadcaster interface for real-time updates
-type SSEBroadcaster interface {
-	BroadcastNewOffer(offerID string, medication string)
-	BroadcastNewRequest(requestID string, medication string)
-	BroadcastNewMatch(matchID string, score float64)
-}
-
 // ProcessMessage queues a message for processing
-func (p *Parser) ProcessMessage(ctx context.Context, msg *domain.RawMessage) {
+func (p *Parser) ProcessMessage(ctx context.Context, msg *entity.RawMessage) {
 	select {
 	case p.inputChan <- inputJob{ctx: ctx, msg: msg}:
 		// Queued
@@ -41,18 +33,18 @@ func (p *Parser) ProcessMessage(ctx context.Context, msg *domain.RawMessage) {
 // inputJob represents a processing job for the worker pool
 type inputJob struct {
 	ctx context.Context
-	msg *domain.RawMessage
+	msg *entity.RawMessage
 }
 
 // Parser processes raw messages and creates offers/requests
 type Parser struct {
-	aiProvider  AIProvider
-	rawMsgRepo  domain.RawMessageRepository
-	offerRepo   domain.OfferRepository
-	requestRepo domain.RequestRepository
+	aiProvider  ai.Provider
+	rawMsgRepo  repository.RawMessageRepository
+	offerRepo   repository.OfferRepository
+	requestRepo repository.RequestRepository
 
-	matchRepo      domain.MatchRepository
-	medicationRepo domain.MedicationMappingRepository
+	matchRepo      repository.MatchRepository
+	medicationRepo repository.MedicationMappingRepository
 	log            zerolog.Logger
 	parserCfg      *config.ParserConfig
 
@@ -61,7 +53,7 @@ type Parser struct {
 	stopChan           chan struct{}
 	wg                 sync.WaitGroup
 	isAutoParseEnabled func() bool // Check if auto-parse is enabled
-	matchQueueRepo     domain.MatchQueueRepository
+	matchQueueRepo     repository.MatchQueueRepository
 
 	// Workers
 	workers       int
@@ -71,12 +63,12 @@ type Parser struct {
 	matchPoolSize int // Configurable match worker pool size
 
 	// Circuit Breaker for AI calls
-	aiCircuitBreaker *CircuitBreaker
+	aiCircuitBreaker *aiCircuitBreaker.CircuitBreaker
 
 	// Real-time updates and Dynamic Config
 	sseBroadcaster SSEBroadcaster
 	configRepo     interface {
-		GetAll(ctx context.Context) (*domain.AppConfig, error)
+		GetAll(ctx context.Context) (*entity.AppConfig, error)
 	}
 	errorNotifier ErrorNotifier
 
@@ -89,24 +81,24 @@ type Parser struct {
 	synonymIndex *synonymsPkg.SynonymIndex
 
 	// Professional Scorer (Phase 1 Matching Enhancement)
-	scorer *Scorer
+	scorer *matching.Scorer
 
 	// Multi-Pass Parsing
-	reviewQueueRepo domain.ReviewQueueRepository
+	reviewQueueRepo repository.ReviewQueueRepository
 	multiPassConfig MultiPassConfig
 }
 
 // NewParser creates a new Parser instance
 func NewParser(
-	rawMsgRepo domain.RawMessageRepository,
-	aiProvider AIProvider,
-	offerRepo domain.OfferRepository,
-	requestRepo domain.RequestRepository,
-	matchRepo domain.MatchRepository, // Added dependency
-	medicationRepo domain.MedicationMappingRepository,
-	matchQueueRepo domain.MatchQueueRepository,
+	rawMsgRepo repository.RawMessageRepository,
+	aiProvider ai.Provider,
+	offerRepo repository.OfferRepository,
+	requestRepo repository.RequestRepository,
+	matchRepo repository.MatchRepository, // Added dependency
+	medicationRepo repository.MedicationMappingRepository,
+	matchQueueRepo repository.MatchQueueRepository,
 	configRepo interface {
-		GetAll(ctx context.Context) (*domain.AppConfig, error)
+		GetAll(ctx context.Context) (*entity.AppConfig, error)
 	},
 	errorNotifier ErrorNotifier,
 	broadcaster SSEBroadcaster,
@@ -130,10 +122,10 @@ func NewParser(
 		matchTicker:          time.NewTicker(2 * time.Second),
 		matchStop:            make(chan struct{}),
 		matchPoolSize:        5, // Default match worker pool size
-		aiCircuitBreaker:     NewCircuitBreaker("ai_provider", 5, 30*time.Second),
+		aiCircuitBreaker:     aiCircuitBreaker.NewCircuitBreaker("ai_provider", 5, 30*time.Second),
 		isAutoParseEnabled:   func() bool { return true },
 		medicationEmbeddings: make(map[string][]float32),
-		scorer:               NewScorer(nil, nil),
+		scorer:               matching.NewScorer(nil, nil),
 		batchSize:            10, // Default batch size
 		parserCfg: &config.ParserConfig{
 			BatchInterval:     5 * time.Second,
@@ -154,7 +146,7 @@ func (p *Parser) SetAutoParseChecker(fn func() bool) {
 }
 
 // SetReviewQueueRepo sets the review queue repository for multi-pass parsing
-func (p *Parser) SetReviewQueueRepo(repo domain.ReviewQueueRepository) {
+func (p *Parser) SetReviewQueueRepo(repo repository.ReviewQueueRepository) {
 	p.reviewQueueRepo = repo
 	p.multiPassConfig = DefaultMultiPassConfig()
 }
@@ -165,7 +157,7 @@ func (p *Parser) SetMultiPassConfig(cfg MultiPassConfig) {
 }
 
 // calculateAvgConfidence computes the average AI confidence across parsed items
-func (p *Parser) calculateAvgConfidence(items []domain.ParsedItem) float64 {
+func (p *Parser) calculateAvgConfidence(items []entity.ParsedItem) float64 {
 	if len(items) == 0 {
 		return 0.0
 	}
@@ -177,7 +169,7 @@ func (p *Parser) calculateAvgConfidence(items []domain.ParsedItem) float64 {
 }
 
 // shouldQueueForReview checks if a parse result needs manual review
-func (p *Parser) shouldQueueForReview(result *domain.AIParseResult) bool {
+func (p *Parser) shouldQueueForReview(result *entity.AIParseResult) bool {
 	if p.reviewQueueRepo == nil {
 		return false // Review queue not configured
 	}
@@ -198,12 +190,12 @@ func (p *Parser) shouldQueueForReview(result *domain.AIParseResult) bool {
 }
 
 // queueForReview adds a message to the review queue
-func (p *Parser) queueForReview(ctx context.Context, msg *domain.RawMessage, result *domain.AIParseResult, pass int, reason string) {
+func (p *Parser) queueForReview(ctx context.Context, msg *entity.RawMessage, result *entity.AIParseResult, pass int, reason string) {
 	if p.reviewQueueRepo == nil {
 		return
 	}
 
-	item := &domain.ReviewQueueItem{
+	item := &entity.ReviewQueueItem{
 		RawMessageID:  msg.ID,
 		GroupName:     msg.GroupName,
 		SenderName:    msg.SenderName,
@@ -213,7 +205,7 @@ func (p *Parser) queueForReview(ctx context.Context, msg *domain.RawMessage, res
 		ParsePass:     pass,
 		AvgConfidence: p.calculateAvgConfidence(result.Items),
 		FailureReason: reason,
-		Status:        domain.ReviewStatusPending,
+		Status:        entity.ReviewStatusPending,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
@@ -313,7 +305,7 @@ func (p *Parser) matchWorkerLoop(ctx context.Context) {
 				// Acquire semaphore slot
 				sem <- struct{}{}
 
-				go func(j *domain.MatchQueueItem) {
+				go func(j *entity.MatchQueueItem) {
 					defer func() { <-sem }() // Release slot
 					start := time.Now()
 
@@ -357,7 +349,7 @@ func (p *Parser) processLoop(ctx context.Context) {
 	// Initial startup
 	// No cache needed for FTS
 
-	batch := make([]*domain.RawMessage, 0, p.batchSize)
+	batch := make([]*entity.RawMessage, 0, p.batchSize)
 	ticker := time.NewTicker(p.parserCfg.BatchInterval) // Use config for batch interval
 	defer ticker.Stop()
 
@@ -379,18 +371,30 @@ func (p *Parser) processLoop(ctx context.Context) {
 			batch = append(batch, job.msg)
 			if len(batch) >= p.batchSize {
 				p.processBatch(ctx, batch)
-				batch = make([]*domain.RawMessage, 0, p.batchSize)
+				batch = make([]*entity.RawMessage, 0, p.batchSize)
 			}
 		case <-ticker.C:
 			if len(batch) > 0 {
 				p.processBatch(ctx, batch)
-				batch = make([]*domain.RawMessage, 0, p.batchSize)
+				batch = make([]*entity.RawMessage, 0, p.batchSize)
 			}
 		}
 	}
 }
 
-func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
+// mapToMedicationMappings converts map[string]string to []*domain.MedicationMapping
+func mapToMedicationMappings(mappings map[string]string) []*entity.MedicationMapping {
+	result := make([]*entity.MedicationMapping, 0, len(mappings))
+	for arabic, english := range mappings {
+		result = append(result, &entity.MedicationMapping{
+			ArabicName:  arabic,
+			EnglishName: english,
+		})
+	}
+	return result
+}
+
+func (p *Parser) processBatch(ctx context.Context, batch []*entity.RawMessage) {
 	// Check if auto-parsing is enabled
 	if !p.isAutoParseEnabled() {
 		p.log.Warn().
@@ -447,7 +451,7 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 		return
 	}
 
-	results, err := p.aiProvider.ParseMessages(ctx, batch, MapToMedicationMappings(mappings))
+	results, err := p.aiProvider.ParseMessages(ctx, batch, mapToMedicationMappings(mappings))
 	if err != nil {
 		p.log.Error().
 			Err(err).
@@ -551,7 +555,7 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 				Msg("📦 Extracted item from AI")
 
 			switch item.Type {
-			case domain.MessageTypeOffer, domain.MessageTypeBoth:
+			case entity.MessageTypeOffer, entity.MessageTypeBoth:
 				offer := p.createOffer(msg, &item)
 				if err := p.offerRepo.Save(ctx, offer); err != nil {
 					p.log.Error().Err(err).Str("offer_id", offer.ID).Msg("Failed to save offer")
@@ -567,7 +571,7 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 						p.sseBroadcaster.BroadcastNewOffer(offer.ID, offer.Medication)
 					}
 					// Queue for matching (Persistent)
-					err := p.matchQueueRepo.Enqueue(ctx, &domain.MatchQueueItem{
+					err := p.matchQueueRepo.Enqueue(ctx, &entity.MatchQueueItem{
 						SourceType: "OFFER",
 						SourceID:   offer.ID,
 					})
@@ -580,7 +584,7 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 			}
 
 			switch item.Type {
-			case domain.MessageTypeRequest, domain.MessageTypeBoth:
+			case entity.MessageTypeRequest, entity.MessageTypeBoth:
 				request := p.createRequest(msg, &item)
 				if err := p.requestRepo.Save(ctx, request); err != nil {
 					p.log.Error().Err(err).Str("request_id", request.ID).Msg("Failed to save request")
@@ -598,7 +602,7 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 					metrics.RequestsCreated.Inc()
 
 					// Queue for matching (Persistent)
-					err := p.matchQueueRepo.Enqueue(ctx, &domain.MatchQueueItem{
+					err := p.matchQueueRepo.Enqueue(ctx, &entity.MatchQueueItem{
 						SourceType: "REQUEST",
 						SourceID:   request.ID,
 					})
@@ -617,11 +621,11 @@ func (p *Parser) processBatch(ctx context.Context, batch []*domain.RawMessage) {
 	}
 }
 
-func (p *Parser) createOffer(msg *domain.RawMessage, item *domain.ParsedItem) *domain.Offer {
+func (p *Parser) createOffer(msg *entity.RawMessage, item *entity.ParsedItem) *entity.Offer {
 	// Expiry and Batch are now in Notes
 	// Currency defaults to EGP
 
-	return &domain.Offer{
+	return &entity.Offer{
 		ID:            uuid.New().String(),
 		RawMessageID:  msg.ID,
 		SourcePhone:   msg.SenderPhone,
@@ -638,14 +642,14 @@ func (p *Parser) createOffer(msg *domain.RawMessage, item *domain.ParsedItem) *d
 		BatchNumber:   "",
 		Notes:         item.Notes,
 		RawMessage:    msg.Content,
-		Status:        domain.StatusActive,
+		Status:        entity.StatusActive,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
 }
 
-func (p *Parser) createRequest(msg *domain.RawMessage, item *domain.ParsedItem) *domain.Request {
-	return &domain.Request{
+func (p *Parser) createRequest(msg *entity.RawMessage, item *entity.ParsedItem) *entity.Request {
+	return &entity.Request{
 		ID:            uuid.New().String(),
 		RawMessageID:  msg.ID,
 		SourcePhone:   msg.SenderPhone,
@@ -661,12 +665,12 @@ func (p *Parser) createRequest(msg *domain.RawMessage, item *domain.ParsedItem) 
 		Urgent:        item.Urgent,
 		Notes:         item.Notes,
 		RawMessage:    msg.Content,
-		Status:        domain.StatusActive,
+		Status:        entity.StatusActive,
 		CreatedAt:     time.Now(),
 	}
 }
 
-func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
+func (p *Parser) findMatchesForOffer(ctx context.Context, offer *entity.Offer) {
 	// Search for matching requests by medication name (candidate generation)
 	query := sanitizeForFTS(offer.Medication)
 	if query == "" {
@@ -687,17 +691,17 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 		matchScore := p.scorer.ScoreMatch(offer, req, medicationScore)
 
 		// Skip matches below minimum threshold (NONE confidence)
-		if matchScore.Confidence == ConfidenceNone {
+		if matchScore.Confidence == matching.ConfidenceNone {
 			continue
 		}
 
 		// Determine match status based on confidence band
-		status := domain.MatchStatusPending
-		if matchScore.Confidence == ConfidenceAuto {
-			status = domain.MatchStatusConfirmed // Auto-confirm high-confidence matches
+		status := entity.MatchStatusPending
+		if matchScore.Confidence == matching.ConfidenceAuto {
+			status = entity.MatchStatusConfirmed // Auto-confirm high-confidence matches
 		}
 
-		match := &domain.Match{
+		match := &entity.Match{
 			ID:        uuid.New().String(),
 			OfferID:   offer.ID,
 			RequestID: req.ID,
@@ -708,7 +712,7 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 			CreatedAt: time.Now(),
 		}
 
-		if status == domain.MatchStatusConfirmed {
+		if status == entity.MatchStatusConfirmed {
 			now := time.Now()
 			match.ConfirmedAt = &now
 		}
@@ -734,7 +738,7 @@ func (p *Parser) findMatchesForOffer(ctx context.Context, offer *domain.Offer) {
 	}
 }
 
-func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Request) {
+func (p *Parser) findMatchesForRequest(ctx context.Context, request *entity.Request) {
 	// Search for matching offers by medication name (candidate generation)
 	query := sanitizeForFTS(request.Medication)
 	if query == "" {
@@ -755,17 +759,17 @@ func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Requ
 		matchScore := p.scorer.ScoreMatch(offer, request, medicationScore)
 
 		// Skip matches below minimum threshold (NONE confidence)
-		if matchScore.Confidence == ConfidenceNone {
+		if matchScore.Confidence == matching.ConfidenceNone {
 			continue
 		}
 
 		// Determine match status based on confidence band
-		status := domain.MatchStatusPending
-		if matchScore.Confidence == ConfidenceAuto {
-			status = domain.MatchStatusConfirmed // Auto-confirm high-confidence matches
+		status := entity.MatchStatusPending
+		if matchScore.Confidence == matching.ConfidenceAuto {
+			status = entity.MatchStatusConfirmed // Auto-confirm high-confidence matches
 		}
 
-		match := &domain.Match{
+		match := &entity.Match{
 			ID:        uuid.New().String(),
 			OfferID:   offer.ID,
 			RequestID: request.ID,
@@ -776,7 +780,7 @@ func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Requ
 			CreatedAt: time.Now(),
 		}
 
-		if status == domain.MatchStatusConfirmed {
+		if status == entity.MatchStatusConfirmed {
 			now := time.Now()
 			match.ConfirmedAt = &now
 		}
@@ -804,7 +808,7 @@ func (p *Parser) findMatchesForRequest(ctx context.Context, request *domain.Requ
 }
 
 // getRelevantMappings extracts tokens from messages and queries the FTS index
-func (p *Parser) getRelevantMappings(ctx context.Context, messages []*domain.RawMessage) map[string]string {
+func (p *Parser) getRelevantMappings(ctx context.Context, messages []*entity.RawMessage) map[string]string {
 	relevant := make(map[string]string)
 
 	// Tokenize messages to form a search query
@@ -986,7 +990,7 @@ func (p *Parser) calculateMedicationScore(offerMed, requestMed string) float64 {
 	}
 
 	// Hybrid: Weight semantic if available, otherwise use lexical only
-	alpha := p.scorer.semanticWeight // Default 0.6
+	alpha := p.scorer.GetSemanticWeight() // Default 0.6
 	if semanticScore > 0 {
 		// Both available: weighted average
 		return alpha*semanticScore + (1-alpha)*normalizedLexical

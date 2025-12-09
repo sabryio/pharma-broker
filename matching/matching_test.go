@@ -1,4 +1,4 @@
-package ai
+package matching
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"pharmabroker/internal/domain"
+	"pharmabroker/pkg/vector"
 )
 
 // ---- Mock implementations for matching tests ----
@@ -260,6 +261,7 @@ func TestMatchRepo_GetByRequestID(t *testing.T) {
 }
 
 func TestCosineSimilarity_Vectors(t *testing.T) {
+	comparator := vector.CosineComparator{}
 	tests := []struct {
 		name     string
 		a, b     []float32
@@ -276,7 +278,10 @@ func TestCosineSimilarity_Vectors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CosineSimilarity(tt.a, tt.b)
+			result, err := comparator.Similarity(tt.a, tt.b)
+			if err != nil {
+				t.Fatalf("CosineSimilarity failed: %v", err)
+			}
 			diff := result - tt.expected
 			if diff < -tt.delta || diff > tt.delta {
 				t.Errorf("CosineSimilarity(%v, %v) = %.4f, want %.4f (±%.2f)",

@@ -30,12 +30,13 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 
-	"pharmabroker/internal/ai"
+	"pharmabroker/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/notify"
 	"pharmabroker/internal/reports"
 	"pharmabroker/internal/whatsapp"
+	"pharmabroker/parsing"
 	storageGorm "pharmabroker/storage/gorm"
 )
 
@@ -322,7 +323,7 @@ func main() {
 	broadcaster := &NoOpBroadcaster{}
 	errorNotifier := &NoOpErrorNotifier{log: log}
 
-	parser := ai.NewParser(
+	parser := parsing.NewParser(
 		rawMsgRepo,
 		aiProvider,
 		offerRepo,

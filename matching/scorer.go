@@ -1,4 +1,4 @@
-package ai
+package matching
 
 import (
 	"fmt"
@@ -9,61 +9,6 @@ import (
 
 	"pharmabroker/internal/domain"
 	"pharmabroker/pkg/dosage"
-)
-
-// ScoringWeights holds configurable weights for each scoring field
-type ScoringWeights struct {
-	Medication float64 `json:"medication"` // Default: 0.45
-	Dosage     float64 `json:"dosage"`     // Default: 0.10
-	Quantity   float64 `json:"quantity"`   // Default: 0.20
-	Price      float64 `json:"price"`      // Default: 0.15
-	Recency    float64 `json:"recency"`    // Default: 0.10
-}
-
-// DefaultWeights returns the default scoring weights
-func DefaultWeights() ScoringWeights {
-	return ScoringWeights{
-		Medication: 0.45, // Medication name match
-		Dosage:     0.10, // Dosage equivalence
-		Quantity:   0.20, // Quantity fulfillment
-		Price:      0.15, // Price match
-		Recency:    0.10, // Listing freshness
-	}
-}
-
-// ConfidenceBand categorizes match quality
-type ConfidenceBand string
-
-const (
-	ConfidenceAuto    ConfidenceBand = "AUTO"    // >= 0.9 - Auto-confirm
-	ConfidenceSuggest ConfidenceBand = "SUGGEST" // 0.7 - 0.9 - Suggest to operator
-	ConfidenceReview  ConfidenceBand = "REVIEW"  // 0.5 - 0.7 - Needs manual review
-	ConfidenceNone    ConfidenceBand = "NONE"    // < 0.5 - No match
-)
-
-// ConfidenceThresholds defines the score boundaries for each band
-type ConfidenceThresholds struct {
-	Auto    float64 `json:"auto"`    // Default: 0.9
-	Suggest float64 `json:"suggest"` // Default: 0.7
-	Review  float64 `json:"review"`  // Default: 0.5
-}
-
-// DefaultThresholds returns the default confidence thresholds
-func DefaultThresholds() ConfidenceThresholds {
-	return ConfidenceThresholds{
-		Auto:    0.90,
-		Suggest: 0.70,
-		Review:  0.50,
-	}
-}
-
-// DecayType defines the type of recency decay curve
-type DecayType string
-
-const (
-	DecayExponential DecayType = "EXPONENTIAL" // e^(-λt) - Default, natural decay
-	DecayLinear      DecayType = "LINEAR"      // 1 - t/max - Constant rate
-	DecayLogarithmic DecayType = "LOGARITHMIC" // 1 - log(t+1)/log(max) - Slower decay
 )
 
 // MatchScore represents the detailed breakdown of a match
@@ -81,15 +26,16 @@ type MatchScore struct {
 // Scorer provides multi-field scoring for offer-request matching
 type Scorer struct {
 	mu              sync.RWMutex
-	weights         ScoringWeights
-	thresholds      ConfidenceThresholds
+	weights         Weights
+	thresholds      Thresholds
 	recencyHalfLife float64   // Hours until score decays to 50% (default: 24)
 	decayType       DecayType // Type of decay curve (default: Exponential)
 	semanticWeight  float64   // Alpha for semantic vs lexical balance (Phase 2)
 }
 
+
 // NewScorer creates a new Scorer with the given configuration
-func NewScorer(weights *ScoringWeights, thresholds *ConfidenceThresholds) *Scorer {
+func NewScorer(weights *Weights, thresholds *Thresholds) *Scorer {
 	w := DefaultWeights()
 	if weights != nil {
 		w = *weights
@@ -107,6 +53,10 @@ func NewScorer(weights *ScoringWeights, thresholds *ConfidenceThresholds) *Score
 		decayType:       DecayExponential, // Default exponential
 		semanticWeight:  0.6,              // Default: 60% semantic, 40% lexical
 	}
+}
+
+func (s *Scorer) GetSemanticWeight() float64 {
+	return s.semanticWeight
 }
 
 // QuantityScore calculates how well the offer quantity satisfies the request
@@ -364,14 +314,14 @@ func (s *Scorer) generateBreakdown(medScore, dosageScore, qtyScore, priceScore, 
 
 // UpdateWeights allows dynamic weight adjustment (for feedback loop)
 // Thread-safe for runtime updates from scheduler.
-func (s *Scorer) UpdateWeights(weights ScoringWeights) {
+func (s *Scorer) UpdateWeights(weights Weights) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.weights = weights
 }
 
 // UpdateThresholds allows dynamic threshold adjustment
-func (s *Scorer) UpdateThresholds(thresholds ConfidenceThresholds) {
+func (s *Scorer) UpdateThresholds(thresholds Thresholds) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.thresholds = thresholds
@@ -379,7 +329,7 @@ func (s *Scorer) UpdateThresholds(thresholds ConfidenceThresholds) {
 
 // GetWeights returns the current scoring weights
 // Thread-safe for concurrent access.
-func (s *Scorer) GetWeights() ScoringWeights {
+func (s *Scorer) GetWeights() Weights {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.weights
@@ -387,7 +337,7 @@ func (s *Scorer) GetWeights() ScoringWeights {
 
 // GetThresholds returns the current confidence thresholds
 // Thread-safe for concurrent access.
-func (s *Scorer) GetThresholds() ConfidenceThresholds {
+func (s *Scorer) GetThresholds() Thresholds {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.thresholds

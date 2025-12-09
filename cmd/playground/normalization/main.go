@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	aiDocker "pharmabroker/ai/docker"
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
@@ -95,7 +96,7 @@ func main() {
 		EmbeddingModelName: "ai/embeddinggemma",
 	}
 
-	client, err := ai.NewDockerModelClient(cfg, log)
+	client, err := aiDocker.NewClient(cfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create client")
 	}

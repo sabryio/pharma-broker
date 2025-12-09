@@ -1,4 +1,4 @@
-package ai
+package parsing
 
 // ParsePass indicates which parsing pass extracted the result
 type ParsePass int
@@ -45,21 +45,6 @@ func GetConfidenceLevelForScore(avgConfidence float64) ParseConfidence {
 	default:
 		return ParseConfidenceFailed
 	}
-}
-
-// MultiPassConfig configures multi-pass parsing behavior
-type MultiPassConfig struct {
-	// StrictMinConfidence is the minimum average confidence to accept Pass 1 results
-	StrictMinConfidence float64 // Default: 0.7
-
-	// RelaxedMinConfidence is the minimum confidence to accept Pass 2 results
-	RelaxedMinConfidence float64 // Default: 0.4
-
-	// EnablePass2 enables the relaxed fallback pass
-	EnablePass2 bool // Default: true
-
-	// EnableReviewQueue enables queuing low-confidence results for review
-	EnableReviewQueue bool // Default: true
 }
 
 // DefaultMultiPassConfig returns sensible defaults

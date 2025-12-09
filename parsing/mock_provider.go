@@ -1,7 +1,8 @@
-package ai
+package parsing
 
 import (
 	"context"
+	"pharmabroker/domain/repository"
 	"pharmabroker/internal/domain"
 )
 
@@ -42,6 +43,6 @@ func (m *MockAIProvider) SetMappings(mappings []*domain.MedicationMapping) {
 	// No-op for mock
 }
 
-func (m *MockAIProvider) SetUnmappedRepo(repo domain.UnmappedMedicationRepo) {
+func (m *MockAIProvider) SetUnmappedRepo(repo repository.UnmappedMedicationRepo) {
 	// No-op for mock
 }

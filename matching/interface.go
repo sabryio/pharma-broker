@@ -92,9 +92,9 @@ func DefaultThresholds() Thresholds {
 type DecayType string
 
 const (
-	DecayExponential DecayType = "EXPONENTIAL"
-	DecayLinear      DecayType = "LINEAR"
-	DecayLogarithmic DecayType = "LOGARITHMIC"
+	DecayExponential DecayType = "EXPONENTIAL" // e^(-λt) - Default, natural decay
+	DecayLinear      DecayType = "LINEAR"      // 1 - t/max - Constant rate
+	DecayLogarithmic DecayType = "LOGARITHMIC" // 1 - log(t+1)/log(max) - Slower decay
 )
 
 // Config holds matching configuration

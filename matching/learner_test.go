@@ -1,4 +1,4 @@
-package ai
+package matching
 
 import (
 	"context"
@@ -124,7 +124,7 @@ func TestAdjustWeights_PositiveCorrelation(t *testing.T) {
 		config: DefaultLearningConfig(),
 	}
 
-	current := ScoringWeights{
+	current := Weights{
 		Medication: 0.45,
 		Dosage:     0.10,
 		Quantity:   0.20,
@@ -165,7 +165,7 @@ func TestApplyConstraints_MinMaxBounds(t *testing.T) {
 		},
 	}
 
-	current := ScoringWeights{
+	current := Weights{
 		Medication: 0.50,
 		Dosage:     0.10,
 		Quantity:   0.20,
@@ -173,7 +173,7 @@ func TestApplyConstraints_MinMaxBounds(t *testing.T) {
 		Recency:    0.10,
 	}
 
-	adjusted := ScoringWeights{
+	adjusted := Weights{
 		Medication: 0.80, // Exceeds max
 		Dosage:     0.02, // Below min
 		Quantity:   0.21, // Small change (0.01 < 0.02)
@@ -207,7 +207,7 @@ func TestApplyConstraints_MinMaxBounds(t *testing.T) {
 func TestNormalizeWeights(t *testing.T) {
 	wl := &WeightLearner{}
 
-	weights := ScoringWeights{
+	weights := Weights{
 		Medication: 0.50,
 		Dosage:     0.10,
 		Quantity:   0.20,
@@ -234,7 +234,7 @@ func TestNormalizeWeights(t *testing.T) {
 func TestNormalizeWeights_ZeroSum(t *testing.T) {
 	wl := &WeightLearner{}
 
-	weights := ScoringWeights{} // All zeros
+	weights := Weights{} // All zeros
 
 	normalized := wl.normalizeWeights(weights)
 

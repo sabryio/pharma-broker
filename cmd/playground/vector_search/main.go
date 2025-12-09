@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	aiDocker "pharmabroker/ai/docker"
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
@@ -80,7 +81,7 @@ func main() {
 	fmt.Printf("Total mappings in DB: %d\n\n", len(allMappings))
 
 	// Setup AI client for embeddings
-	cfg := &config.DockerModelConfig{
+	aiCfg := &config.DockerModelConfig{
 		BaseURL:            "http://localhost:12434/engines/llama.cpp/v1",
 		Model:              "ai/qwen3-vl:latest",
 		RequestTimeout:     2 * time.Minute,
@@ -89,7 +90,7 @@ func main() {
 		EmbeddingModelName: "ai/embeddinggemma",
 	}
 
-	client, err := ai.NewDockerModelClient(cfg, log)
+	client, err := aiDocker.NewClient(aiCfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create client")
 	}

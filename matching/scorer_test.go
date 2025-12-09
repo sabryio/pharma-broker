@@ -1,12 +1,11 @@
-package ai
+package matching
 
 import (
 	"fmt"
 	"math"
+	"pharmabroker/internal/domain"
 	"testing"
 	"time"
-
-	"pharmabroker/internal/domain"
 )
 
 func TestDefaultWeights(t *testing.T) {
@@ -349,7 +348,7 @@ func TestScoreMatch_NoMatch(t *testing.T) {
 func TestUpdateWeights(t *testing.T) {
 	s := NewScorer(nil, nil)
 
-	newWeights := ScoringWeights{
+	newWeights := Weights{
 		Medication: 0.6,
 		Quantity:   0.2,
 		Price:      0.1,
@@ -367,7 +366,7 @@ func TestUpdateWeights(t *testing.T) {
 func TestUpdateThresholds(t *testing.T) {
 	s := NewScorer(nil, nil)
 
-	newThresholds := ConfidenceThresholds{
+	newThresholds := Thresholds{
 		Auto:    0.95,
 		Suggest: 0.8,
 		Review:  0.6,
@@ -388,7 +387,7 @@ func TestUpdateThresholds(t *testing.T) {
 
 func TestCustomWeights(t *testing.T) {
 	// Create scorer with custom weights
-	weights := &ScoringWeights{
+	weights := &Weights{
 		Medication: 0.7,
 		Quantity:   0.1,
 		Price:      0.1,

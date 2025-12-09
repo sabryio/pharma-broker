@@ -1,10 +1,10 @@
-package ai
+package matching
 
 import (
 	"testing"
 	"time"
 
-	"pharmabroker/internal/domain"
+	"pharmabroker/domain/entity"
 	"pharmabroker/pkg/dosage"
 )
 
@@ -14,7 +14,7 @@ func TestEndToEnd_AllEnhancements(t *testing.T) {
 	now := time.Now()
 
 	// Create offers with various characteristics
-	offers := []*domain.Offer{
+	offers := []*entity.Offer{
 		{
 			ID:         "offer1",
 			Medication: "Ozempic 2mg", // Exact dosage
@@ -38,7 +38,7 @@ func TestEndToEnd_AllEnhancements(t *testing.T) {
 		},
 	}
 
-	request := &domain.Request{
+	request := &entity.Request{
 		ID:         "req1",
 		Medication: "Ozempic 2mg",
 		Quantity:   100,
@@ -97,7 +97,7 @@ func TestEndToEnd_AllEnhancements(t *testing.T) {
 	})
 
 	t.Run("Configurable recency decay", func(t *testing.T) {
-		oldOffer := &domain.Offer{
+		oldOffer := &entity.Offer{
 			Medication: "Test",
 			Quantity:   100,
 			Price:      100,
@@ -129,7 +129,7 @@ func TestEndToEnd_AllEnhancements(t *testing.T) {
 	})
 
 	t.Run("Custom half-life affects scoring", func(t *testing.T) {
-		testOffer := &domain.Offer{
+		testOffer := &entity.Offer{
 			Medication: "Test",
 			Quantity:   100,
 			Price:      100,
@@ -164,7 +164,7 @@ func TestEndToEnd_RealisticScenario(t *testing.T) {
 	now := time.Now()
 
 	// Realistic request
-	request := &domain.Request{
+	request := &entity.Request{
 		ID:         "req-diabetes",
 		Medication: "Ozempic 1mg",
 		Quantity:   10,
@@ -174,12 +174,12 @@ func TestEndToEnd_RealisticScenario(t *testing.T) {
 	// Various realistic offers
 	scenarios := []struct {
 		name     string
-		offer    *domain.Offer
+		offer    *entity.Offer
 		expected ConfidenceBand
 	}{
 		{
 			name: "Perfect match - recent, exact",
-			offer: &domain.Offer{
+			offer: &entity.Offer{
 				Medication: "Ozempic 1mg",
 				Quantity:   10,
 				Price:      480,
@@ -189,7 +189,7 @@ func TestEndToEnd_RealisticScenario(t *testing.T) {
 		},
 		{
 			name: "Good match - within tolerances",
-			offer: &domain.Offer{
+			offer: &entity.Offer{
 				Medication: "Ozempic 1mg",
 				Quantity:   9,   // 90% - within tolerance
 				Price:      520, // 104% - within tolerance
@@ -199,7 +199,7 @@ func TestEndToEnd_RealisticScenario(t *testing.T) {
 		},
 		{
 			name: "Moderate match - slight differences",
-			offer: &domain.Offer{
+			offer: &entity.Offer{
 				Medication: "Ozempic 1mg",
 				Quantity:   8,   // 80% - below tolerance
 				Price:      550, // 110% - over budget
@@ -209,7 +209,7 @@ func TestEndToEnd_RealisticScenario(t *testing.T) {
 		},
 		{
 			name: "Different dosage - still matches",
-			offer: &domain.Offer{
+			offer: &entity.Offer{
 				Medication: "Ozempic 0.5mg", // Different dosage
 				Quantity:   10,
 				Price:      450,
@@ -248,14 +248,14 @@ func TestEndToEnd_WeightAdjustment(t *testing.T) {
 	scorer := NewScorer(nil, nil)
 	now := time.Now()
 
-	offer := &domain.Offer{
+	offer := &entity.Offer{
 		Medication: "Test Med",
 		Quantity:   100,
 		Price:      100,
 		CreatedAt:  now.Add(-12 * time.Hour),
 	}
 
-	request := &domain.Request{
+	request := &entity.Request{
 		Medication: "Test Med",
 		Quantity:   100,
 		MaxPrice:   100,
@@ -266,7 +266,7 @@ func TestEndToEnd_WeightAdjustment(t *testing.T) {
 	t.Logf("Default weights - Total: %.3f", defaultResult.Total)
 
 	// Emphasize recency (for fast-moving market)
-	customWeights := ScoringWeights{
+	customWeights := Weights{
 		Medication: 0.35,
 		Dosage:     0.05,
 		Quantity:   0.15,

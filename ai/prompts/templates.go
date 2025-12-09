@@ -1,4 +1,4 @@
-package ai
+package prompts
 
 import (
 	"encoding/json"
@@ -8,8 +8,8 @@ import (
 	"pharmabroker/internal/domain"
 )
 
-// buildParsePrompt creates the prompt for parsing pharmaceutical messages
-func buildParsePrompt(messages []*domain.RawMessage, mappings []*domain.MedicationMapping) string {
+// BuildParsePrompt creates the prompt for parsing pharmaceutical messages
+func BuildParsePrompt(messages []*domain.RawMessage, mappings []*domain.MedicationMapping) string {
 	var sb strings.Builder
 
 	sb.WriteString(systemPrompt)

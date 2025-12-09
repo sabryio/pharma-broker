@@ -1,4 +1,4 @@
-package ai
+package matching
 
 import (
 	"context"
@@ -26,7 +26,7 @@ type LearningScheduler struct {
 	lastStatus    JobStatus
 	lastError     error
 	lastMetrics   *domain.PerformanceMetrics
-	pendingApply  *ScoringWeights // Calculated but not applied weights
+	pendingApply  *Weights // Calculated but not applied weights
 	pendingReason string          // Why pending (e.g., "manual review required")
 }
 
@@ -258,7 +258,7 @@ func (ls *LearningScheduler) getCurrentMetrics(ctx context.Context) domain.Perfo
 }
 
 // buildNote creates a descriptive note for the weight change
-func (ls *LearningScheduler) buildNote(old, new ScoringWeights, metrics domain.PerformanceMetrics) string {
+func (ls *LearningScheduler) buildNote(old, new Weights, metrics domain.PerformanceMetrics) string {
 	return fmt.Sprintf(
 		"Auto-learned from %d samples. Separation: %.3f. "+
 			"Weights changed: med %.2f→%.2f, dosage %.2f→%.2f, qty %.2f→%.2f, price %.2f→%.2f, recency %.2f→%.2f",
@@ -273,7 +273,7 @@ func (ls *LearningScheduler) buildNote(old, new ScoringWeights, metrics domain.P
 }
 
 // Notification stubs (can be expanded with actual notification implementation)
-func (ls *LearningScheduler) notifySuccess(weights ScoringWeights, metrics domain.PerformanceMetrics) {
+func (ls *LearningScheduler) notifySuccess(weights Weights, metrics domain.PerformanceMetrics) {
 	ls.logger.Info("NOTIFICATION: Weights applied",
 		"new_weights", weights,
 		"metrics", metrics,
@@ -286,7 +286,7 @@ func (ls *LearningScheduler) notifyFailure(err error) {
 	)
 }
 
-func (ls *LearningScheduler) notifyRecommendation(weights ScoringWeights, metrics domain.PerformanceMetrics, reason string) {
+func (ls *LearningScheduler) notifyRecommendation(weights Weights, metrics domain.PerformanceMetrics, reason string) {
 	ls.logger.Info("NOTIFICATION: New weights recommended",
 		"recommended_weights", weights,
 		"metrics", metrics,
@@ -319,7 +319,7 @@ type SchedulerStatus struct {
 	LastStatus    JobStatus
 	LastError     error
 	LastMetrics   *domain.PerformanceMetrics
-	PendingApply  *ScoringWeights
+	PendingApply  *Weights
 	PendingReason string
 }
 
@@ -415,7 +415,7 @@ func (ls *LearningScheduler) Rollback(ctx context.Context) error {
 }
 
 // ApplyWeightsManual applies weights directly with manual source
-func (ls *LearningScheduler) ApplyWeightsManual(ctx context.Context, weights ScoringWeights, notes string) error {
+func (ls *LearningScheduler) ApplyWeightsManual(ctx context.Context, weights Weights, notes string) error {
 	if ls.learner == nil {
 		return fmt.Errorf("learner not configured")
 	}

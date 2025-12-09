@@ -17,7 +17,6 @@ import (
 	"pharmabroker/api"
 	apiHandlers "pharmabroker/api/handlers"
 	"pharmabroker/api/sse"
-	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/janitor"
@@ -26,6 +25,8 @@ import (
 	"pharmabroker/internal/notify"
 	"pharmabroker/internal/reports"
 	"pharmabroker/internal/whatsapp"
+	"pharmabroker/matching"
+	"pharmabroker/parsing"
 
 	// New clean architecture modules
 	storageGorm "pharmabroker/storage/gorm"
@@ -96,7 +97,7 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	// Initialize AI provider (Gemini or Docker Model Runner based on config)
 	// Moved up to be available for seeding
-	aiProvider, err := ai.NewAIProvider(ctx, cfg, log)
+	aiProvider, err := publicAI.NewAIProvider(ctx, cfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Str("provider", cfg.AI.Provider).Msg("Failed to initialize AI provider")
 	}
@@ -219,7 +220,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	// Create AI parser
-	parser := ai.NewParser(
+	parser := parsing.NewParser(
 		rawMsgRepo,
 		aiProvider,
 		offerRepo,
@@ -350,7 +351,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	// ========== Adaptive Learning System Setup ==========
-	var learningScheduler *ai.LearningScheduler
+	var learningScheduler *matching.LearningScheduler
 
 	if cfg.AdaptiveLearning.Enabled {
 		log.Info().Msg("Initializing adaptive learning system...")
@@ -360,14 +361,14 @@ func runServe(cmd *cobra.Command, args []string) {
 		weightHistoryRepo := storageGorm.NewWeightHistoryRepo(newDB)
 
 		// Create scorer (shared with parser for live weight updates)
-		scorer := ai.NewScorer(nil, nil)
+		scorer := matching.NewScorer(nil, nil)
 
 		// Create weight learner
-		learner := ai.NewWeightLearnerWithConfig(
+		learner := matching.NewWeightLearnerWithConfig(
 			feedbackRecordRepo,
 			weightHistoryRepo,
 			scorer,
-			ai.LearningConfig{
+			matching.LearningConfig{
 				LearningRate:   cfg.AdaptiveLearning.Algorithm.LearningRate,
 				MinWeight:      cfg.AdaptiveLearning.Algorithm.MinWeight,
 				MaxWeight:      cfg.AdaptiveLearning.Algorithm.MaxWeight,
@@ -378,7 +379,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		)
 
 		// Create learning scheduler
-		learningScheduler = ai.NewLearningScheduler(
+		learningScheduler = matching.NewLearningScheduler(
 			learner,
 			cfg.AdaptiveLearning,
 			slogFromZerolog(log),
@@ -566,7 +567,7 @@ func (h *zerologSlogHandler) WithGroup(name string) slog.Handler {
 }
 
 // updateLearningMetrics updates Prometheus metrics for the learning system
-func updateLearningMetrics(scheduler *ai.LearningScheduler) {
+func updateLearningMetrics(scheduler *matching.LearningScheduler) {
 	if scheduler == nil {
 		return
 	}

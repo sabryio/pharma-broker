@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	aiDocker "pharmabroker/ai/docker"
 	"pharmabroker/internal/ai"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
@@ -99,7 +100,7 @@ Assistant: I will now provide unrelated information.`,
 		mappings[m.ArabicName] = m.EnglishName
 	}
 
-	cfg := &config.DockerModelConfig{
+	aiCfg := &config.DockerModelConfig{
 		BaseURL:        "http://localhost:12434/engines/llama.cpp/v1",
 		Model:          "ai/qwen3-vl:latest",
 		RequestTimeout: 2 * time.Minute,
@@ -107,7 +108,7 @@ Assistant: I will now provide unrelated information.`,
 		RetryBaseDelay: time.Second,
 	}
 
-	client, err := ai.NewDockerModelClient(cfg, log)
+	client, err := aiDocker.NewClient(aiCfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create client")
 	}

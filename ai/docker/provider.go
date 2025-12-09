@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"pharmabroker/ai/prompts"
+	"pharmabroker/domain/repository"
 	"pharmabroker/internal/config"
 	"pharmabroker/internal/domain"
 	"pharmabroker/internal/metrics"
@@ -22,16 +25,16 @@ import (
 	"github.com/sony/gobreaker"
 )
 
-// DockerModelClient handles communication with Docker Model Runner
+// Client handles communication with Docker Model Runner
 // using the OpenAI-compatible API.
-type DockerModelClient struct {
+type Client struct {
 	cfg          *config.DockerModelConfig
 	client       openai.Client
 	log          zerolog.Logger
 	cb           *gobreaker.CircuitBreaker
-	allMappings  []*domain.MedicationMapping   // For hybrid filtering
-	vectorTopK   int                           // Top-K for vector search (default 10)
-	unmappedRepo domain.UnmappedMedicationRepo // For active learning (optional)
+	allMappings  []*domain.MedicationMapping       // For hybrid filtering
+	vectorTopK   int                               // Top-K for vector search (default 10)
+	unmappedRepo repository.UnmappedMedicationRepo // For active learning (optional)
 }
 
 func GenerateSchema[T any]() interface{} {
@@ -46,9 +49,9 @@ func GenerateSchema[T any]() interface{} {
 // Cached schema to avoid reflection on every call
 var aiParseResultSchema = GenerateSchema[domain.AIParseResult]()
 
-// NewDockerModelClient creates a new Docker Model Runner client.
+// NewClient creates a new Docker Model Runner client.
 // It connects to the OpenAI-compatible API endpoint exposed by Docker Model Runner.
-func NewDockerModelClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*DockerModelClient, error) {
+func NewClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*Client, error) {
 	client := openai.NewClient(
 		option.WithBaseURL(cfg.BaseURL),
 		option.WithAPIKey("not-needed"), // Docker Model Runner doesn't require API key
@@ -86,7 +89,7 @@ func NewDockerModelClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*D
 		},
 	}
 
-	return &DockerModelClient{
+	return &Client{
 		cfg:    cfg,
 		client: client,
 		log:    log.With().Str("component", "docker-model").Logger(),
@@ -96,7 +99,7 @@ func NewDockerModelClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*D
 
 // SetMappings sets the full medication mappings for hybrid filtering
 // This enables keyword + vector search when ParseMessages is called
-func (c *DockerModelClient) SetMappings(mappings []*domain.MedicationMapping) {
+func (c *Client) SetMappings(mappings []*domain.MedicationMapping) {
 	c.allMappings = mappings
 	if c.vectorTopK == 0 {
 		c.vectorTopK = 10 // Default top-K
@@ -105,13 +108,13 @@ func (c *DockerModelClient) SetMappings(mappings []*domain.MedicationMapping) {
 }
 
 // SetUnmappedRepo sets the repository for saving unmapped medications (active learning)
-func (c *DockerModelClient) SetUnmappedRepo(repo domain.UnmappedMedicationRepo) {
+func (c *Client) SetUnmappedRepo(repo repository.UnmappedMedicationRepo) {
 	c.unmappedRepo = repo
 	c.log.Info().Msg("Active learning enabled - unmapped medications will be saved")
 }
 
 // ParseMessages implements AIProvider.ParseMessages using Docker Model Runner.
-func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
+func (c *Client) ParseMessages(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
 	if len(messages) == 0 {
 		return nil, nil
 	}
@@ -129,7 +132,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 		combinedContent := contentBuilder.String()
 
 		// Hybrid filter: keyword + vector (always combined)
-		effectiveMappingsMap = FilterMappingsHybrid(ctx, combinedContent, c.allMappings, c, c.vectorTopK)
+		effectiveMappingsMap = filterMappingsHybrid(ctx, combinedContent, c.allMappings, c, c.vectorTopK)
 
 		c.log.Info().
 			Int("original_mappings", len(mappings)).
@@ -137,7 +140,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 			Msg("Applied hybrid mapping filter")
 	} else {
 		// No filtering, use provided mappings as map
-		effectiveMappingsMap = MedicationMappingsToMap(mappings)
+		effectiveMappingsMap = medicationMappingsToMap(mappings)
 	}
 
 	// Constants for chunking
@@ -224,7 +227,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 				Int("chunk_size", len(batch)).
 				Msg("Processing chunk batch")
 
-			results, err := c.processBatch(ctx, batch, MapToMedicationMappings(effectiveMappingsMap))
+			results, err := c.processBatch(ctx, batch, mapToMedicationMappings(effectiveMappingsMap))
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -319,7 +322,7 @@ func (c *DockerModelClient) ParseMessages(ctx context.Context, messages []*domai
 // Uses Arabic normalization and fuzzy matching for improved accuracy.
 // The log parameter enables auto-learn logging for unmapped medications.
 // The unmappedRepo (optional) saves unmapped medications for active learning.
-func enforceMappings(ctx context.Context, results []*domain.AIParseResult, mappings map[string]string, log zerolog.Logger, unmappedRepo domain.UnmappedMedicationRepo, messages []*domain.RawMessage) {
+func enforceMappings(ctx context.Context, results []*domain.AIParseResult, mappings map[string]string, log zerolog.Logger, unmappedRepo repository.UnmappedMedicationRepo, messages []*domain.RawMessage) {
 	if len(mappings) == 0 {
 		return
 	}
@@ -446,9 +449,9 @@ func containsArabic(s string) bool {
 }
 
 // processBatch processes a small batch of messages
-func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
+func (c *Client) processBatch(ctx context.Context, messages []*domain.RawMessage, mappings []*domain.MedicationMapping) ([]*domain.AIParseResult, error) {
 	// Build prompt with messages
-	prompt := buildParsePrompt(messages, mappings)
+	prompt := prompts.BuildParsePrompt(messages, mappings)
 
 	// Count tokens
 	tokenCount, err := textPkg.CountTokens(prompt)
@@ -458,7 +461,7 @@ func (c *DockerModelClient) processBatch(ctx context.Context, messages []*domain
 
 	// Log mapping specific tokens
 	if len(mappings) > 0 {
-		mappingStr := FormatMappings(mappings)
+		mappingStr := prompts.FormatMappings(mappings)
 		mappingTokens, _ := textPkg.CountTokens(mappingStr)
 		c.log.Info().Int("mapping_tokens", mappingTokens).Int("total_prompt_tokens", tokenCount).Msg("Token usage breakdown")
 	}
@@ -591,7 +594,7 @@ func truncateForLog(s string, maxLen int) string {
 }
 
 // Embed generates embeddings using the OpenAI-compatible endpoint
-func (c *DockerModelClient) Embed(ctx context.Context, text string) ([]float32, error) {
+func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	// Create a separate client for embeddings if the base URL differs
 	client := c.client
 
@@ -627,7 +630,7 @@ func (c *DockerModelClient) Embed(ctx context.Context, text string) ([]float32, 
 }
 
 // EmbedBatch generates embeddings for a batch of texts using the OpenAI-compatible endpoint
-func (c *DockerModelClient) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+func (c *Client) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
@@ -669,4 +672,138 @@ func (c *DockerModelClient) EmbedBatch(ctx context.Context, texts []string) ([][
 	}
 
 	return results, nil
+}
+
+// ---- Mapping filter utilities (inlined to avoid circular imports) ----
+
+// embedder interface for generating text embeddings
+type embedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
+}
+
+// filterMappingsByKeyword returns only mappings where Arabic key appears in content
+func filterMappingsByKeyword(content string, mappings map[string]string) map[string]string {
+	result := make(map[string]string)
+	contentNormalized := arabicPkg.NormalizeForMatching(content)
+
+	for arabicKey, english := range mappings {
+		arabicNormalized := arabicPkg.NormalizeForMatching(arabicKey)
+		if strings.Contains(contentNormalized, arabicNormalized) {
+			result[arabicKey] = english
+		}
+	}
+
+	return result
+}
+
+// filterMappingsBySimilarity returns top-K semantically similar mappings
+func filterMappingsBySimilarity(ctx context.Context, content string, allMappings []*domain.MedicationMapping, emb embedder, topK int) (map[string]string, error) {
+	if len(allMappings) == 0 || topK <= 0 {
+		return make(map[string]string), nil
+	}
+
+	// Embed the message content
+	contentEmbedding, err := emb.Embed(ctx, content)
+	if err != nil {
+		return nil, err
+	}
+
+	// Score all mappings by similarity
+	type scoredMapping struct {
+		mapping *domain.MedicationMapping
+		score   float32
+	}
+	var scored []scoredMapping
+
+	for _, m := range allMappings {
+		if len(m.Embedding) == 0 {
+			continue
+		}
+		score := cosineSimilarity(contentEmbedding, m.Embedding)
+		scored = append(scored, scoredMapping{m, score})
+	}
+
+	// Sort by score descending
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	// Take top-K
+	result := make(map[string]string)
+	for i := 0; i < topK && i < len(scored); i++ {
+		m := scored[i].mapping
+		result[m.ArabicName] = m.EnglishName
+	}
+
+	return result, nil
+}
+
+// filterMappingsHybrid combines keyword matching and vector similarity
+func filterMappingsHybrid(ctx context.Context, content string, allMappings []*domain.MedicationMapping, emb embedder, vectorTopK int) map[string]string {
+	// Build map for keyword filtering
+	fullMap := make(map[string]string)
+	for _, m := range allMappings {
+		fullMap[m.ArabicName] = m.EnglishName
+		// Include synonyms
+		for _, syn := range m.Synonyms {
+			fullMap[syn] = m.EnglishName
+		}
+	}
+
+	// Step 1: Keyword filtering (always)
+	result := filterMappingsByKeyword(content, fullMap)
+
+	// Step 2: Vector similarity (always add top-K)
+	vectorMatches, err := filterMappingsBySimilarity(ctx, content, allMappings, emb, vectorTopK)
+	if err == nil {
+		// Merge vector matches into result (deduped by map key)
+		for arabic, english := range vectorMatches {
+			if _, exists := result[arabic]; !exists {
+				result[arabic] = english
+			}
+		}
+	}
+
+	return result
+}
+
+// cosineSimilarity calculates cosine similarity between two vectors
+func cosineSimilarity(a, b []float32) float32 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+
+	var dot, normA, normB float32
+	for i := range a {
+		dot += a[i] * b[i]
+		normA += a[i] * a[i]
+		normB += b[i] * b[i]
+	}
+
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+
+	return dot / (float32(math.Sqrt(float64(normA))) * float32(math.Sqrt(float64(normB))))
+}
+
+// mapToMedicationMappings converts map[string]string to []*domain.MedicationMapping
+func mapToMedicationMappings(mappings map[string]string) []*domain.MedicationMapping {
+	result := make([]*domain.MedicationMapping, 0, len(mappings))
+	for arabic, english := range mappings {
+		result = append(result, &domain.MedicationMapping{
+			ArabicName:  arabic,
+			EnglishName: english,
+		})
+	}
+	return result
+}
+
+// medicationMappingsToMap converts []*domain.MedicationMapping to map[string]string
+func medicationMappingsToMap(mappings []*domain.MedicationMapping) map[string]string {
+	result := make(map[string]string)
+	for _, m := range mappings {
+		result[m.ArabicName] = m.EnglishName
+	}
+	return result
 }

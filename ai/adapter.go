@@ -4,16 +4,16 @@ package ai
 import (
 	"context"
 
-	internalAI "pharmabroker/internal/ai"
+	"pharmabroker/matching"
 )
 
 // schedulerAdapter wraps internal/ai.LearningScheduler to implement ai.LearningScheduler
 type schedulerAdapter struct {
-	internal *internalAI.LearningScheduler
+	internal *matching.LearningScheduler
 }
 
 // WrapLearningScheduler creates an ai.LearningScheduler from internal implementation
-func WrapLearningScheduler(internal *internalAI.LearningScheduler) LearningScheduler {
+func WrapLearningScheduler(internal *matching.LearningScheduler) LearningScheduler {
 	if internal == nil {
 		return nil
 	}
@@ -36,9 +36,9 @@ func (a *schedulerAdapter) Status() SchedulerStatus {
 	internalStatus := a.internal.Status()
 
 	// Convert internal types to public types
-	var pendingWeights *ScoringWeights
+	var pendingWeights *matching.Weights
 	if internalStatus.PendingApply != nil {
-		pendingWeights = &ScoringWeights{
+		pendingWeights = &matching.Weights{
 			Medication: internalStatus.PendingApply.Medication,
 			Dosage:     internalStatus.PendingApply.Dosage,
 			Quantity:   internalStatus.PendingApply.Quantity,
@@ -71,9 +71,9 @@ func (a *schedulerAdapter) Rollback(ctx context.Context) error {
 	return a.internal.Rollback(ctx)
 }
 
-func (a *schedulerAdapter) ApplyWeightsManual(ctx context.Context, weights ScoringWeights, notes string) error {
+func (a *schedulerAdapter) ApplyWeightsManual(ctx context.Context, weights matching.Weights, notes string) error {
 	// Convert public type to internal type
-	internalWeights := internalAI.ScoringWeights{
+	internalWeights := matching.Weights{
 		Medication: weights.Medication,
 		Dosage:     weights.Dosage,
 		Quantity:   weights.Quantity,

@@ -6,13 +6,13 @@ import (
 	"net/http"
 	"time"
 
-	"pharmabroker/internal/ai"
 	"pharmabroker/internal/domain"
+	"pharmabroker/matching"
 )
 
 // LearningHandlers handles adaptive learning admin endpoints
 type LearningHandlers struct {
-	scheduler         *ai.LearningScheduler
+	scheduler         *matching.LearningScheduler
 	feedbackRepo      LearningFeedbackRepository
 	weightHistoryRepo LearningWeightHistoryRepository
 }
@@ -32,7 +32,7 @@ type LearningWeightHistoryRepository interface {
 
 // NewLearningHandlers creates learning admin handlers
 func NewLearningHandlers(
-	scheduler *ai.LearningScheduler,
+	scheduler *matching.LearningScheduler,
 	feedbackRepo LearningFeedbackRepository,
 	weightHistoryRepo LearningWeightHistoryRepository,
 ) *LearningHandlers {
@@ -51,9 +51,9 @@ type LearningStatusResponse struct {
 	LastStatus     string                     `json:"last_status"`
 	LastError      string                     `json:"last_error,omitempty"`
 	LastMetrics    *domain.PerformanceMetrics `json:"last_metrics,omitempty"`
-	PendingApply   *ai.ScoringWeights         `json:"pending_weights,omitempty"`
+	PendingApply   *matching.Weights          `json:"pending_weights,omitempty"`
 	PendingReason  string                     `json:"pending_reason,omitempty"`
-	CurrentWeights *ai.ScoringWeights         `json:"current_weights,omitempty"`
+	CurrentWeights *matching.Weights          `json:"current_weights,omitempty"`
 }
 
 // GetLearningStatus returns current learning system status
@@ -331,10 +331,10 @@ func (h *LearningHandlers) GetFeedbackStats(w http.ResponseWriter, r *http.Reque
 
 // CurrentWeightsResponse for current weights
 type CurrentWeightsResponse struct {
-	Weights   ai.ScoringWeights `json:"weights"`
-	Source    string            `json:"source"`
-	AppliedAt *time.Time        `json:"applied_at,omitempty"`
-	Notes     string            `json:"notes,omitempty"`
+	Weights   matching.Weights `json:"weights"`
+	Source    string           `json:"source"`
+	AppliedAt *time.Time       `json:"applied_at,omitempty"`
+	Notes     string           `json:"notes,omitempty"`
 }
 
 // GetCurrentWeights returns current scoring weights
@@ -350,7 +350,7 @@ func (h *LearningHandlers) GetCurrentWeights(w http.ResponseWriter, r *http.Requ
 	current, err := h.weightHistoryRepo.GetCurrent(ctx)
 	if err != nil || current == nil {
 		// Return default weights if no history
-		defaultWeights := ai.DefaultWeights()
+		defaultWeights := matching.DefaultWeights()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(CurrentWeightsResponse{
 			Weights: defaultWeights,
@@ -360,7 +360,7 @@ func (h *LearningHandlers) GetCurrentWeights(w http.ResponseWriter, r *http.Requ
 	}
 
 	response := CurrentWeightsResponse{
-		Weights: ai.ScoringWeights{
+		Weights: matching.Weights{
 			Medication: current.MedicationWeight,
 			Dosage:     current.DosageWeight,
 			Quantity:   current.QuantityWeight,
@@ -378,8 +378,8 @@ func (h *LearningHandlers) GetCurrentWeights(w http.ResponseWriter, r *http.Requ
 
 // ManualWeightsRequest for manual weight updates
 type ManualWeightsRequest struct {
-	Weights ai.ScoringWeights `json:"weights"`
-	Notes   string            `json:"notes"`
+	Weights matching.Weights `json:"weights"`
+	Notes   string           `json:"notes"`
 }
 
 // UpdateWeightsManually allows admin to set weights manually
