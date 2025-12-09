@@ -135,6 +135,12 @@ func (m *mockGroupRepo) UpdateLastMessage(ctx context.Context, jid string) error
 func (m *mockGroupRepo) IncrementMessageCount(ctx context.Context, jid string) error {
 	return nil
 }
+func (m *mockGroupRepo) SaveFromSync(ctx context.Context, jid, name, desc string) error {
+	return nil
+}
+func (m *mockGroupRepo) EnableFromConfig(ctx context.Context, jids []string) (int, error) {
+	return 0, nil
+}
 
 var _ repository.GroupRepository = (*mockGroupRepo)(nil)
 

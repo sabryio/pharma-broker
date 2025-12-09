@@ -61,29 +61,33 @@ type Container struct {
 	ReportScheduler   *reports.Scheduler
 	Janitor           *janitor.Janitor
 
-	// Internal repositories not exposed in Repos
-	configRepo      *storageGorm.ConfigRepo
-	groupRepo       *storageGorm.GroupRepo // concrete type for SaveFromSync
-	feedbackRepo    repository.FeedbackRepository
-	leaderboardRepo repository.LeaderboardRepository
-	auditRepo       repository.AuditRepository
-	unmappedRepo    repository.UnmappedMedicationRepo
-
 	// Cleanup functions
 	cleanups []func() error
 }
 
 // Repositories bundles all repository implementations
 type Repositories struct {
+	// Core domain repositories
 	Offers   repository.OfferRepository
 	Requests repository.RequestRepository
 	Matches  repository.MatchRepository
 	Groups   repository.GroupRepository
 	Stats    repository.StatsRepository
 	Messages repository.RawMessageRepository
+
+	// Medication and mapping
 	Mappings repository.MedicationMappingRepository
-	Queue    repository.MatchQueueRepository
-	Review   repository.ReviewQueueRepository
+	Unmapped repository.UnmappedMedicationRepo
+
+	// Queue management
+	Queue  repository.MatchQueueRepository
+	Review repository.ReviewQueueRepository
+
+	// Configuration and system
+	Config      repository.ConfigRepository
+	Audit       repository.AuditRepository
+	Feedback    repository.FeedbackRepository
+	Leaderboard repository.LeaderboardRepository
 }
 
 // New creates a new application container with database and repositories
@@ -105,24 +109,21 @@ func New(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*Containe
 
 	// Initialize all repositories
 	c.Repos = &Repositories{
-		Offers:   storageGorm.NewOfferRepo(db),
-		Requests: storageGorm.NewRequestRepo(db),
-		Matches:  storageGorm.NewMatchRepo(db),
-		Groups:   storageGorm.NewGroupRepo(db),
-		Stats:    storageGorm.NewStatsRepo(db),
-		Messages: storageGorm.NewRawMessageRepo(db),
-		Mappings: storageGorm.NewMedicationMappingRepo(db),
-		Queue:    storageGorm.NewMatchQueueRepo(db),
-		Review:   storageGorm.NewReviewQueueRepo(db),
+		Offers:      storageGorm.NewOfferRepo(db),
+		Requests:    storageGorm.NewRequestRepo(db),
+		Matches:     storageGorm.NewMatchRepo(db),
+		Groups:      storageGorm.NewGroupRepo(db),
+		Stats:       storageGorm.NewStatsRepo(db),
+		Messages:    storageGorm.NewRawMessageRepo(db),
+		Mappings:    storageGorm.NewMedicationMappingRepo(db),
+		Unmapped:    storageGorm.NewUnmappedRepo(db),
+		Queue:       storageGorm.NewMatchQueueRepo(db),
+		Review:      storageGorm.NewReviewQueueRepo(db),
+		Config:      storageGorm.NewConfigRepo(db),
+		Audit:       storageGorm.NewAuditRepo(db),
+		Feedback:    storageGorm.NewFeedbackRepo(db),
+		Leaderboard: storageGorm.NewLeaderboardRepo(db),
 	}
-
-	// Internal repos
-	c.groupRepo = storageGorm.NewGroupRepo(db)
-	c.configRepo = storageGorm.NewConfigRepo(db)
-	c.feedbackRepo = storageGorm.NewFeedbackRepo(db)
-	c.leaderboardRepo = storageGorm.NewLeaderboardRepo(db)
-	c.auditRepo = storageGorm.NewAuditRepo(db)
-	c.unmappedRepo = storageGorm.NewUnmappedRepo(db)
 
 	log.Info().Msg("Repositories initialized")
 
@@ -148,7 +149,7 @@ func (c *Container) InitAI(ctx context.Context) error {
 	}
 
 	// Set unmapped repo for active learning
-	c.AIProvider.SetUnmappedRepo(c.unmappedRepo)
+	c.AIProvider.SetUnmappedRepo(c.Repos.Unmapped)
 
 	return nil
 }
@@ -172,7 +173,7 @@ func (c *Container) InitSSE() {
 
 // InitWarRoom initializes the monitoring/alerting system
 func (c *Container) InitWarRoom() {
-	c.WarRoom = monitor.NewWarRoom(c.WAManager, c.configRepo, c.Logger)
+	c.WarRoom = monitor.NewWarRoom(c.WAManager, c.Repos.Config, c.Logger)
 	c.Logger.Info().Msg("WarRoom monitor initialized")
 }
 
@@ -193,7 +194,7 @@ func (c *Container) InitParser(ctx context.Context) error {
 		c.Repos.Matches,
 		c.Repos.Mappings,
 		c.Repos.Queue,
-		c.configRepo,
+		c.Repos.Config,
 		c.WarRoom,
 		c.SSEHub,
 		c.Logger,
@@ -204,7 +205,7 @@ func (c *Container) InitParser(ctx context.Context) error {
 
 	// Wire auto-parse checker
 	c.Parser.SetAutoParseChecker(func() bool {
-		cfg, err := c.configRepo.GetAll(ctx)
+		cfg, err := c.Repos.Config.GetAll(ctx)
 		if err != nil {
 			return true
 		}
@@ -222,16 +223,16 @@ func (c *Container) InitHandlers() error {
 	matchHandler := apiHandlers.NewMatchHandler(c.Repos.Matches, c.Repos.Offers, c.Repos.Requests, nil, c.SSEHub, c.Logger)
 	groupHandler := apiHandlers.NewGroupHandler(c.Repos.Groups, c.Logger)
 	statsHandler := apiHandlers.NewStatsHandler(c.Repos.Stats, c.Logger)
-	configHandler := apiHandlers.NewConfigHandler(c.configRepo, c.Logger)
-	feedbackHandler := apiHandlers.NewFeedbackHandler(c.feedbackRepo, c.Repos.Matches, c.Logger)
-	leaderboardHandler := apiHandlers.NewLeaderboardHandler(c.leaderboardRepo, c.Logger)
-	auditHandler := apiHandlers.NewAuditHandler(c.auditRepo, c.Logger)
+	configHandler := apiHandlers.NewConfigHandler(c.Repos.Config, c.Logger)
+	feedbackHandler := apiHandlers.NewFeedbackHandler(c.Repos.Feedback, c.Repos.Matches, c.Logger)
+	leaderboardHandler := apiHandlers.NewLeaderboardHandler(c.Repos.Leaderboard, c.Logger)
+	auditHandler := apiHandlers.NewAuditHandler(c.Repos.Audit, c.Logger)
 	healthChecker := apiHandlers.NewHealthChecker()
 
 	// Wire sync function to group handler
 	groupHandler.SetSyncFunc(func() error {
 		return c.WAManager.SyncGroups(context.Background(), func(jid, name, desc string) error {
-			return c.groupRepo.SaveFromSync(context.Background(), jid, name, desc)
+			return c.Repos.Groups.SaveFromSync(context.Background(), jid, name, desc)
 		})
 	})
 
@@ -383,7 +384,7 @@ func (c *Container) Run(ctx context.Context) error {
 
 	// Wire skip own messages checker
 	listener.SetSkipOwnMessagesChecker(func() bool {
-		cfg, err := c.configRepo.GetAll(ctx)
+		cfg, err := c.Repos.Config.GetAll(ctx)
 		if err != nil {
 			return true
 		}
@@ -395,7 +396,7 @@ func (c *Container) Run(ctx context.Context) error {
 		botHandler := whatsapp.NewBotCommandHandler(
 			c.Repos.Matches,
 			c.Repos.Stats,
-			c.auditRepo,
+			c.Repos.Audit,
 			c.Config.WhatsApp.BotCommands.AuthorizedPhones,
 			c.Logger,
 		)
@@ -506,7 +507,7 @@ func (c *Container) autoSyncGroups(ctx context.Context) {
 
 	c.Logger.Info().Msg("Auto-syncing groups from WhatsApp...")
 	if err := c.WAManager.SyncGroups(ctx, func(jid, name, desc string) error {
-		return c.groupRepo.SaveFromSync(ctx, jid, name, desc)
+		return c.Repos.Groups.SaveFromSync(ctx, jid, name, desc)
 	}); err != nil {
 		c.Logger.Warn().Err(err).Msg("Failed to auto-sync groups")
 	} else {
@@ -514,7 +515,7 @@ func (c *Container) autoSyncGroups(ctx context.Context) {
 	}
 
 	if len(c.Config.WhatsApp.MonitoredGroups) > 0 {
-		enabled, err := c.groupRepo.EnableFromConfig(ctx, c.Config.WhatsApp.MonitoredGroups)
+		enabled, err := c.Repos.Groups.EnableFromConfig(ctx, c.Config.WhatsApp.MonitoredGroups)
 		if err != nil {
 			c.Logger.Warn().Err(err).Msg("Failed to enable some groups from config")
 		} else if enabled > 0 {
@@ -570,13 +571,13 @@ func (c *Container) SeedMedications(ctx context.Context) error {
 
 // SeedAdminPhone seeds admin phone from config if not set
 func (c *Container) SeedAdminPhone(ctx context.Context) {
-	cfg, err := c.configRepo.GetAll(ctx)
+	cfg, err := c.Repos.Config.GetAll(ctx)
 	if err != nil {
 		return
 	}
 	if cfg.AdminPhone == "" && c.Config.Monitor.AdminPhone != "" {
 		c.Logger.Info().Str("phone", c.Config.Monitor.AdminPhone).Msg("Seeding AdminPhone from config")
-		c.configRepo.UpdateFromMap(ctx, map[string]any{"admin_phone": c.Config.Monitor.AdminPhone})
+		c.Repos.Config.UpdateFromMap(ctx, map[string]any{"admin_phone": c.Config.Monitor.AdminPhone})
 	}
 }
 

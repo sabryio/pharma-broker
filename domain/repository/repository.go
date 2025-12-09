@@ -89,6 +89,8 @@ type GroupRepository interface {
 	SetMonitored(ctx context.Context, jid string, monitored bool) error
 	UpdateLastMessage(ctx context.Context, jid string) error
 	IncrementMessageCount(ctx context.Context, jid string) error
+	SaveFromSync(ctx context.Context, jid, name, desc string) error
+	EnableFromConfig(ctx context.Context, jids []string) (int, error)
 }
 
 // StatsRepository provides dashboard statistics
