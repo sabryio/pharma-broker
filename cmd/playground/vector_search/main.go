@@ -10,10 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"pharmabroker/internal/ai"
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
+	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
+	"pharmabroker/pkg/config"
+	"pharmabroker/pkg/matcher/filtering"
+	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
 )
@@ -69,19 +70,18 @@ func main() {
 	log := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
 	// Load mappings from DB
-	dbCfg := &config.DatabaseConfig{Path: "data/pharmabroker.db"}
-	gormDB, err := storage.NewGormDB(dbCfg)
+	gormDB, err := storageGorm.NewDB(&storageGorm.Config{Path: "data/pharmabroker.db"})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open DB")
 	}
-	repo := storage.NewGormMedicationMappingRepo(gormDB)
+	repo := storageGorm.NewMedicationMappingRepo(gormDB)
 	allMappings, _ := repo.GetAll(context.Background())
 
 	fmt.Printf("=== Playground 3: Vector Similarity Search ===\n")
 	fmt.Printf("Total mappings in DB: %d\n\n", len(allMappings))
 
 	// Setup AI client for embeddings
-	cfg := &config.DockerModelConfig{
+	aiCfg := &config.DockerModelConfig{
 		BaseURL:            "http://localhost:12434/engines/llama.cpp/v1",
 		Model:              "ai/qwen3-vl:latest",
 		RequestTimeout:     2 * time.Minute,
@@ -90,7 +90,7 @@ func main() {
 		EmbeddingModelName: "ai/embeddinggemma",
 	}
 
-	client, err := ai.NewDockerModelClient(cfg, log)
+	client, err := aiDocker.NewClient(aiCfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create client")
 	}
@@ -193,7 +193,7 @@ func main() {
 		filteredMappings[s.mapping.ArabicName] = s.mapping.EnglishName
 	}
 
-	msg := &domain.RawMessage{
+	msg := &entity.RawMessage{
 		ID:         "vector-search-test",
 		Content:    content,
 		SenderName: "Test",
@@ -201,7 +201,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, ai.MapToMedicationMappings(filteredMappings))
+	results, err := client.ParseMessages(context.Background(), []*entity.RawMessage{msg}, filtering.MapToMappingsEntity(filteredMappings))
 	duration := time.Since(start)
 
 	if err != nil {
@@ -218,11 +218,11 @@ func main() {
 }
 
 type scoredMapping struct {
-	mapping *domain.MedicationMapping
+	mapping *entity.MedicationMapping
 	score   float32
 }
 
-func findSimilar(mappings []*domain.MedicationMapping, queryEmbedding []float32, topK int) []scoredMapping {
+func findSimilar(mappings []*entity.MedicationMapping, queryEmbedding []float32, topK int) []scoredMapping {
 	var results []scoredMapping
 
 	for _, m := range mappings {

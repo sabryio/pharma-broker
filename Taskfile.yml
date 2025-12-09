@@ -111,9 +111,15 @@ tasks:
   test:integration:
     desc: Run integration tests (requires AI service)
     cmds:
-      - go test -tags=integration ./internal/ai/... -v -timeout 5m
+      - go test -tags=integration ./ai/... -v -timeout 5m
 
   test:unit:
-    desc: Run unit tests only
+    desc: Run unit tests across all workspace modules
     cmds:
-      - go test ./... -v
+      - go test ./... ./ai/... ./api/... ./app/... ./domain/... ./matching/... ./messaging/... ./notify/... ./parsing/... ./pkg/... ./reports/... ./storage/... -v
+
+  test:coverage:
+    desc: Run tests with coverage report
+    cmds:
+      - go test ./... ./ai/... ./api/... ./app/... ./domain/... ./matching/... ./messaging/... ./notify/... ./parsing/... ./pkg/... ./reports/... ./storage/... -coverprofile=coverage.out
+      - go tool cover -html=coverage.out -o coverage.html

@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"pharmabroker/internal/ai"
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
+	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
+	"pharmabroker/pkg/config"
+	"pharmabroker/pkg/matcher/filtering"
+	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
 )
@@ -40,12 +41,11 @@ func main() {
 	ctx := context.Background()
 
 	// Setup DB and mappings
-	dbCfg := &config.DatabaseConfig{Path: "data/pharmabroker.db"}
-	gormDB, err := storage.NewGormDB(dbCfg)
+	gormDB, err := storageGorm.NewDB(&storageGorm.Config{Path: "data/pharmabroker.db"})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open DB")
 	}
-	repo := storage.NewGormMedicationMappingRepo(gormDB)
+	repo := storageGorm.NewMedicationMappingRepo(gormDB)
 	allMappings, _ := repo.GetAll(ctx)
 
 	// Create full mappings map
@@ -57,13 +57,13 @@ func main() {
 	fmt.Printf("Total mappings in database: %d\n\n", len(fullMappings))
 
 	// Create AI client
-	client, err := ai.NewDockerModelClient(&cfg.DockerModel, log)
+	client, err := aiDocker.NewClient(&cfg.DockerModel, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create AI client")
 	}
 
 	// Test messages
-	testMessages := []*domain.RawMessage{
+	testMessages := []*entity.RawMessage{
 		{ID: "bench-1", Content: "*عندي*\n*زولادكس 3.6*\n*سكسندا*\n*اوزمبك*"},
 		{ID: "bench-2", Content: "*محتاج*\n*ديكابيبتيل*\n*فوستيمون*"},
 		{ID: "bench-3", Content: "*متوفر*\n*مريوفيرت*\n*سيتروتايد*\n*اوفتريل*"},
@@ -76,7 +76,7 @@ func main() {
 	runBenchmark(ctx, client, testMessages, fullMappings, true, allMappings)
 }
 
-func runBenchmark(ctx context.Context, client *ai.DockerModelClient, messages []*domain.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*domain.MedicationMapping) {
+func runBenchmark(ctx context.Context, client *aiDocker.Client, messages []*entity.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*entity.MedicationMapping) {
 	iterations := 3
 
 	if useHybrid {
@@ -90,7 +90,7 @@ func runBenchmark(ctx context.Context, client *ai.DockerModelClient, messages []
 
 	for i := range iterations {
 		start := time.Now()
-		results, err := client.ParseMessages(ctx, messages, ai.MapToMedicationMappings(mappings))
+		results, err := client.ParseMessages(ctx, messages, filtering.MapToMappingsEntity(mappings))
 		duration := time.Since(start)
 
 		if err != nil {
@@ -118,7 +118,7 @@ func runBenchmark(ctx context.Context, client *ai.DockerModelClient, messages []
 	fmt.Printf("  Estimated prompt tokens: ~%d\n", promptTokens)
 }
 
-func estimatePromptTokens(messages []*domain.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*domain.MedicationMapping) int {
+func estimatePromptTokens(messages []*entity.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*entity.MedicationMapping) int {
 	// Rough estimate: 4 chars per token
 	var textLen int
 

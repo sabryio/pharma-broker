@@ -30,13 +30,14 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 
-	"pharmabroker/internal/ai"
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
-	"pharmabroker/internal/notify"
-	"pharmabroker/internal/reports"
-	"pharmabroker/internal/storage"
-	"pharmabroker/internal/whatsapp"
+	"pharmabroker/ai"
+	"pharmabroker/domain/entity"
+	"pharmabroker/messaging/whatsapp"
+	"pharmabroker/notify"
+	"pharmabroker/parsing"
+	"pharmabroker/pkg/config"
+	"pharmabroker/reports"
+	storageGorm "pharmabroker/storage/gorm"
 )
 
 // Phase tracking
@@ -257,22 +258,23 @@ func main() {
 	os.Remove(cfg.Database.Path + "-shm")
 	os.Remove(cfg.Database.Path + "-wal")
 
-	db, err := storage.New(&cfg.Database)
+	// Initialize storage/gorm layer
+	newDB, err := storageGorm.NewDB(&storageGorm.Config{Path: cfg.Database.Path})
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to init database")
+		log.Fatal().Err(err).Msg("Failed to init storage/gorm layer")
 	}
-	defer db.Close()
+	defer newDB.Close()
 
-	// Create ALL repositories (matching actual serve.go)
-	rawMsgRepo := storage.NewRawMessageRepo(db)
-	offerRepo := storage.NewOfferRepo(db)
-	requestRepo := storage.NewRequestRepo(db)
-	matchRepo := storage.NewMatchRepo(db)
-	matchQueueRepo := storage.NewMatchQueueRepo(db)
-	groupRepo := storage.NewGroupRepo(db)
-	medicationRepo := storage.NewMedicationMappingRepo(db)
-	configRepo := storage.NewConfigRepo(db)
-	reportRepo := storage.NewReportRepo(db)
+	// Create ALL repositories (using new storageGorm implementations)
+	rawMsgRepo := storageGorm.NewRawMessageRepo(newDB)
+	offerRepo := storageGorm.NewOfferRepo(newDB)
+	requestRepo := storageGorm.NewRequestRepo(newDB)
+	matchRepo := storageGorm.NewMatchRepo(newDB)
+	matchQueueRepo := storageGorm.NewMatchQueueRepo(newDB)
+	groupRepo := storageGorm.NewGroupRepo(newDB)
+	medicationRepo := storageGorm.NewMedicationMappingRepo(newDB)
+	configRepo := storageGorm.NewConfigRepo(newDB)
+	reportRepo := storageGorm.NewReportRepo(newDB)
 
 	workflow.EndPhase("success", fmt.Sprintf("9 repos initialized, DB: %s", cfg.Database.Path))
 
@@ -281,7 +283,7 @@ func main() {
 	// ============================================================
 	workflow.StartPhase("Group Setup")
 
-	testGroups := []*domain.Group{
+	testGroups := []*entity.Group{
 		{JID: "120363012345678901@g.us", Name: "مجموعة صيادلة القاهرة", Monitored: true, AddedAt: time.Now()},
 		{JID: "120363098765432109@g.us", Name: "موردين الأدوية", Monitored: true, AddedAt: time.Now()},
 		{JID: "120363055555555555@g.us", Name: "صيادلة الإسكندرية", Monitored: true, AddedAt: time.Now()},
@@ -321,7 +323,7 @@ func main() {
 	broadcaster := &NoOpBroadcaster{}
 	errorNotifier := &NoOpErrorNotifier{log: log}
 
-	parser := ai.NewParser(
+	parser := parsing.NewParser(
 		rawMsgRepo,
 		aiProvider,
 		offerRepo,

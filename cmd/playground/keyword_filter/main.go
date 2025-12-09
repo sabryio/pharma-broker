@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
+	"pharmabroker/pkg/config"
+	"pharmabroker/pkg/matcher/filtering"
+	storageGorm "pharmabroker/storage/gorm"
 	"strings"
 	"time"
-
-	"pharmabroker/internal/ai"
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
 
 	"github.com/rs/zerolog"
 )
@@ -67,12 +67,12 @@ func main() {
 	log := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
 	// Load mappings from DB
-	dbCfg := &config.DatabaseConfig{Path: "data/pharmabroker.db"}
-	gormDB, err := storage.NewGormDB(dbCfg)
+	dbCfg := &storageGorm.Config{Path: "data/pharmabroker.db"}
+	gormDB, err := storageGorm.NewDB(dbCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open DB")
 	}
-	repo := storage.NewGormMedicationMappingRepo(gormDB)
+	repo := storageGorm.NewMedicationMappingRepo(gormDB)
 	allMappings, _ := repo.GetAll(context.Background())
 
 	fullMappings := make(map[string]string)
@@ -115,12 +115,12 @@ func main() {
 		RetryBaseDelay: time.Second,
 	}
 
-	client, err := ai.NewDockerModelClient(cfg, log)
+	client, err := aiDocker.NewClient(cfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create client")
 	}
 
-	msg := &domain.RawMessage{
+	msg := &entity.RawMessage{
 		ID:         "keyword-filter-test",
 		Content:    content,
 		SenderName: "Test",
@@ -128,7 +128,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, ai.MapToMedicationMappings(filteredMappings))
+	results, err := client.ParseMessages(context.Background(), []*entity.RawMessage{msg}, filtering.MapToMappingsEntity(filteredMappings))
 	duration := time.Since(start)
 
 	if err != nil {

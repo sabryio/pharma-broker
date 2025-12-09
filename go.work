@@ -1,0 +1,16 @@
+go 1.25.0
+
+use (
+	.
+	./ai
+	./api
+	./app
+	./domain
+	./matching
+	./messaging
+	./notify
+	./parsing
+	./pkg
+	./reports
+	./storage
+)

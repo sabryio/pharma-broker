@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"pharmabroker/internal/ai"
+	fuzzyPkg "pharmabroker/pkg/fuzzy"
 )
 
 // Playground for testing fuzzy matching with Levenshtein distance
@@ -29,7 +29,7 @@ func main() {
 
 	fmt.Println("Levenshtein Distance Tests:")
 	for _, tc := range distanceTests {
-		distance := ai.LevenshteinDistance(tc.s1, tc.s2)
+		distance := fuzzyPkg.LevenshteinDistance(tc.s1, tc.s2)
 		status := "✓"
 		if distance != tc.expected {
 			status = fmt.Sprintf("✗ (got %d)", distance)
@@ -60,7 +60,7 @@ func main() {
 
 	fmt.Println("Fuzzy Match Tests (max distance = 2):")
 	for _, tc := range fuzzyTests {
-		result := ai.FuzzyFindBest(tc.query, mappings, 2)
+		result := fuzzyPkg.FindBest(tc.query, mappings, 2)
 		if result == nil {
 			if tc.expected == "" {
 				fmt.Printf("  %s → (no match) ✓\n", tc.query)
@@ -69,11 +69,11 @@ func main() {
 			}
 		} else {
 			status := "✓"
-			if result.EnglishName != tc.expected {
+			if result.Value != tc.expected {
 				status = fmt.Sprintf("✗ expected %s", tc.expected)
 			}
 			fmt.Printf("  %s → %s (distance=%d, confidence=%s) %s\n",
-				tc.query, result.EnglishName, result.Distance, result.Confidence, status)
+				tc.query, result.Value, result.Distance, result.Confidence, status)
 		}
 	}
 

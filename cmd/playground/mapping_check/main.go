@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
+	"pharmabroker/pkg/config"
+	"pharmabroker/pkg/matcher/filtering"
+	storageGorm "pharmabroker/storage/gorm"
 	"strings"
 	"time"
-
-	"pharmabroker/internal/ai"
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
 
 	"github.com/rs/zerolog"
 )
@@ -70,17 +70,17 @@ func main() {
 		log.Fatal().Str("path", dbPath).Msg("Database file not found. Please run from project root.")
 	}
 
-	dbCfg := &config.DatabaseConfig{
+	dbCfg := &storageGorm.Config{
 		Path: dbPath,
 	}
 
-	gormDB, err := storage.NewGormDB(dbCfg)
+	gormDB, err := storageGorm.NewDB(dbCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize database connection")
 	}
 
 	// 2. Fetch Mappings from DB
-	repo := storage.NewGormMedicationMappingRepo(gormDB)
+	repo := storageGorm.NewMedicationMappingRepo(gormDB)
 	allMappings, err := repo.GetAll(context.Background())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to fetch mappings from DB")
@@ -101,7 +101,7 @@ func main() {
 
 		count := 0
 		for k, v := range jsonMap {
-			mapping := &domain.MedicationMapping{
+			mapping := &entity.MedicationMapping{
 				ArabicName:  k,
 				EnglishName: v,
 			}
@@ -149,7 +149,7 @@ func main() {
 	}
 
 	write("Initializing Docker Model Client...")
-	client, err := ai.NewDockerModelClient(cfg, log)
+	client, err := aiDocker.NewClient(cfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create client")
 	}
@@ -157,7 +157,7 @@ func main() {
 	// Enable hybrid filtering (keyword + vector)
 	client.SetMappings(allMappings)
 
-	msg := &domain.RawMessage{
+	msg := &entity.RawMessage{
 		ID:         "test-repro-db",
 		Content:    content,
 		SenderName: "Test User",
@@ -166,7 +166,7 @@ func main() {
 
 	write("Sending message to AI...")
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, ai.MapToMedicationMappings(mappings))
+	results, err := client.ParseMessages(context.Background(), []*entity.RawMessage{msg}, filtering.MapToMappingsEntity(mappings))
 	duration := time.Since(start)
 
 	if err != nil {

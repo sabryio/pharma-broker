@@ -19,9 +19,9 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 
-	"pharmabroker/internal/ai"
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
+	"pharmabroker/ai"
+	"pharmabroker/domain/entity"
+	"pharmabroker/pkg/config"
 )
 
 // TestMessage represents a message loaded from JSON
@@ -36,7 +36,7 @@ type TestMessage struct {
 type TestResult struct {
 	MessageID   string              `json:"message_id"`
 	Content     string              `json:"content"`
-	ParsedItems []domain.ParsedItem `json:"parsed_items"`
+	ParsedItems []entity.ParsedItem `json:"parsed_items"`
 	Error       string              `json:"error,omitempty"`
 	ElapsedMs   int64               `json:"elapsed_ms"`
 }
@@ -84,7 +84,7 @@ func main() {
 	}
 
 	// Load or create test messages
-	var testMessages []*domain.RawMessage
+	var testMessages []*entity.RawMessage
 	if *inputFile != "" {
 		testMessages, err = loadMessagesFromFile(*inputFile)
 		if err != nil {
@@ -103,7 +103,7 @@ func main() {
 	fmt.Println(separator)
 
 	// Load medication mappings for testing
-	commonMedications, err := domain.LoadRichMedicationMappings("medications.json")
+	commonMedications, err := entity.LoadRichMedicationMappings("medications.json")
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load medications.json")
 	}
@@ -184,7 +184,7 @@ func main() {
 	fmt.Printf("✅ Completed in %v\n", elapsed)
 }
 
-func loadMessagesFromFile(path string) ([]*domain.RawMessage, error) {
+func loadMessagesFromFile(path string) ([]*entity.RawMessage, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -195,9 +195,9 @@ func loadMessagesFromFile(path string) ([]*domain.RawMessage, error) {
 		return nil, err
 	}
 
-	var messages []*domain.RawMessage
+	var messages []*entity.RawMessage
 	for _, tm := range testMsgs {
-		messages = append(messages, &domain.RawMessage{
+		messages = append(messages, &entity.RawMessage{
 			ID:        tm.ID,
 			GroupJID:  tm.GroupJID,
 			GroupName: tm.GroupName,

@@ -6,10 +6,12 @@ import (
 	"os"
 	"time"
 
-	"pharmabroker/internal/ai"
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/domain"
-	"pharmabroker/internal/storage"
+	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/domain/entity"
+	arabicPkg "pharmabroker/pkg/arabic"
+	"pharmabroker/pkg/config"
+	"pharmabroker/pkg/matcher/filtering"
+	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
 )
@@ -46,7 +48,7 @@ func main() {
 
 	fmt.Println("Normalization Tests:")
 	for _, tc := range testCases {
-		result := ai.NormalizeArabic(tc.input)
+		result := arabicPkg.NormalizeForMatching(tc.input)
 		status := "✓"
 		if result != tc.expected {
 			status = fmt.Sprintf("✗ (got: %s)", result)
@@ -57,12 +59,12 @@ func main() {
 	fmt.Println()
 
 	// Test with real DB
-	dbCfg := &config.DatabaseConfig{Path: "data/pharmabroker.db"}
-	gormDB, err := storage.NewGormDB(dbCfg)
+	dbCfg := &storageGorm.Config{Path: "data/pharmabroker.db"}
+	gormDB, err := storageGorm.NewDB(dbCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open DB")
 	}
-	repo := storage.NewGormMedicationMappingRepo(gormDB)
+	repo := storageGorm.NewMedicationMappingRepo(gormDB)
 	allMappings, _ := repo.GetAll(context.Background())
 
 	mappings := make(map[string]string)
@@ -76,7 +78,7 @@ func main() {
 	fmt.Println("Testing FilterMappingsByKeyword with normalization:")
 	fmt.Printf("Content: %s\n\n", content)
 
-	filtered := ai.FilterMappingsByKeyword(content, mappings)
+	filtered := filtering.KeywordFilter(content, mappings)
 	fmt.Printf("Matched %d mappings:\n", len(filtered))
 	for arabic, english := range filtered {
 		fmt.Printf("  ✓ %s → %s\n", arabic, english)
@@ -94,14 +96,14 @@ func main() {
 		EmbeddingModelName: "ai/embeddinggemma",
 	}
 
-	client, err := ai.NewDockerModelClient(cfg, log)
+	client, err := aiDocker.NewClient(cfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create client")
 	}
 
 	client.SetMappings(allMappings)
 
-	msg := &domain.RawMessage{
+	msg := &entity.RawMessage{
 		ID:         "normalization-test",
 		Content:    content,
 		SenderName: "Test",
@@ -109,7 +111,7 @@ func main() {
 	}
 
 	start := time.Now()
-	results, err := client.ParseMessages(context.Background(), []*domain.RawMessage{msg}, ai.MapToMedicationMappings(mappings))
+	results, err := client.ParseMessages(context.Background(), []*entity.RawMessage{msg}, filtering.MapToMappingsEntity(mappings))
 	duration := time.Since(start)
 
 	if err != nil {

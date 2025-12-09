@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	"pharmabroker/internal/ai"
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/storage"
+	aiDocker "pharmabroker/ai/docker"
+	"pharmabroker/pkg/config"
+	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"
 )
@@ -28,13 +28,13 @@ func main() {
 		dbPath = "data/pharmabroker.db"
 	}
 
-	dbCfg := &config.DatabaseConfig{Path: dbPath}
-	gormDB, err := storage.NewGormDB(dbCfg)
+	dbCfg := &storageGorm.Config{Path: dbPath}
+	gormDB, err := storageGorm.NewDB(dbCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open database")
 	}
 
-	repo := storage.NewGormMedicationMappingRepo(gormDB)
+	repo := storageGorm.NewMedicationMappingRepo(gormDB)
 
 	// Fetch all mappings
 	allMappings, err := repo.GetAll(context.Background())
@@ -58,7 +58,7 @@ func main() {
 		aiCfg.BaseURL = "http://localhost:12434/engines/llama.cpp/v1"
 	}
 
-	client, err := ai.NewDockerModelClient(aiCfg, log)
+	client, err := aiDocker.NewClient(aiCfg, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create AI client")
 	}
