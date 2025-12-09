@@ -7,6 +7,7 @@ require (
 	pharmabroker/ai v0.0.0
 	pharmabroker/api v0.0.0
 	pharmabroker/domain v0.0.0
+	pharmabroker/pkg v0.0.0-00010101000000-000000000000
 	pharmabroker/storage v0.0.0
 )
 
@@ -79,7 +80,6 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.40.1 // indirect
-	pharmabroker/pkg v0.0.0-00010101000000-000000000000 // indirect
 )
 
 replace (
