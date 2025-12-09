@@ -10,7 +10,7 @@ import (
 
 	aiDocker "pharmabroker/ai/docker"
 	"pharmabroker/domain/entity"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 	"pharmabroker/pkg/matcher/filtering"
 	textPkg "pharmabroker/pkg/text"
 	storageGorm "pharmabroker/storage/gorm"

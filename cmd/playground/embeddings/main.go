@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"pharmabroker/ai"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 	"pharmabroker/pkg/matcher/similarity"
 )
 

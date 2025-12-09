@@ -13,7 +13,7 @@ import (
 	aiCircuitBreaker "pharmabroker/ai/circuitbreaker"
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 	"pharmabroker/matching"
 )
 

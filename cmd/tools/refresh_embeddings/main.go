@@ -7,7 +7,7 @@ import (
 	"time"
 
 	aiDocker "pharmabroker/ai/docker"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 	storageGorm "pharmabroker/storage/gorm"
 
 	"github.com/rs/zerolog"

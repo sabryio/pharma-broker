@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"pharmabroker/internal/reports"
+	"pharmabroker/reports"
 )
 
 // ReportRepo implements report data fetching

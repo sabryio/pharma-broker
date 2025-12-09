@@ -32,11 +32,11 @@ import (
 
 	"pharmabroker/ai"
 	"pharmabroker/domain/entity"
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/notify"
-	"pharmabroker/internal/reports"
-	"pharmabroker/internal/whatsapp"
+	"pharmabroker/messaging/whatsapp"
+	"pharmabroker/notify"
 	"pharmabroker/parsing"
+	"pharmabroker/pkg/config"
+	"pharmabroker/reports"
 	storageGorm "pharmabroker/storage/gorm"
 )
 

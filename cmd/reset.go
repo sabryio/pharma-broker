@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"pharmabroker/domain/entity"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 	storageGorm "pharmabroker/storage/gorm"
 )
 

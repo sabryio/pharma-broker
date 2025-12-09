@@ -21,7 +21,7 @@ import (
 
 	"pharmabroker/ai"
 	"pharmabroker/domain/entity"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 )
 
 // TestMessage represents a message loaded from JSON

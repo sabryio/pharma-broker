@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"pharmabroker/domain/repository"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 )
 
 type Janitor struct {

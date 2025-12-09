@@ -10,7 +10,7 @@ import (
 	gemini "pharmabroker/ai/gemini"
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 )
 
 // Provider defines the interface for AI-based message parsing.

@@ -12,8 +12,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	"pharmabroker/internal/config"
-	"pharmabroker/internal/whatsapp"
+	"pharmabroker/messaging/whatsapp"
+	"pharmabroker/pkg/config"
 	storageGorm "pharmabroker/storage/gorm"
 )
 

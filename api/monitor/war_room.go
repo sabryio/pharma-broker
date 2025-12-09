@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"pharmabroker/domain/entity"
-	"pharmabroker/internal/whatsapp"
+	"pharmabroker/messaging/whatsapp"
 	"strings"
 	"sync"
 	"time"

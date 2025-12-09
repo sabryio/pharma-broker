@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"pharmabroker/domain/entity"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 )
 
 func TestNewLearningScheduler(t *testing.T) {

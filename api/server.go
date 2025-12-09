@@ -9,7 +9,7 @@ import (
 	"pharmabroker/api/handlers"
 	"pharmabroker/api/middleware"
 	"pharmabroker/api/sse"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 )
 
 // Handlers bundles all API handlers

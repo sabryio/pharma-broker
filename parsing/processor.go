@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"pharmabroker/domain/entity"
-	"pharmabroker/internal/metrics"
+	"pharmabroker/pkg/metrics"
 )
 
 // Start begins processing messages

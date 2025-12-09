@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"pharmabroker/domain/entity"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 
 	"github.com/robfig/cron/v3"
 )

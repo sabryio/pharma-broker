@@ -13,7 +13,7 @@ import (
 	"pharmabroker/ai/prompts"
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 )
 
 // Client handles communication with Gemini API using official SDK

@@ -19,7 +19,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 
-	"pharmabroker/internal/config"
+	"pharmabroker/pkg/config"
 )
 
 // Manager manages WhatsApp client connections
