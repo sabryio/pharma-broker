@@ -64,11 +64,11 @@ type Weights struct {
 // DefaultWeights returns the default scoring weights
 func DefaultWeights() Weights {
 	return Weights{
-		Medication: 0.40, // Medication match is most important
-		Dosage:     0.15, // Correct dosage matters
-		Quantity:   0.15, // Quantity fulfillment
+		Medication: 0.45, // Medication match is most important
+		Dosage:     0.10, // Correct dosage matters
+		Quantity:   0.20, // Quantity fulfillment
 		Price:      0.15, // Price within budget
-		Recency:    0.15, // Prefer fresh listings
+		Recency:    0.10, // Prefer fresh listings
 	}
 }
 
