@@ -70,7 +70,7 @@ func main() {
 	log := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
 	// Load mappings from DB
-	gormDB, err := storageGorm.NewDB(&storageGorm.Config{Path: "data/pharmabroker.db"})
+	gormDB, err := storageGorm.NewDB(&storageGorm.Config{DSN: "postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable"})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open DB")
 	}

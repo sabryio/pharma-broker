@@ -23,12 +23,7 @@ func main() {
 	fmt.Println()
 
 	// Load configuration
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		dbPath = "data/pharmabroker.db"
-	}
-
-	dbCfg := &storageGorm.Config{Path: dbPath}
+	dbCfg := &storageGorm.Config{DSN: "postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable"}
 	gormDB, err := storageGorm.NewDB(dbCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open database")

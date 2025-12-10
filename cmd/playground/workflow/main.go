@@ -244,8 +244,8 @@ func main() {
 
 	cfg := config.Load()
 	cfg.AI.Provider = *provider
-	cfg.Database.Path = "./data/workflow_test.db"
-	cfg.Database.EnableWAL = true
+	// Use test DSN - requires PostgreSQL running
+	cfg.Database.DSN = "postgres://postgres:password@localhost:5432/pharmabroker_test?sslmode=disable"
 	cfg.DockerModel.BaseURL = "http://localhost:12434/engines/llama.cpp/v1"
 
 	// ============================================================
@@ -253,17 +253,24 @@ func main() {
 	// ============================================================
 	workflow.StartPhase("Database Init")
 
-	// Delete old test database for clean run
-	os.Remove(cfg.Database.Path)
-	os.Remove(cfg.Database.Path + "-shm")
-	os.Remove(cfg.Database.Path + "-wal")
-
-	// Initialize storage/gorm layer
-	newDB, err := storageGorm.NewDB(&storageGorm.Config{Path: cfg.Database.Path})
+	// Initialize storage/gorm layer with PostgreSQL
+	newDB, err := storageGorm.NewDB(&storageGorm.Config{DSN: cfg.Database.DSN})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to init storage/gorm layer")
 	}
 	defer newDB.Close()
+
+	// Clean tables for test run
+	tables := []string{
+		"feedback_records", "weight_history", "review_queue",
+		"unmapped_medications", "audit_logs", "demand_leaderboard",
+		"match_feedback", "failed_messages", "match_queue",
+		"matches", "offers", "requests", "raw_messages",
+		"medication_mappings", "groups", "config", "bot_users",
+	}
+	for _, table := range tables {
+		newDB.GORM().Exec("TRUNCATE TABLE " + table + " CASCADE")
+	}
 
 	// Create ALL repositories (using new storageGorm implementations)
 	rawMsgRepo := storageGorm.NewRawMessageRepo(newDB)
@@ -276,7 +283,7 @@ func main() {
 	configRepo := storageGorm.NewConfigRepo(newDB)
 	reportRepo := storageGorm.NewReportRepo(newDB)
 
-	workflow.EndPhase("success", fmt.Sprintf("9 repos initialized, DB: %s", cfg.Database.Path))
+	workflow.EndPhase("success", fmt.Sprintf("9 repos initialized, DSN: %s", "postgres://***@localhost:5432/pharmabroker_test"))
 
 	// ============================================================
 	// PHASE 2: Setup Monitored Groups (like real WhatsApp sync)

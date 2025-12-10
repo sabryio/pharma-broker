@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"syscall"
 	"time"
 
@@ -115,14 +116,19 @@ func New(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*Containe
 	}
 
 	// Initialize database
-	db, err := storageGorm.NewDB(&storageGorm.Config{Path: cfg.Database.Path})
+	db, err := storageGorm.NewDB(&storageGorm.Config{
+		DSN:             cfg.Database.DSN,
+		MaxOpenConns:    cfg.Database.MaxOpenConns,
+		MaxIdleConns:    cfg.Database.MaxIdleConns,
+		ConnMaxLifetime: time.Duration(cfg.Database.ConnMaxLifetimeMins) * time.Minute,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("database init: %w", err)
 	}
 	c.DB = db
 	c.cleanups = append(c.cleanups, db.Close)
 
-	log.Info().Str("path", cfg.Database.Path).Msg("Database initialized")
+	log.Info().Str("dsn", maskDSN(cfg.Database.DSN)).Msg("Database initialized")
 
 	// Initialize all repositories
 	c.Repos = &Repositories{
@@ -716,6 +722,13 @@ func updateLearningMetrics(scheduler *matching.LearningScheduler) {
 		metrics.ScoreSeparation.Set(status.LastMetrics.AvgScoreConfirmed - status.LastMetrics.AvgScoreRejected)
 		metrics.FeedbackSamplesAnalyzed.Set(float64(status.LastMetrics.SampleSize))
 	}
+}
+
+// maskDSN masks the password in a PostgreSQL DSN for safe logging
+// postgres://user:password@host:port/db -> postgres://user:***@host:port/db
+func maskDSN(dsn string) string {
+	re := regexp.MustCompile(`(postgres://[^:]+:)([^@]+)(@.+)`)
+	return re.ReplaceAllString(dsn, "${1}***${3}")
 }
 
 // Compile-time checks

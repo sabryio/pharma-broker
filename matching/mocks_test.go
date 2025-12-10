@@ -13,7 +13,7 @@ type MockRawMessageRepo struct {
 	OnGetUnprocessed         func(ctx context.Context, limit int) ([]*entity.RawMessage, error)
 	OnMarkProcessed          func(ctx context.Context, id string, err error) error
 	OnGetLastMessageBySender func(ctx context.Context, groupJID, senderJID string) (*entity.RawMessage, error)
-	OnArchiveOldMessages     func(ctx context.Context, archivePath string, cutoff time.Time) (int64, error)
+	OnDeleteOldMessages      func(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 func (m *MockRawMessageRepo) Save(ctx context.Context, msg *entity.RawMessage) error {
@@ -46,9 +46,9 @@ func (m *MockRawMessageRepo) GetLastMessageBySender(ctx context.Context, groupJI
 	}
 	return nil, nil // Default: no previous message found
 }
-func (m *MockRawMessageRepo) ArchiveOldMessages(ctx context.Context, archivePath string, cutoff time.Time) (int64, error) {
-	if m.OnArchiveOldMessages != nil {
-		return m.OnArchiveOldMessages(ctx, archivePath, cutoff)
+func (m *MockRawMessageRepo) DeleteOldMessages(ctx context.Context, cutoff time.Time) (int64, error) {
+	if m.OnDeleteOldMessages != nil {
+		return m.OnDeleteOldMessages(ctx, cutoff)
 	}
 	return 0, nil
 }

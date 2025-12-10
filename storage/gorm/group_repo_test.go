@@ -15,7 +15,8 @@ func TestGroupRepo_Save(t *testing.T) {
 	defer db.Close()
 
 	repo := NewGroupRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	group := NewTestGroup()
 	err := repo.Save(ctx, group)
@@ -33,7 +34,8 @@ func TestGroupRepo_GetAll(t *testing.T) {
 	defer db.Close()
 
 	repo := NewGroupRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create 3 groups
 	for i := 0; i < 3; i++ {
@@ -50,7 +52,8 @@ func TestGroupRepo_GetMonitored_FiltersCorrectly(t *testing.T) {
 	defer db.Close()
 
 	repo := NewGroupRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create monitored group (explicitly set)
 	monitored := NewTestGroup(func(g *entity.Group) {
@@ -76,7 +79,8 @@ func TestGroupRepo_SetMonitored_Toggle(t *testing.T) {
 	defer db.Close()
 
 	repo := NewGroupRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create monitored group
 	group := NewTestGroup(func(g *entity.Group) {
@@ -99,7 +103,8 @@ func TestGroupRepo_SaveFromSync_Insert(t *testing.T) {
 	defer db.Close()
 
 	repo := NewGroupRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	jid := "new-group@g.us"
 	name := "New Group"
@@ -123,7 +128,8 @@ func TestGroupRepo_SaveFromSync_Update(t *testing.T) {
 	defer db.Close()
 
 	repo := NewGroupRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	jid := "existing-group@g.us"
 
@@ -147,7 +153,8 @@ func TestGroupRepo_EnableFromConfig_Batch(t *testing.T) {
 	defer db.Close()
 
 	repo := NewGroupRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create 3 groups with Monitored=false
 	jids := []string{}
@@ -180,7 +187,8 @@ func TestGroupRepo_IncrementMessageCount(t *testing.T) {
 	defer db.Close()
 
 	repo := NewGroupRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create group with 0 message count
 	group := NewTestGroup(func(g *entity.Group) {

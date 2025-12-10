@@ -18,7 +18,8 @@ func TestFeedbackRecordRepo_Save(t *testing.T) {
 	defer db.Close()
 
 	repo := NewFeedbackRecordRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	feedback := &entity.FeedbackRecord{
 		ID:              uuid.New().String(),
@@ -51,7 +52,8 @@ func TestFeedbackRecordRepo_GetByDateRange(t *testing.T) {
 	defer db.Close()
 
 	repo := NewFeedbackRecordRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	now := time.Now()
 
@@ -89,7 +91,8 @@ func TestFeedbackRecordRepo_GetFeedbackStats(t *testing.T) {
 	defer db.Close()
 
 	repo := NewFeedbackRecordRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	now := time.Now()
 
@@ -136,7 +139,8 @@ func TestFeedbackRecordRepo_CountByAction(t *testing.T) {
 	defer db.Close()
 
 	repo := NewFeedbackRecordRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	now := time.Now()
 

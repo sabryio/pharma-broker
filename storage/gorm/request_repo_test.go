@@ -16,7 +16,8 @@ func TestRequestRepo_Save_Insert(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	req := CreateTestRequestWithRawMessage(t, db)
 	err := repo.Save(ctx, req)
@@ -34,7 +35,8 @@ func TestRequestRepo_Save_Upsert(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	req := CreateTestRequestWithRawMessage(t, db)
 	err := repo.Save(ctx, req)
@@ -57,7 +59,8 @@ func TestRequestRepo_GetByID_Found(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	req := CreateTestRequestWithRawMessage(t, db)
 	assertNoError(t, repo.Save(ctx, req), "Save should succeed")
@@ -73,7 +76,8 @@ func TestRequestRepo_GetByID_NotFound(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	found, err := repo.GetByID(ctx, "non-existent-id")
 	assertNoError(t, err, "GetByID should not error for missing record")
@@ -85,7 +89,8 @@ func TestRequestRepo_GetActive_UrgentFirst(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create non-urgent request first
 	nonUrgent := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {
@@ -112,7 +117,8 @@ func TestRequestRepo_GetActive_Pagination(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create 5 requests
 	for i := 0; i < 5; i++ {
@@ -136,7 +142,8 @@ func TestRequestRepo_GetActive_ExcludesInactive(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create active request
 	activeReq := CreateTestRequestWithRawMessage(t, db)
@@ -160,7 +167,8 @@ func TestRequestRepo_UpdateStatus(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	req := CreateTestRequestWithRawMessage(t, db)
 	assertNoError(t, repo.Save(ctx, req), "Save should succeed")
@@ -180,7 +188,8 @@ func TestRequestRepo_CountActive(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create 3 active requests
 	for i := 0; i < 3; i++ {
@@ -205,7 +214,8 @@ func TestRequestRepo_GetActive_UrgentThenByCreatedAt(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	now := time.Now()
 
@@ -243,7 +253,8 @@ func TestRequestRepo_Search_WithSpecialCharacters(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRequestRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create requests with special characters in medication name
 	req1 := CreateTestRequestWithRawMessage(t, db, func(r *entity.Request) {

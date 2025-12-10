@@ -16,7 +16,8 @@ func TestOfferRepo_Save_Insert(t *testing.T) {
 	defer db.Close()
 
 	repo := NewOfferRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	offer := CreateTestOfferWithRawMessage(t, db)
 	err := repo.Save(ctx, offer)
@@ -35,7 +36,8 @@ func TestOfferRepo_Save_Upsert(t *testing.T) {
 	defer db.Close()
 
 	repo := NewOfferRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	offer := CreateTestOfferWithRawMessage(t, db)
 	err := repo.Save(ctx, offer)
@@ -58,7 +60,8 @@ func TestOfferRepo_GetByID_Found(t *testing.T) {
 	defer db.Close()
 
 	repo := NewOfferRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	offer := CreateTestOfferWithRawMessage(t, db)
 	assertNoError(t, repo.Save(ctx, offer), "Save should succeed")
@@ -74,7 +77,8 @@ func TestOfferRepo_GetByID_NotFound(t *testing.T) {
 	defer db.Close()
 
 	repo := NewOfferRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	found, err := repo.GetByID(ctx, "non-existent-id")
 	assertNoError(t, err, "GetByID should not error for missing record")
@@ -86,7 +90,8 @@ func TestOfferRepo_GetActive_Pagination(t *testing.T) {
 	defer db.Close()
 
 	repo := NewOfferRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create 5 active offers
 	for i := 0; i < 5; i++ {
@@ -115,7 +120,8 @@ func TestOfferRepo_GetActive_ExcludesInactive(t *testing.T) {
 	defer db.Close()
 
 	repo := NewOfferRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create active offer
 	activeOffer := CreateTestOfferWithRawMessage(t, db)
@@ -139,7 +145,8 @@ func TestOfferRepo_UpdateStatus(t *testing.T) {
 	defer db.Close()
 
 	repo := NewOfferRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	offer := CreateTestOfferWithRawMessage(t, db)
 	assertNoError(t, repo.Save(ctx, offer), "Save should succeed")
@@ -159,7 +166,8 @@ func TestOfferRepo_CountActive(t *testing.T) {
 	defer db.Close()
 
 	repo := NewOfferRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create 3 active offers
 	for i := 0; i < 3; i++ {
@@ -184,7 +192,8 @@ func TestOfferRepo_GetActive_OrderByCreatedAtDesc(t *testing.T) {
 	defer db.Close()
 
 	repo := NewOfferRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create offers with different timestamps
 	now := time.Now()

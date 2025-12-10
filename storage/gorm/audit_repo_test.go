@@ -16,7 +16,8 @@ func TestAuditRepo_Log(t *testing.T) {
 	defer db.Close()
 
 	repo := NewAuditRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	err := repo.Log(ctx, entity.AuditMatchConfirmed, "match-123", "Match confirmed details")
 	assertNoError(t, err, "Log should succeed")
@@ -27,7 +28,8 @@ func TestAuditRepo_LogWithValues(t *testing.T) {
 	defer db.Close()
 
 	repo := NewAuditRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	err := repo.LogWithValues(ctx, entity.AuditConfigChanged, "config-1", "old-val", "new-val", "Config updated")
 	assertNoError(t, err, "LogWithValues should succeed")
@@ -38,7 +40,8 @@ func TestAuditRepo_Save(t *testing.T) {
 	defer db.Close()
 
 	repo := NewAuditRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	log := &entity.AuditLog{
 		Action:    entity.AuditGroupEnabled,
@@ -56,7 +59,8 @@ func TestAuditRepo_GetRecent(t *testing.T) {
 	defer db.Close()
 
 	repo := NewAuditRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create 3 logs
 	for i := 0; i < 3; i++ {
@@ -74,7 +78,8 @@ func TestAuditRepo_GetByAction(t *testing.T) {
 	defer db.Close()
 
 	repo := NewAuditRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Log different actions
 	assertNoError(t, repo.Log(ctx, entity.AuditMatchConfirmed, "m1", "c1"), "Log 1")
@@ -91,7 +96,8 @@ func TestAuditRepo_GetByEntity(t *testing.T) {
 	defer db.Close()
 
 	repo := NewAuditRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	targetID := "target-entity"
 	otherID := "other-entity"
@@ -110,7 +116,8 @@ func TestAuditRepo_Count(t *testing.T) {
 	defer db.Close()
 
 	repo := NewAuditRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Log 3 actions
 	assertNoError(t, repo.Log(ctx, entity.AuditMatchConfirmed, "1", ""), "Log 1")

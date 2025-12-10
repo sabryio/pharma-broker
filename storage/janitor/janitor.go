@@ -11,6 +11,9 @@ import (
 	"pharmabroker/pkg/config"
 )
 
+// Janitor handles cleanup of old messages.
+// With PostgreSQL, archival is done via pg_dump or DELETE queries
+// rather than copying to a separate SQLite file.
 type Janitor struct {
 	repo    repository.RawMessageRepository
 	cfg     config.DatabaseConfig
@@ -58,8 +61,7 @@ func (j *Janitor) runLoop() {
 	defer j.wg.Done()
 	j.logger.Info().
 		Int("retention_days", j.cfg.RawRetentionDays).
-		Str("archive_path", j.cfg.ArchivePath).
-		Msg("🧹 Janitor started")
+		Msg("🧹 Janitor started (PostgreSQL mode)")
 
 	// Run immediately on startup
 	j.performCleanup()
@@ -79,22 +81,24 @@ func (j *Janitor) runLoop() {
 }
 
 func (j *Janitor) performCleanup() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute) // Long timeout for DB operations
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	cutoff := time.Now().AddDate(0, 0, -j.cfg.RawRetentionDays)
 
-	j.logger.Debug().Time("cutoff", cutoff).Msg("Starting daily archival...")
+	j.logger.Debug().Time("cutoff", cutoff).Msg("Starting daily cleanup...")
 
-	count, err := j.repo.ArchiveOldMessages(ctx, j.cfg.ArchivePath, cutoff)
+	// With PostgreSQL, we delete old messages directly instead of archiving to a file
+	// For actual archival, use pg_dump or a separate archival process
+	count, err := j.repo.DeleteOldMessages(ctx, cutoff)
 	if err != nil {
-		j.logger.Error().Err(err).Msg("Failed to archive messages")
+		j.logger.Error().Err(err).Msg("Failed to delete old messages")
 		return
 	}
 
 	if count > 0 {
-		j.logger.Info().Int64("archived_count", count).Msg("✅ Archived old messages successfully")
+		j.logger.Info().Int64("deleted_count", count).Msg("✅ Deleted old messages successfully")
 	} else {
-		j.logger.Debug().Msg("No messages to archive today")
+		j.logger.Debug().Msg("No messages to delete today")
 	}
 }

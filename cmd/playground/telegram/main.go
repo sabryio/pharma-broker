@@ -28,13 +28,13 @@ import (
 
 func main() {
 	token := flag.String("token", "", "Telegram bot token from @BotFather")
-	dbPath := flag.String("db", "./data/playground.db", "SQLite database path")
+	dbDSN := flag.String("dsn", "postgres://postgres:password@localhost:5432/pharmabroker_test?sslmode=disable", "PostgreSQL DSN")
 	seedData := flag.Bool("seed", true, "Seed test data (offers, requests, matches)")
 	flag.Parse()
 
 	// Load config
 	cfg := config.Load()
-	cfg.Database.Path = *dbPath
+	cfg.Database.DSN = *dbDSN
 
 	if *token == "" {
 		*token = cfg.Reports.Telegram.BotToken
@@ -57,9 +57,9 @@ func main() {
 	// ============================================================
 	// Initialize Database & Repositories (REAL implementations)
 	// ============================================================
-	log.Info().Str("db", *dbPath).Msg("Initializing database...")
+	log.Info().Str("dsn", "postgres://***@localhost:5432/...").Msg("Initializing database...")
 
-	db, err := storageGorm.NewDB(&storageGorm.Config{Path: cfg.Database.Path})
+	db, err := storageGorm.NewDB(&storageGorm.Config{DSN: cfg.Database.DSN})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to init database")
 	}

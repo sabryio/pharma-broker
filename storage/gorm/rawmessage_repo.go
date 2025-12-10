@@ -89,10 +89,10 @@ func (r *RawMessageRepo) GetLastMessageBySender(ctx context.Context, groupJID, s
 	return ToRawMessageEntity(&msgs[0]), nil
 }
 
-// ArchiveOldMessages archives messages older than cutoff
-func (r *RawMessageRepo) ArchiveOldMessages(ctx context.Context, archivePath string, cutoff time.Time) (int64, error) {
-	result := r.db.Conn.WithContext(ctx).Exec(`
-		DELETE FROM raw_messages WHERE timestamp < ? AND processed_at IS NOT NULL
-	`, cutoff)
+// DeleteOldMessages deletes messages older than cutoff that have been processed
+func (r *RawMessageRepo) DeleteOldMessages(ctx context.Context, cutoff time.Time) (int64, error) {
+	result := r.db.Conn.WithContext(ctx).
+		Where("timestamp < ? AND processed_at IS NOT NULL", cutoff).
+		Delete(&RawMessage{})
 	return result.RowsAffected, result.Error
 }

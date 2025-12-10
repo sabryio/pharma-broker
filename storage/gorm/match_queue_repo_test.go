@@ -16,7 +16,8 @@ func TestMatchQueueRepo_Enqueue(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMatchQueueRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	item := &entity.MatchQueueItem{
 		SourceType: "OFFER",
@@ -42,7 +43,8 @@ func TestMatchQueueRepo_Enqueue_WithID(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMatchQueueRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	customID := "custom-id-123"
 	item := &entity.MatchQueueItem{
@@ -64,7 +66,8 @@ func TestMatchQueueRepo_DequeueBatch(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMatchQueueRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Enqueue 5 items
 	for i := 0; i < 5; i++ {
@@ -91,7 +94,8 @@ func TestMatchQueueRepo_DequeueBatch_FIFO(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMatchQueueRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Enqueue items with specific order
 	now := time.Now()
@@ -117,7 +121,8 @@ func TestMatchQueueRepo_Delete(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMatchQueueRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Enqueue an item
 	item := &entity.MatchQueueItem{
@@ -141,7 +146,8 @@ func TestMatchQueueRepo_Count_Empty(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMatchQueueRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	count, err := repo.Count(ctx)
 	assertNoError(t, err, "Count should succeed")
@@ -153,7 +159,8 @@ func TestMatchQueueRepo_DequeueBatch_Empty(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMatchQueueRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	batch, err := repo.DequeueBatch(ctx, 10)
 	assertNoError(t, err, "DequeueBatch should succeed on empty queue")

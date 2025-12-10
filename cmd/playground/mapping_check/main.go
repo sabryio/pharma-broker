@@ -63,15 +63,14 @@ _____________________
 func main() {
 	log := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
-	// 1. Initialize Real Database
-	// We assume this script is run from the project root.
-	dbPath := "data/pharmabroker.db"
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		log.Fatal().Str("path", dbPath).Msg("Database file not found. Please run from project root.")
+	// 1. Initialize Real Database (PostgreSQL)
+	dsn := os.Getenv("DATABASE_DSN")
+	if dsn == "" {
+		dsn = "postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable"
 	}
 
 	dbCfg := &storageGorm.Config{
-		Path: dbPath,
+		DSN: dsn,
 	}
 
 	gormDB, err := storageGorm.NewDB(dbCfg)

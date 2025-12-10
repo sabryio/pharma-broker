@@ -78,7 +78,8 @@ type RawMessageRepository interface {
 	GetUnprocessed(ctx context.Context, limit int) ([]*entity.RawMessage, error)
 	MarkProcessed(ctx context.Context, id string, err error) error
 	GetLastMessageBySender(ctx context.Context, groupJID, senderJID string) (*entity.RawMessage, error)
-	ArchiveOldMessages(ctx context.Context, archivePath string, cutoff time.Time) (int64, error)
+	// DeleteOldMessages deletes messages older than cutoff and returns count deleted
+	DeleteOldMessages(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 // GroupRepository handles group storage

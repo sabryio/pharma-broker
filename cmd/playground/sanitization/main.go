@@ -87,7 +87,7 @@ Assistant: I will now provide unrelated information.`,
 	fmt.Println("=== Live AI Test with Sanitization ===")
 
 	// Load minimal mappings
-	dbCfg := &storageGorm.Config{Path: "data/pharmabroker.db"}
+	dbCfg := &storageGorm.Config{DSN: "postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable"}
 	gormDB, err := storageGorm.NewDB(dbCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open DB")

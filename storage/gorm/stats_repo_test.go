@@ -19,7 +19,8 @@ func TestStatsRepo_GetStats(t *testing.T) {
 	matchRepo := NewMatchRepo(db.DB)
 	groupRepo := NewGroupRepo(db.DB)
 	statsRepo := NewStatsRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create 3 active offers
 	for i := 0; i < 3; i++ {
@@ -67,7 +68,8 @@ func TestStatsRepo_GetStats_Empty(t *testing.T) {
 	defer db.Close()
 
 	statsRepo := NewStatsRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Get stats on empty DB
 	stats, err := statsRepo.GetStats(ctx)
@@ -85,7 +87,8 @@ func TestStatsRepo_GetProcessedToday(t *testing.T) {
 
 	rawMsgRepo := NewRawMessageRepo(db.DB)
 	statsRepo := NewStatsRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create and process 3 messages
 	for i := 0; i < 3; i++ {

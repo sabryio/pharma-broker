@@ -13,7 +13,8 @@ func TestConfigRepo_GetAll_Defaults(t *testing.T) {
 	defer db.Close()
 
 	repo := NewConfigRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Empty DB should return defaults
 	cfg, err := repo.GetAll(ctx)
@@ -28,7 +29,8 @@ func TestConfigRepo_Set_Get(t *testing.T) {
 	defer db.Close()
 
 	repo := NewConfigRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Set a value
 	err := repo.Set(ctx, "test_key", "test_value")
@@ -45,7 +47,8 @@ func TestConfigRepo_Set_Overwrite(t *testing.T) {
 	defer db.Close()
 
 	repo := NewConfigRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Set initial value
 	err := repo.Set(ctx, "test_key", "initial")
@@ -66,7 +69,8 @@ func TestConfigRepo_Delete(t *testing.T) {
 	defer db.Close()
 
 	repo := NewConfigRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Set a value
 	err := repo.Set(ctx, "test_key", "test_value")
@@ -88,7 +92,8 @@ func TestConfigRepo_UpdateFromMap_MultipleKeys(t *testing.T) {
 	defer db.Close()
 
 	repo := NewConfigRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Update multiple keys
 	values := map[string]any{
@@ -112,7 +117,8 @@ func TestConfigRepo_GetAll_WithStoredValues(t *testing.T) {
 	defer db.Close()
 
 	repo := NewConfigRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Store values
 	assertNoError(t, repo.Set(ctx, "auto_parse_enabled", "false"), "Set auto_parse")

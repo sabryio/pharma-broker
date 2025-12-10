@@ -18,7 +18,8 @@ func TestMatchRepo_Save_Insert(t *testing.T) {
 	offerRepo := NewOfferRepo(db.DB)
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create offer and request first (foreign keys)
 	offer := CreateTestOfferWithRawMessage(t, db)
@@ -46,7 +47,8 @@ func TestMatchRepo_Save_Upsert_CompositeKey(t *testing.T) {
 	offerRepo := NewOfferRepo(db.DB)
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create offer and request
 	offer := CreateTestOfferWithRawMessage(t, db)
@@ -75,7 +77,8 @@ func TestMatchRepo_GetByID_NotFound(t *testing.T) {
 	defer db.Close()
 
 	matchRepo := NewMatchRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	found, err := matchRepo.GetByID(ctx, "non-existent-id")
 	assertNoError(t, err, "GetByID should not error for missing record")
@@ -89,7 +92,8 @@ func TestMatchRepo_GetPending_WithPreload(t *testing.T) {
 	offerRepo := NewOfferRepo(db.DB)
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create offer and request
 	offer := CreateTestOfferWithRawMessage(t, db)
@@ -122,7 +126,8 @@ func TestMatchRepo_UpdateStatus_Confirm(t *testing.T) {
 	offerRepo := NewOfferRepo(db.DB)
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create offer and request
 	offer := CreateTestOfferWithRawMessage(t, db)
@@ -152,7 +157,8 @@ func TestMatchRepo_UpdateStatus_Reject(t *testing.T) {
 	offerRepo := NewOfferRepo(db.DB)
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create offer and request
 	offer := CreateTestOfferWithRawMessage(t, db)
@@ -181,7 +187,8 @@ func TestMatchRepo_GetRecentConfirmed(t *testing.T) {
 	offerRepo := NewOfferRepo(db.DB)
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create offer and request
 	offer := CreateTestOfferWithRawMessage(t, db)
@@ -210,7 +217,8 @@ func TestMatchRepo_GetPending_ExcludesConfirmed(t *testing.T) {
 	offerRepo := NewOfferRepo(db.DB)
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create offer and request
 	offer := CreateTestOfferWithRawMessage(t, db)

@@ -19,7 +19,8 @@ func TestFeedbackRepo_Save(t *testing.T) {
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
 	feedbackRepo := NewFeedbackRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create offer, request, match (for foreign key)
 	offer := CreateTestOfferWithRawMessage(t, db)
@@ -49,7 +50,8 @@ func TestFeedbackRepo_RecordFeedback(t *testing.T) {
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
 	feedbackRepo := NewFeedbackRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Setup
 	offer := CreateTestOfferWithRawMessage(t, db)
@@ -79,7 +81,8 @@ func TestFeedbackRepo_GetByMatchID(t *testing.T) {
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
 	feedbackRepo := NewFeedbackRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Setup two matches
 	offer1 := CreateTestOfferWithRawMessage(t, db)
@@ -119,7 +122,8 @@ func TestFeedbackRepo_GetRecent_Ordering(t *testing.T) {
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
 	feedbackRepo := NewFeedbackRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Setup match
 	offer := CreateTestOfferWithRawMessage(t, db)
@@ -161,7 +165,8 @@ func TestFeedbackRepo_GetRecentFeedback(t *testing.T) {
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
 	feedbackRepo := NewFeedbackRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Setup
 	offer := CreateTestOfferWithRawMessage(t, db)
@@ -191,7 +196,8 @@ func TestFeedbackRepo_AnalyzeFeedback_Stats(t *testing.T) {
 	requestRepo := NewRequestRepo(db.DB)
 	matchRepo := NewMatchRepo(db.DB)
 	feedbackRepo := NewFeedbackRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Setup
 	offer := CreateTestOfferWithRawMessage(t, db)

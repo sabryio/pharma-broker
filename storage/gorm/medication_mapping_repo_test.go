@@ -15,7 +15,8 @@ func TestMedicationMappingRepo_Save(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMedicationMappingRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	mapping := NewTestMedicationMapping()
 	err := repo.Save(ctx, mapping)
@@ -33,7 +34,8 @@ func TestMedicationMappingRepo_GetByArabicName_Found(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMedicationMappingRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create mapping
 	mapping := NewTestMedicationMapping(func(m *entity.MedicationMapping) {
@@ -54,7 +56,8 @@ func TestMedicationMappingRepo_GetByArabicName_NotFound(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMedicationMappingRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	found, err := repo.GetByArabicName(ctx, "غير موجود")
 	assertNoError(t, err, "GetByArabicName should not error")
@@ -66,7 +69,8 @@ func TestMedicationMappingRepo_GetAll(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMedicationMappingRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create 3 mappings
 	for i := 0; i < 3; i++ {
@@ -87,7 +91,8 @@ func TestMedicationMappingRepo_GetAll_Empty(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMedicationMappingRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Get all on empty DB
 	all, err := repo.GetAll(ctx)
@@ -100,7 +105,8 @@ func TestMedicationMappingRepo_Save_Update(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMedicationMappingRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create mapping
 	mapping := NewTestMedicationMapping()
@@ -123,7 +129,8 @@ func TestMedicationMappingRepo_ArabicUnicode(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMedicationMappingRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Test complex Arabic names
 	testCases := []struct {

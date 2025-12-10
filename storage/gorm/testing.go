@@ -2,6 +2,7 @@ package gorm
 
 import (
 	"context"
+	"os"
 	"pharmabroker/domain/entity"
 	"reflect"
 	"testing"
@@ -20,12 +21,22 @@ type TestDB struct {
 	t *testing.T
 }
 
-// SetupTestDB creates an in-memory GORM database for testing
+// SetupTestDB creates a PostgreSQL database connection for testing.
+// Requires a running PostgreSQL instance.
+// Set TEST_DATABASE_DSN environment variable or uses default test DSN.
 func SetupTestDB(t *testing.T) *TestDB {
 	t.Helper()
 
+	// Use environment variable or default test DSN
+	dsn := os.Getenv("TEST_DATABASE_DSN")
+	if dsn == "" {
+		dsn = "postgres://postgres:password@localhost:5432/pharmabroker_test?sslmode=disable"
+	}
+
 	cfg := Config{
-		Path: ":memory:",
+		DSN:          dsn,
+		MaxOpenConns: 5,
+		MaxIdleConns: 2,
 	}
 
 	db, err := NewDB(&cfg)
@@ -33,56 +44,16 @@ func SetupTestDB(t *testing.T) *TestDB {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
 
-	// Run migrations for all models
-	err = db.Conn.AutoMigrate(
-		&RawMessage{},
-		&Offer{},
-		&Request{},
-		&Match{},
-		&MatchQueue{},
-		&AppConfig{},
-		&Group{},
-		&MedicationMapping{},
-		&FailedMessage{},
-		&MatchFeedback{},
-		&DemandLeaderboard{},
-		&AuditLog{},
-		&UnmappedMedication{},
-		&ReviewQueue{},
-		&FeedbackRecord{},
-		&WeightHistory{},
-	)
-	if err != nil {
-		t.Fatalf("Failed to migrate test database: %v", err)
+	// Clean all tables before test
+	tables := []string{
+		"feedback_records", "weight_history", "review_queue",
+		"unmapped_medications", "audit_logs", "demand_leaderboard",
+		"match_feedback", "failed_messages", "medication_mappings",
+		"groups", "config", "match_queue", "matches",
+		"offers", "requests", "raw_messages", "bot_users",
 	}
-
-	// Create FTS virtual table for requests
-	err = db.Conn.Exec(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS requests_fts USING fts5(
-			medication,
-			notes,
-			raw_message,
-			medication_raw,
-			content='requests',
-			content_rowid='rowid'
-		);
-		CREATE TRIGGER IF NOT EXISTS requests_ai AFTER INSERT ON requests BEGIN
-			INSERT INTO requests_fts(rowid, medication, notes, raw_message, medication_raw)
-			VALUES (new.rowid, new.medication, new.notes, new.raw_message, new.medication_raw);
-		END;
-		CREATE TRIGGER IF NOT EXISTS requests_ad AFTER DELETE ON requests BEGIN
-			INSERT INTO requests_fts(requests_fts, rowid, medication, notes, raw_message, medication_raw)
-			VALUES('delete', old.rowid, old.medication, old.notes, old.raw_message, old.medication_raw);
-		END;
-		CREATE TRIGGER IF NOT EXISTS requests_au AFTER UPDATE ON requests BEGIN
-			INSERT INTO requests_fts(requests_fts, rowid, medication, notes, raw_message, medication_raw)
-			VALUES('delete', old.rowid, old.medication, old.notes, old.raw_message, old.medication_raw);
-			INSERT INTO requests_fts(rowid, medication, notes, raw_message, medication_raw)
-			VALUES (new.rowid, new.medication, new.notes, new.raw_message, new.medication_raw);
-		END;
-	`).Error
-	if err != nil {
-		t.Fatalf("Failed to create requests_fts table: %v", err)
+	for _, table := range tables {
+		db.Conn.Exec("TRUNCATE TABLE " + table + " CASCADE")
 	}
 
 	return &TestDB{DB: db, t: t}
@@ -176,7 +147,8 @@ func NewTestRequest(opts ...func(*entity.Request)) *entity.Request {
 // CreateTestOfferWithRawMessage creates a raw message first, then an offer referencing it
 func CreateTestOfferWithRawMessage(t *testing.T, db *TestDB, opts ...func(*entity.Offer)) *entity.Offer {
 	t.Helper()
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 	rawMsgRepo := NewRawMessageRepo(db.DB)
 
 	// Create raw message first
@@ -198,7 +170,8 @@ func CreateTestOfferWithRawMessage(t *testing.T, db *TestDB, opts ...func(*entit
 // CreateTestRequestWithRawMessage creates a raw message first, then a request referencing it
 func CreateTestRequestWithRawMessage(t *testing.T, db *TestDB, opts ...func(*entity.Request)) *entity.Request {
 	t.Helper()
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 	rawMsgRepo := NewRawMessageRepo(db.DB)
 
 	// Create raw message first
@@ -293,9 +266,9 @@ func strPtr(s string) *string {
 }
 
 // testCtx returns a context with timeout for tests
-func testCtx() context.Context {
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	return ctx
+// The caller should defer the cancel function
+func testCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 10*time.Second)
 }
 
 // assertNoError fails the test if err is not nil

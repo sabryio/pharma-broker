@@ -263,29 +263,28 @@ type APIConfig struct {
 	MaxSSEClients int `mapstructure:"max_sse_clients"`
 }
 
-// DatabaseConfig configures SQLite database settings
+// DatabaseConfig configures PostgreSQL database settings
 type DatabaseConfig struct {
-	// Path is the file path to the SQLite database.
-	// Will be created if it doesn't exist.
-	// Default: ./data/pharmabroker.db
-	Path string `mapstructure:"path"`
+	// DSN is the PostgreSQL connection string.
+	// Format: postgres://user:password@host:port/database?sslmode=disable
+	// Default: postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable
+	DSN string `mapstructure:"dsn"`
 
-	// EnableWAL enables Write-Ahead Logging mode for SQLite.
-	// Improves concurrent read/write performance significantly.
-	// Default: true
-	EnableWAL bool `mapstructure:"enable_wal"`
+	// MaxOpenConns is the maximum number of open connections to the database.
+	// Default: 25
+	MaxOpenConns int `mapstructure:"max_open_conns"`
+
+	// MaxIdleConns is the maximum number of idle connections in the pool.
+	// Default: 5
+	MaxIdleConns int `mapstructure:"max_idle_conns"`
+
+	// ConnMaxLifetime is the maximum lifetime of a connection in minutes.
+	// Default: 5
+	ConnMaxLifetimeMins int `mapstructure:"conn_max_lifetime_mins"`
 
 	// RawRetentionDays is the number of days to keep raw messages before archiving.
 	// Default: 30
 	RawRetentionDays int `mapstructure:"raw_retention_days"`
-
-	// ArchivePath is the file path to the archive SQLite database.
-	// Default: ./data/archive.db
-	ArchivePath string `mapstructure:"archive_path"`
-
-	// MaxReadConns is the max number of read-only connections (for read replicas).
-	// Default: 5
-	MaxReadConns int `mapstructure:"max_read_conns"`
 }
 
 // MonitorConfig configures system monitoring and alerting
@@ -654,11 +653,11 @@ func loadFallback() *Config {
 			MaxSSEClients:    100,
 		},
 		Database: DatabaseConfig{
-			Path:             "./data/pharmabroker.db",
-			EnableWAL:        true,
-			RawRetentionDays: 30,
-			ArchivePath:      "./data/archive.db",
-			MaxReadConns:     5,
+			DSN:                 "postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable",
+			MaxOpenConns:        25,
+			MaxIdleConns:        5,
+			ConnMaxLifetimeMins: 5,
+			RawRetentionDays:    30,
 		},
 		Server: ServerConfig{
 			Port:       8080,
@@ -691,8 +690,8 @@ func (c *Config) Validate() error {
 	}
 
 	// Database validation
-	if c.Database.Path == "" {
-		errs = append(errs, "database.path is required")
+	if c.Database.DSN == "" {
+		errs = append(errs, "database.dsn is required")
 	}
 
 	// Server port validation

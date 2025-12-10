@@ -625,7 +625,7 @@ func runMonitor(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
 	// Initialize database
-	db, err := storageGorm.NewDB(&storageGorm.Config{Path: cfg.Database.Path})
+	db, err := storageGorm.NewDB(&storageGorm.Config{DSN: cfg.Database.DSN})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize database: %v\n", err)
 		os.Exit(1)

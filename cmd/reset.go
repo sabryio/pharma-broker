@@ -17,8 +17,8 @@ import (
 var resetDbCmd = &cobra.Command{
 	Use:   "reset-db",
 	Short: "Reset the database (DANGER: Deletes all data)",
-	Long: `Completely wipes the SQLite database and re-initializes it with:
-- Empty tables
+	Long: `Completely wipes the PostgreSQL database and re-initializes it with:
+- Empty tables (using TRUNCATE CASCADE)
 - Default schema migrations
 - Seeded medication mappings
 
@@ -42,11 +42,11 @@ func runResetDb(cmd *cobra.Command, args []string) {
 	// Load configuration
 	cfg := config.Load()
 
-	dbPath := cfg.Database.Path
+	dsn := cfg.Database.DSN
 
 	// Safety check
 	if !forceReset {
-		fmt.Printf("⚠️  DANGER: You are about to DELETE the database at: %s\n", dbPath)
+		fmt.Printf("⚠️  DANGER: You are about to TRUNCATE ALL TABLES in database: %s\n", maskDSNForReset(dsn))
 		fmt.Print("Are you sure you want to continue? [y/N]: ")
 		var input string
 		fmt.Scanln(&input)
@@ -56,34 +56,48 @@ func runResetDb(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	log.Info().Msg("Stopping services...")
-	// (In a real deployment we might need to stop the service, but here we assume user runs this manually)
+	log.Info().Msg("Connecting to database...")
 
-	// Remove DB files
-	files := []string{
-		dbPath,
-		dbPath + "-shm",
-		dbPath + "-wal",
+	// Connect to database
+	db, err := storageGorm.NewDB(&storageGorm.Config{DSN: dsn})
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to connect to database")
+	}
+	defer db.Close()
+
+	log.Info().Msg("Truncating all tables...")
+
+	// Truncate all tables in order (respecting FK constraints)
+	tables := []string{
+		"feedback_records",
+		"weight_history",
+		"review_queue",
+		"unmapped_medications",
+		"audit_logs",
+		"demand_leaderboard",
+		"match_feedback",
+		"failed_messages",
+		"match_queue",
+		"matches",
+		"offers",
+		"requests",
+		"raw_messages",
+		"medication_mappings",
+		"groups",
+		"config",
+		"bot_users",
 	}
 
-	for _, f := range files {
-		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
-			log.Error().Err(err).Str("file", f).Msg("Failed to remove file")
-			// Try to proceed anyway? No, if we can't delete DB, we can't reset.
-			// But maybe only -shm/-wal are missing.
-		} else if err == nil {
-			log.Info().Str("file", f).Msg("Deleted file")
+	for _, table := range tables {
+		result := db.GORM().Exec("TRUNCATE TABLE " + table + " CASCADE")
+		if result.Error != nil {
+			log.Warn().Err(result.Error).Str("table", table).Msg("Failed to truncate table (may not exist yet)")
+		} else {
+			log.Debug().Str("table", table).Msg("Truncated table")
 		}
 	}
 
-	log.Info().Msg("Re-initializing database...")
-
-	// Re-initialize (runs migrations)
-	db, err := storageGorm.NewDB(&storageGorm.Config{Path: dbPath})
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to re-initialize database")
-	}
-	defer db.Close()
+	log.Info().Msg("Tables truncated successfully")
 
 	// Seed data
 	ctx := context.Background()
@@ -112,4 +126,23 @@ func runResetDb(cmd *cobra.Command, args []string) {
 		Msg("Seeded medication mappings")
 
 	log.Info().Msg("✅ Database reset complete")
+}
+
+// maskDSNForReset masks the password in DSN for display
+func maskDSNForReset(dsn string) string {
+	// Simple masking - find password between : and @
+	start := strings.Index(dsn, "://")
+	if start == -1 {
+		return dsn
+	}
+	userStart := start + 3
+	atPos := strings.Index(dsn[userStart:], "@")
+	if atPos == -1 {
+		return dsn
+	}
+	colonPos := strings.Index(dsn[userStart:userStart+atPos], ":")
+	if colonPos == -1 {
+		return dsn
+	}
+	return dsn[:userStart+colonPos+1] + "***" + dsn[userStart+atPos:]
 }

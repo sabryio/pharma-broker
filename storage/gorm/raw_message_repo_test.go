@@ -17,7 +17,8 @@ func TestRawMessageRepo_Save_Success(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRawMessageRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	msg := NewTestRawMessage()
 	err := repo.Save(ctx, msg)
@@ -35,7 +36,8 @@ func TestRawMessageRepo_Save_Duplicate_ExternalID(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRawMessageRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	externalID := "shared-external-id"
 
@@ -61,7 +63,8 @@ func TestRawMessageRepo_GetByID_Found(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRawMessageRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	msg := NewTestRawMessage()
 	err := repo.Save(ctx, msg)
@@ -79,7 +82,8 @@ func TestRawMessageRepo_GetByID_NotFound(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRawMessageRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	found, err := repo.GetByID(ctx, "non-existent-id")
 	assertNoError(t, err, "GetByID should not error for missing record")
@@ -91,7 +95,8 @@ func TestRawMessageRepo_GetUnprocessed_Ordering(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRawMessageRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	// Create messages with different timestamps (oldest first)
 	now := time.Now()
@@ -126,7 +131,8 @@ func TestRawMessageRepo_MarkProcessed_Success(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRawMessageRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	msg := NewTestRawMessage()
 	assertNoError(t, repo.Save(ctx, msg), "Save should succeed")
@@ -146,7 +152,8 @@ func TestRawMessageRepo_MarkProcessed_WithError(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRawMessageRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	msg := NewTestRawMessage()
 	assertNoError(t, repo.Save(ctx, msg), "Save should succeed")
@@ -170,7 +177,8 @@ func TestRawMessageRepo_GetLastMessageBySender(t *testing.T) {
 	defer db.Close()
 
 	repo := NewRawMessageRepo(db.DB)
-	ctx := testCtx()
+	ctx, cancel := testCtx()
+	defer cancel()
 
 	groupJID := "test-group@g.us"
 	senderJID := "sender@s.whatsapp.net"

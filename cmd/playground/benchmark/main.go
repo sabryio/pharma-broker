@@ -41,7 +41,7 @@ func main() {
 	ctx := context.Background()
 
 	// Setup DB and mappings
-	gormDB, err := storageGorm.NewDB(&storageGorm.Config{Path: "data/pharmabroker.db"})
+	gormDB, err := storageGorm.NewDB(&storageGorm.Config{DSN: "postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable"})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open DB")
 	}
@@ -118,7 +118,7 @@ func runBenchmark(ctx context.Context, client *aiDocker.Client, messages []*enti
 	fmt.Printf("  Estimated prompt tokens: ~%d\n", promptTokens)
 }
 
-func estimatePromptTokens(messages []*entity.RawMessage, mappings map[string]string, useHybrid bool, allMappings []*entity.MedicationMapping) int {
+func estimatePromptTokens(messages []*entity.RawMessage, mappings map[string]string, useHybrid bool, _ []*entity.MedicationMapping) int {
 	// Rough estimate: 4 chars per token
 	var textLen int
 
