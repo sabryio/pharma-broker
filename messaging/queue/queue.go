@@ -1,4 +1,4 @@
-package whatsapp
+package queue
 
 import (
 	"context"
@@ -8,8 +8,18 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"pharmabroker/domain/entity"
 	"pharmabroker/pkg/metrics"
+)
+
+type QueueHealthStatus string
+
+const (
+	QueueHealthStatusHealthy      QueueHealthStatus = "HEALTHY"
+	QueueHealthStatusWarning      QueueHealthStatus = "WARNING"
+	QueueHealthStatusDegraded     QueueHealthStatus = "DEGRADED"
+	QueueHealthStatusStopped      QueueHealthStatus = "STOPPED"
+	QueueHealthStatusUnhealthy    QueueHealthStatus = "UNHEALTHY"
+	QueueHealthStatusDisconnected QueueHealthStatus = "DISCONNECTED"
 )
 
 // QueueConfig holds configuration for the message queue.
@@ -34,11 +44,17 @@ func DefaultQueueConfig() QueueConfig {
 	}
 }
 
-// MessageHandler processes a raw message.
-type MessageHandler func(ctx context.Context, msg *entity.RawMessage) error
+// Identifiable is the constraint required by Queue.
+// Any message type must implement these accessors.
+type Identifiable interface {
+	GetID() string
+}
+
+// MessageHandler processes a message of any type T.
+type MessageHandler[T Identifiable] func(ctx context.Context, msg T) error
 
 // Queue is a production-ready message queue with overflow handling and metrics.
-type Queue struct {
+type Queue[T Identifiable] struct {
 	cfg    QueueConfig
 	log    zerolog.Logger
 	mu     sync.RWMutex
@@ -46,14 +62,14 @@ type Queue struct {
 	closed atomic.Bool
 
 	// Main message channel
-	messages chan *entity.RawMessage
+	messages chan T
 	// Dead letter queue for overflow
-	deadLetter chan *entity.RawMessage
+	deadLetter chan T
 	// Stop signal
 	done chan struct{}
 
 	// Handler for processing messages
-	handler MessageHandler
+	handler MessageHandler[T]
 
 	// Metrics
 	received  atomic.Int64
@@ -66,7 +82,7 @@ type Queue struct {
 }
 
 // NewQueue creates a new message queue with the given configuration.
-func NewQueue(cfg QueueConfig, log zerolog.Logger) *Queue {
+func NewQueue[T Identifiable](cfg QueueConfig, log zerolog.Logger) *Queue[T] {
 	if cfg.BufferSize <= 0 {
 		cfg.BufferSize = 1000
 	}
@@ -80,25 +96,25 @@ func NewQueue(cfg QueueConfig, log zerolog.Logger) *Queue {
 		cfg.ProcessTimeout = 30 * time.Second
 	}
 
-	return &Queue{
+	return &Queue[T]{
 		cfg:        cfg,
 		log:        log.With().Str("component", "message-queue").Logger(),
-		messages:   make(chan *entity.RawMessage, cfg.BufferSize),
-		deadLetter: make(chan *entity.RawMessage, cfg.DeadLetterSize),
+		messages:   make(chan T, cfg.BufferSize),
+		deadLetter: make(chan T, cfg.DeadLetterSize),
 		done:       make(chan struct{}),
 		startTime:  time.Now(),
 	}
 }
 
 // SetHandler sets the message processing handler.
-func (q *Queue) SetHandler(handler MessageHandler) {
+func (q *Queue[T]) SetHandler(handler MessageHandler[T]) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.handler = handler
 }
 
 // Start begins the worker pool for processing messages.
-func (q *Queue) Start() {
+func (q *Queue[T]) Start() {
 	q.log.Info().
 		Int("workers", q.cfg.WorkerCount).
 		Int("buffer_size", q.cfg.BufferSize).
@@ -120,7 +136,7 @@ func (q *Queue) Start() {
 }
 
 // Stop gracefully shuts down the queue.
-func (q *Queue) Stop(ctx context.Context) error {
+func (q *Queue[T]) Stop(ctx context.Context) error {
 	if q.closed.Swap(true) {
 		return nil // Already closed
 	}
@@ -151,7 +167,7 @@ func (q *Queue) Stop(ctx context.Context) error {
 
 // Enqueue adds a message to the queue.
 // Returns true if enqueued successfully, false if dropped.
-func (q *Queue) Enqueue(msg *entity.RawMessage) bool {
+func (q *Queue[T]) Enqueue(msg *T) bool {
 	if q.closed.Load() {
 		q.dropped.Add(1)
 		metrics.MessagesDropped.Inc()
@@ -163,9 +179,9 @@ func (q *Queue) Enqueue(msg *entity.RawMessage) bool {
 
 	// Try main queue first (non-blocking)
 	select {
-	case q.messages <- msg:
+	case q.messages <- *msg:
 		q.log.Debug().
-			Str("msg_id", msg.ID).
+			Str("msg_id", (*msg).GetID()).
 			Int("queue_size", len(q.messages)).
 			Msg("Message enqueued")
 		return true
@@ -176,15 +192,15 @@ func (q *Queue) Enqueue(msg *entity.RawMessage) bool {
 }
 
 // enqueueDeadLetter adds a message to the dead letter queue.
-func (q *Queue) enqueueDeadLetter(msg *entity.RawMessage) bool {
+func (q *Queue[T]) enqueueDeadLetter(msg *T) bool {
 	q.overflow.Add(1)
 	metrics.MessagesOverflow.Inc()
 
 	select {
-	case q.deadLetter <- msg:
+	case q.deadLetter <- *msg:
 		q.dlqSize.Add(1)
 		q.log.Warn().
-			Str("msg_id", msg.ID).
+			Str("msg_id", (*msg).GetID()).
 			Int("dlq_size", len(q.deadLetter)).
 			Msg("Message moved to dead letter queue")
 		return true
@@ -193,14 +209,14 @@ func (q *Queue) enqueueDeadLetter(msg *entity.RawMessage) bool {
 		q.dropped.Add(1)
 		metrics.MessagesDropped.Inc()
 		q.log.Error().
-			Str("msg_id", msg.ID).
+			Str("msg_id", (*msg).GetID()).
 			Msg("Message dropped - all queues full")
 		return false
 	}
 }
 
 // worker processes messages from the main queue.
-func (q *Queue) worker(id int) {
+func (q *Queue[T]) worker(id int) {
 	defer q.wg.Done()
 
 	log := q.log.With().Int("worker_id", id).Logger()
@@ -215,13 +231,13 @@ func (q *Queue) worker(id int) {
 			if !ok {
 				return
 			}
-			q.processMessage(log, msg)
+			q.processMessage(log, &msg)
 		}
 	}
 }
 
 // dlqWorker processes messages from the dead letter queue.
-func (q *Queue) dlqWorker() {
+func (q *Queue[T]) dlqWorker() {
 	defer q.wg.Done()
 
 	log := q.log.With().Str("worker", "dlq").Logger()
@@ -243,7 +259,7 @@ func (q *Queue) dlqWorker() {
 					return
 				}
 				q.dlqSize.Add(-1)
-				q.processMessage(log, msg)
+				q.processMessage(log, &msg)
 			default:
 				// No messages in DLQ
 			}
@@ -252,13 +268,13 @@ func (q *Queue) dlqWorker() {
 }
 
 // processMessage handles a single message.
-func (q *Queue) processMessage(log zerolog.Logger, msg *entity.RawMessage) {
+func (q *Queue[T]) processMessage(log zerolog.Logger, msg *T) {
 	q.mu.RLock()
 	handler := q.handler
 	q.mu.RUnlock()
 
 	if handler == nil {
-		log.Warn().Str("msg_id", msg.ID).Msg("No handler set, skipping message")
+		log.Warn().Str("msg_id", (*msg).GetID()).Msg("No handler set, skipping message")
 		return
 	}
 
@@ -273,20 +289,20 @@ func (q *Queue) processMessage(log zerolog.Logger, msg *entity.RawMessage) {
 	defer cancel()
 
 	start := time.Now()
-	err := handler(ctx, msg)
+	err := handler(ctx, *msg)
 	duration := time.Since(start)
 
 	if err != nil {
 		log.Error().
 			Err(err).
-			Str("msg_id", msg.ID).
+			Str("msg_id", (*msg).GetID()).
 			Dur("duration", duration).
 			Msg("Failed to process message")
 		metrics.MessagesProcessedStatus.WithLabelValues("error").Inc()
 	} else {
 		q.processed.Add(1)
 		log.Debug().
-			Str("msg_id", msg.ID).
+			Str("msg_id", (*msg).GetID()).
 			Dur("duration", duration).
 			Msg("Message processed successfully")
 		metrics.MessagesProcessedStatus.WithLabelValues("success").Inc()
@@ -296,7 +312,7 @@ func (q *Queue) processMessage(log zerolog.Logger, msg *entity.RawMessage) {
 }
 
 // metricsUpdater periodically updates gauge metrics.
-func (q *Queue) metricsUpdater() {
+func (q *Queue[T]) metricsUpdater() {
 	defer q.wg.Done()
 
 	ticker := time.NewTicker(5 * time.Second)
@@ -315,7 +331,7 @@ func (q *Queue) metricsUpdater() {
 }
 
 // Stats returns current queue statistics.
-func (q *Queue) Stats() QueueStats {
+func (q *Queue[T]) Stats() QueueStats {
 	return QueueStats{
 		Received:    q.received.Load(),
 		Processed:   q.processed.Load(),
@@ -343,16 +359,16 @@ type QueueStats struct {
 }
 
 // HealthStatus returns health information for the queue.
-func (q *Queue) HealthStatus() QueueHealth {
+func (q *Queue[T]) HealthStatus() QueueHealth {
 	stats := q.Stats()
 
-	status := "healthy"
+	status := QueueHealthStatusHealthy
 	if q.closed.Load() {
-		status = "stopped"
+		status = QueueHealthStatusStopped
 	} else if stats.DLQSize > q.cfg.DeadLetterSize/2 {
-		status = "degraded"
+		status = QueueHealthStatusDegraded
 	} else if stats.QueueSize > q.cfg.BufferSize*80/100 {
-		status = "warning"
+		status = QueueHealthStatusWarning
 	}
 
 	return QueueHealth{
@@ -364,7 +380,7 @@ func (q *Queue) HealthStatus() QueueHealth {
 	}
 }
 
-func (q *Queue) calculateProcessedPct(stats QueueStats) float64 {
+func (q *Queue[T]) calculateProcessedPct(stats QueueStats) float64 {
 	if stats.Received == 0 {
 		return 100.0
 	}
@@ -373,24 +389,24 @@ func (q *Queue) calculateProcessedPct(stats QueueStats) float64 {
 
 // QueueHealth represents queue health status.
 type QueueHealth struct {
-	Status       string     `json:"status"` // healthy, warning, degraded, stopped
-	QueueUsage   float64    `json:"queue_usage_pct"`
-	DLQUsage     float64    `json:"dlq_usage_pct"`
-	ProcessedPct float64    `json:"processed_pct"`
-	Stats        QueueStats `json:"stats"`
+	Status       QueueHealthStatus `json:"status"`
+	QueueUsage   float64           `json:"queue_usage_pct"`
+	DLQUsage     float64           `json:"dlq_usage_pct"`
+	ProcessedPct float64           `json:"processed_pct"`
+	Stats        QueueStats        `json:"stats"`
 }
 
 // Size returns the current number of messages in the main queue.
-func (q *Queue) Size() int {
+func (q *Queue[T]) Size() int {
 	return len(q.messages)
 }
 
 // DLQSize returns the current number of messages in the dead letter queue.
-func (q *Queue) DLQSize() int {
+func (q *Queue[T]) DLQSize() int {
 	return len(q.deadLetter)
 }
 
 // IsClosed returns true if the queue has been stopped.
-func (q *Queue) IsClosed() bool {
+func (q *Queue[T]) IsClosed() bool {
 	return q.closed.Load()
 }

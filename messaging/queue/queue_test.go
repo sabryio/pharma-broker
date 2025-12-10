@@ -1,4 +1,4 @@
-package whatsapp
+package queue
 
 import (
 	"context"
@@ -30,6 +30,10 @@ func newTestMessage(id string) *entity.RawMessage {
 		Content:   "Test message content",
 		Timestamp: time.Now(),
 	}
+}
+
+func newTestQueue(cfg QueueConfig) *Queue[*entity.RawMessage] {
+	return NewQueue[*entity.RawMessage](cfg, testLogger())
 }
 
 func TestNewQueue(t *testing.T) {
@@ -72,7 +76,7 @@ func TestNewQueue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			q := NewQueue(tt.cfg, testLogger())
+			q := newTestQueue(tt.cfg)
 			require.NotNil(t, q)
 			assert.Equal(t, tt.wantBuf, cap(q.messages))
 			assert.Equal(t, tt.wantDLQ, cap(q.deadLetter))
@@ -84,10 +88,10 @@ func TestNewQueue(t *testing.T) {
 
 func TestQueue_EnqueueBasic(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 5, WorkerCount: 1}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	msg := newTestMessage("msg-1")
-	ok := q.Enqueue(msg)
+	ok := q.Enqueue(&msg)
 
 	assert.True(t, ok)
 	assert.Equal(t, 1, q.Size())
@@ -96,11 +100,11 @@ func TestQueue_EnqueueBasic(t *testing.T) {
 
 func TestQueue_EnqueueMultiple(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 5, WorkerCount: 1}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	for i := 0; i < 5; i++ {
 		msg := newTestMessage("msg-" + string(rune('a'+i)))
-		ok := q.Enqueue(msg)
+		ok := q.Enqueue(&msg)
 		assert.True(t, ok)
 	}
 
@@ -111,12 +115,12 @@ func TestQueue_EnqueueMultiple(t *testing.T) {
 
 func TestQueue_EnqueueOverflowToDeadLetter(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 3, DeadLetterSize: 2, WorkerCount: 1}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	// Fill main queue
 	for i := 0; i < 3; i++ {
 		msg := newTestMessage("main-" + string(rune('a'+i)))
-		ok := q.Enqueue(msg)
+		ok := q.Enqueue(&msg)
 		assert.True(t, ok)
 	}
 
@@ -126,7 +130,7 @@ func TestQueue_EnqueueOverflowToDeadLetter(t *testing.T) {
 	// Next messages should go to DLQ
 	for i := 0; i < 2; i++ {
 		msg := newTestMessage("dlq-" + string(rune('a'+i)))
-		ok := q.Enqueue(msg)
+		ok := q.Enqueue(&msg)
 		assert.True(t, ok)
 	}
 
@@ -138,11 +142,12 @@ func TestQueue_EnqueueOverflowToDeadLetter(t *testing.T) {
 
 func TestQueue_EnqueueDroppedWhenFull(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 2, DeadLetterSize: 1, WorkerCount: 1}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	// Fill both queues
 	for i := 0; i < 3; i++ {
-		q.Enqueue(newTestMessage("fill-" + string(rune('a'+i))))
+		msg := newTestMessage("fill-" + string(rune('a'+i)))
+		q.Enqueue(&msg)
 	}
 
 	assert.Equal(t, 2, q.Size())
@@ -150,7 +155,7 @@ func TestQueue_EnqueueDroppedWhenFull(t *testing.T) {
 
 	// Next message should be dropped
 	msg := newTestMessage("dropped")
-	ok := q.Enqueue(msg)
+	ok := q.Enqueue(&msg)
 
 	assert.False(t, ok)
 	assert.Equal(t, int64(1), q.Stats().Dropped)
@@ -158,7 +163,7 @@ func TestQueue_EnqueueDroppedWhenFull(t *testing.T) {
 
 func TestQueue_EnqueueAfterClose(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 5, WorkerCount: 1}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 	q.Start()
 
 	// Close queue
@@ -168,7 +173,7 @@ func TestQueue_EnqueueAfterClose(t *testing.T) {
 
 	// Try to enqueue after close
 	msg := newTestMessage("after-close")
-	ok := q.Enqueue(msg)
+	ok := q.Enqueue(&msg)
 
 	assert.False(t, ok)
 	assert.True(t, q.IsClosed())
@@ -177,7 +182,7 @@ func TestQueue_EnqueueAfterClose(t *testing.T) {
 
 func TestQueue_StartAndStop(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 5, WorkerCount: 2}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	assert.False(t, q.IsClosed())
 
@@ -195,7 +200,7 @@ func TestQueue_StartAndStop(t *testing.T) {
 
 func TestQueue_StopIdempotent(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 5, WorkerCount: 1}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 	q.Start()
 
 	ctx := context.Background()
@@ -212,7 +217,7 @@ func TestQueue_StopIdempotent(t *testing.T) {
 
 func TestQueue_ProcessMessages(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 5, WorkerCount: 2, ProcessTimeout: time.Second}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	var processed atomic.Int32
 	q.SetHandler(func(ctx context.Context, msg *entity.RawMessage) error {
@@ -224,7 +229,8 @@ func TestQueue_ProcessMessages(t *testing.T) {
 
 	// Enqueue messages
 	for i := 0; i < 5; i++ {
-		q.Enqueue(newTestMessage("msg-" + string(rune('a'+i))))
+		msg := newTestMessage("msg-" + string(rune('a'+i)))
+		q.Enqueue(&msg)
 	}
 
 	// Wait for processing
@@ -240,7 +246,7 @@ func TestQueue_ProcessMessages(t *testing.T) {
 
 func TestQueue_ProcessMessagesFromDLQ(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 2, DeadLetterSize: 3, WorkerCount: 2, ProcessTimeout: time.Second}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	var processed atomic.Int32
 	q.SetHandler(func(ctx context.Context, msg *entity.RawMessage) error {
@@ -249,11 +255,16 @@ func TestQueue_ProcessMessagesFromDLQ(t *testing.T) {
 	})
 
 	// Enqueue to fill main queue BEFORE starting (so messages sit in queue)
-	q.Enqueue(newTestMessage("main-a"))
-	q.Enqueue(newTestMessage("main-b"))
+	msg := newTestMessage("main-a")
+	q.Enqueue(&msg)
+	msg = newTestMessage("main-b")
+	q.Enqueue(&msg)
+
 	// These go to DLQ
-	q.Enqueue(newTestMessage("dlq-a"))
-	q.Enqueue(newTestMessage("dlq-b"))
+	msg = newTestMessage("dlq-a")
+	q.Enqueue(&msg)
+	msg = newTestMessage("dlq-b")
+	q.Enqueue(&msg)
 
 	assert.Equal(t, 2, q.Size())
 	assert.Equal(t, 2, q.DLQSize())
@@ -275,7 +286,7 @@ func TestQueue_ProcessMessagesFromDLQ(t *testing.T) {
 
 func TestQueue_HandlerError(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 5, WorkerCount: 1, ProcessTimeout: time.Second}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	var called atomic.Int32
 	q.SetHandler(func(ctx context.Context, msg *entity.RawMessage) error {
@@ -284,7 +295,9 @@ func TestQueue_HandlerError(t *testing.T) {
 	})
 
 	q.Start()
-	q.Enqueue(newTestMessage("error-msg"))
+
+	msg := newTestMessage("error-msg")
+	q.Enqueue(&msg)
 
 	// Wait for processing attempt
 	time.Sleep(200 * time.Millisecond)
@@ -300,11 +313,13 @@ func TestQueue_HandlerError(t *testing.T) {
 
 func TestQueue_NoHandler(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 5, WorkerCount: 1}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	// Don't set handler
 	q.Start()
-	q.Enqueue(newTestMessage("no-handler"))
+
+	msg := newTestMessage("no-handler")
+	q.Enqueue(&msg)
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -319,7 +334,7 @@ func TestQueue_NoHandler(t *testing.T) {
 
 func TestQueue_ConcurrentEnqueue(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 100, DeadLetterSize: 50, WorkerCount: 5}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	var processed atomic.Int32
 	q.SetHandler(func(ctx context.Context, msg *entity.RawMessage) error {
@@ -336,7 +351,8 @@ func TestQueue_ConcurrentEnqueue(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			q.Enqueue(newTestMessage("concurrent-" + string(rune('a'+idx%26))))
+			msg := newTestMessage("concurrent-" + string(rune('a'+idx%26)))
+			q.Enqueue(&msg)
 		}(i)
 	}
 	wg.Wait()
@@ -354,10 +370,12 @@ func TestQueue_ConcurrentEnqueue(t *testing.T) {
 
 func TestQueueStats(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 5, WorkerCount: 3}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
-	q.Enqueue(newTestMessage("a"))
-	q.Enqueue(newTestMessage("b"))
+	msg := newTestMessage("a")
+	q.Enqueue(&msg)
+	msg = newTestMessage("b")
+	q.Enqueue(&msg)
 
 	stats := q.Stats()
 
@@ -373,53 +391,60 @@ func TestQueueStats(t *testing.T) {
 
 func TestQueueHealth_Healthy(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 100, DeadLetterSize: 50, WorkerCount: 3}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
-	q.Enqueue(newTestMessage("a"))
+	msg := newTestMessage("a")
+	q.Enqueue(&msg)
 
 	health := q.HealthStatus()
 
-	assert.Equal(t, "healthy", health.Status)
+	assert.Equal(t, QueueHealthStatusHealthy, health.Status)
 	assert.Equal(t, 1.0, health.QueueUsage)
 	assert.Equal(t, 0.0, health.DLQUsage)
 }
 
 func TestQueueHealth_Warning(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 10, WorkerCount: 1}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	// Fill to 80%+
 	for i := 0; i < 9; i++ {
-		q.Enqueue(newTestMessage("warn-" + string(rune('a'+i))))
+		msg := newTestMessage("warn-" + string(rune('a'+i)))
+		q.Enqueue(&msg)
 	}
 
 	health := q.HealthStatus()
 
-	assert.Equal(t, "warning", health.Status)
+	assert.Equal(t, QueueHealthStatusWarning, health.Status)
 	assert.Equal(t, 90.0, health.QueueUsage)
 }
 
 func TestQueueHealth_Degraded(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 2, DeadLetterSize: 4, WorkerCount: 1}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	// Fill main queue
-	q.Enqueue(newTestMessage("main-a"))
-	q.Enqueue(newTestMessage("main-b"))
+	msg := newTestMessage("main-a")
+	q.Enqueue(&msg)
+	msg = newTestMessage("main-b")
+	q.Enqueue(&msg)
 	// Fill DLQ > 50%
-	q.Enqueue(newTestMessage("dlq-a"))
-	q.Enqueue(newTestMessage("dlq-b"))
-	q.Enqueue(newTestMessage("dlq-c"))
+	msg = newTestMessage("dlq-a")
+	q.Enqueue(&msg)
+	msg = newTestMessage("dlq-b")
+	q.Enqueue(&msg)
+	msg = newTestMessage("dlq-c")
+	q.Enqueue(&msg)
 
 	health := q.HealthStatus()
 
-	assert.Equal(t, "degraded", health.Status)
+	assert.Equal(t, QueueHealthStatusDegraded, health.Status)
 	assert.Equal(t, 75.0, health.DLQUsage)
 }
 
 func TestQueueHealth_Stopped(t *testing.T) {
 	cfg := QueueConfig{BufferSize: 10, DeadLetterSize: 5, WorkerCount: 1}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 	q.Start()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -428,7 +453,7 @@ func TestQueueHealth_Stopped(t *testing.T) {
 
 	health := q.HealthStatus()
 
-	assert.Equal(t, "stopped", health.Status)
+	assert.Equal(t, QueueHealthStatusStopped, health.Status)
 }
 
 func TestQueue_ProcessTimeout(t *testing.T) {
@@ -438,7 +463,7 @@ func TestQueue_ProcessTimeout(t *testing.T) {
 		WorkerCount:    1,
 		ProcessTimeout: 100 * time.Millisecond,
 	}
-	q := NewQueue(cfg, testLogger())
+	q := newTestQueue(cfg)
 
 	var timedOut atomic.Bool
 	q.SetHandler(func(ctx context.Context, msg *entity.RawMessage) error {
@@ -452,7 +477,8 @@ func TestQueue_ProcessTimeout(t *testing.T) {
 	})
 
 	q.Start()
-	q.Enqueue(newTestMessage("timeout-test"))
+	msg := newTestMessage("timeout-test")
+	q.Enqueue(&msg)
 
 	time.Sleep(300 * time.Millisecond)
 

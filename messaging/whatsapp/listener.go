@@ -10,6 +10,7 @@ import (
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
 	"pharmabroker/messaging/deduplicator"
+	"pharmabroker/messaging/queue"
 )
 
 // Constants for listener configuration
@@ -26,7 +27,7 @@ type Listener struct {
 	log                    zerolog.Logger
 	rawMsgRepo             repository.RawMessageRepository
 	groupRepo              repository.GroupRepository
-	queue                  *Queue
+	queue                  *queue.Queue[*entity.RawMessage]
 	deduplicator           *deduplicator.Deduplicator[*entity.RawMessage]
 	skipOwnMessagesChecker func() bool
 }
@@ -62,7 +63,7 @@ func NewListener(
 		log:                    log.With().Str("component", "listener").Logger(),
 		rawMsgRepo:             rawMsgRepo,
 		groupRepo:              groupRepo,
-		queue:                  NewQueue(DefaultQueueConfig(), log),
+		queue:                  queue.NewQueue[*entity.RawMessage](queue.DefaultQueueConfig(), log),
 		deduplicator:           dedup,
 		skipOwnMessagesChecker: func() bool { return true },
 	}
@@ -73,7 +74,7 @@ func NewListenerWithConfig(
 	log zerolog.Logger,
 	rawMsgRepo repository.RawMessageRepository,
 	groupRepo repository.GroupRepository,
-	queueCfg QueueConfig,
+	queueCfg queue.QueueConfig,
 	dedupCfg deduplicator.DeduplicatorConfig,
 ) *Listener {
 	lookup := &RawMessageLookup{repo: rawMsgRepo}
@@ -91,7 +92,7 @@ func NewListenerWithConfig(
 		log:                    log.With().Str("component", "listener").Logger(),
 		rawMsgRepo:             rawMsgRepo,
 		groupRepo:              groupRepo,
-		queue:                  NewQueue(queueCfg, log),
+		queue:                  queue.NewQueue[*entity.RawMessage](queueCfg, log),
 		deduplicator:           dedup,
 		skipOwnMessagesChecker: func() bool { return true },
 	}
@@ -103,7 +104,7 @@ func (l *Listener) SetSkipOwnMessagesChecker(fn func() bool) {
 }
 
 // SetMessageHandler sets the handler for processing messages.
-func (l *Listener) SetMessageHandler(handler MessageHandler) {
+func (l *Listener) SetMessageHandler(handler queue.MessageHandler[*entity.RawMessage]) {
 	l.queue.SetHandler(handler)
 }
 
@@ -118,17 +119,17 @@ func (l *Listener) StopQueue(ctx context.Context) error {
 }
 
 // GetQueue returns the queue for health checks.
-func (l *Listener) GetQueue() *Queue {
+func (l *Listener) GetQueue() *queue.Queue[*entity.RawMessage] {
 	return l.queue
 }
 
 // QueueStats returns queue statistics.
-func (l *Listener) QueueStats() QueueStats {
+func (l *Listener) QueueStats() queue.QueueStats {
 	return l.queue.Stats()
 }
 
 // QueueHealth returns queue health status.
-func (l *Listener) QueueHealth() QueueHealth {
+func (l *Listener) QueueHealth() queue.QueueHealth {
 	return l.queue.HealthStatus()
 }
 
@@ -319,7 +320,7 @@ func (l *Listener) updateGroupStatsAsync(groupJID string) {
 
 // queueMessage adds the message to the processing queue.
 func (l *Listener) queueMessage(rawMsg *entity.RawMessage) {
-	if l.queue.Enqueue(rawMsg) {
+	if l.queue.Enqueue(&rawMsg) {
 		l.log.Info().
 			Str("step", "4_QUEUED").
 			Str("msg_id", rawMsg.ID).

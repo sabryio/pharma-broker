@@ -70,6 +70,10 @@ type RawMessage struct {
 	ReplyToSender  string `json:"reply_to_sender,omitempty"`
 }
 
+func (rm *RawMessage) GetID() string {
+	return rm.ID
+}
+
 func (rm *RawMessage) GetTimestamp() time.Time {
 	return rm.Timestamp
 }

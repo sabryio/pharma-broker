@@ -41,12 +41,14 @@ PharmaBroker is a sophisticated pharmaceutical trading platform comprising **7 c
 
 ### Implementation Location
 
-| File                             | Purpose                             | Lines |
-| -------------------------------- | ----------------------------------- | ----- |
-| `messaging/whatsapp/manager.go`  | Connection management, reconnection | 799   |
-| `messaging/whatsapp/listener.go` | Message handling, group monitoring  | 370   |
-| `messaging/whatsapp/queue.go`    | **NEW** Enhanced queue with DLQ     | 350   |
-| `messaging/whatsapp/health.go`   | **NEW** Health check endpoints      | 100   |
+| File                             | Purpose                                | Lines |
+| -------------------------------- | -------------------------------------- | ----- |
+| `messaging/whatsapp/manager.go`  | Connection management + reconnector    | 770   |
+| `messaging/whatsapp/listener.go` | Message handling, group monitoring     | 400   |
+| `messaging/reconnector/`         | **NEW** Standalone reconnection module | 290   |
+| `messaging/queue/`               | **NEW** Generic queue with DLQ         | 420   |
+| `messaging/deduplicator/`        | **NEW** Generic message deduplication  | 340   |
+| `messaging/health/`              | **NEW** Health check functions         | 90    |
 
 ### Architecture
 
@@ -59,6 +61,7 @@ flowchart LR
     subgraph Manager
         Client[whatsmeow.Client] --> EventHandler
         EventHandler --> Listener
+        Reconnector[Reconnector Package] -.->|Manages| Client
     end
 
     subgraph Listener
@@ -68,7 +71,7 @@ flowchart LR
         DedupeCheck -->|No| Queue
     end
 
-    subgraph EnhancedQueue[Enhanced Queue]
+    subgraph EnhancedQueue[Generic Queue Package]
         Queue[Main Queue] -->|Overflow| DLQ[Dead Letter]
         Queue --> Workers[Worker Pool]
         DLQ -->|Rate Limited| Workers
@@ -79,7 +82,7 @@ flowchart LR
 
 ### Key Components
 
-#### Manager (`manager.go`)
+#### Manager (`manager.go`) + Reconnector Package ✅ REFACTORED
 
 ```go
 // Connection state management
@@ -92,14 +95,22 @@ const (
     StateFailed
 )
 
-// Resilient reconnection
-type ReconnectConfig struct {
-    MaxAttempts   int           // Default: 10
-    BaseDelay     time.Duration // Default: 5s
-    MaxDelay      time.Duration // Default: 5min
-    JitterFactor  float64       // Default: 10%
-    OnMaxAttempts func()        // Alert callback
-    OnStateChange func(from, to ConnectionState)
+// Using standalone reconnector package (github.com/cenkalti/backoff/v4)
+import "pharmabroker/messaging/reconnector"
+
+type Manager struct {
+    // ...existing fields...
+    reconnector *reconnector.Reconnector  // Battle-tested backoff
+}
+
+// Reconnector configuration from messaging/reconnector package
+type ReconnectorConfig struct {
+    InitialInterval     time.Duration // Default: 5s
+    MaxInterval         time.Duration // Default: 5min
+    Multiplier          float64       // Default: 2.0
+    RandomizationFactor float64       // Default: 0.1 (10% jitter)
+    MaxElapsedTime      time.Duration // 0 = infinite
+    MaxRetries          uint64        // 0 = infinite
 }
 ```
 
@@ -110,17 +121,23 @@ type ReconnectConfig struct {
 - `SyncGroups()` - Syncs group list to database
 - `SendTextMessage()` - Sends messages
 - `IsConnected()` / `State()` - Connection status
+- `reconnectWithBackoff()` - Uses `reconnector.Run()` internally
 
 #### Listener (`listener.go`)
 
 ```go
-// Simplified listener - always uses enhanced queue and deduplication
+// Uses packages from messaging/queue and messaging/deduplicator
+import (
+    "pharmabroker/messaging/queue"
+    "pharmabroker/messaging/deduplicator"
+)
+
 type Listener struct {
     log                    zerolog.Logger
     rawMsgRepo             repository.RawMessageRepository
     groupRepo              repository.GroupRepository
-    queue                  *Queue
-    deduplicator           *Deduplicator
+    queue                  *queue.Queue[*entity.RawMessage]      // Generic queue
+    deduplicator           *deduplicator.Deduplicator[*entity.RawMessage]
     skipOwnMessagesChecker func() bool
 }
 ```
@@ -130,16 +147,29 @@ type Listener struct {
 1. `HandleMessage()` - Entry point
 2. `logMessageReceived()` - Structured logging
 3. `shouldSkipOwnMessage()` - Config-based filtering
-4. `isDuplicateMessage()` - 10s deduplication window
+4. `isDuplicateMessage()` - Uses deduplicator package
 5. `checkGroupMonitored()` - DB lookup
 6. `createRawMessage()` - Entity conversion
 7. `saveMessage()` - Persistence
-8. `queueMessage()` - Enhanced queue with overflow handling
+8. `queueMessage()` - Uses queue package with overflow handling
 
-#### Enhanced Queue (`queue.go`) ✅ NEW
+#### Generic Queue (`messaging/queue/`) ✅ STANDALONE PACKAGE
 
 ```go
-// Configurable queue with dead letter and worker pool
+package queue
+
+// Generic queue constraint - any type with GetID()
+type Identifiable interface {
+    GetID() string
+}
+
+// Generic queue with type parameter
+type Queue[T Identifiable] struct {
+    messages   chan T          // Main queue
+    deadLetter chan T          // Overflow queue
+    handler    MessageHandler[T]
+}
+
 type QueueConfig struct {
     BufferSize     int           // Main queue (default: 1000)
     DeadLetterSize int           // Overflow queue (default: 500)
@@ -147,11 +177,15 @@ type QueueConfig struct {
     ProcessTimeout time.Duration // Per-message timeout (default: 30s)
 }
 
-type Queue struct {
-    messages   chan *entity.RawMessage  // Main queue
-    deadLetter chan *entity.RawMessage  // Overflow queue
-    handler    MessageHandler           // Processing function
-}
+type QueueHealthStatus string
+const (
+    QueueHealthStatusHealthy      QueueHealthStatus = "HEALTHY"
+    QueueHealthStatusWarning      QueueHealthStatus = "WARNING"
+    QueueHealthStatusDegraded     QueueHealthStatus = "DEGRADED"
+    QueueHealthStatusStopped      QueueHealthStatus = "STOPPED"
+    QueueHealthStatusUnhealthy    QueueHealthStatus = "UNHEALTHY"
+    QueueHealthStatusDisconnected QueueHealthStatus = "DISCONNECTED"
+)
 ```
 
 **Queue Flow:**
@@ -162,49 +196,89 @@ type Queue struct {
 4. Worker pool processes from main queue
 5. DLQ worker retries at 1 msg/second rate limit
 
-#### Deduplicator (`deduplicator.go`) ✅ NEW
+#### Generic Deduplicator (`messaging/deduplicator/`) ✅ STANDALONE PACKAGE
 
 ```go
-// Standalone testable deduplication with in-memory cache
+package deduplicator
+
+// Generic interface for deduplication
+type DedupMessage interface {
+    GetTimestamp() time.Time
+    GetContent() string
+}
+
+type Lookup[T DedupMessage] interface {
+    GetLast(ctx context.Context, groupID, senderID string) (T, error)
+}
+
+// Generic deduplicator with type parameter
+type Deduplicator[T DedupMessage] struct {
+    cfg    DeduplicatorConfig
+    cache  map[string]cacheEntry[T]
+    lookup Lookup[T]
+}
+
 type DeduplicatorConfig struct {
     Window           time.Duration // Duplicate detection window (default: 10s)
     UseInMemoryCache bool          // Enable fast cache lookup (default: true)
     CacheSize        int           // Max cache entries (default: 10000)
     CacheTTL         time.Duration // Cache entry lifetime (default: 30s)
-}
-
-type Deduplicator struct {
-    cache   map[string]cacheEntry  // In-memory cache
-    lookup  MessageLookup          // DB fallback interface
+    CleanupInterval  time.Duration // Cache cleanup interval (default: 10s)
 }
 ```
 
 **Deduplication Flow:**
+
 1. `IsDuplicate()` - Check cache first (fast path)
-2. If not in cache → fall back to DB lookup
+2. If not in cache → fall back to DB lookup via `Lookup[T]` interface
 3. `RecordMessage()` - Store for future dedup checks
-4. Auto-cleanup of expired cache entries
+4. Auto-cleanup of expired cache entries via background goroutine
+
+#### Reconnector (`messaging/reconnector/`) ✅ STANDALONE PACKAGE
+
+```go
+package reconnector
+
+import "github.com/cenkalti/backoff/v4"
+
+type Reconnector struct {
+    cfg       ReconnectorConfig
+    onRetry   ReconnectNotify   // Callback on each retry
+    onSuccess ReconnectSuccess  // Callback on success
+    onFailure ReconnectFailure  // Callback on max retries exceeded
+}
+
+// Connect function signature
+type ConnectFunc func(ctx context.Context) error
+
+// Key methods
+func (r *Reconnector) Run(ctx context.Context, connect ConnectFunc) error
+func (r *Reconnector) Stop()
+func (r *Reconnector) Stats() ReconnectorStats
+```
 
 ### Strengths ✅
 
-| Aspect                    | Implementation                          |
-| ------------------------- | --------------------------------------- |
-| Resilient Reconnection    | Exponential backoff with jitter         |
-| State Machine             | Clear connection state transitions      |
-| **Deduplicator** ✅       | In-memory cache + DB fallback           |
-| Configurable Filtering    | Runtime-configurable own message skip   |
-| **Queue** ✅              | Dead letter overflow + worker pool      |
-| **Prometheus Metrics** ✅ | 12 metrics for observability            |
-| **Health Checks** ✅      | Connection + queue health with 4 states |
+| Aspect                      | Implementation                           |
+| --------------------------- | ---------------------------------------- |
+| **Reconnector Package** ✅  | Battle-tested cenkalti/backoff library   |
+| Resilient Reconnection      | Exponential backoff with jitter          |
+| State Machine               | Clear connection state transitions       |
+| **Generic Deduplicator** ✅ | Type-safe with in-memory cache + DB      |
+| Configurable Filtering      | Runtime-configurable own message skip    |
+| **Generic Queue** ✅        | Type-safe with dead letter + worker pool |
+| **Prometheus Metrics** ✅   | 12 metrics for observability             |
+| **Health Package** ✅       | Standalone health check functions        |
 
 ### ~~Weaknesses~~ Resolved Issues ✅
 
-| Issue                    | Previous             | **Implemented Solution**            |
-| ------------------------ | -------------------- | ----------------------------------- |
-| Queue Overflow           | Buffer fills → drops | ✅ Dead letter queue (500 capacity) |
-| No Metrics               | Silent operation     | ✅ 10 Prometheus metrics added      |
-| Single Consumer          | One parser consuming | ✅ Worker pool (3 workers default)  |
-| No Health Check Endpoint | State internal       | ✅ `HealthStatus()` with 4 states   |
+| Issue                    | Previous              | **Implemented Solution**                  |
+| ------------------------ | --------------------- | ----------------------------------------- |
+| Queue Overflow           | Buffer fills → drops  | ✅ Dead letter queue (500 capacity)       |
+| No Metrics               | Silent operation      | ✅ 10 Prometheus metrics added            |
+| Single Consumer          | One parser consuming  | ✅ Worker pool (3 workers default)        |
+| No Health Check Endpoint | State internal        | ✅ `health.GetHealthStatus()` function    |
+| Inline Backoff Logic     | Custom implementation | ✅ Standalone reconnector with backoff/v4 |
 
 ### Prometheus Metrics Added ✅
 
@@ -219,15 +293,25 @@ type Deduplicator struct {
 | `pharma_messages_dropped_total`             | Counter   | Dropped (all queues full)    |
 | `pharma_messages_processed_status_total`    | Counter   | By status (success/error)    |
 | `pharma_message_processing_latency_seconds` | Histogram | Processing time distribution |
+| `pharma_whatsapp_reconnect_attempts_total`  | Counter   | Reconnection attempts        |
 
 ### Usage
 
 ```go
+import (
+    "pharmabroker/messaging/queue"
+    "pharmabroker/messaging/health"
+    "pharmabroker/messaging/reconnector"
+)
+
 // Create listener with defaults (queue + deduplication)
 listener := NewListener(log, rawMsgRepo, groupRepo)
 
 // Or with custom config
-listener := NewListenerWithConfig(log, rawMsgRepo, groupRepo, queueCfg, dedupCfg)
+listener := NewListenerWithConfig(log, rawMsgRepo, groupRepo,
+    queue.QueueConfig{BufferSize: 2000, WorkerCount: 5},
+    deduplicator.DefaultDeduplicatorConfig(),
+)
 
 // Wire to parser and start
 listener.SetMessageHandler(func(ctx context.Context, msg *entity.RawMessage) error {
@@ -236,9 +320,10 @@ listener.SetMessageHandler(func(ctx context.Context, msg *entity.RawMessage) err
 listener.StartQueue()
 defer listener.StopQueue(ctx)
 
-// Health check
-health := listener.QueueHealth()
-fmt.Printf("Queue: %s (%.0f%% used)\n", health.Status, health.QueueUsage)
+// Health check using health package
+healthStatus := health.GetHealthStatus(manager)
+fmt.Printf("Connection: %s, Status: %s\n",
+    healthStatus.Connection.State, healthStatus.Status)
 ```
 
 ---
