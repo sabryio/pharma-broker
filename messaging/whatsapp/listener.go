@@ -26,8 +26,18 @@ type Listener struct {
 	rawMsgRepo             repository.RawMessageRepository
 	groupRepo              repository.GroupRepository
 	queue                  *Queue
-	deduplicator           *Deduplicator
+	deduplicator           *Deduplicator[*entity.RawMessage]
 	skipOwnMessagesChecker func() bool
+}
+
+// RawMessageLookup adapts RawMessageRepository to the generic Lookup interface.
+type RawMessageLookup struct {
+	repo repository.RawMessageRepository
+}
+
+// GetLast implements Lookup[entity.RawMessage].
+func (l *RawMessageLookup) GetLast(ctx context.Context, groupID, senderID string) (*entity.RawMessage, error) {
+	return l.repo.GetLastMessageBySender(ctx, groupID, senderID)
 }
 
 // NewListener creates a new message listener with enhanced queue and deduplication.
@@ -36,12 +46,13 @@ func NewListener(
 	rawMsgRepo repository.RawMessageRepository,
 	groupRepo repository.GroupRepository,
 ) *Listener {
+	lookup := &RawMessageLookup{repo: rawMsgRepo}
 	return &Listener{
 		log:                    log.With().Str("component", "listener").Logger(),
 		rawMsgRepo:             rawMsgRepo,
 		groupRepo:              groupRepo,
 		queue:                  NewQueue(DefaultQueueConfig(), log),
-		deduplicator:           NewDeduplicator(DefaultDeduplicatorConfig(), rawMsgRepo, log),
+		deduplicator:           NewDeduplicator(DefaultDeduplicatorConfig(), lookup, log),
 		skipOwnMessagesChecker: func() bool { return true },
 	}
 }
@@ -54,12 +65,13 @@ func NewListenerWithConfig(
 	queueCfg QueueConfig,
 	dedupCfg DeduplicatorConfig,
 ) *Listener {
+	lookup := &RawMessageLookup{repo: rawMsgRepo}
 	return &Listener{
 		log:                    log.With().Str("component", "listener").Logger(),
 		rawMsgRepo:             rawMsgRepo,
 		groupRepo:              groupRepo,
 		queue:                  NewQueue(queueCfg, log),
-		deduplicator:           NewDeduplicator(dedupCfg, rawMsgRepo, log),
+		deduplicator:           NewDeduplicator(dedupCfg, lookup, log),
 		skipOwnMessagesChecker: func() bool { return true },
 	}
 }

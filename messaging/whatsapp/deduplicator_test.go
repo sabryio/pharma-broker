@@ -9,31 +9,45 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"pharmabroker/domain/entity"
 )
 
-// mockMessageLookup is a mock implementation of MessageLookup for testing.
-type mockMessageLookup struct {
-	mu       sync.Mutex
-	messages map[string]*entity.RawMessage
+type MockMessage struct {
+	GroupJID  string
+	SenderJID string
+	Content   string
+	Timestamp time.Time
 }
 
-func newMockMessageLookup() *mockMessageLookup {
-	return &mockMessageLookup{
-		messages: make(map[string]*entity.RawMessage),
+func (rm *MockMessage) GetTimestamp() time.Time {
+	return rm.Timestamp
+}
+
+func (rm *MockMessage) GetContent() string {
+	return rm.Content
+}
+
+// mockLookup is a mock implementation of Lookup[*entity.RawMessage] for testing.
+type mockLookup struct {
+	mu       sync.Mutex
+	messages map[string]*MockMessage
+}
+
+func newMockLookup() *mockLookup {
+	return &mockLookup{
+		messages: make(map[string]*MockMessage),
 	}
 }
 
-func (m *mockMessageLookup) GetLastMessageBySender(ctx context.Context, groupJID, senderJID string) (*entity.RawMessage, error) {
+// GetLast implements Lookup[*entity.RawMessage].
+func (m *mockLookup) GetLast(ctx context.Context, groupID, senderID string) (*MockMessage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := groupJID + "|" + senderJID
+	key := groupID + "|" + senderID
 	return m.messages[key], nil
 }
 
-func (m *mockMessageLookup) SetLastMessage(groupJID, senderJID string, msg *entity.RawMessage) {
+func (m *mockLookup) SetLastMessage(groupJID, senderJID string, msg *MockMessage) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -43,7 +57,7 @@ func (m *mockMessageLookup) SetLastMessage(groupJID, senderJID string, msg *enti
 
 func TestNewDeduplicator(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
-	d := NewDeduplicator(cfg, nil, zerolog.Nop())
+	d := NewDeduplicator[*MockMessage](cfg, nil, zerolog.Nop())
 
 	require.NotNil(t, d)
 	assert.NotNil(t, d.cache)
@@ -52,7 +66,7 @@ func TestNewDeduplicator(t *testing.T) {
 
 func TestDeduplicator_NoDuplicate_NewMessage(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
-	lookup := newMockMessageLookup()
+	lookup := newMockLookup()
 	d := NewDeduplicator(cfg, lookup, zerolog.Nop())
 
 	// New message should not be duplicate
@@ -63,7 +77,7 @@ func TestDeduplicator_NoDuplicate_NewMessage(t *testing.T) {
 func TestDeduplicator_Duplicate_SameContentWithinWindow(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
 	cfg.Window = 10 * time.Second
-	lookup := newMockMessageLookup()
+	lookup := newMockLookup()
 	d := NewDeduplicator(cfg, lookup, zerolog.Nop())
 
 	now := time.Now()
@@ -82,7 +96,7 @@ func TestDeduplicator_Duplicate_SameContentWithinWindow(t *testing.T) {
 func TestDeduplicator_NoDuplicate_SameContentOutsideWindow(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
 	cfg.Window = 10 * time.Second
-	lookup := newMockMessageLookup()
+	lookup := newMockLookup()
 	d := NewDeduplicator(cfg, lookup, zerolog.Nop())
 
 	now := time.Now()
@@ -100,7 +114,7 @@ func TestDeduplicator_NoDuplicate_SameContentOutsideWindow(t *testing.T) {
 
 func TestDeduplicator_NoDuplicate_DifferentContent(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
-	lookup := newMockMessageLookup()
+	lookup := newMockLookup()
 	d := NewDeduplicator(cfg, lookup, zerolog.Nop())
 
 	now := time.Now()
@@ -117,7 +131,7 @@ func TestDeduplicator_NoDuplicate_DifferentContent(t *testing.T) {
 
 func TestDeduplicator_NoDuplicate_DifferentSender(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
-	lookup := newMockMessageLookup()
+	lookup := newMockLookup()
 	d := NewDeduplicator(cfg, lookup, zerolog.Nop())
 
 	now := time.Now()
@@ -134,7 +148,7 @@ func TestDeduplicator_NoDuplicate_DifferentSender(t *testing.T) {
 
 func TestDeduplicator_NoDuplicate_DifferentGroup(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
-	lookup := newMockMessageLookup()
+	lookup := newMockLookup()
 	d := NewDeduplicator(cfg, lookup, zerolog.Nop())
 
 	now := time.Now()
@@ -152,7 +166,7 @@ func TestDeduplicator_NoDuplicate_DifferentGroup(t *testing.T) {
 func TestDeduplicator_DBFallback(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
 	cfg.UseInMemoryCache = false // Disable cache
-	lookup := newMockMessageLookup()
+	lookup := newMockLookup()
 	d := NewDeduplicator(cfg, lookup, zerolog.Nop())
 
 	now := time.Now()
@@ -161,7 +175,7 @@ func TestDeduplicator_DBFallback(t *testing.T) {
 	content := "Test message"
 
 	// Set up DB with previous message
-	lookup.SetLastMessage(groupJID, senderJID, &entity.RawMessage{
+	lookup.SetLastMessage(groupJID, senderJID, &MockMessage{
 		GroupJID:  groupJID,
 		SenderJID: senderJID,
 		Content:   content,
@@ -176,7 +190,7 @@ func TestDeduplicator_DBFallback(t *testing.T) {
 func TestDeduplicator_DBFallback_NoDuplicate(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
 	cfg.UseInMemoryCache = false // Disable cache
-	lookup := newMockMessageLookup()
+	lookup := newMockLookup()
 	d := NewDeduplicator(cfg, lookup, zerolog.Nop())
 
 	now := time.Now()
@@ -184,7 +198,7 @@ func TestDeduplicator_DBFallback_NoDuplicate(t *testing.T) {
 	senderJID := "sender@s.whatsapp.net"
 
 	// Set up DB with previous message
-	lookup.SetLastMessage(groupJID, senderJID, &entity.RawMessage{
+	lookup.SetLastMessage(groupJID, senderJID, &MockMessage{
 		GroupJID:  groupJID,
 		SenderJID: senderJID,
 		Content:   "Old message",
@@ -203,7 +217,7 @@ func TestDeduplicator_CacheEviction(t *testing.T) {
 		CacheSize:        3, // Small cache
 		CacheTTL:         30 * time.Second,
 	}
-	d := NewDeduplicator(cfg, nil, zerolog.Nop())
+	d := NewDeduplicator[*MockMessage](cfg, nil, zerolog.Nop())
 
 	now := time.Now()
 	groupJID := "group@s.whatsapp.net"
@@ -221,7 +235,7 @@ func TestDeduplicator_CacheEviction(t *testing.T) {
 
 func TestDeduplicator_Stats(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
-	d := NewDeduplicator(cfg, nil, zerolog.Nop())
+	d := NewDeduplicator[*MockMessage](cfg, nil, zerolog.Nop())
 
 	now := time.Now()
 	groupJID := "group@s.whatsapp.net"
@@ -244,7 +258,7 @@ func TestDeduplicator_Stats(t *testing.T) {
 
 func TestDeduplicator_Clear(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
-	d := NewDeduplicator(cfg, nil, zerolog.Nop())
+	d := NewDeduplicator[*MockMessage](cfg, nil, zerolog.Nop())
 
 	// Add some entries
 	d.RecordMessage("group", "sender", "content", time.Now())
@@ -261,13 +275,13 @@ func TestDeduplicator_Clear(t *testing.T) {
 
 func TestDeduplicator_ConcurrentAccess(t *testing.T) {
 	cfg := DefaultDeduplicatorConfig()
-	d := NewDeduplicator(cfg, nil, zerolog.Nop())
+	d := NewDeduplicator[*MockMessage](cfg, nil, zerolog.Nop())
 
 	now := time.Now()
 	var wg sync.WaitGroup
 
 	// Concurrent writes
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -278,7 +292,7 @@ func TestDeduplicator_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Concurrent reads
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -299,7 +313,7 @@ func TestDeduplicator_ExpiredCache(t *testing.T) {
 		CacheSize:        100,
 		CacheTTL:         100 * time.Millisecond, // Very short TTL for testing
 	}
-	d := NewDeduplicator(cfg, nil, zerolog.Nop())
+	d := NewDeduplicator[*MockMessage](cfg, nil, zerolog.Nop())
 
 	now := time.Now()
 	groupJID := "group@s.whatsapp.net"

@@ -9,6 +9,7 @@ replace pharmabroker/pkg => ../pkg
 replace pharmabroker/bot => ../bot
 
 require (
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/google/uuid v1.6.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1

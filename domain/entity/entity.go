@@ -70,6 +70,14 @@ type RawMessage struct {
 	ReplyToSender  string `json:"reply_to_sender,omitempty"`
 }
 
+func (rm *RawMessage) GetTimestamp() time.Time {
+	return rm.Timestamp
+}
+
+func (rm *RawMessage) GetContent() string {
+	return rm.Content
+}
+
 // Offer represents a medication supply offer
 type Offer struct {
 	ID            string     `json:"id"`

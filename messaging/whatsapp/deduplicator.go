@@ -2,14 +2,29 @@ package whatsapp
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
 
-	"pharmabroker/domain/entity"
 	"pharmabroker/pkg/metrics"
 )
+
+// isNil checks if an interface value holds a nil pointer.
+// This is needed for generic types that are pointers.
+func isNil[T any](v T) bool {
+	val := reflect.ValueOf(v)
+	if !val.IsValid() {
+		return true
+	}
+	switch val.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func:
+		return val.IsNil()
+	default:
+		return false
+	}
+}
 
 // DeduplicatorConfig holds configuration for the message deduplicator.
 type DeduplicatorConfig struct {
@@ -33,17 +48,29 @@ func DefaultDeduplicatorConfig() DeduplicatorConfig {
 	}
 }
 
-// MessageLookup defines the interface for looking up previous messages.
-// This abstraction allows for testing without a real database.
-type MessageLookup interface {
-	GetLastMessageBySender(ctx context.Context, groupJID, senderJID string) (*entity.RawMessage, error)
+// DedupMessage is the constraint required by Deduplicator.
+// Any message type must implement these accessors.
+type DedupMessage interface {
+	GetTimestamp() time.Time
+	GetContent() string
+}
+
+// Lookup defines a generic interface for retrieving the last stored item
+// for a given composite key (e.g., groupID + senderID).
+// T is the type of the entity being returned.
+type Lookup[T DedupMessage] interface {
+	GetLast(
+		ctx context.Context,
+		groupID string,
+		senderID string,
+	) (T, error)
 }
 
 // Deduplicator detects and filters duplicate messages.
-type Deduplicator struct {
+type Deduplicator[T DedupMessage] struct {
 	cfg    DeduplicatorConfig
 	log    zerolog.Logger
-	lookup MessageLookup
+	lookup Lookup[T]
 
 	// In-memory cache for fast lookups
 	cache   map[string]cacheEntry
@@ -67,8 +94,8 @@ func cacheKey(groupJID, senderJID string) string {
 }
 
 // NewDeduplicator creates a new message deduplicator.
-func NewDeduplicator(cfg DeduplicatorConfig, lookup MessageLookup, log zerolog.Logger) *Deduplicator {
-	d := &Deduplicator{
+func NewDeduplicator[T DedupMessage](cfg DeduplicatorConfig, lookup Lookup[T], log zerolog.Logger) *Deduplicator[T] {
+	d := &Deduplicator[T]{
 		cfg:    cfg,
 		log:    log.With().Str("component", "deduplicator").Logger(),
 		lookup: lookup,
@@ -84,7 +111,7 @@ func NewDeduplicator(cfg DeduplicatorConfig, lookup MessageLookup, log zerolog.L
 
 // IsDuplicate checks if a message is a duplicate of a recent message.
 // Returns true if the message should be filtered out.
-func (d *Deduplicator) IsDuplicate(ctx context.Context, groupJID, senderJID, content string, timestamp time.Time) bool {
+func (d *Deduplicator[T]) IsDuplicate(ctx context.Context, groupJID, senderJID, content string, timestamp time.Time) bool {
 	// Try in-memory cache first (fast path)
 	if d.cfg.UseInMemoryCache {
 		if d.checkCache(groupJID, senderJID, content, timestamp) {
@@ -96,13 +123,14 @@ func (d *Deduplicator) IsDuplicate(ctx context.Context, groupJID, senderJID, con
 
 	// Fall back to database lookup (slow path)
 	if d.lookup != nil {
-		lastMsg, err := d.lookup.GetLastMessageBySender(ctx, groupJID, senderJID)
+		lastMsg, err := d.lookup.GetLast(ctx, groupJID, senderJID)
 		if err != nil {
 			d.log.Debug().Err(err).Msg("Failed to lookup last message")
 			return false
 		}
 
-		if lastMsg != nil && d.isDuplicateOf(lastMsg, content, timestamp) {
+		// Check if lastMsg is non-nil using reflection (needed for pointer types)
+		if !isNil(lastMsg) && d.isDuplicateOf(lastMsg, content, timestamp) {
 			metrics.DeduplicatorHits.Inc()
 			d.hits++
 			return true
@@ -115,7 +143,7 @@ func (d *Deduplicator) IsDuplicate(ctx context.Context, groupJID, senderJID, con
 }
 
 // RecordMessage records a message in the cache for future deduplication checks.
-func (d *Deduplicator) RecordMessage(groupJID, senderJID, content string, timestamp time.Time) {
+func (d *Deduplicator[T]) RecordMessage(groupJID, senderJID, content string, timestamp time.Time) {
 	if !d.cfg.UseInMemoryCache {
 		return
 	}
@@ -139,7 +167,7 @@ func (d *Deduplicator) RecordMessage(groupJID, senderJID, content string, timest
 }
 
 // checkCache checks the in-memory cache for duplicates.
-func (d *Deduplicator) checkCache(groupJID, senderJID, content string, timestamp time.Time) bool {
+func (d *Deduplicator[T]) checkCache(groupJID, senderJID, content string, timestamp time.Time) bool {
 	d.cacheMu.RLock()
 	defer d.cacheMu.RUnlock()
 
@@ -165,14 +193,14 @@ func (d *Deduplicator) checkCache(groupJID, senderJID, content string, timestamp
 }
 
 // isDuplicateOf checks if a message is a duplicate of the given previous message.
-func (d *Deduplicator) isDuplicateOf(lastMsg *entity.RawMessage, content string, timestamp time.Time) bool {
-	timeDiff := absDuration(timestamp.Sub(lastMsg.Timestamp))
-	return timeDiff < d.cfg.Window && lastMsg.Content == content
+func (d *Deduplicator[T]) isDuplicateOf(lastMsg T, content string, timestamp time.Time) bool {
+	timeDiff := absDuration(timestamp.Sub(lastMsg.GetTimestamp()))
+	return timeDiff < d.cfg.Window && lastMsg.GetContent() == content
 }
 
 // evictOldest removes the oldest entry from the cache.
 // Caller must hold the write lock.
-func (d *Deduplicator) evictOldest() {
+func (d *Deduplicator[T]) evictOldest() {
 	var oldestKey string
 	var oldestTime time.Time
 
@@ -189,7 +217,7 @@ func (d *Deduplicator) evictOldest() {
 }
 
 // cleanupLoop periodically removes expired entries from the cache.
-func (d *Deduplicator) cleanupLoop() {
+func (d *Deduplicator[T]) cleanupLoop() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
@@ -199,7 +227,7 @@ func (d *Deduplicator) cleanupLoop() {
 }
 
 // cleanup removes expired entries from the cache.
-func (d *Deduplicator) cleanup() {
+func (d *Deduplicator[T]) cleanup() {
 	d.cacheMu.Lock()
 	defer d.cacheMu.Unlock()
 
@@ -212,7 +240,7 @@ func (d *Deduplicator) cleanup() {
 }
 
 // Stats returns deduplication statistics.
-func (d *Deduplicator) Stats() DeduplicatorStats {
+func (d *Deduplicator[T]) Stats() DeduplicatorStats {
 	d.cacheMu.RLock()
 	cacheSize := len(d.cache)
 	d.cacheMu.RUnlock()
@@ -226,7 +254,7 @@ func (d *Deduplicator) Stats() DeduplicatorStats {
 }
 
 // calculateHitRate returns the cache hit rate as a percentage.
-func (d *Deduplicator) calculateHitRate() float64 {
+func (d *Deduplicator[T]) calculateHitRate() float64 {
 	total := d.hits + d.misses
 	if total == 0 {
 		return 0
@@ -243,7 +271,7 @@ type DeduplicatorStats struct {
 }
 
 // Clear clears the in-memory cache.
-func (d *Deduplicator) Clear() {
+func (d *Deduplicator[T]) Clear() {
 	if d.cfg.UseInMemoryCache {
 		d.cacheMu.Lock()
 		d.cache = make(map[string]cacheEntry, d.cfg.CacheSize)
