@@ -226,4 +226,16 @@ var (
 		Help:    "Latency of individual message processing",
 		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30},
 	})
+
+	// ========== Deduplication Metrics ==========
+
+	DeduplicatorHits = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_deduplicator_hits_total",
+		Help: "Total number of duplicate messages detected",
+	})
+
+	DeduplicatorMisses = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_deduplicator_misses_total",
+		Help: "Total number of unique messages (not duplicates)",
+	})
 )

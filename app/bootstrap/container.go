@@ -461,13 +461,12 @@ func (c *Container) Run(ctx context.Context) error {
 		return status.State.String(), status.ReconnectCount, status.LastConnectedAt, status.UptimeSeconds
 	})
 
-	// Start message feeding loop
-	go func() {
-		msgChan := listener.MessageChannel()
-		for msg := range msgChan {
-			c.Parser.ProcessMessage(context.Background(), msg)
-		}
-	}()
+	// Wire listener to parser via queue handler
+	listener.SetMessageHandler(func(ctx context.Context, msg *entity.RawMessage) error {
+		c.Parser.ProcessMessage(ctx, msg)
+		return nil
+	})
+	listener.StartQueue()
 
 	// Start WhatsApp connection
 	go func() {

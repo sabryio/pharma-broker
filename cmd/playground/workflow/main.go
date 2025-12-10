@@ -337,13 +337,12 @@ func main() {
 		log,
 	)
 
-	// Wire Listener → msgChannel → Parser (EXACTLY like serve.go lines 256-262)
-	go func() {
-		msgChan := listener.MessageChannel()
-		for msg := range msgChan {
-			parser.ProcessMessage(ctx, msg)
-		}
-	}()
+	// Wire Listener → Parser via queue handler
+	listener.SetMessageHandler(func(ctx context.Context, msg *entity.RawMessage) error {
+		parser.ProcessMessage(ctx, msg)
+		return nil
+	})
+	listener.StartQueue()
 
 	// Start Parser (spawns worker goroutines)
 	parser.Start(ctx)

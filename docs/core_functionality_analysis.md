@@ -114,16 +114,14 @@ type ReconnectConfig struct {
 #### Listener (`listener.go`)
 
 ```go
-const (
-    messageChannelBuffer = 1000    // Buffer size
-    deduplicationWindow  = 10s     // Duplicate check window
-    groupCheckTimeout    = 5s      // DB lookup timeout
-)
-
+// Simplified listener - always uses enhanced queue and deduplication
 type Listener struct {
-    msgChannel chan *entity.RawMessage  // Processing queue
-    skipOwnMessagesChecker func() bool  // Config-based filtering
-    recentMessages sync.Map             // Deduplication cache
+    log                    zerolog.Logger
+    rawMsgRepo             repository.RawMessageRepository
+    groupRepo              repository.GroupRepository
+    queue                  *Queue
+    deduplicator           *Deduplicator
+    skipOwnMessagesChecker func() bool
 }
 ```
 
@@ -164,22 +162,28 @@ type Queue struct {
 4. Worker pool processes from main queue
 5. DLQ worker retries at 1 msg/second rate limit
 
-#### Health Check (`health.go`) ✅ NEW
+#### Deduplicator (`deduplicator.go`) ✅ NEW
 
 ```go
-type HealthStatus struct {
-    Connection ConnectionHealth `json:"connection"`
-    Queue      QueueHealth      `json:"queue"`
-    Status     string           `json:"status"` // healthy/warning/degraded/stopped
+// Standalone testable deduplication with in-memory cache
+type DeduplicatorConfig struct {
+    Window           time.Duration // Duplicate detection window (default: 10s)
+    UseInMemoryCache bool          // Enable fast cache lookup (default: true)
+    CacheSize        int           // Max cache entries (default: 10000)
+    CacheTTL         time.Duration // Cache entry lifetime (default: 30s)
 }
 
-type QueueHealth struct {
-    Status       string  `json:"status"`
-    QueueUsage   float64 `json:"queue_usage_pct"`
-    DLQUsage     float64 `json:"dlq_usage_pct"`
-    ProcessedPct float64 `json:"processed_pct"`
+type Deduplicator struct {
+    cache   map[string]cacheEntry  // In-memory cache
+    lookup  MessageLookup          // DB fallback interface
 }
 ```
+
+**Deduplication Flow:**
+1. `IsDuplicate()` - Check cache first (fast path)
+2. If not in cache → fall back to DB lookup
+3. `RecordMessage()` - Store for future dedup checks
+4. Auto-cleanup of expired cache entries
 
 ### Strengths ✅
 
@@ -187,10 +191,10 @@ type QueueHealth struct {
 | ------------------------- | --------------------------------------- |
 | Resilient Reconnection    | Exponential backoff with jitter         |
 | State Machine             | Clear connection state transitions      |
-| Deduplication             | 10s window prevents duplicates          |
+| **Deduplicator** ✅       | In-memory cache + DB fallback           |
 | Configurable Filtering    | Runtime-configurable own message skip   |
-| **Enhanced Queue** ✅     | Dead letter overflow + worker pool      |
-| **Prometheus Metrics** ✅ | 10 queue metrics for observability      |
+| **Queue** ✅              | Dead letter overflow + worker pool      |
+| **Prometheus Metrics** ✅ | 12 metrics for observability            |
 | **Health Checks** ✅      | Connection + queue health with 4 states |
 
 ### ~~Weaknesses~~ Resolved Issues ✅
@@ -216,15 +220,16 @@ type QueueHealth struct {
 | `pharma_messages_processed_status_total`    | Counter   | By status (success/error)    |
 | `pharma_message_processing_latency_seconds` | Histogram | Processing time distribution |
 
-### Usage Examples
+### Usage
 
 ```go
-// Option 1: Simple mode (backward compatible)
+// Create listener with defaults (queue + deduplication)
 listener := NewListener(log, rawMsgRepo, groupRepo)
-// Uses channel-based queue (existing behavior)
 
-// Option 2: Enhanced mode with all features
-listener := NewListenerWithQueue(log, rawMsgRepo, groupRepo, DefaultQueueConfig())
+// Or with custom config
+listener := NewListenerWithConfig(log, rawMsgRepo, groupRepo, queueCfg, dedupCfg)
+
+// Wire to parser and start
 listener.SetMessageHandler(func(ctx context.Context, msg *entity.RawMessage) error {
     return parser.ProcessMessage(ctx, msg)
 })
@@ -232,8 +237,8 @@ listener.StartQueue()
 defer listener.StopQueue(ctx)
 
 // Health check
-health := manager.HealthStatusWithQueue(listener.GetQueue())
-fmt.Printf("Status: %s, Queue: %.0f%% used\n", health.Status, health.Queue.QueueUsage)
+health := listener.QueueHealth()
+fmt.Printf("Queue: %s (%.0f%% used)\n", health.Status, health.QueueUsage)
 ```
 
 ---

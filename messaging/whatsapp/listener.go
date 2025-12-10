@@ -13,7 +13,6 @@ import (
 
 // Constants for listener configuration
 const (
-	messageChannelBuffer     = 1000
 	deduplicationTimeout     = 2 * time.Second
 	deduplicationWindow      = 10 * time.Second
 	groupCheckTimeout        = 5 * time.Second
@@ -21,18 +20,17 @@ const (
 	defaultLogTruncateLength = 100
 )
 
-// Listener listens for WhatsApp messages and queues them for processing
+// Listener listens for WhatsApp messages and queues them for processing.
 type Listener struct {
 	log                    zerolog.Logger
 	rawMsgRepo             repository.RawMessageRepository
 	groupRepo              repository.GroupRepository
-	msgChannel             chan *entity.RawMessage
-	queue                  *Queue // Enhanced queue with DLQ and workers
+	queue                  *Queue
+	deduplicator           *Deduplicator
 	skipOwnMessagesChecker func() bool
-	useEnhancedQueue       bool
 }
 
-// NewListener creates a new message listener with simple channel-based queue.
+// NewListener creates a new message listener with enhanced queue and deduplication.
 func NewListener(
 	log zerolog.Logger,
 	rawMsgRepo repository.RawMessageRepository,
@@ -42,87 +40,63 @@ func NewListener(
 		log:                    log.With().Str("component", "listener").Logger(),
 		rawMsgRepo:             rawMsgRepo,
 		groupRepo:              groupRepo,
-		msgChannel:             make(chan *entity.RawMessage, messageChannelBuffer),
+		queue:                  NewQueue(DefaultQueueConfig(), log),
+		deduplicator:           NewDeduplicator(DefaultDeduplicatorConfig(), rawMsgRepo, log),
 		skipOwnMessagesChecker: func() bool { return true },
-		useEnhancedQueue:       false,
 	}
 }
 
-// NewListenerWithQueue creates a listener with enhanced queue (DLQ, workers, metrics).
-func NewListenerWithQueue(
+// NewListenerWithConfig creates a listener with custom queue and deduplication config.
+func NewListenerWithConfig(
 	log zerolog.Logger,
 	rawMsgRepo repository.RawMessageRepository,
 	groupRepo repository.GroupRepository,
 	queueCfg QueueConfig,
+	dedupCfg DeduplicatorConfig,
 ) *Listener {
-	l := &Listener{
+	return &Listener{
 		log:                    log.With().Str("component", "listener").Logger(),
 		rawMsgRepo:             rawMsgRepo,
 		groupRepo:              groupRepo,
 		queue:                  NewQueue(queueCfg, log),
+		deduplicator:           NewDeduplicator(dedupCfg, rawMsgRepo, log),
 		skipOwnMessagesChecker: func() bool { return true },
-		useEnhancedQueue:       true,
 	}
-	return l
 }
 
-// SetSkipOwnMessagesChecker sets the function to check if own messages should be skipped
+// SetSkipOwnMessagesChecker sets the function to check if own messages should be skipped.
 func (l *Listener) SetSkipOwnMessagesChecker(fn func() bool) {
 	l.skipOwnMessagesChecker = fn
 }
 
-// MessageChannel returns channel that receives raw messages.
-// Note: When using enhanced queue, this returns nil. Use SetMessageHandler instead.
-func (l *Listener) MessageChannel() <-chan *entity.RawMessage {
-	if l.useEnhancedQueue {
-		return nil
-	}
-	return l.msgChannel
-}
-
-// SetMessageHandler sets the handler for processing messages (enhanced queue mode).
+// SetMessageHandler sets the handler for processing messages.
 func (l *Listener) SetMessageHandler(handler MessageHandler) {
-	if l.queue != nil {
-		l.queue.SetHandler(handler)
-	}
+	l.queue.SetHandler(handler)
 }
 
-// StartQueue starts the enhanced queue worker pool.
+// StartQueue starts the queue worker pool.
 func (l *Listener) StartQueue() {
-	if l.queue != nil {
-		l.queue.Start()
-	}
+	l.queue.Start()
 }
 
-// StopQueue gracefully stops the enhanced queue.
+// StopQueue gracefully stops the queue.
 func (l *Listener) StopQueue(ctx context.Context) error {
-	if l.queue != nil {
-		return l.queue.Stop(ctx)
-	}
-	return nil
+	return l.queue.Stop(ctx)
 }
 
-// GetQueue returns the enhanced queue for health checks.
+// GetQueue returns the queue for health checks.
 func (l *Listener) GetQueue() *Queue {
 	return l.queue
 }
 
-// QueueStats returns stats from the enhanced queue.
-func (l *Listener) QueueStats() *QueueStats {
-	if l.queue != nil {
-		stats := l.queue.Stats()
-		return &stats
-	}
-	return nil
+// QueueStats returns queue statistics.
+func (l *Listener) QueueStats() QueueStats {
+	return l.queue.Stats()
 }
 
-// QueueHealth returns health status from the enhanced queue.
-func (l *Listener) QueueHealth() *QueueHealth {
-	if l.queue != nil {
-		health := l.queue.HealthStatus()
-		return &health
-	}
-	return nil
+// QueueHealth returns queue health status.
+func (l *Listener) QueueHealth() QueueHealth {
+	return l.queue.HealthStatus()
 }
 
 // HandleMessage implements EventHandler interface
@@ -190,11 +164,27 @@ func (l *Listener) shouldSkipOwnMessage(msg *IncomingMessage) bool {
 	return false
 }
 
-// isDuplicateMessage checks if this is a duplicate message within the deduplication window
+// isDuplicateMessage checks if this is a duplicate message within the deduplication window.
 func (l *Listener) isDuplicateMessage(msg *IncomingMessage) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), deduplicationTimeout)
 	defer cancel()
 
+	// Use enhanced deduplicator if available (fast path with cache)
+	if l.deduplicator != nil {
+		isDupe := l.deduplicator.IsDuplicate(ctx, msg.GroupJID, msg.SenderJID, msg.Content, msg.Timestamp)
+		if isDupe {
+			l.log.Warn().
+				Str("step", "1_DUPLICATE_IGNORED").
+				Str("sender", msg.SenderName).
+				Str("content", truncate(msg.Content, 50)).
+				Msg("Ignoring duplicate message")
+			return true
+		}
+		l.deduplicator.RecordMessage(msg.GroupJID, msg.SenderJID, msg.Content, msg.Timestamp)
+		return false
+	}
+
+	// Fallback: DB-based deduplication
 	lastMsg, err := l.rawMsgRepo.GetLastMessageBySender(ctx, msg.GroupJID, msg.SenderJID)
 	if err != nil || lastMsg == nil {
 		return false
@@ -207,7 +197,7 @@ func (l *Listener) isDuplicateMessage(msg *IncomingMessage) bool {
 			Str("sender", msg.SenderName).
 			Str("content", truncate(msg.Content, 50)).
 			Dur("time_diff", timeDiff).
-			Msg("Ignoring duplicate message from same user")
+			Msg("Ignoring duplicate message")
 		return true
 	}
 
@@ -295,33 +285,17 @@ func (l *Listener) updateGroupStatsAsync(groupJID string) {
 }
 
 // queueMessage adds the message to the processing queue.
-// Uses enhanced queue if available, otherwise falls back to channel.
 func (l *Listener) queueMessage(rawMsg *entity.RawMessage) {
-	if l.useEnhancedQueue && l.queue != nil {
-		if l.queue.Enqueue(rawMsg) {
-			l.log.Info().
-				Str("step", "4_QUEUED").
-				Str("msg_id", rawMsg.ID).
-				Int("queue_size", l.queue.Size()).
-				Msg("Message queued for AI processing (enhanced queue)")
-		} else {
-			l.log.Error().
-				Str("msg_id", rawMsg.ID).
-				Msg("Message dropped - all queues full")
-		}
-		return
-	}
-
-	// Fallback: simple channel queue
-	select {
-	case l.msgChannel <- rawMsg:
+	if l.queue.Enqueue(rawMsg) {
 		l.log.Info().
 			Str("step", "4_QUEUED").
 			Str("msg_id", rawMsg.ID).
-			Str("content", rawMsg.Content).
+			Int("queue_size", l.queue.Size()).
 			Msg("Message queued for AI processing")
-	default:
-		l.log.Error().Str("msg_id", rawMsg.ID).Msg("Message queue full, dropping message")
+	} else {
+		l.log.Error().
+			Str("msg_id", rawMsg.ID).
+			Msg("Message dropped - queue full")
 	}
 }
 
