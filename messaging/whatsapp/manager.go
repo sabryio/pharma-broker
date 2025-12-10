@@ -3,7 +3,6 @@ package whatsapp
 import (
 	"context"
 	"fmt"
-	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,6 +22,7 @@ import (
 
 	"pharmabroker/bot/core"
 	whatsappbot "pharmabroker/bot/whatsapp"
+	"pharmabroker/messaging/reconnector"
 	"pharmabroker/pkg/config"
 	"pharmabroker/pkg/metrics"
 )
@@ -33,12 +33,6 @@ const (
 	groupInfoTimeout      = 5 * time.Second
 	botResponseTimeout    = 30 * time.Second
 	qrChannelBufferSize   = 1
-
-	// Default reconnection settings
-	defaultMaxReconnectAttempts = 0 // 0 = infinite
-	defaultBaseDelay            = 5 * time.Second
-	defaultMaxDelay             = 5 * time.Minute
-	defaultJitterFactor         = 0.1 // 10% jitter
 )
 
 // ConnectionState represents the current state of the WhatsApp connection.
@@ -70,32 +64,6 @@ func (s ConnectionState) String() string {
 	}
 }
 
-// ReconnectConfig holds configuration for reconnection behavior.
-type ReconnectConfig struct {
-	// MaxAttempts is the maximum number of reconnection attempts. 0 = infinite.
-	MaxAttempts int
-	// BaseDelay is the initial delay before first reconnection attempt.
-	BaseDelay time.Duration
-	// MaxDelay is the maximum delay between reconnection attempts.
-	MaxDelay time.Duration
-	// JitterFactor adds randomness to delays (0.1 = 10% jitter).
-	JitterFactor float64
-	// OnMaxAttempts is called when max attempts is reached (if MaxAttempts > 0).
-	OnMaxAttempts func()
-	// OnStateChange is called when connection state changes.
-	OnStateChange func(from, to ConnectionState)
-}
-
-// DefaultReconnectConfig returns sensible defaults for reconnection.
-func DefaultReconnectConfig() ReconnectConfig {
-	return ReconnectConfig{
-		MaxAttempts:  defaultMaxReconnectAttempts,
-		BaseDelay:    defaultBaseDelay,
-		MaxDelay:     defaultMaxDelay,
-		JitterFactor: defaultJitterFactor,
-	}
-}
-
 // AlertNotifier sends alerts to administrators.
 type AlertNotifier interface {
 	SendAlert(ctx context.Context, severity, title, message string) error
@@ -116,8 +84,8 @@ type Manager struct {
 	// Admin alerter (optional)
 	alerter AlertNotifier
 
-	// Reconnection configuration
-	reconnectCfg ReconnectConfig
+	// Reconnection (uses standalone reconnector package)
+	reconnector *reconnector.Reconnector
 
 	// State (atomic for lock-free reads)
 	state           atomic.Int32 // ConnectionState
@@ -164,11 +132,11 @@ type GroupInfo struct {
 
 // NewManager creates a new WhatsApp manager with default reconnection config.
 func NewManager(ctx context.Context, cfg *config.WhatsAppConfig, log zerolog.Logger) (*Manager, error) {
-	return NewManagerWithConfig(ctx, cfg, DefaultReconnectConfig(), log)
+	return NewManagerWithConfig(ctx, cfg, reconnector.DefaultReconnectorConfig(), log)
 }
 
 // NewManagerWithConfig creates a new WhatsApp manager with custom reconnection config.
-func NewManagerWithConfig(ctx context.Context, cfg *config.WhatsAppConfig, reconnectCfg ReconnectConfig, log zerolog.Logger) (*Manager, error) {
+func NewManagerWithConfig(ctx context.Context, cfg *config.WhatsAppConfig, reconnectorCfg reconnector.ReconnectorConfig, log zerolog.Logger) (*Manager, error) {
 	// Ensure session directory exists
 	if err := os.MkdirAll(cfg.SessionDir, 0755); err != nil {
 		return nil, fmt.Errorf("create session directory: %w", err)
@@ -185,13 +153,40 @@ func NewManagerWithConfig(ctx context.Context, cfg *config.WhatsAppConfig, recon
 		cfg:           cfg,
 		store:         container,
 		log:           log.With().Str("component", "whatsapp").Logger(),
-		reconnectCfg:  reconnectCfg,
 		qrChannel:     make(chan string, qrChannelBufferSize),
 		stopChan:      make(chan struct{}),
 		reconnectChan: make(chan struct{}, 1),
 	}
+
+	// Initialize reconnector with callbacks
+	m.reconnector = reconnector.NewReconnector(reconnectorCfg, log)
+	m.setupReconnectorCallbacks()
+
 	m.setState(StateDisconnected)
 	return m, nil
+}
+
+// setupReconnectorCallbacks configures reconnector callbacks for state management.
+func (m *Manager) setupReconnectorCallbacks() {
+	m.reconnector.SetOnRetry(func(attempt int, delay time.Duration, err error) {
+		m.reconnectCount.Store(int32(attempt))
+		m.log.Info().
+			Int("attempt", attempt).
+			Dur("next_delay", delay).
+			Err(err).
+			Msg("Reconnection attempt scheduled")
+	})
+
+	m.reconnector.SetOnSuccess(func(attempt int, elapsed time.Duration) {
+		m.log.Info().
+			Int("attempts", attempt).
+			Dur("elapsed", elapsed).
+			Msg("Reconnection successful")
+	})
+
+	m.reconnector.SetOnFailure(func(attempt int, elapsed time.Duration, err error) {
+		m.onMaxAttemptsReached(attempt)
+	})
 }
 
 // RegisterHandler adds an event handler
@@ -282,10 +277,6 @@ func (m *Manager) setState(newState ConnectionState) {
 			Msg("Connection state changed")
 
 		metrics.WhatsAppConnectionState.Set(float64(newState))
-
-		if m.reconnectCfg.OnStateChange != nil {
-			go m.reconnectCfg.OnStateChange(oldState, newState)
-		}
 	}
 }
 
@@ -581,79 +572,32 @@ func (m *Manager) isGroupMonitored(jid string) bool {
 	return slices.Contains(m.cfg.MonitoredGroups, jid)
 }
 
-// reconnectWithBackoff attempts to reconnect with exponential backoff and jitter.
+// reconnectWithBackoff attempts to reconnect using the battle-tested reconnector.
 func (m *Manager) reconnectWithBackoff() {
-	cfg := m.reconnectCfg
-	baseDelay := cfg.BaseDelay
-	if baseDelay == 0 {
-		baseDelay = defaultBaseDelay
-	}
-	maxDelay := cfg.MaxDelay
-	if maxDelay == 0 {
-		maxDelay = defaultMaxDelay
-	}
-
-	attempt := 0
-	for {
-		// Check if already connected
-		if m.State() == StateConnected {
-			return
-		}
-
-		// Check max attempts (0 = infinite)
-		if cfg.MaxAttempts > 0 && attempt >= cfg.MaxAttempts {
-			m.onMaxAttemptsReached(attempt)
-			return
-		}
-
-		attempt++
-		m.reconnectCount.Store(int32(attempt))
-		metrics.WhatsAppReconnectAttempts.Inc()
-
-		// Calculate delay with exponential backoff and jitter
-		delay := m.calculateBackoffDelay(attempt, baseDelay, maxDelay, cfg.JitterFactor)
-
-		m.log.Info().
-			Int("attempt", attempt).
-			Int("max_attempts", cfg.MaxAttempts).
-			Dur("delay", delay).
-			Msg("Attempting reconnection")
-
-		// Wait with cancellation support
-		select {
-		case <-time.After(delay):
-		case <-m.stopChan:
-			m.log.Info().Msg("Reconnection cancelled")
-			return
-		case <-m.reconnectChan:
-			m.log.Info().Msg("Manual reconnect triggered")
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), defaultConnectTimeout)
-		err := m.Connect(ctx)
+	// Create a cancellable context that stops when the manager stops
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-m.stopChan
 		cancel()
+	}()
 
-		if err == nil {
-			m.log.Info().Int("attempt", attempt).Msg("Reconnection successful")
-			return
+	// Use the reconnector package for exponential backoff with jitter
+	err := m.reconnector.Run(ctx, func(ctx context.Context) error {
+		// Check if already connected (early exit)
+		if m.State() == StateConnected {
+			return nil
 		}
 
-		m.log.Error().Err(err).Int("attempt", attempt).Msg("Reconnection failed")
+		// Attempt connection with timeout
+		connectCtx, connectCancel := context.WithTimeout(ctx, defaultConnectTimeout)
+		defer connectCancel()
+
+		return m.Connect(connectCtx)
+	})
+
+	if err != nil {
+		m.log.Error().Err(err).Msg("Reconnection loop ended with error")
 	}
-}
-
-// calculateBackoffDelay calculates delay with exponential backoff and jitter.
-func (m *Manager) calculateBackoffDelay(attempt int, baseDelay, maxDelay time.Duration, jitterFactor float64) time.Duration {
-	// Exponential backoff: baseDelay * 2^(attempt-1)
-	delay := min(baseDelay*time.Duration(1<<uint(attempt-1)), maxDelay)
-
-	// Add jitter: delay * (1 ± jitterFactor)
-	if jitterFactor > 0 {
-		jitter := float64(delay) * jitterFactor * (2*rand.Float64() - 1)
-		delay = time.Duration(float64(delay) + jitter)
-	}
-
-	return delay
 }
 
 // onMaxAttemptsReached handles when max reconnection attempts are exhausted.
@@ -664,11 +608,6 @@ func (m *Manager) onMaxAttemptsReached(attempts int) {
 	m.log.Error().
 		Int("attempts", attempts).
 		Msg("Max reconnection attempts reached")
-
-	// Call user callback
-	if m.reconnectCfg.OnMaxAttempts != nil {
-		go m.reconnectCfg.OnMaxAttempts()
-	}
 
 	// Send admin alert
 	if m.alerter != nil {
