@@ -65,6 +65,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Environment defaults (PostgreSQL uses DATABASE_DSN)
 ENV DATABASE_DSN="postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable" \
+    WHATSAPP_SESSION_DB_DSN="postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable" \
     PB_WHATSAPP_SESSION_DIR=/app/data/whatsapp \
     PB_SERVER_PORT=8080 \
     PB_SERVER_HEALTH_PORT=5050

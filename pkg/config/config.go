@@ -108,7 +108,14 @@ type WhatsAppConfig struct {
 	// SessionDir is the directory where WhatsApp session data (keys, credentials) is stored.
 	// This allows persistent login without re-scanning QR code.
 	// Default: ./data/whatsapp
+	// Note: When using PostgreSQL (SessionDBDSN), this is only used for temporary files.
 	SessionDir string `mapstructure:"session_dir"`
+
+	// SessionDBDSN is the PostgreSQL connection string for storing WhatsApp session data.
+	// If set, PostgreSQL is used instead of SQLite for session storage.
+	// Format: postgres://user:pass@host:port/dbname?sslmode=disable
+	// Default: empty (uses SQLite in SessionDir)
+	SessionDBDSN string `mapstructure:"session_db_dsn"`
 
 	// MonitoredGroups is a list of group JIDs to monitor.
 	// If empty, all groups are discovered and can be enabled via API.

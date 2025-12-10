@@ -45,9 +45,14 @@ monitor:
 # WhatsApp Web Connection Settings
 # ---------------------------------
 whatsapp:
-  # Directory for WhatsApp session data (keys, credentials)
+  # Directory for WhatsApp session data (temporary files, fallback storage)
   # Persistent storage allows login without re-scanning QR code
   session_dir: ./data/whatsapp
+
+  # PostgreSQL DSN for storing WhatsApp session (optional)
+  # If set, uses PostgreSQL instead of SQLite for session storage.
+  # Override with WHATSAPP_SESSION_DB_DSN environment variable.
+  # session_db_dsn: postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable
 
   # Time to wait before reconnecting after connection failure
   reconnect_delay: 5s

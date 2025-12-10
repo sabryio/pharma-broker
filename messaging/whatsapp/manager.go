@@ -137,16 +137,30 @@ func NewManager(ctx context.Context, cfg *config.WhatsAppConfig, log zerolog.Log
 
 // NewManagerWithConfig creates a new WhatsApp manager with custom reconnection config.
 func NewManagerWithConfig(ctx context.Context, cfg *config.WhatsAppConfig, reconnectorCfg reconnector.ReconnectorConfig, log zerolog.Logger) (*Manager, error) {
-	// Ensure session directory exists
+	// Ensure session directory exists (for temporary files even when using PostgreSQL)
 	if err := os.MkdirAll(cfg.SessionDir, 0755); err != nil {
 		return nil, fmt.Errorf("create session directory: %w", err)
 	}
 
-	// Initialize SQLite store for WhatsApp session
-	dbPath := filepath.Join(cfg.SessionDir, "whatsapp.db")
-	container, err := sqlstore.New(ctx, "sqlite", fmt.Sprintf("file:%s?_pragma=foreign_keys(1)", dbPath), waLog.Noop)
-	if err != nil {
-		return nil, fmt.Errorf("create session store: %w", err)
+	// Initialize session store (PostgreSQL or SQLite)
+	var container *sqlstore.Container
+	var err error
+
+	if cfg.SessionDBDSN != "" {
+		// Use PostgreSQL for session storage
+		container, err = sqlstore.New(ctx, "postgres", cfg.SessionDBDSN, waLog.Noop)
+		if err != nil {
+			return nil, fmt.Errorf("create PostgreSQL session store: %w", err)
+		}
+		log.Info().Msg("WhatsApp session store: PostgreSQL")
+	} else {
+		// Fallback to SQLite (original behavior)
+		dbPath := filepath.Join(cfg.SessionDir, "whatsapp.db")
+		container, err = sqlstore.New(ctx, "sqlite", fmt.Sprintf("file:%s?_pragma=foreign_keys(1)", dbPath), waLog.Noop)
+		if err != nil {
+			return nil, fmt.Errorf("create SQLite session store: %w", err)
+		}
+		log.Info().Str("path", dbPath).Msg("WhatsApp session store: SQLite")
 	}
 
 	m := &Manager{
