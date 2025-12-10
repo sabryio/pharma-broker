@@ -27,10 +27,12 @@ type Listener struct {
 	rawMsgRepo             repository.RawMessageRepository
 	groupRepo              repository.GroupRepository
 	msgChannel             chan *entity.RawMessage
+	queue                  *Queue // Enhanced queue with DLQ and workers
 	skipOwnMessagesChecker func() bool
+	useEnhancedQueue       bool
 }
 
-// NewListener creates a new message listener
+// NewListener creates a new message listener with simple channel-based queue.
 func NewListener(
 	log zerolog.Logger,
 	rawMsgRepo repository.RawMessageRepository,
@@ -42,7 +44,26 @@ func NewListener(
 		groupRepo:              groupRepo,
 		msgChannel:             make(chan *entity.RawMessage, messageChannelBuffer),
 		skipOwnMessagesChecker: func() bool { return true },
+		useEnhancedQueue:       false,
 	}
+}
+
+// NewListenerWithQueue creates a listener with enhanced queue (DLQ, workers, metrics).
+func NewListenerWithQueue(
+	log zerolog.Logger,
+	rawMsgRepo repository.RawMessageRepository,
+	groupRepo repository.GroupRepository,
+	queueCfg QueueConfig,
+) *Listener {
+	l := &Listener{
+		log:                    log.With().Str("component", "listener").Logger(),
+		rawMsgRepo:             rawMsgRepo,
+		groupRepo:              groupRepo,
+		queue:                  NewQueue(queueCfg, log),
+		skipOwnMessagesChecker: func() bool { return true },
+		useEnhancedQueue:       true,
+	}
+	return l
 }
 
 // SetSkipOwnMessagesChecker sets the function to check if own messages should be skipped
@@ -50,9 +71,58 @@ func (l *Listener) SetSkipOwnMessagesChecker(fn func() bool) {
 	l.skipOwnMessagesChecker = fn
 }
 
-// MessageChannel returns channel that receives raw messages
+// MessageChannel returns channel that receives raw messages.
+// Note: When using enhanced queue, this returns nil. Use SetMessageHandler instead.
 func (l *Listener) MessageChannel() <-chan *entity.RawMessage {
+	if l.useEnhancedQueue {
+		return nil
+	}
 	return l.msgChannel
+}
+
+// SetMessageHandler sets the handler for processing messages (enhanced queue mode).
+func (l *Listener) SetMessageHandler(handler MessageHandler) {
+	if l.queue != nil {
+		l.queue.SetHandler(handler)
+	}
+}
+
+// StartQueue starts the enhanced queue worker pool.
+func (l *Listener) StartQueue() {
+	if l.queue != nil {
+		l.queue.Start()
+	}
+}
+
+// StopQueue gracefully stops the enhanced queue.
+func (l *Listener) StopQueue(ctx context.Context) error {
+	if l.queue != nil {
+		return l.queue.Stop(ctx)
+	}
+	return nil
+}
+
+// GetQueue returns the enhanced queue for health checks.
+func (l *Listener) GetQueue() *Queue {
+	return l.queue
+}
+
+// QueueStats returns stats from the enhanced queue.
+func (l *Listener) QueueStats() *QueueStats {
+	if l.queue != nil {
+		stats := l.queue.Stats()
+		return &stats
+	}
+	return nil
+}
+
+// QueueHealth returns health status from the enhanced queue.
+func (l *Listener) QueueHealth() *QueueHealth {
+	if l.queue != nil {
+		health := l.queue.HealthStatus()
+		return &health
+	}
+	return nil
 }
 
 // HandleMessage implements EventHandler interface
@@ -224,8 +294,25 @@ func (l *Listener) updateGroupStatsAsync(groupJID string) {
 	}()
 }
 
-// queueMessage adds the message to the processing queue
+// queueMessage adds the message to the processing queue.
+// Uses enhanced queue if available, otherwise falls back to channel.
 func (l *Listener) queueMessage(rawMsg *entity.RawMessage) {
+	if l.useEnhancedQueue && l.queue != nil {
+		if l.queue.Enqueue(rawMsg) {
+			l.log.Info().
+				Str("step", "4_QUEUED").
+				Str("msg_id", rawMsg.ID).
+				Int("queue_size", l.queue.Size()).
+				Msg("Message queued for AI processing (enhanced queue)")
+		} else {
+			l.log.Error().
+				Str("msg_id", rawMsg.ID).
+				Msg("Message dropped - all queues full")
+		}
+		return
+	}
+
+	// Fallback: simple channel queue
 	select {
 	case l.msgChannel <- rawMsg:
 		l.log.Info().

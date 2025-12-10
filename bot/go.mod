@@ -6,6 +6,7 @@ replace pharmabroker/domain => ../domain
 
 require (
 	github.com/go-telegram/bot v1.17.0
+	github.com/google/uuid v1.6.0
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/rs/zerolog v1.34.0
 	pharmabroker/domain v0.0.0

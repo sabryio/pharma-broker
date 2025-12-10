@@ -178,4 +178,52 @@ var (
 		Name: "pharma_whatsapp_reconnect_failures_total",
 		Help: "Total number of failed WhatsApp reconnection cycles (max attempts reached)",
 	})
+
+	// ========== Message Queue Metrics ==========
+
+	MessageQueueSize = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pharma_message_queue_size",
+		Help: "Current number of messages in the main queue",
+	})
+
+	MessageQueueDLQSize = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pharma_message_queue_dlq_size",
+		Help: "Current number of messages in the dead letter queue",
+	})
+
+	MessageQueueWorkers = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pharma_message_queue_workers",
+		Help: "Number of active message queue workers",
+	})
+
+	MessageQueueInFlight = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pharma_message_queue_in_flight",
+		Help: "Number of messages currently being processed",
+	})
+
+	MessagesReceived = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_messages_received_total",
+		Help: "Total number of messages received from WhatsApp",
+	})
+
+	MessagesOverflow = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_messages_overflow_total",
+		Help: "Total number of messages sent to dead letter queue",
+	})
+
+	MessagesDropped = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_messages_dropped_total",
+		Help: "Total number of messages dropped due to queue overflow",
+	})
+
+	MessagesProcessedStatus = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pharma_messages_processed_status_total",
+		Help: "Total number of messages processed by status",
+	}, []string{"status"}) // status: success, error
+
+	MessageProcessingLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pharma_message_processing_latency_seconds",
+		Help:    "Latency of individual message processing",
+		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30},
+	})
 )
