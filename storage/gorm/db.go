@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"pharmabroker/storage/gorm/models"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -148,6 +149,7 @@ func (db *DB) Migrate() error {
 		&ReviewQueue{},
 		&FeedbackRecord{},
 		&WeightHistory{},
+		&models.BotUser{},
 	)
 	if err != nil {
 		return err

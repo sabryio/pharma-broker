@@ -6,8 +6,20 @@ import (
 	"strings"
 
 	"pharmabroker/bot/core"
+	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
 )
+
+func init() {
+	core.RegisterWithCategory(core.CommandFactory{
+		Name:        "confirmed",
+		Description: "Recently confirmed",
+		Emoji:       "✅",
+		Create: func(deps core.Dependencies) core.CommandHandler {
+			return NewConfirmedCommand(deps.Audit)
+		},
+	}, "matching")
+}
 
 // ConfirmedCommand handles the /confirmed command.
 type ConfirmedCommand struct {
@@ -24,7 +36,7 @@ func (c *ConfirmedCommand) Description() string { return "Show recently confirme
 func (c *ConfirmedCommand) Usage() string       { return "/confirmed" }
 
 func (c *ConfirmedCommand) Handle(ctx context.Context, cmd *core.Command, msg *core.Message) core.Response {
-	logs, err := c.auditRepo.GetByAction(ctx, "MATCH_CONFIRMED", 10)
+	logs, err := c.auditRepo.GetByAction(ctx, entity.AuditMatchConfirmed, 10)
 	if err != nil {
 		return core.Response{
 			Text:      core.EscapeMarkdownV2("❌ Error fetching confirmed matches. Please try again."),

@@ -9,6 +9,20 @@ import (
 	"pharmabroker/domain/repository"
 )
 
+func init() {
+	core.RegisterWithCategory(core.CommandFactory{
+		Name:        "pending",
+		Description: "Pending matches",
+		Emoji:       "🔄",
+		Create: func(deps core.Dependencies) core.CommandHandler {
+			if deps.Matches == nil {
+				return nil
+			}
+			return NewPendingCommand(deps.Matches)
+		},
+	}, "matching")
+}
+
 // PendingCommand handles the /pending command.
 type PendingCommand struct {
 	matchRepo repository.MatchRepository

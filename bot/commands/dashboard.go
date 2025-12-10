@@ -6,36 +6,30 @@ import (
 	"time"
 
 	"pharmabroker/bot/core"
-	"pharmabroker/domain/repository"
 )
+
+func init() {
+	core.RegisterWithCategory(core.CommandFactory{
+		Name:        "dashboard",
+		Description: "Full system dashboard",
+		Emoji:       "📊",
+		Create: func(deps core.Dependencies) core.CommandHandler {
+			if deps.Stats == nil {
+				return nil
+			}
+			return NewDashboardCommand(deps)
+		},
+	}, "overview")
+}
 
 // DashboardCommand handles the /dashboard command.
 type DashboardCommand struct {
-	statsRepo   repository.StatsRepository
-	offerRepo   repository.OfferRepository
-	requestRepo repository.RequestRepository
-	matchRepo   repository.MatchRepository
-	groupRepo   repository.GroupRepository
-}
-
-// DashboardRepos holds repositories needed for dashboard.
-type DashboardRepos struct {
-	Stats    repository.StatsRepository
-	Offers   repository.OfferRepository
-	Requests repository.RequestRepository
-	Matches  repository.MatchRepository
-	Groups   repository.GroupRepository
+	deps core.Dependencies
 }
 
 // NewDashboardCommand creates a new dashboard command handler.
-func NewDashboardCommand(repos DashboardRepos) *DashboardCommand {
-	return &DashboardCommand{
-		statsRepo:   repos.Stats,
-		offerRepo:   repos.Offers,
-		requestRepo: repos.Requests,
-		matchRepo:   repos.Matches,
-		groupRepo:   repos.Groups,
-	}
+func NewDashboardCommand(deps core.Dependencies) *DashboardCommand {
+	return &DashboardCommand{deps: deps}
 }
 
 func (c *DashboardCommand) Name() string        { return "dashboard" }
@@ -43,7 +37,7 @@ func (c *DashboardCommand) Description() string { return "Full system dashboard"
 func (c *DashboardCommand) Usage() string       { return "/dashboard" }
 
 func (c *DashboardCommand) Handle(ctx context.Context, cmd *core.Command, msg *core.Message) core.Response {
-	stats, err := c.statsRepo.GetStats(ctx)
+	stats, err := c.deps.Stats.GetStats(ctx)
 	if err != nil {
 		return core.Response{
 			Text:      core.EscapeMarkdownV2("❌ Error fetching dashboard. Please try again."),

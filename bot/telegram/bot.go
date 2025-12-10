@@ -70,16 +70,14 @@ func (b *Bot) Start(ctx context.Context) error {
 
 // setCommands registers bot commands with Telegram to show in the menu.
 func (b *Bot) setCommands(ctx context.Context) {
-	commands := []models.BotCommand{
-		{Command: "start", Description: "🏥 Welcome message"},
-		{Command: "dashboard", Description: "📊 Full system dashboard"},
-		{Command: "status", Description: "📈 Quick system status"},
-		{Command: "pending", Description: "🔄 Pending matches"},
-		{Command: "offers", Description: "💊 Active offers"},
-		{Command: "requests", Description: "📋 Active requests"},
-		{Command: "confirmed", Description: "✅ Recently confirmed"},
-		{Command: "groups", Description: "📱 Monitored groups"},
-		{Command: "help", Description: "❓ Show all commands"},
+	metadata := core.GetAllMetadata()
+	commands := make([]models.BotCommand, 0, len(metadata))
+
+	for _, m := range metadata {
+		commands = append(commands, models.BotCommand{
+			Command:     m.Name,
+			Description: m.Description,
+		})
 	}
 
 	_, err := b.client.SetMyCommands(ctx, &bot.SetMyCommandsParams{
@@ -135,13 +133,23 @@ func (b *Bot) handleUpdate(ctx context.Context, client *bot.Bot, update *models.
 		return
 	}
 
-	// Build core message
+	// Build core message - prefer display name, fallback to username
+	senderName := update.Message.From.FirstName
+	if update.Message.From.LastName != "" {
+		senderName += " " + update.Message.From.LastName
+	}
+	// Only use username if no display name
+	if senderName == "" && update.Message.From.Username != "" {
+		senderName = "@" + update.Message.From.Username
+	}
+
 	msg := &core.Message{
-		ID:       fmt.Sprintf("%d", update.Message.ID),
-		Platform: core.PlatformTelegram,
-		SenderID: fmt.Sprintf("%d", update.Message.From.ID),
-		ChatID:   fmt.Sprintf("%d", update.Message.Chat.ID),
-		Content:  content,
+		ID:         fmt.Sprintf("%d", update.Message.ID),
+		Platform:   core.PlatformTelegram,
+		SenderID:   fmt.Sprintf("%d", update.Message.From.ID),
+		SenderName: senderName,
+		ChatID:     fmt.Sprintf("%d", update.Message.Chat.ID),
+		Content:    content,
 	}
 
 	// Parse and handle command

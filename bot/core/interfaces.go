@@ -17,13 +17,14 @@ const (
 
 // Message represents an incoming message from any platform.
 type Message struct {
-	ID        string
-	Platform  Platform
-	SenderID  string // Platform-specific sender identifier
-	ChatID    string // Group or chat identifier
-	Content   string // Message text content
-	Timestamp time.Time
-	ReplyToID string // ID of message being replied to (optional)
+	ID         string
+	Platform   Platform
+	SenderID   string // Platform-specific sender identifier
+	SenderName string // Display name of sender
+	ChatID     string // Group or chat identifier
+	Content    string // Message text content
+	Timestamp  time.Time
+	ReplyToID  string // ID of message being replied to (optional)
 
 	// Metadata for platform-specific data
 	Metadata map[string]any

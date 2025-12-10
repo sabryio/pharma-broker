@@ -7,14 +7,14 @@ import (
 
 	"github.com/go-telegram/bot/models"
 
-	botcmds "pharmabroker/bot/commands"
+	"pharmabroker/bot/commands"
 	"pharmabroker/bot/core"
 )
 
 // RegisterMatchCallbacks registers confirm/reject callback handlers.
-func (b *Bot) RegisterMatchCallbacks(repos botcmds.Repositories) {
-	confirmCmd := botcmds.NewConfirmCommand(repos.Matches, repos.Audit)
-	rejectCmd := botcmds.NewRejectCommand(repos.Matches, repos.Audit)
+func (b *Bot) RegisterMatchCallbacks(deps core.Dependencies) {
+	confirmCmd := commands.NewConfirmCommand(deps.Matches, deps.Audit)
+	rejectCmd := commands.NewRejectCommand(deps.Matches, deps.Audit)
 
 	// Handle confirm button clicks
 	b.RegisterCallback("confirm:", func(ctx context.Context, tgBot *Bot, query *models.CallbackQuery) error {

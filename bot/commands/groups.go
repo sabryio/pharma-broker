@@ -9,6 +9,20 @@ import (
 	"pharmabroker/domain/repository"
 )
 
+func init() {
+	core.RegisterWithCategory(core.CommandFactory{
+		Name:        "groups",
+		Description: "Monitored groups",
+		Emoji:       "📱",
+		Create: func(deps core.Dependencies) core.CommandHandler {
+			if deps.Groups == nil {
+				return nil
+			}
+			return NewGroupsCommand(deps.Groups)
+		},
+	}, "admin")
+}
+
 // GroupsCommand handles the /groups command.
 type GroupsCommand struct {
 	groupRepo repository.GroupRepository

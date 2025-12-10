@@ -9,6 +9,20 @@ import (
 	"pharmabroker/domain/repository"
 )
 
+func init() {
+	core.RegisterWithCategory(core.CommandFactory{
+		Name:        "offers",
+		Description: "Active offers",
+		Emoji:       "💊",
+		Create: func(deps core.Dependencies) core.CommandHandler {
+			if deps.Offers == nil {
+				return nil
+			}
+			return NewOffersCommand(deps.Offers)
+		},
+	}, "inventory")
+}
+
 // OffersCommand handles the /offers command.
 type OffersCommand struct {
 	offerRepo repository.OfferRepository

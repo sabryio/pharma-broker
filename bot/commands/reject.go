@@ -10,6 +10,20 @@ import (
 	"pharmabroker/domain/repository"
 )
 
+func init() {
+	core.RegisterWithCategory(core.CommandFactory{
+		Name:        "reject",
+		Description: "Reject a match",
+		Emoji:       "❌",
+		Create: func(deps core.Dependencies) core.CommandHandler {
+			if deps.Matches == nil {
+				return nil
+			}
+			return NewRejectCommand(deps.Matches, deps.Audit)
+		},
+	}, "matching")
+}
+
 // RejectCommand handles the /reject command.
 type RejectCommand struct {
 	matchRepo repository.MatchRepository
@@ -45,7 +59,7 @@ func (c *RejectCommand) Handle(ctx context.Context, cmd *core.Command, msg *core
 	senderPhone := extractPhone(msg.SenderID)
 	err = c.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusRejected, "bot:"+senderPhone)
 	if err != nil {
-		return core.Response{Text: "❌ Error rejecting match\\. Please try again\\.", ParseMode: core.ParseModeMarkdownV2}
+		return core.Response{Text: core.EscapeMarkdownV2("❌ Error rejecting match. Please try again."), ParseMode: core.ParseModeMarkdownV2}
 	}
 
 	if c.audit != nil {

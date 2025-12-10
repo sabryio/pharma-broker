@@ -10,6 +10,20 @@ import (
 	"pharmabroker/domain/repository"
 )
 
+func init() {
+	core.RegisterWithCategory(core.CommandFactory{
+		Name:        "confirm",
+		Description: "Confirm a match",
+		Emoji:       "✅",
+		Create: func(deps core.Dependencies) core.CommandHandler {
+			if deps.Matches == nil {
+				return nil
+			}
+			return NewConfirmCommand(deps.Matches, deps.Audit)
+		},
+	}, "matching")
+}
+
 // ConfirmCommand handles the /confirm command.
 type ConfirmCommand struct {
 	matchRepo repository.MatchRepository
@@ -45,7 +59,7 @@ func (c *ConfirmCommand) Handle(ctx context.Context, cmd *core.Command, msg *cor
 	senderPhone := extractPhone(msg.SenderID)
 	err = c.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "bot:"+senderPhone)
 	if err != nil {
-		return core.Response{Text: "❌ Error confirming match\\. Please try again\\.", ParseMode: core.ParseModeMarkdownV2}
+		return core.Response{Text: core.EscapeMarkdownV2("❌ Error confirming match. Please try again."), ParseMode: core.ParseModeMarkdownV2}
 	}
 
 	if c.audit != nil {

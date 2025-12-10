@@ -2,9 +2,22 @@ package commands
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"pharmabroker/bot/core"
 )
+
+func init() {
+	core.RegisterWithCategory(core.CommandFactory{
+		Name:        "help",
+		Description: "Show all commands",
+		Emoji:       "❓",
+		Create: func(deps core.Dependencies) core.CommandHandler {
+			return NewHelpCommand()
+		},
+	}, "overview")
+}
 
 // HelpCommand handles the /help command.
 type HelpCommand struct{}
@@ -20,30 +33,45 @@ func (c *HelpCommand) Handle(ctx context.Context, cmd *core.Command, msg *core.M
 	title := "📖 PharmaBroker Bot Commands"
 	separator := core.Separator(title)
 
-	return core.Response{
-		Text: "*" + core.EscapeMarkdownV2(title) + "*\n" +
-			separator + "\n\n" +
-			"*📊 Overview*\n" +
-			"/start \\- Welcome message\n" +
-			"/status \\- Quick system status\n" +
-			"/dashboard \\- Full dashboard\n\n" +
-			"*💊 Inventory*\n" +
-			"/offers \\- Active medication offers\n" +
-			"/requests \\- Active medication requests\n\n" +
-			"*🔄 Matching*\n" +
-			"/pending \\- Pending matches\n" +
-			"/confirm \\<id\\> \\- Confirm a match\n" +
-			"/reject \\<id\\> \\- Reject a match\n" +
-			"/confirmed \\- Recently confirmed\n\n" +
-			"*⚙️ Admin*\n" +
-			"/groups \\- Monitored WhatsApp groups\n" +
-			"/help \\- Show this help\n\n" +
-			separator + "\n" +
-			"_أوامر بوت فارما بروكر_\n" +
-			"/dashboard \\- لوحة التحكم\n" +
-			"/offers \\- العروض المتاحة\n" +
-			"/requests \\- الطلبات المتاحة\n" +
-			"/pending \\- المطابقات المعلقة",
-		ParseMode: core.ParseModeMarkdownV2,
+	var sb strings.Builder
+	sb.WriteString("*" + core.EscapeMarkdownV2(title) + "*\n")
+	sb.WriteString(separator + "\n\n")
+
+	// Group commands by category
+	categories := map[string][]core.CommandMetadata{
+		"overview":  {},
+		"inventory": {},
+		"matching":  {},
+		"admin":     {},
+		"other":     {},
 	}
+
+	for _, meta := range core.GetAllMetadata() {
+		cat := core.GetCategory(meta.Name)
+		categories[cat] = append(categories[cat], meta)
+	}
+
+	// Render each category
+	categoryTitles := map[string]string{
+		"overview":  "📊 Overview",
+		"inventory": "💊 Inventory",
+		"matching":  "🔄 Matching",
+		"admin":     "⚙️ Admin",
+		"other":     "Other",
+	}
+
+	order := []string{"overview", "inventory", "matching", "admin"}
+	for _, cat := range order {
+		cmds := categories[cat]
+		if len(cmds) == 0 {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("*%s*\n", categoryTitles[cat]))
+		for _, m := range cmds {
+			sb.WriteString(fmt.Sprintf("/%s \\- %s\n", m.Name, core.EscapeMarkdownV2(m.Description)))
+		}
+		sb.WriteString("\n")
+	}
+
+	return core.Response{Text: sb.String(), ParseMode: core.ParseModeMarkdownV2}
 }

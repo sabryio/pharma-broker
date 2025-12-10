@@ -18,7 +18,8 @@ import (
 	apiHandlers "pharmabroker/api/handlers"
 	"pharmabroker/api/monitor"
 	"pharmabroker/api/sse"
-	botcmds "pharmabroker/bot/commands"
+	_ "pharmabroker/bot/commands"
+	"pharmabroker/bot/core"
 	whatsappbot "pharmabroker/bot/whatsapp"
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
@@ -101,6 +102,9 @@ type Repositories struct {
 	Audit       repository.AuditRepository
 	Feedback    repository.FeedbackRepository
 	Leaderboard repository.LeaderboardRepository
+
+	// Bot users
+	BotUsers repository.BotUserRepository
 }
 
 // New creates a new application container with database and repositories
@@ -136,6 +140,7 @@ func New(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*Containe
 		Audit:       storageGorm.NewAuditRepo(db),
 		Feedback:    storageGorm.NewFeedbackRepo(db),
 		Leaderboard: storageGorm.NewLeaderboardRepo(db),
+		BotUsers:    storageGorm.NewBotUserRepo(db),
 	}
 
 	log.Info().Msg("Repositories initialized")
@@ -417,15 +422,20 @@ func (c *Container) Run(ctx context.Context) error {
 			AuthorizedPhones: c.Config.WhatsApp.BotCommands.AuthorizedPhones,
 		}, c.Logger)
 
-		// Register all shared commands
-		botcmds.RegisterAll(bot, botcmds.Repositories{
+		// Build dependencies for commands
+		deps := core.Dependencies{
 			Stats:    c.Repos.Stats,
 			Matches:  c.Repos.Matches,
-			Audit:    c.Repos.Audit,
 			Offers:   c.Repos.Offers,
 			Requests: c.Repos.Requests,
 			Groups:   c.Repos.Groups,
-		})
+			Audit:    c.Repos.Audit,
+		}
+
+		// Register all commands from registry
+		for _, handler := range core.BuildCommands(deps) {
+			bot.RegisterCommand(handler)
+		}
 
 		c.WAManager.SetBotHandler(bot)
 		c.Logger.Info().

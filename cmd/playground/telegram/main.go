@@ -17,7 +17,9 @@ import (
 
 	"github.com/rs/zerolog"
 
-	botcmds "pharmabroker/bot/commands"
+	// Import commands package to trigger init() registrations
+	_ "pharmabroker/bot/commands"
+	"pharmabroker/bot/core"
 	"pharmabroker/bot/telegram"
 	"pharmabroker/domain/entity"
 	"pharmabroker/pkg/config"
@@ -70,6 +72,7 @@ func main() {
 	statsRepo := storageGorm.NewStatsRepo(db)
 	auditRepo := storageGorm.NewAuditRepo(db)
 	groupRepo := storageGorm.NewGroupRepo(db)
+	botUserRepo := storageGorm.NewBotUserRepo(db)
 
 	log.Info().Msg("✅ Repositories initialized")
 
@@ -93,19 +96,24 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create bot")
 	}
 
-	// Register REAL commands (shared across WhatsApp and Telegram)
-	repos := botcmds.Repositories{
+	// Build dependencies for commands
+	deps := core.Dependencies{
 		Stats:    statsRepo,
 		Matches:  matchRepo,
 		Offers:   offerRepo,
 		Requests: requestRepo,
 		Groups:   groupRepo,
 		Audit:    auditRepo,
+		BotUsers: botUserRepo,
 	}
-	botcmds.RegisterAll(bot, repos)
+
+	// Register all commands from registry
+	for _, handler := range core.BuildCommands(deps) {
+		bot.RegisterCommand(handler)
+	}
 
 	// Register Telegram callback handlers for inline buttons
-	bot.RegisterMatchCallbacks(repos)
+	bot.RegisterMatchCallbacks(deps)
 
 	log.Info().Msg("✅ Registered all commands and callbacks")
 
@@ -122,12 +130,8 @@ func main() {
 	fmt.Printf("   Requests: %d\n", len(requests))
 	fmt.Printf("   Pending:  %d matches\n", len(pending))
 	fmt.Println(strings.Repeat("-", 60))
-	fmt.Println("🚀 Bot is running! Send commands to your Telegram bot:")
-	fmt.Println("   /status  - View system status")
-	fmt.Println("   /pending - List pending matches")
-	fmt.Println("   /confirm <id> - Confirm a match")
-	fmt.Println("   /reject <id>  - Reject a match")
-	fmt.Println("   /help    - Show help")
+	fmt.Println("🚀 Bot is running! Commands auto-registered from registry.")
+	fmt.Println("   Type /help in Telegram to see all commands")
 	fmt.Println(strings.Repeat("-", 60))
 	fmt.Println("Press Ctrl+C to stop")
 	fmt.Println()

@@ -1,4 +1,3 @@
-// Package commands provides shared bot command handlers for all platforms.
 package commands
 
 import (
@@ -9,6 +8,20 @@ import (
 	"pharmabroker/bot/core"
 	"pharmabroker/domain/repository"
 )
+
+func init() {
+	core.RegisterWithCategory(core.CommandFactory{
+		Name:        "status",
+		Description: "Quick system status",
+		Emoji:       "📈",
+		Create: func(deps core.Dependencies) core.CommandHandler {
+			if deps.Stats == nil {
+				return nil
+			}
+			return NewStatusCommand(deps.Stats)
+		},
+	}, "overview")
+}
 
 // StatusCommand handles the /status command.
 type StatusCommand struct {
