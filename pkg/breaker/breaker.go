@@ -1,6 +1,6 @@
-// Package circuitbreaker provides a circuit breaker implementation that wraps
+// Package breaker provides a circuit breaker implementation that wraps
 // github.com/sony/gobreaker with enhanced observability and context support.
-package circuitbreaker
+package breaker
 
 import (
 	"context"

@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	ai "pharmabroker/ai"
-	aiCircuitBreaker "pharmabroker/ai/circuitbreaker"
+	breaker "pharmabroker/pkg/breaker"
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
 	"pharmabroker/matching"
@@ -60,7 +60,7 @@ type Parser struct {
 	matchPoolSize int // Configurable match worker pool size
 
 	// Circuit Breaker for AI calls
-	aiCircuitBreaker *aiCircuitBreaker.Breaker
+	aiCircuitBreaker *breaker.Breaker
 
 	// Real-time updates and Dynamic Config
 	// Real-time updates and Dynamic Config
@@ -130,7 +130,7 @@ func NewParser(
 		matchTicker:    time.NewTicker(2 * time.Second),
 		matchStop:      make(chan struct{}),
 		matchPoolSize:  DefaultMatchPoolSize,
-		aiCircuitBreaker: aiCircuitBreaker.New(aiCircuitBreaker.Config{
+		aiCircuitBreaker: breaker.New(breaker.Config{
 			Name:             "ai_provider",
 			Timeout:          DefaultCircuitBreakerTimeout,
 			FailureThreshold: DefaultCircuitBreakerThreshold,

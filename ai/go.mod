@@ -6,7 +6,6 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/openai/openai-go v1.12.0
 	github.com/rs/zerolog v1.34.0
-	github.com/sony/gobreaker/v2 v2.3.0
 	google.golang.org/genai v1.38.0
 	pharmabroker/domain v0.0.0
 )

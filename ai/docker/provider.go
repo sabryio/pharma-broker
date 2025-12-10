@@ -15,7 +15,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/rs/zerolog"
 
-	"pharmabroker/ai/circuitbreaker"
+	breaker "pharmabroker/pkg/breaker"
 	"pharmabroker/ai/prompts"
 	arabicPkg "pharmabroker/pkg/arabic"
 	"pharmabroker/pkg/config"
@@ -40,7 +40,7 @@ type Client struct {
 	cfg          *config.DockerModelConfig
 	client       openai.Client
 	log          zerolog.Logger
-	cb           *circuitbreaker.Breaker
+	cb           *breaker.Breaker
 	allMappings  []*entity.MedicationMapping       // For hybrid filtering
 	vectorTopK   int                               // Top-K for vector search (default 10)
 	unmappedRepo repository.UnmappedMedicationRepo // For active learning (optional)
@@ -95,7 +95,7 @@ func NewClient(cfg *config.DockerModelConfig, log zerolog.Logger) (*Client, erro
 }
 
 // newCircuitBreaker creates a configured circuit breaker with sensible defaults.
-func newCircuitBreaker(cfg *config.DockerModelConfig, log zerolog.Logger) *circuitbreaker.Breaker {
+func newCircuitBreaker(cfg *config.DockerModelConfig, log zerolog.Logger) *breaker.Breaker {
 	cbTimeout := cfg.CBTimeout
 	if cbTimeout == 0 {
 		cbTimeout = DefaultCBTimeout
@@ -105,7 +105,7 @@ func newCircuitBreaker(cfg *config.DockerModelConfig, log zerolog.Logger) *circu
 		cbFailureRatio = DefaultCBFailureRatio
 	}
 
-	cbCfg := circuitbreaker.Config{
+	cbCfg := breaker.Config{
 		Name:                "DockerModel",
 		FailureThreshold:    int(cfg.CBMaxRequests),
 		SuccessThreshold:    2,
@@ -113,7 +113,7 @@ func newCircuitBreaker(cfg *config.DockerModelConfig, log zerolog.Logger) *circu
 		MaxHalfOpenRequests: int(DefaultCBMaxRequests),
 		FailureRatio:        cbFailureRatio,
 		MinRequests:         int(DefaultCBMinRequests),
-		OnStateChange: func(name string, from, to circuitbreaker.State) {
+		OnStateChange: func(name string, from, to breaker.State) {
 			log.Warn().
 				Str("name", name).
 				Str("from", from.String()).
@@ -127,7 +127,7 @@ func newCircuitBreaker(cfg *config.DockerModelConfig, log zerolog.Logger) *circu
 		cbCfg.FailureThreshold = int(DefaultCBMaxRequests)
 	}
 
-	return circuitbreaker.New(cbCfg, log)
+	return breaker.New(cbCfg, log)
 }
 
 // SetMappings sets the full medication mappings for hybrid filtering.
