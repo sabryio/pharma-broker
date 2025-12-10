@@ -116,10 +116,10 @@ tasks:
   test:unit:
     desc: Run unit tests across all workspace modules
     cmds:
-      - go test ./... ./ai/... ./api/... ./app/... ./domain/... ./matching/... ./messaging/... ./notify/... ./parsing/... ./pkg/... ./reports/... ./storage/... -v
+      - go test ./... ./ai/... ./api/... ./app/... ./bot/... ./domain/... ./matching/... ./messaging/... ./notify/... ./parsing/... ./pkg/... ./reports/... ./storage/... -v
 
   test:coverage:
     desc: Run tests with coverage report
     cmds:
-      - go test ./... ./ai/... ./api/... ./app/... ./domain/... ./matching/... ./messaging/... ./notify/... ./parsing/... ./pkg/... ./reports/... ./storage/... -coverprofile=coverage.out
+      - go test ./... ./ai/... ./api/... ./app/... ./bot/... ./domain/... ./matching/... ./messaging/... ./notify/... ./parsing/... ./pkg/... ./reports/... ./storage/... -coverprofile=coverage.out
       - go tool cover -html=coverage.out -o coverage.html

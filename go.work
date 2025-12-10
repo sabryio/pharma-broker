@@ -5,6 +5,7 @@ use (
 	./ai
 	./api
 	./app
+	./bot
 	./domain
 	./matching
 	./messaging

@@ -6,13 +6,16 @@ replace pharmabroker/domain => ../domain
 
 replace pharmabroker/pkg => ../pkg
 
+replace pharmabroker/bot => ../bot
+
 require (
 	github.com/google/uuid v1.6.0
 	github.com/rs/zerolog v1.34.0
 	go.mau.fi/whatsmeow v0.0.0-20251205211405-fd6170ac96e5
 	google.golang.org/protobuf v1.36.10
-	pharmabroker/domain v0.0.0-00010101000000-000000000000
-	pharmabroker/pkg v0.0.0-00010101000000-000000000000
+	pharmabroker/bot v0.0.0
+	pharmabroker/domain v0.0.0
+	pharmabroker/pkg v0.0.0
 )
 
 require (

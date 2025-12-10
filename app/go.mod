@@ -6,8 +6,9 @@ require (
 	github.com/rs/zerolog v1.34.0
 	pharmabroker/ai v0.0.0
 	pharmabroker/api v0.0.0
+	pharmabroker/bot v0.0.0
 	pharmabroker/domain v0.0.0
-	pharmabroker/pkg v0.0.0-00010101000000-000000000000
+	pharmabroker/pkg v0.0.0
 	pharmabroker/storage v0.0.0
 )
 
@@ -85,6 +86,7 @@ require (
 replace (
 	pharmabroker/ai => ../ai
 	pharmabroker/api => ../api
+	pharmabroker/bot => ../bot
 	pharmabroker/domain => ../domain
 	pharmabroker/pkg => ../pkg
 	pharmabroker/storage => ../storage

@@ -21,6 +21,8 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 
+	"pharmabroker/bot/core"
+	whatsappbot "pharmabroker/bot/whatsapp"
 	"pharmabroker/pkg/config"
 	"pharmabroker/pkg/metrics"
 )
@@ -109,7 +111,7 @@ type Manager struct {
 	handlers []EventHandler
 
 	// Bot command handler (optional)
-	botHandler *BotCommandHandler
+	botHandler *whatsappbot.Bot
 
 	// Admin alerter (optional)
 	alerter AlertNotifier
@@ -474,10 +476,10 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 	m.extractReplyContext(evt.Message, msg)
 
 	// Check if this is a bot command (before group monitoring check)
-	if botHandler != nil && IsCommand(content) {
-		response := botHandler.HandleCommand(context.Background(), msg)
-		if response != "" {
-			go m.sendBotResponse(evt.Info.Chat, response)
+	if botHandler != nil && core.IsCommand(content) {
+		response := botHandler.HandleIncoming(context.Background(), evt.Info.Sender.String(), groupJID, content, evt.Info.Timestamp)
+		if response != nil && response.Text != "" {
+			go m.sendBotResponse(evt.Info.Chat, response.Text)
 		}
 		return // Don't process as regular message
 	}
@@ -761,7 +763,7 @@ func GenerateMessageID() string {
 }
 
 // SetBotHandler sets the bot command handler
-func (m *Manager) SetBotHandler(handler *BotCommandHandler) {
+func (m *Manager) SetBotHandler(handler *whatsappbot.Bot) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.botHandler = handler

@@ -18,6 +18,7 @@ import (
 	apiHandlers "pharmabroker/api/handlers"
 	"pharmabroker/api/monitor"
 	"pharmabroker/api/sse"
+	whatsappbot "pharmabroker/bot/whatsapp"
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
 	"pharmabroker/matching"
@@ -410,14 +411,19 @@ func (c *Container) Run(ctx context.Context) error {
 
 	// Configure bot commands if enabled
 	if c.Config.WhatsApp.BotCommands.Enabled {
-		botHandler := whatsapp.NewBotCommandHandler(
-			c.Repos.Matches,
-			c.Repos.Stats,
-			c.Repos.Audit,
-			c.Config.WhatsApp.BotCommands.AuthorizedPhones,
-			c.Logger,
-		)
-		c.WAManager.SetBotHandler(botHandler)
+		// Create WhatsApp bot with commands
+		bot := whatsappbot.NewBot(whatsappbot.Config{
+			AuthorizedPhones: c.Config.WhatsApp.BotCommands.AuthorizedPhones,
+		}, c.Logger)
+
+		// Register commands
+		bot.RegisterCommand(whatsappbot.NewStatusCommand(c.Repos.Stats))
+		bot.RegisterCommand(whatsappbot.NewPendingCommand(c.Repos.Matches))
+		bot.RegisterCommand(whatsappbot.NewConfirmCommand(c.Repos.Matches, c.Repos.Audit))
+		bot.RegisterCommand(whatsappbot.NewRejectCommand(c.Repos.Matches, c.Repos.Audit))
+		bot.RegisterCommand(whatsappbot.NewHelpCommand())
+
+		c.WAManager.SetBotHandler(bot)
 		c.Logger.Info().
 			Int("authorized_phones", len(c.Config.WhatsApp.BotCommands.AuthorizedPhones)).
 			Msg("WhatsApp bot commands enabled")
