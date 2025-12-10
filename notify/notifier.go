@@ -3,6 +3,8 @@ package notify
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -14,6 +16,22 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
+
+const (
+	telegramAPIBaseURL = "https://api.telegram.org/bot%s"
+	defaultHTTPTimeout = 30 * time.Second
+)
+
+// Notifier defines the interface for sending notifications
+type Notifier interface {
+	SendMessage(ctx context.Context, message string) error
+	SendDocument(ctx context.Context, filename string, data []byte, caption string) error
+}
+
+// ReportNotifier defines the interface for sending reports
+type ReportNotifier interface {
+	SendReport(ctx context.Context, subject, htmlBody string, csvData []byte, csvFilename string) error
+}
 
 // TelegramConfig holds Telegram bot settings
 type TelegramConfig struct {
@@ -33,10 +51,13 @@ type TelegramNotifier struct {
 func NewTelegramNotifier(config TelegramConfig, log zerolog.Logger) *TelegramNotifier {
 	return &TelegramNotifier{
 		config: config,
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{Timeout: defaultHTTPTimeout},
 		log:    log.With().Str("notifier", "telegram").Logger(),
 	}
 }
+
+// Ensure TelegramNotifier implements Notifier interface
+var _ Notifier = (*TelegramNotifier)(nil)
 
 // SendMessage sends a text message to all configured chats
 func (t *TelegramNotifier) SendMessage(ctx context.Context, message string) error {
@@ -44,13 +65,15 @@ func (t *TelegramNotifier) SendMessage(ctx context.Context, message string) erro
 		return nil
 	}
 
+	var errs []error
 	for _, chatID := range t.config.ChatIDs {
 		if err := t.sendToChat(ctx, chatID, message); err != nil {
 			t.log.Error().Err(err).Str("chat_id", chatID).Msg("Failed to send message")
+			errs = append(errs, fmt.Errorf("chat %s: %w", chatID, err))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // SendDocument sends a file to all configured chats
@@ -59,17 +82,19 @@ func (t *TelegramNotifier) SendDocument(ctx context.Context, filename string, da
 		return nil
 	}
 
+	var errs []error
 	for _, chatID := range t.config.ChatIDs {
 		if err := t.sendDocumentToChat(ctx, chatID, filename, data, caption); err != nil {
 			t.log.Error().Err(err).Str("chat_id", chatID).Msg("Failed to send document")
+			errs = append(errs, fmt.Errorf("chat %s: %w", chatID, err))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (t *TelegramNotifier) sendToChat(ctx context.Context, chatID, message string) error {
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", t.config.BotToken)
+	url := fmt.Sprintf(telegramAPIBaseURL+"/sendMessage", t.config.BotToken)
 
 	body := fmt.Sprintf(`{"chat_id":"%s","text":%q,"parse_mode":"HTML"}`, chatID, message)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(body))
@@ -84,37 +109,53 @@ func (t *TelegramNotifier) sendToChat(ctx context.Context, chatID, message strin
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("telegram API error: %s", string(respBody))
+	if err := t.checkResponse(resp); err != nil {
+		return err
 	}
 
 	t.log.Debug().Str("chat_id", chatID).Msg("Message sent successfully")
 	return nil
 }
 
+// checkResponse validates the HTTP response from Telegram API
+func (t *TelegramNotifier) checkResponse(resp *http.Response) error {
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
 func (t *TelegramNotifier) sendDocumentToChat(ctx context.Context, chatID, filename string, data []byte, caption string) error {
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendDocument", t.config.BotToken)
+	url := fmt.Sprintf(telegramAPIBaseURL+"/sendDocument", t.config.BotToken)
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
 	// Add chat_id
-	writer.WriteField("chat_id", chatID)
+	if err := writer.WriteField("chat_id", chatID); err != nil {
+		return fmt.Errorf("writing chat_id field: %w", err)
+	}
 
 	// Add caption
 	if caption != "" {
-		writer.WriteField("caption", caption)
+		if err := writer.WriteField("caption", caption); err != nil {
+			return fmt.Errorf("writing caption field: %w", err)
+		}
 	}
 
 	// Add document
 	part, err := writer.CreateFormFile("document", filename)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating form file: %w", err)
 	}
-	part.Write(data)
+	if _, err := part.Write(data); err != nil {
+		return fmt.Errorf("writing document data: %w", err)
+	}
 
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("closing multipart writer: %w", err)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, &buf)
 	if err != nil {
@@ -128,9 +169,8 @@ func (t *TelegramNotifier) sendDocumentToChat(ctx context.Context, chatID, filen
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("telegram API error: %s", string(respBody))
+	if err := t.checkResponse(resp); err != nil {
+		return err
 	}
 
 	t.log.Debug().Str("chat_id", chatID).Str("filename", filename).Msg("Document sent successfully")
@@ -163,10 +203,21 @@ func NewEmailNotifier(config EmailConfig, log zerolog.Logger) *EmailNotifier {
 	}
 }
 
-// SendReport sends an HTML report with CSV attachment
+// Ensure EmailNotifier implements ReportNotifier interface
+var _ ReportNotifier = (*EmailNotifier)(nil)
+
+// SendReport sends an HTML report with CSV attachment.
+// Note: smtp.SendMail is blocking and does not support context cancellation.
+// The ctx parameter is accepted for interface consistency but cancellation
+// will not interrupt an in-progress SMTP send.
 func (e *EmailNotifier) SendReport(ctx context.Context, subject, htmlBody string, csvData []byte, csvFilename string) error {
 	if !e.config.Enabled {
 		return nil
+	}
+
+	// Check context before starting
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("context cancelled before sending email: %w", err)
 	}
 
 	boundary := "----=_Part_0_1234567890"
@@ -188,14 +239,14 @@ func (e *EmailNotifier) SendReport(ctx context.Context, subject, htmlBody string
 	msg.WriteString(htmlBody)
 	msg.WriteString("\r\n")
 
-	// CSV attachment part
+	// CSV attachment part with proper base64 encoding
 	if len(csvData) > 0 {
 		msg.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 		msg.WriteString(fmt.Sprintf("Content-Type: text/csv; name=\"%s\"\r\n", csvFilename))
 		msg.WriteString("Content-Transfer-Encoding: base64\r\n")
 		msg.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"\r\n", csvFilename))
 		msg.WriteString("\r\n")
-		msg.Write(csvData)
+		msg.WriteString(base64.StdEncoding.EncodeToString(csvData))
 		msg.WriteString("\r\n")
 	}
 
@@ -208,7 +259,7 @@ func (e *EmailNotifier) SendReport(ctx context.Context, subject, htmlBody string
 	err := smtp.SendMail(addr, auth, e.config.FromEmail, e.config.Recipients, msg.Bytes())
 	if err != nil {
 		e.log.Error().Err(err).Msg("Failed to send email")
-		return err
+		return fmt.Errorf("sending email: %w", err)
 	}
 
 	e.log.Info().
