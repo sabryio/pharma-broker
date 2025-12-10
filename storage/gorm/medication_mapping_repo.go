@@ -59,18 +59,24 @@ func (r *MedicationMappingRepo) GetAll(ctx context.Context) ([]*entity.Medicatio
 	return ToMedicationMappingsEntity(mappings), nil
 }
 
-// Search performs FTS search on medication mappings
+// Search performs similarity search on medication mappings using PostgreSQL pg_trgm
 func (r *MedicationMappingRepo) Search(ctx context.Context, query string) ([]*entity.MedicationMapping, error) {
 	var mappings []MedicationMapping
 
-	sanitizedQuery := SanitizeFTSQuery(query)
+	if query == "" {
+		return []*entity.MedicationMapping{}, nil
+	}
+
+	// Use pg_trgm similarity search on arabic_name and english_name columns
+	// This leverages the GIN indexes created in db.go
 	err := r.db.Conn.WithContext(ctx).
 		Raw(`
-			SELECT m.id, m.arabic_name, m.english_name, m.synonyms, m.embedding, m.created_at, m.updated_at
-			FROM medication_mappings m
-			JOIN medication_mappings_fts f ON m.rowid = f.rowid
-			WHERE medication_mappings_fts MATCH ?
-		`, sanitizedQuery).
+			SELECT id, arabic_name, english_name, synonyms, embedding, created_at, updated_at
+			FROM medication_mappings
+			WHERE arabic_name % ? OR english_name % ?
+			ORDER BY GREATEST(similarity(arabic_name, ?), similarity(english_name, ?)) DESC
+			LIMIT 100
+		`, query, query, query, query).
 		Scan(&mappings).Error
 
 	if err != nil {

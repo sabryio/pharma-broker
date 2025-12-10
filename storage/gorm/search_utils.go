@@ -31,21 +31,16 @@ var arabicNormalizer = strings.NewReplacer(
 	"ئ", "ي", // yeh with hamza -> yeh
 )
 
-// FTS5 operators that should be preserved
-var ftsOperators = map[string]bool{
-	"AND":  true,
-	"OR":   true,
-	"NOT":  true,
-	"NEAR": true,
+// PostgreSQL tsquery operators
+var pgOperators = map[string]string{
+	"AND": "&",
+	"OR":  "|",
+	"NOT": "!",
 }
 
-// nearPattern matches NEAR/n syntax like NEAR/5
-var nearPattern = regexp.MustCompile(`^NEAR/\d+$`)
-
-// SanitizeFTSQuery sanitizes the user query for SQLite FTS5.
-// It ensures that search terms are properly quoted to handle special characters
-// like ".", "-", etc., while preserving FTS operators (AND, OR, NOT, NEAR/n).
-func SanitizeFTSQuery(query string) string {
+// SanitizePgQuery sanitizes the user query for PostgreSQL tsquery.
+// It converts the query into a format compatible with to_tsquery.
+func SanitizePgQuery(query string) string {
 	if query == "" {
 		return ""
 	}
@@ -55,54 +50,48 @@ func SanitizeFTSQuery(query string) string {
 	var processed []string
 
 	for _, part := range parts {
-		// If it's a keyword, keep it as is (FTS operators are case-sensitive)
-		if ftsOperators[part] || nearPattern.MatchString(part) {
-			processed = append(processed, part)
+		// Check if it's an operator
+		if pgOp, ok := pgOperators[strings.ToUpper(part)]; ok {
+			processed = append(processed, pgOp)
 			continue
 		}
 
-		// Check if it's already quoted
-		if strings.HasPrefix(part, "\"") && strings.HasSuffix(part, "\"") {
-			processed = append(processed, part)
+		// Skip empty parts
+		if part == "" {
 			continue
 		}
 
-		// Check for column filter syntax (column:term)
-		if idx := strings.Index(part, ":"); idx > 0 && idx < len(part)-1 {
-			column := part[:idx]
-			term := part[idx+1:]
-			term = strings.ReplaceAll(term, "\"", "\"\"")
-			if containsSpecialChars(term) {
-				processed = append(processed, column+":\""+term+"\"")
-			} else {
-				processed = append(processed, column+":"+term)
+		// Remove special characters that break tsquery
+		cleanPart := removeSpecialChars(part)
+		if cleanPart == "" {
+			continue
+		}
+
+		// For prefix search (ends with *)
+		if strings.HasSuffix(part, "*") {
+			term := strings.TrimSuffix(cleanPart, "*")
+			if term != "" {
+				processed = append(processed, term+":*")
 			}
 			continue
 		}
 
-		// Check for valid prefix query (ending with *)
-		if strings.HasSuffix(part, "*") {
-			// Quote the part before the *
-			term := strings.TrimSuffix(part, "*")
-			// Escape existing quotes in term
-			term = strings.ReplaceAll(term, "\"", "\"\"")
-			processed = append(processed, "\""+term+"\"*")
-			continue
-		}
-
-		// Escape existing quotes
-		cleanPart := strings.ReplaceAll(part, "\"", "\"\"")
-
-		// If the part contains non-alphanumeric chars (like . - /), wrap in quotes
-		if containsSpecialChars(cleanPart) {
-			processed = append(processed, "\""+cleanPart+"\"")
-		} else {
-			// Simple words are better left unquoted to ensure tokenizer handles them naturally
-			processed = append(processed, cleanPart)
-		}
+		processed = append(processed, cleanPart)
 	}
 
-	return strings.Join(processed, " ")
+	// Join with OR by default for flexible matching
+	return strings.Join(processed, " | ")
+}
+
+// removeSpecialChars removes characters that break PostgreSQL tsquery
+func removeSpecialChars(s string) string {
+	var result strings.Builder
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == '*' {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
 }
 
 // NormalizeArabic removes diacritics and normalizes Arabic letters for consistent matching.
@@ -115,18 +104,18 @@ func NormalizeArabic(text string) string {
 	return text
 }
 
-// BuildSearchQuery creates an FTS5 query from user input with smart defaults.
+// BuildPgSearchQuery creates a PostgreSQL tsquery from user input.
 // Options allow customizing the search behavior:
-//   - useOR: join terms with OR instead of implicit AND
-//   - prefixSearch: add * to last term for prefix matching
-//   - normalizeArabic: normalize Arabic text before searching
-func BuildSearchQuery(query string, useOR, prefixSearch, normalizeArabic bool) string {
+//   - useOR: join terms with | instead of &
+//   - prefixSearch: add :* to last term for prefix matching
+//   - normalizeArabicText: normalize Arabic text before searching
+func BuildPgSearchQuery(query string, useOR, prefixSearch, normalizeArabicText bool) string {
 	if query == "" {
 		return ""
 	}
 
 	// Optionally normalize Arabic
-	if normalizeArabic {
+	if normalizeArabicText {
 		query = NormalizeArabic(query)
 	}
 
@@ -136,9 +125,7 @@ func BuildSearchQuery(query string, useOR, prefixSearch, normalizeArabic bool) s
 		return ""
 	}
 
-	// Separate terms from operators
 	var terms []string
-	var hasExplicitOperator bool
 
 	for i, part := range parts {
 		// Skip empty parts
@@ -147,43 +134,34 @@ func BuildSearchQuery(query string, useOR, prefixSearch, normalizeArabic bool) s
 		}
 
 		// Check if it's an operator
-		if ftsOperators[part] || nearPattern.MatchString(part) {
-			// If we have an explicit operator, don't use auto-OR
-			hasExplicitOperator = true
-			terms = append(terms, part)
+		if pgOp, ok := pgOperators[strings.ToUpper(part)]; ok {
+			terms = append(terms, pgOp)
 			continue
 		}
 
-		// Escape quotes
-		cleanPart := strings.ReplaceAll(part, "\"", "\"\"")
+		// Clean the term
+		cleanPart := removeSpecialChars(part)
 		if cleanPart == "" {
 			continue
 		}
 
-		// Add prefix wildcard to last non-operator term if requested
-		isLastTerm := true
-		for j := i + 1; j < len(parts); j++ {
-			if !ftsOperators[parts[j]] && !nearPattern.MatchString(parts[j]) {
-				isLastTerm = false
-				break
-			}
+		// Add prefix to last term if requested
+		isLastTerm := i == len(parts)-1
+		if prefixSearch && isLastTerm && !strings.HasSuffix(cleanPart, "*") {
+			terms = append(terms, cleanPart+":*")
+			continue
 		}
 
-		if prefixSearch && isLastTerm && !strings.HasSuffix(cleanPart, "*") {
-			if containsSpecialChars(cleanPart) {
-				terms = append(terms, "\""+cleanPart+"\"*")
-			} else {
-				terms = append(terms, cleanPart+"*")
+		// Handle existing prefix notation
+		if strings.HasSuffix(part, "*") {
+			term := strings.TrimSuffix(cleanPart, "*")
+			if term != "" {
+				terms = append(terms, term+":*")
 			}
 			continue
 		}
 
-		// Quote if contains special chars
-		if containsSpecialChars(cleanPart) {
-			terms = append(terms, "\""+cleanPart+"\"")
-		} else {
-			terms = append(terms, cleanPart)
-		}
+		terms = append(terms, cleanPart)
 	}
 
 	// If no valid terms, return empty
@@ -196,17 +174,11 @@ func BuildSearchQuery(query string, useOR, prefixSearch, normalizeArabic bool) s
 		return terms[0]
 	}
 
-	// If there are explicit operators in the query, just join with spaces
-	// (the operators are already in the terms slice)
-	if hasExplicitOperator {
-		return strings.Join(terms, " ")
-	}
-
 	// Join with appropriate operator
 	if useOR {
-		return strings.Join(terms, " OR ")
+		return strings.Join(terms, " | ")
 	}
-	return strings.Join(terms, " ")
+	return strings.Join(terms, " & ")
 }
 
 // BuildMedicationSearchQuery creates an optimized query for medication search.
@@ -220,53 +192,42 @@ func BuildMedicationSearchQuery(medication string) string {
 	normalized := NormalizeArabic(medication)
 
 	// Use OR-based search with prefix on last term for partial matches
-	return BuildSearchQuery(normalized, true, true, false)
+	return BuildPgSearchQuery(normalized, true, true, false)
 }
 
-// BuildProximityQuery creates a NEAR/n query for terms that should appear close together.
-// Example: BuildProximityQuery(3, "Augmentin", "1g") -> "Augmentin" NEAR/3 "1g"
-func BuildProximityQuery(distance int, terms ...string) string {
-	if len(terms) < 2 {
-		if len(terms) == 1 {
-			return SanitizeFTSQuery(terms[0])
-		}
-		return ""
+// BuildPgILikePattern creates a PostgreSQL ILIKE pattern for fuzzy matching.
+// Useful for simple substring searches without full-text search.
+func BuildPgILikePattern(query string) string {
+	if query == "" {
+		return "%"
 	}
+	// Escape special LIKE characters
+	escaped := strings.NewReplacer(
+		"%", "\\%",
+		"_", "\\_",
+		"\\", "\\\\",
+	).Replace(query)
 
-	var quoted []string
-	for _, term := range terms {
-		term = strings.ReplaceAll(term, "\"", "\"\"")
-		quoted = append(quoted, "\""+term+"\"")
-	}
-
-	return strings.Join(quoted, " NEAR/"+itoa(distance)+" ")
+	return "%" + escaped + "%"
 }
 
-// itoa converts int to string without importing strconv
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
+// BuildTrigramQuery creates a query suitable for trigram (pg_trgm) similarity search.
+// Returns the normalized query and minimum similarity threshold.
+func BuildTrigramQuery(query string, normalizeArabicText bool) (string, float64) {
+	if query == "" {
+		return "", 0.3
 	}
-	var digits []byte
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	return string(digits)
-}
 
-func containsSpecialChars(s string) bool {
-	for _, r := range s {
-		if !unicode.IsLetter(r) && !unicode.IsNumber(r) {
-			return true
-		}
+	if normalizeArabicText {
+		query = NormalizeArabic(query)
 	}
-	return false
+
+	// Default similarity threshold for Arabic text
+	return query, 0.3
 }
 
 // HighlightMatches wraps matched terms with markers for display.
-// Uses FTS5 snippet() or highlight() functions in the actual query,
-// this is a fallback for manual highlighting.
+// Uses ts_headline() in actual queries, this is a fallback for manual highlighting.
 func HighlightMatches(text, query, startTag, endTag string) string {
 	if text == "" || query == "" {
 		return text
@@ -277,11 +238,11 @@ func HighlightMatches(text, query, startTag, endTag string) string {
 
 	for _, term := range terms {
 		// Skip operators
-		if ftsOperators[strings.ToUpper(term)] {
+		if _, isOp := pgOperators[strings.ToUpper(term)]; isOp {
 			continue
 		}
-		// Remove quotes and wildcards
-		term = strings.Trim(term, "\"*")
+		// Remove prefix notation
+		term = strings.TrimSuffix(term, ":*")
 		if term == "" {
 			continue
 		}
@@ -297,4 +258,69 @@ func HighlightMatches(text, query, startTag, endTag string) string {
 	}
 
 	return result
+}
+
+// containsSpecialChars checks if string has non-letter/number characters
+func containsSpecialChars(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// ============================================================
+// DEPRECATED FUNCTIONS - Kept for backward compatibility
+// These were used for SQLite FTS5 and should be replaced
+// ============================================================
+
+// Deprecated: Use SanitizePgQuery instead
+func SanitizeFTSQuery(query string) string {
+	return SanitizePgQuery(query)
+}
+
+// Deprecated: Use BuildPgSearchQuery instead
+func BuildSearchQuery(query string, useOR, prefixSearch, normalizeArabicText bool) string {
+	return BuildPgSearchQuery(query, useOR, prefixSearch, normalizeArabicText)
+}
+
+// Deprecated: BuildProximityQuery was used for FTS5 NEAR queries
+// PostgreSQL uses phrase search <-> or <N> operators instead
+func BuildProximityQuery(distance int, terms ...string) string {
+	if len(terms) < 2 {
+		if len(terms) == 1 {
+			return SanitizePgQuery(terms[0])
+		}
+		return ""
+	}
+
+	// In PostgreSQL, use phrase search: term1 <-> term2 (adjacent)
+	// or term1 <N> term2 (within N words)
+	var quoted []string
+	for _, term := range terms {
+		clean := removeSpecialChars(term)
+		if clean != "" {
+			quoted = append(quoted, clean)
+		}
+	}
+
+	// Use phrase search operator for proximity
+	if distance <= 1 {
+		return strings.Join(quoted, " <-> ")
+	}
+	return strings.Join(quoted, " <"+itoa(distance)+"> ")
+}
+
+// itoa converts int to string without importing strconv
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var digits []byte
+	for n > 0 {
+		digits = append([]byte{byte('0' + n%10)}, digits...)
+		n /= 10
+	}
+	return string(digits)
 }

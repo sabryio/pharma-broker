@@ -69,23 +69,28 @@ func (r *RequestRepo) GetActive(ctx context.Context, limit, offset int) ([]*enti
 	return ToRequestsEntity(requests), nil
 }
 
-// Search performs FTS search on requests
+// Search performs full-text search on requests using PostgreSQL tsvector
 func (r *RequestRepo) Search(ctx context.Context, query string, limit, offset int) ([]*entity.Request, error) {
 	var requests []Request
 
 	// Use medication-optimized search query (Arabic normalization + OR-based)
-	sanitizedQuery := BuildMedicationSearchQuery(query)
+	tsQuery := BuildMedicationSearchQuery(query)
+	if tsQuery == "" {
+		// Empty query, return empty results
+		return []*entity.Request{}, nil
+	}
+
 	err := r.db.Conn.WithContext(ctx).
 		Raw(`
-			SELECT r.id, r.raw_message_id, r.source_phone, r.source_name, r.source_group, r.group_name,
-				r.medication, r.medication_raw, r.quantity, r.unit, r.max_price, r.currency, r.urgent,
-				r.notes, r.raw_message, r.status, r.created_at, r.updated_at
-			FROM requests r
-			JOIN requests_fts f ON r.rowid = f.rowid
-			WHERE requests_fts MATCH ? AND r.status = 'ACTIVE'
-			ORDER BY r.urgent DESC, rank
+			SELECT id, raw_message_id, source_phone, source_name, source_group, group_name,
+				medication, medication_raw, quantity, unit, max_price, currency, urgent,
+				notes, raw_message, status, created_at, updated_at,
+				ts_rank(search_vector, to_tsquery('simple', ?)) as rank
+			FROM requests
+			WHERE search_vector @@ to_tsquery('simple', ?) AND status = 'ACTIVE'
+			ORDER BY urgent DESC, rank DESC
 			LIMIT ? OFFSET ?
-		`, sanitizedQuery, limit, offset).
+		`, tsQuery, tsQuery, limit, offset).
 		Scan(&requests).Error
 
 	if err != nil {

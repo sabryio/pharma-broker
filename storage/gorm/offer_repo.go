@@ -69,23 +69,28 @@ func (r *OfferRepo) GetActive(ctx context.Context, limit, offset int) ([]*entity
 	return ToOffersEntity(offers), nil
 }
 
-// Search performs FTS search on offers
+// Search performs full-text search on offers using PostgreSQL tsvector
 func (r *OfferRepo) Search(ctx context.Context, query string, limit, offset int) ([]*entity.Offer, error) {
 	var offers []Offer
 
 	// Use medication-optimized search query (Arabic normalization + OR-based)
-	sanitizedQuery := BuildMedicationSearchQuery(query)
+	tsQuery := BuildMedicationSearchQuery(query)
+	if tsQuery == "" {
+		// Empty query, return empty results
+		return []*entity.Offer{}, nil
+	}
+
 	err := r.db.Conn.WithContext(ctx).
 		Raw(`
-			SELECT o.id, o.raw_message_id, o.source_phone, o.source_name, o.source_group, o.group_name,
-				o.medication, o.medication_raw, o.quantity, o.unit, o.price, o.currency, o.expiry_date, o.batch_number,
-				o.notes, o.raw_message, o.status, o.created_at, o.updated_at
-			FROM offers o
-			JOIN offers_fts f ON o.rowid = f.rowid
-			WHERE offers_fts MATCH ? AND o.status = 'ACTIVE'
-			ORDER BY rank
+			SELECT id, raw_message_id, source_phone, source_name, source_group, group_name,
+				medication, medication_raw, quantity, unit, price, currency, expiry_date, batch_number,
+				notes, raw_message, status, created_at, updated_at,
+				ts_rank(search_vector, to_tsquery('simple', ?)) as rank
+			FROM offers
+			WHERE search_vector @@ to_tsquery('simple', ?) AND status = 'ACTIVE'
+			ORDER BY rank DESC
 			LIMIT ? OFFSET ?
-		`, sanitizedQuery, limit, offset).
+		`, tsQuery, tsQuery, limit, offset).
 		Scan(&offers).Error
 
 	if err != nil {
