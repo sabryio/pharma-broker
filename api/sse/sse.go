@@ -6,64 +6,84 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
+)
+
+// Constants for SSE configuration
+const (
+	DefaultMaxClients   = 100
+	BroadcastBufferSize = 100
+	ClientBufferSize    = 10
+	HeartbeatInterval   = 30 * time.Second
 )
 
 // SSEHub manages Server-Sent Events connections
 type SSEHub struct {
-	clients    map[chan SSEEvent]bool
-	mu         sync.RWMutex
-	register   chan chan SSEEvent
-	unregister chan chan SSEEvent
-	broadcast  chan SSEEvent
-	maxClients int // Maximum concurrent SSE connections
+	clients           map[chan SSEEvent]bool
+	mu                sync.RWMutex
+	broadcast         chan SSEEvent
+	done              chan struct{}
+	maxClients        int
+	heartbeatInterval time.Duration
 }
 
 // SSEEvent represents an event to send to clients
 type SSEEvent struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
+	Type string `json:"type"`
+	Data any    `json:"data"`
 }
 
-// NewSSEHub creates a new SSE hub
+// NewSSEHub creates a new SSE hub with default settings
 func NewSSEHub() *SSEHub {
-	return NewSSEHubWithLimit(100) // Default max 100 clients
+	return NewSSEHubWithLimit(DefaultMaxClients)
 }
 
 // NewSSEHubWithLimit creates a new SSE hub with a custom client limit
 func NewSSEHubWithLimit(maxClients int) *SSEHub {
+	return NewSSEHubWithOptions(maxClients, HeartbeatInterval)
+}
+
+// NewSSEHubWithOptions creates a new SSE hub with custom settings
+func NewSSEHubWithOptions(maxClients int, heartbeatInterval time.Duration) *SSEHub {
 	if maxClients <= 0 {
-		maxClients = 100
+		maxClients = DefaultMaxClients
 	}
+	if heartbeatInterval <= 0 {
+		heartbeatInterval = HeartbeatInterval
+	}
+
 	hub := &SSEHub{
-		clients:    make(map[chan SSEEvent]bool),
-		register:   make(chan chan SSEEvent),
-		unregister: make(chan chan SSEEvent),
-		broadcast:  make(chan SSEEvent, 100),
-		maxClients: maxClients,
+		clients:           make(map[chan SSEEvent]bool),
+		broadcast:         make(chan SSEEvent, BroadcastBufferSize),
+		done:              make(chan struct{}),
+		maxClients:        maxClients,
+		heartbeatInterval: heartbeatInterval,
 	}
 	go hub.run()
 	return hub
 }
 
+// Shutdown gracefully stops the SSE hub and closes all client connections
+func (h *SSEHub) Shutdown() {
+	close(h.done)
+}
+
 func (h *SSEHub) run() {
-	// Heartbeat ticker
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(h.heartbeatInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case client := <-h.register:
+		case <-h.done:
 			h.mu.Lock()
-			h.clients[client] = true
-			h.mu.Unlock()
-
-		case client := <-h.unregister:
-			h.mu.Lock()
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
+			for client := range h.clients {
 				close(client)
 			}
+			h.clients = nil
 			h.mu.Unlock()
+			log.Info().Msg("SSE hub shutdown complete")
+			return
 
 		case event := <-h.broadcast:
 			h.mu.RLock()
@@ -71,18 +91,18 @@ func (h *SSEHub) run() {
 				select {
 				case client <- event:
 				default:
-					// Client buffer full, skip
+					log.Warn().Str("event_type", event.Type).Msg("SSE client buffer full, event skipped")
 				}
 			}
 			h.mu.RUnlock()
 
 		case <-ticker.C:
-			// Send heartbeat to all clients
 			h.mu.RLock()
 			for client := range h.clients {
 				select {
 				case client <- SSEEvent{Type: "heartbeat", Data: time.Now().Unix()}:
 				default:
+					log.Debug().Msg("SSE heartbeat skipped for slow client")
 				}
 			}
 			h.mu.RUnlock()
@@ -95,7 +115,18 @@ func (h *SSEHub) Broadcast(event SSEEvent) {
 	select {
 	case h.broadcast <- event:
 	default:
-		// Buffer full, drop event
+		log.Warn().Str("event_type", event.Type).Msg("SSE broadcast buffer full, event dropped")
+	}
+}
+
+// BroadcastWithTimeout sends an event with a timeout, returns false if timed out
+func (h *SSEHub) BroadcastWithTimeout(event SSEEvent, timeout time.Duration) bool {
+	select {
+	case h.broadcast <- event:
+		return true
+	case <-time.After(timeout):
+		log.Warn().Str("event_type", event.Type).Dur("timeout", timeout).Msg("SSE broadcast timed out")
+		return false
 	}
 }
 
@@ -108,15 +139,35 @@ func (h *SSEHub) ClientCount() int {
 
 // ServeHTTP handles SSE connections
 func (h *SSEHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Check connection limit
-	h.mu.RLock()
-	clientCount := len(h.clients)
-	h.mu.RUnlock()
+	// Check flusher support before registration to avoid resource leak
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "SSE not supported", http.StatusInternalServerError)
+		return
+	}
 
-	if clientCount >= h.maxClients {
+	// Create client channel
+	client := make(chan SSEEvent, ClientBufferSize)
+
+	// Atomic registration with limit check to prevent race condition
+	h.mu.Lock()
+	if len(h.clients) >= h.maxClients {
+		h.mu.Unlock()
 		http.Error(w, "Too many SSE connections", http.StatusServiceUnavailable)
 		return
 	}
+	h.clients[client] = true
+	h.mu.Unlock()
+
+	// Ensure cleanup on disconnect
+	defer func() {
+		h.mu.Lock()
+		if _, ok := h.clients[client]; ok {
+			delete(h.clients, client)
+			close(client)
+		}
+		h.mu.Unlock()
+	}()
 
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -124,30 +175,19 @@ func (h *SSEHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Create client channel
-	client := make(chan SSEEvent, 10)
-	h.register <- client
-
-	// Ensure cleanup on disconnect
-	defer func() {
-		h.unregister <- client
-	}()
-
-	// Get flusher
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "SSE not supported", http.StatusInternalServerError)
-		return
-	}
-
 	// Send initial connection event
 	fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"connected\"}\n\n")
 	flusher.Flush()
 
+	log.Debug().Int("client_count", h.ClientCount()).Msg("SSE client connected")
+
 	// Stream events
 	for {
 		select {
+		case <-h.done:
+			return
 		case <-r.Context().Done():
+			log.Debug().Int("client_count", h.ClientCount()-1).Msg("SSE client disconnected")
 			return
 		case event, ok := <-client:
 			if !ok {
@@ -156,6 +196,7 @@ func (h *SSEHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			data, err := json.Marshal(event.Data)
 			if err != nil {
+				log.Error().Err(err).Str("event_type", event.Type).Msg("Failed to marshal SSE event data")
 				continue
 			}
 
@@ -191,7 +232,7 @@ func (h *SSEHub) BroadcastNewRequest(requestID string, medication string) {
 func (h *SSEHub) BroadcastNewMatch(matchID string, score float64) {
 	h.Broadcast(SSEEvent{
 		Type: "new_match",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"id":    matchID,
 			"score": score,
 		},
