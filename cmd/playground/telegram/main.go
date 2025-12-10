@@ -94,13 +94,17 @@ func main() {
 
 	// Register REAL commands (shared across WhatsApp and Telegram)
 	// Register all shared commands
-	botcmds.RegisterAll(bot, botcmds.Repositories{
+	repos := botcmds.Repositories{
 		Stats:   statsRepo,
 		Matches: matchRepo,
 		Audit:   auditRepo,
-	})
+	}
+	botcmds.RegisterAll(bot, repos)
 
-	log.Info().Msg("✅ Registered commands: /status, /pending, /confirm, /reject, /help")
+	// Register Telegram callback handlers for inline buttons
+	bot.RegisterMatchCallbacks(repos)
+
+	log.Info().Msg("✅ Registered commands and callbacks: /status, /pending, /confirm, /reject, /help")
 
 	// ============================================================
 	// Print Summary
