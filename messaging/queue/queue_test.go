@@ -497,3 +497,93 @@ func TestDefaultQueueConfig(t *testing.T) {
 	assert.Equal(t, 3, cfg.WorkerCount)
 	assert.Equal(t, 30*time.Second, cfg.ProcessTimeout)
 }
+
+// TestQueue_WorkerPoolParallelism verifies that multiple workers process messages in parallel.
+// If we have N workers processing messages that each take 100ms, processing N messages
+// should complete in ~100ms (parallel), not N*100ms (sequential).
+func TestQueue_WorkerPoolParallelism(t *testing.T) {
+	workerCount := 5
+	messageCount := 5
+	processingTime := 100 * time.Millisecond
+
+	cfg := QueueConfig{
+		BufferSize:     20,
+		DeadLetterSize: 10,
+		WorkerCount:    workerCount,
+		ProcessTimeout: time.Second,
+	}
+	q := newTestQueue(cfg)
+
+	var processed atomic.Int32
+	var maxConcurrent atomic.Int32
+	var currentConcurrent atomic.Int32
+
+	q.SetHandler(func(ctx context.Context, msg *entity.RawMessage) error {
+		// Track concurrent processing
+		current := currentConcurrent.Add(1)
+
+		// Update max concurrent if this is higher
+		for {
+			max := maxConcurrent.Load()
+			if current <= max || maxConcurrent.CompareAndSwap(max, current) {
+				break
+			}
+		}
+
+		time.Sleep(processingTime)
+		processed.Add(1)
+		currentConcurrent.Add(-1)
+		return nil
+	})
+
+	q.Start()
+
+	// Enqueue all messages at once
+	for i := 0; i < messageCount; i++ {
+		msg := newTestMessage("parallel-" + string(rune('a'+i)))
+		q.Enqueue(&msg)
+	}
+
+	// Measure processing time
+	start := time.Now()
+
+	// Wait for all messages to be processed
+	timeout := time.After(3 * time.Second)
+	for {
+		if processed.Load() >= int32(messageCount) {
+			break
+		}
+		select {
+		case <-timeout:
+			t.Fatalf("Timeout waiting for messages to be processed, got %d/%d",
+				processed.Load(), messageCount)
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	elapsed := time.Since(start)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	q.Stop(ctx)
+
+	// Verify all messages processed
+	assert.Equal(t, int32(messageCount), processed.Load())
+
+	// Verify multiple workers processed concurrently
+	// With 5 workers and 5 messages taking 100ms each, max concurrent should be >= 3
+	assert.GreaterOrEqual(t, maxConcurrent.Load(), int32(3),
+		"Expected at least 3 concurrent workers, got %d", maxConcurrent.Load())
+
+	// Verify parallel processing was faster than sequential
+	// Sequential would take: 5 * 100ms = 500ms
+	// Parallel should take: ~100-200ms (with some overhead)
+	maxExpectedTime := time.Duration(messageCount) * processingTime / 2 // Half of sequential time
+	assert.Less(t, elapsed, maxExpectedTime,
+		"Processing took %v, expected less than %v (parallel should be faster than sequential)",
+		elapsed, maxExpectedTime)
+
+	t.Logf("Processed %d messages in %v with max %d concurrent workers",
+		messageCount, elapsed, maxConcurrent.Load())
+}
