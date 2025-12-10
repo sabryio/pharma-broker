@@ -32,6 +32,17 @@ import (
 	storageGorm "pharmabroker/storage/gorm"
 )
 
+// Bootstrap constants
+const (
+	// Timeouts
+	shutdownTimeout      = 10 * time.Second
+	autoSyncTimeout      = 2 * time.Minute
+	autoSyncPollInterval = 500 * time.Millisecond
+
+	// Default config values
+	defaultReportIntervalMins = 60
+)
+
 // Container holds all application dependencies
 type Container struct {
 	// Configuration
@@ -220,7 +231,7 @@ func (c *Container) InitParser(ctx context.Context) error {
 func (c *Container) InitHandlers() error {
 	offerHandler := apiHandlers.NewOfferHandler(c.Repos.Offers, c.Logger)
 	requestHandler := apiHandlers.NewRequestHandler(c.Repos.Requests, c.Logger)
-	matchHandler := apiHandlers.NewMatchHandler(c.Repos.Matches, c.Repos.Offers, c.Repos.Requests, nil, c.SSEHub, c.Logger)
+	matchHandler := apiHandlers.NewMatchHandler(c.Repos.Matches, c.Repos.Offers, c.Repos.Requests, c.Repos.Audit, c.SSEHub, c.Logger)
 	groupHandler := apiHandlers.NewGroupHandler(c.Repos.Groups, c.Logger)
 	statsHandler := apiHandlers.NewStatsHandler(c.Repos.Stats, c.Logger)
 	configHandler := apiHandlers.NewConfigHandler(c.Repos.Config, c.Logger)
@@ -326,21 +337,7 @@ func (c *Container) InitReportScheduler(ctx context.Context) error {
 	reportRepo := storageGorm.NewReportRepo(c.DB)
 	reportGenerator := reports.NewGenerator(reportRepo, c.Logger)
 
-	telegramConfig := notify.TelegramConfig{
-		Enabled:  c.Config.Reports.Telegram.Enabled,
-		BotToken: c.Config.Reports.Telegram.BotToken,
-		ChatIDs:  c.Config.Reports.Telegram.ChatIDs,
-	}
-	emailConfig := notify.EmailConfig{
-		Enabled:    c.Config.Reports.Email.Enabled,
-		SMTPHost:   c.Config.Reports.Email.SMTPHost,
-		SMTPPort:   c.Config.Reports.Email.SMTPPort,
-		Username:   c.Config.Reports.Email.Username,
-		Password:   c.Config.Reports.Email.Password,
-		FromName:   c.Config.Reports.Email.FromName,
-		FromEmail:  c.Config.Reports.Email.FromEmail,
-		Recipients: c.Config.Reports.Email.Recipients,
-	}
+	telegramConfig, emailConfig := c.buildNotifierConfigs()
 	notifier := notify.NewNotificationService(telegramConfig, emailConfig, c.Logger)
 
 	schedulerConfig := reports.SchedulerConfig{
@@ -348,7 +345,7 @@ func (c *Container) InitReportScheduler(ctx context.Context) error {
 		IntervalMins: c.Config.Reports.IntervalMins,
 	}
 	if schedulerConfig.IntervalMins <= 0 {
-		schedulerConfig.IntervalMins = 60
+		schedulerConfig.IntervalMins = defaultReportIntervalMins
 	}
 
 	reportConfig := reports.ReportConfig{
@@ -374,6 +371,26 @@ func (c *Container) InitJanitor() {
 	c.Janitor = janitor.NewJanitor(c.Repos.Messages, c.Config.Database, c.Logger)
 	c.Janitor.Start()
 	c.Logger.Info().Msg("Janitor service started")
+}
+
+// buildNotifierConfigs creates Telegram and Email notification configs from app config
+func (c *Container) buildNotifierConfigs() (notify.TelegramConfig, notify.EmailConfig) {
+	telegramConfig := notify.TelegramConfig{
+		Enabled:  c.Config.Reports.Telegram.Enabled,
+		BotToken: c.Config.Reports.Telegram.BotToken,
+		ChatIDs:  c.Config.Reports.Telegram.ChatIDs,
+	}
+	emailConfig := notify.EmailConfig{
+		Enabled:    c.Config.Reports.Email.Enabled,
+		SMTPHost:   c.Config.Reports.Email.SMTPHost,
+		SMTPPort:   c.Config.Reports.Email.SMTPPort,
+		Username:   c.Config.Reports.Email.Username,
+		Password:   c.Config.Reports.Email.Password,
+		FromName:   c.Config.Reports.Email.FromName,
+		FromEmail:  c.Config.Reports.Email.FromEmail,
+		Recipients: c.Config.Reports.Email.Recipients,
+	}
+	return telegramConfig, emailConfig
 }
 
 // Run starts all services and blocks until shutdown signal
@@ -471,6 +488,9 @@ func (c *Container) Run(ctx context.Context) error {
 
 // Shutdown gracefully stops all services
 func (c *Container) Shutdown() {
+	c.Logger.Info().Msg("Shutting down services...")
+
+	// Stop background services
 	if c.Parser != nil {
 		c.Parser.Stop()
 	}
@@ -483,12 +503,28 @@ func (c *Container) Shutdown() {
 	if c.LearningScheduler != nil {
 		c.LearningScheduler.Stop()
 	}
+
+	// Shutdown SSE hub (prevents goroutine leaks)
+	if c.SSEHub != nil {
+		c.SSEHub.Shutdown()
+	}
+
+	// Disconnect WhatsApp
 	if c.WAManager != nil {
 		c.WAManager.Disconnect()
 	}
+
+	// Graceful HTTP server shutdown with timeout
 	if c.Server != nil {
-		c.Server.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := c.Server.Shutdown(ctx); err != nil {
+			c.Logger.Error().Err(err).Msg("HTTP server shutdown error")
+			c.Server.Close() // Force close if graceful shutdown fails
+		}
 	}
+
+	c.Logger.Info().Msg("All services stopped")
 }
 
 // Close cleans up all resources
@@ -511,7 +547,7 @@ func (c *Container) autoSyncGroups(ctx context.Context) {
 		}
 	}()
 
-	timeout := time.After(2 * time.Minute)
+	timeout := time.After(autoSyncTimeout)
 	for !c.WAManager.IsConnected() {
 		select {
 		case <-ctx.Done():
@@ -519,7 +555,7 @@ func (c *Container) autoSyncGroups(ctx context.Context) {
 		case <-timeout:
 			c.Logger.Warn().Msg("Timeout waiting for WhatsApp connection - skipping auto-sync")
 			return
-		case <-time.After(500 * time.Millisecond):
+		case <-time.After(autoSyncPollInterval):
 		}
 	}
 
@@ -545,14 +581,18 @@ func (c *Container) autoSyncGroups(ctx context.Context) {
 // SeedMedications loads and seeds medication mappings if empty
 func (c *Container) SeedMedications(ctx context.Context) error {
 	count, err := c.Repos.Mappings.Count(ctx)
-	if err != nil || count > 0 {
-		return nil // Skip if error or already seeded
+	if err != nil {
+		return fmt.Errorf("checking medication count: %w", err)
+	}
+	if count > 0 {
+		c.Logger.Debug().Int("count", count).Msg("Medications already seeded")
+		return nil
 	}
 
 	meds, err := entity.LoadRichMedicationMappings("medications.json")
 	if err != nil {
-		c.Logger.Warn().Err(err).Msg("Failed to load medications.json")
-		return nil
+		c.Logger.Warn().Err(err).Msg("Failed to load medications.json - seeding skipped")
+		return nil // Not a fatal error, file may not exist
 	}
 
 	c.Logger.Info().Int("count", len(meds)).Msg("Seeding medication mappings...")
@@ -660,7 +700,4 @@ func updateLearningMetrics(scheduler *matching.LearningScheduler) {
 }
 
 // Compile-time checks
-var (
-	_                            = entity.Offer{}
-	_ repository.OfferRepository = nil
-)
+var _ repository.OfferRepository = (*storageGorm.OfferRepo)(nil)
