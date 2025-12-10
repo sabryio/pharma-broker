@@ -131,14 +131,20 @@ api:
   max_export_records: 1000
 
 # ---------------------------------
-# SQLite Database Settings
+# PostgreSQL Database Settings
 # ---------------------------------
 database:
-  # Path to SQLite database file (created if not exists)
-  path: ./data/pharmabroker.db
+  # PostgreSQL connection string (DSN)
+  # Override with DATABASE_DSN environment variable
+  dsn: postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable
 
-  # Enable WAL mode for better concurrent read/write performance
-  enable_wal: true
+  # Connection pool settings
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime_mins: 30
+
+  # Days to retain raw messages before cleanup
+  raw_retention_days: 30
 
 # ---------------------------------
 # Network/Server Settings
