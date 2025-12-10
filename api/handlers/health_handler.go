@@ -24,17 +24,40 @@ type ComponentHealth struct {
 	Latency string       `json:"latency,omitempty"`
 }
 
+// WhatsAppHealth represents detailed WhatsApp connection health
+type WhatsAppHealth struct {
+	Status          HealthStatus `json:"status"`
+	State           string       `json:"state"`
+	ReconnectCount  int          `json:"reconnect_count,omitempty"`
+	LastConnectedAt string       `json:"last_connected_at,omitempty"`
+	UptimeSeconds   int64        `json:"uptime_seconds,omitempty"`
+	Message         string       `json:"message,omitempty"`
+}
+
 // HealthResponse represents the overall health check response
 type HealthResponse struct {
 	Status     HealthStatus               `json:"status"`
 	Timestamp  string                     `json:"timestamp"`
 	Components map[string]ComponentHealth `json:"components"`
+	WhatsApp   *WhatsAppHealth            `json:"whatsapp,omitempty"`
+}
+
+// WAStatusProvider provides detailed WhatsApp connection status
+type WAStatusProvider interface {
+	IsConnected() bool
+	State() interface{ String() string }
+	GetConnectionStatus() interface {
+		ReconnectCount() int
+		LastConnectedAt() time.Time
+		UptimeSeconds() int64
+	}
 }
 
 // HealthChecker provides health check functionality
 type HealthChecker struct {
 	dbPingFunc      func(ctx context.Context) error
 	waConnectedFunc func() bool
+	waStatusFunc    func() (state string, reconnectCount int, lastConnected time.Time, uptimeSeconds int64)
 	aiHealthFunc    func(ctx context.Context) error
 	mu              sync.RWMutex
 }
@@ -63,6 +86,13 @@ func (h *HealthChecker) SetAIHealthFunc(fn func(ctx context.Context) error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.aiHealthFunc = fn
+}
+
+// SetWAStatusFunc sets the WhatsApp detailed status function
+func (h *HealthChecker) SetWAStatusFunc(fn func() (state string, reconnectCount int, lastConnected time.Time, uptimeSeconds int64)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.waStatusFunc = fn
 }
 
 // LiveHandler returns a simple liveness probe (is the process running?)
@@ -114,8 +144,43 @@ func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check WhatsApp
-	if waConnected != nil {
+	// Check WhatsApp (detailed)
+	h.mu.RLock()
+	waStatus := h.waStatusFunc
+	h.mu.RUnlock()
+
+	if waStatus != nil {
+		state, reconnectCount, lastConnected, uptimeSeconds := waStatus()
+		isConnected := state == "CONNECTED"
+
+		waHealth := &WhatsAppHealth{
+			State:          state,
+			ReconnectCount: reconnectCount,
+			UptimeSeconds:  uptimeSeconds,
+		}
+
+		if !lastConnected.IsZero() {
+			waHealth.LastConnectedAt = lastConnected.Format(time.RFC3339)
+		}
+
+		if isConnected {
+			waHealth.Status = HealthOK
+			response.Components["whatsapp"] = ComponentHealth{Status: HealthOK}
+		} else {
+			waHealth.Status = HealthDegraded
+			waHealth.Message = "state: " + state
+			response.Components["whatsapp"] = ComponentHealth{
+				Status:  HealthDegraded,
+				Message: state,
+			}
+			if response.Status == HealthOK {
+				response.Status = HealthDegraded
+			}
+		}
+
+		response.WhatsApp = waHealth
+	} else if waConnected != nil {
+		// Fallback to simple check
 		if waConnected() {
 			response.Components["whatsapp"] = ComponentHealth{
 				Status: HealthOK,

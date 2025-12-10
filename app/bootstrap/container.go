@@ -406,6 +406,24 @@ func (c *Container) Run(ctx context.Context) error {
 			Msg("WhatsApp bot commands enabled")
 	}
 
+	// Wire Telegram alerts for WhatsApp connection failures
+	if c.Config.Reports.Telegram.Enabled && c.Config.Reports.Telegram.BotToken != "" {
+		telegramNotifier := notify.NewTelegramNotifier(notify.TelegramConfig{
+			Enabled:  true,
+			BotToken: c.Config.Reports.Telegram.BotToken,
+			ChatIDs:  c.Config.Reports.Telegram.ChatIDs,
+		}, c.Logger)
+		alertAdapter := notify.NewTelegramAlertAdapter(telegramNotifier)
+		c.WAManager.SetAlerter(alertAdapter)
+		c.Logger.Info().Msg("WhatsApp admin alerts enabled via Telegram")
+	}
+
+	// Wire WhatsApp status to health endpoint
+	c.Handlers.Health.SetWAStatusFunc(func() (state string, reconnectCount int, lastConnected time.Time, uptimeSeconds int64) {
+		status := c.WAManager.GetConnectionStatus()
+		return status.State.String(), status.ReconnectCount, status.LastConnectedAt, status.UptimeSeconds
+	})
+
 	// Start message feeding loop
 	go func() {
 		msgChan := listener.MessageChannel()

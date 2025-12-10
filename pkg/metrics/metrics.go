@@ -161,4 +161,21 @@ var (
 		Help:    "Duration of cronjob executions",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"job"})
+
+	// ========== WhatsApp Connection Metrics ==========
+
+	WhatsAppConnectionState = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pharma_whatsapp_connection_state",
+		Help: "WhatsApp connection state (0=disconnected, 1=connecting, 2=connected, 3=reconnecting, 4=failed)",
+	})
+
+	WhatsAppReconnectAttempts = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_whatsapp_reconnect_attempts_total",
+		Help: "Total number of WhatsApp reconnection attempts",
+	})
+
+	WhatsAppReconnectFailures = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_whatsapp_reconnect_failures_total",
+		Help: "Total number of failed WhatsApp reconnection cycles (max attempts reached)",
+	})
 )

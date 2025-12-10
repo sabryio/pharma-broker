@@ -3,10 +3,12 @@ package whatsapp
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"pharmabroker/pkg/config"
+	"pharmabroker/pkg/metrics"
 )
 
 // Constants for timeouts and limits
@@ -27,12 +30,76 @@ const (
 	defaultConnectTimeout = 30 * time.Second
 	groupInfoTimeout      = 5 * time.Second
 	botResponseTimeout    = 30 * time.Second
-	maxReconnectAttempts  = 5
-	maxReconnectDelay     = 5 * time.Minute
 	qrChannelBufferSize   = 1
+
+	// Default reconnection settings
+	defaultMaxReconnectAttempts = 0 // 0 = infinite
+	defaultBaseDelay            = 5 * time.Second
+	defaultMaxDelay             = 5 * time.Minute
+	defaultJitterFactor         = 0.1 // 10% jitter
 )
 
-// Manager manages WhatsApp client connections
+// ConnectionState represents the current state of the WhatsApp connection.
+type ConnectionState int32
+
+const (
+	StateDisconnected ConnectionState = iota
+	StateConnecting
+	StateConnected
+	StateReconnecting
+	StateFailed // Max attempts reached
+)
+
+// String returns the string representation of the connection state.
+func (s ConnectionState) String() string {
+	switch s {
+	case StateDisconnected:
+		return "DISCONNECTED"
+	case StateConnecting:
+		return "CONNECTING"
+	case StateConnected:
+		return "CONNECTED"
+	case StateReconnecting:
+		return "RECONNECTING"
+	case StateFailed:
+		return "FAILED"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// ReconnectConfig holds configuration for reconnection behavior.
+type ReconnectConfig struct {
+	// MaxAttempts is the maximum number of reconnection attempts. 0 = infinite.
+	MaxAttempts int
+	// BaseDelay is the initial delay before first reconnection attempt.
+	BaseDelay time.Duration
+	// MaxDelay is the maximum delay between reconnection attempts.
+	MaxDelay time.Duration
+	// JitterFactor adds randomness to delays (0.1 = 10% jitter).
+	JitterFactor float64
+	// OnMaxAttempts is called when max attempts is reached (if MaxAttempts > 0).
+	OnMaxAttempts func()
+	// OnStateChange is called when connection state changes.
+	OnStateChange func(from, to ConnectionState)
+}
+
+// DefaultReconnectConfig returns sensible defaults for reconnection.
+func DefaultReconnectConfig() ReconnectConfig {
+	return ReconnectConfig{
+		MaxAttempts:  defaultMaxReconnectAttempts,
+		BaseDelay:    defaultBaseDelay,
+		MaxDelay:     defaultMaxDelay,
+		JitterFactor: defaultJitterFactor,
+	}
+}
+
+// AlertNotifier sends alerts to administrators.
+type AlertNotifier interface {
+	SendAlert(ctx context.Context, severity, title, message string) error
+}
+
+// Manager manages WhatsApp client connections with resilient reconnection.
 type Manager struct {
 	cfg      *config.WhatsAppConfig
 	client   *whatsmeow.Client
@@ -44,10 +111,21 @@ type Manager struct {
 	// Bot command handler (optional)
 	botHandler *BotCommandHandler
 
-	// State
-	connected bool
-	qrChannel chan string
-	stopChan  chan struct{}
+	// Admin alerter (optional)
+	alerter AlertNotifier
+
+	// Reconnection configuration
+	reconnectCfg ReconnectConfig
+
+	// State (atomic for lock-free reads)
+	state           atomic.Int32 // ConnectionState
+	reconnectCount  atomic.Int32
+	lastConnectedAt atomic.Int64 // Unix timestamp
+
+	// Channels
+	qrChannel     chan string
+	stopChan      chan struct{}
+	reconnectChan chan struct{} // Signal to trigger reconnect
 }
 
 // EventHandler processes WhatsApp events
@@ -82,8 +160,13 @@ type GroupInfo struct {
 	Description string
 }
 
-// NewManager creates a new WhatsApp manager
+// NewManager creates a new WhatsApp manager with default reconnection config.
 func NewManager(ctx context.Context, cfg *config.WhatsAppConfig, log zerolog.Logger) (*Manager, error) {
+	return NewManagerWithConfig(ctx, cfg, DefaultReconnectConfig(), log)
+}
+
+// NewManagerWithConfig creates a new WhatsApp manager with custom reconnection config.
+func NewManagerWithConfig(ctx context.Context, cfg *config.WhatsAppConfig, reconnectCfg ReconnectConfig, log zerolog.Logger) (*Manager, error) {
 	// Ensure session directory exists
 	if err := os.MkdirAll(cfg.SessionDir, 0755); err != nil {
 		return nil, fmt.Errorf("create session directory: %w", err)
@@ -96,13 +179,17 @@ func NewManager(ctx context.Context, cfg *config.WhatsAppConfig, log zerolog.Log
 		return nil, fmt.Errorf("create session store: %w", err)
 	}
 
-	return &Manager{
-		cfg:       cfg,
-		store:     container,
-		log:       log.With().Str("component", "whatsapp").Logger(),
-		qrChannel: make(chan string, qrChannelBufferSize),
-		stopChan:  make(chan struct{}),
-	}, nil
+	m := &Manager{
+		cfg:           cfg,
+		store:         container,
+		log:           log.With().Str("component", "whatsapp").Logger(),
+		reconnectCfg:  reconnectCfg,
+		qrChannel:     make(chan string, qrChannelBufferSize),
+		stopChan:      make(chan struct{}),
+		reconnectChan: make(chan struct{}, 1),
+	}
+	m.setState(StateDisconnected)
+	return m, nil
 }
 
 // RegisterHandler adds an event handler
@@ -150,7 +237,7 @@ func (m *Manager) Connect(ctx context.Context) error {
 				}
 			case "success":
 				m.log.Info().Msg("Successfully paired!")
-				m.connected = true
+				m.onConnected()
 				return nil
 			case "timeout":
 				return fmt.Errorf("QR code timeout")
@@ -161,7 +248,7 @@ func (m *Manager) Connect(ctx context.Context) error {
 		if err := m.client.Connect(); err != nil {
 			return fmt.Errorf("connect: %w", err)
 		}
-		m.connected = true
+		m.onConnected()
 		m.log.Info().Msg("Connected to existing session")
 	}
 
@@ -173,21 +260,49 @@ func (m *Manager) GetQRChannel() <-chan string {
 	return m.qrChannel
 }
 
-// IsConnected returns connection status
+// IsConnected returns connection status.
 func (m *Manager) IsConnected() bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.connected
+	return m.State() == StateConnected
 }
 
-// Disconnect closes the WhatsApp connection
+// State returns the current connection state.
+func (m *Manager) State() ConnectionState {
+	return ConnectionState(m.state.Load())
+}
+
+// setState updates the state and triggers callback if configured.
+func (m *Manager) setState(newState ConnectionState) {
+	oldState := ConnectionState(m.state.Swap(int32(newState)))
+	if oldState != newState {
+		m.log.Info().
+			Str("from", oldState.String()).
+			Str("to", newState.String()).
+			Msg("Connection state changed")
+
+		metrics.WhatsAppConnectionState.Set(float64(newState))
+
+		if m.reconnectCfg.OnStateChange != nil {
+			go m.reconnectCfg.OnStateChange(oldState, newState)
+		}
+	}
+}
+
+// onConnected handles successful connection.
+func (m *Manager) onConnected() {
+	m.setState(StateConnected)
+	m.lastConnectedAt.Store(time.Now().Unix())
+	m.reconnectCount.Store(0)
+	metrics.WhatsAppReconnectAttempts.Add(0) // Initialize if needed
+}
+
+// Disconnect closes the WhatsApp connection.
 func (m *Manager) Disconnect() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.client != nil {
 		m.client.Disconnect()
-		m.connected = false
+		m.setState(StateDisconnected)
 	}
 
 	close(m.stopChan)
@@ -244,16 +359,14 @@ func (m *Manager) handleEvent(evt any) {
 	case *events.Message:
 		m.handleMessageEvent(v)
 	case *events.Connected:
-		m.mu.Lock()
-		m.connected = true
-		m.mu.Unlock()
+		m.onConnected()
 		m.log.Info().Msg("WhatsApp connected")
 	case *events.Disconnected:
-		m.mu.Lock()
-		m.connected = false
-		m.mu.Unlock()
-		m.log.Warn().Msg("WhatsApp disconnected")
-		go m.reconnectWithBackoff()
+		if m.State() != StateReconnecting {
+			m.setState(StateReconnecting)
+			m.log.Warn().Msg("WhatsApp disconnected, starting reconnection")
+			go m.reconnectWithBackoff()
+		}
 	case *events.HistorySync:
 		m.handleHistorySync(v)
 	}
@@ -466,48 +579,151 @@ func (m *Manager) isGroupMonitored(jid string) bool {
 	return slices.Contains(m.cfg.MonitoredGroups, jid)
 }
 
-// reconnectWithBackoff attempts to reconnect with exponential backoff
+// reconnectWithBackoff attempts to reconnect with exponential backoff and jitter.
 func (m *Manager) reconnectWithBackoff() {
-	baseDelay := m.cfg.ReconnectDelay
+	cfg := m.reconnectCfg
+	baseDelay := cfg.BaseDelay
 	if baseDelay == 0 {
-		baseDelay = 5 * time.Second
+		baseDelay = defaultBaseDelay
+	}
+	maxDelay := cfg.MaxDelay
+	if maxDelay == 0 {
+		maxDelay = defaultMaxDelay
 	}
 
-	for attempt := range maxReconnectAttempts {
-		m.mu.RLock()
-		isConnected := m.connected
-		m.mu.RUnlock()
-
-		if isConnected {
-			return // Already reconnected
+	attempt := 0
+	for {
+		// Check if already connected
+		if m.State() == StateConnected {
+			return
 		}
 
-		// Exponential backoff: delay * 2^attempt, capped at maxReconnectDelay
-		delay := min(baseDelay*time.Duration(1<<attempt), maxReconnectDelay)
+		// Check max attempts (0 = infinite)
+		if cfg.MaxAttempts > 0 && attempt >= cfg.MaxAttempts {
+			m.onMaxAttemptsReached(attempt)
+			return
+		}
+
+		attempt++
+		m.reconnectCount.Store(int32(attempt))
+		metrics.WhatsAppReconnectAttempts.Inc()
+
+		// Calculate delay with exponential backoff and jitter
+		delay := m.calculateBackoffDelay(attempt, baseDelay, maxDelay, cfg.JitterFactor)
 
 		m.log.Info().
-			Int("attempt", attempt+1).
-			Int("max_attempts", maxReconnectAttempts).
+			Int("attempt", attempt).
+			Int("max_attempts", cfg.MaxAttempts).
 			Dur("delay", delay).
 			Msg("Attempting reconnection")
 
-		time.Sleep(delay)
+		// Wait with cancellation support
+		select {
+		case <-time.After(delay):
+		case <-m.stopChan:
+			m.log.Info().Msg("Reconnection cancelled")
+			return
+		case <-m.reconnectChan:
+			m.log.Info().Msg("Manual reconnect triggered")
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), defaultConnectTimeout)
 		err := m.Connect(ctx)
 		cancel()
 
 		if err == nil {
-			m.log.Info().Int("attempt", attempt+1).Msg("Reconnection successful")
+			m.log.Info().Int("attempt", attempt).Msg("Reconnection successful")
 			return
 		}
 
-		m.log.Error().Err(err).Int("attempt", attempt+1).Msg("Reconnection failed")
+		m.log.Error().Err(err).Int("attempt", attempt).Msg("Reconnection failed")
+	}
+}
+
+// calculateBackoffDelay calculates delay with exponential backoff and jitter.
+func (m *Manager) calculateBackoffDelay(attempt int, baseDelay, maxDelay time.Duration, jitterFactor float64) time.Duration {
+	// Exponential backoff: baseDelay * 2^(attempt-1)
+	delay := min(baseDelay*time.Duration(1<<uint(attempt-1)), maxDelay)
+
+	// Add jitter: delay * (1 ± jitterFactor)
+	if jitterFactor > 0 {
+		jitter := float64(delay) * jitterFactor * (2*rand.Float64() - 1)
+		delay = time.Duration(float64(delay) + jitter)
 	}
 
+	return delay
+}
+
+// onMaxAttemptsReached handles when max reconnection attempts are exhausted.
+func (m *Manager) onMaxAttemptsReached(attempts int) {
+	m.setState(StateFailed)
+	metrics.WhatsAppReconnectFailures.Inc()
+
 	m.log.Error().
-		Int("max_attempts", maxReconnectAttempts).
-		Msg("Max reconnection attempts reached, giving up")
+		Int("attempts", attempts).
+		Msg("Max reconnection attempts reached")
+
+	// Call user callback
+	if m.reconnectCfg.OnMaxAttempts != nil {
+		go m.reconnectCfg.OnMaxAttempts()
+	}
+
+	// Send admin alert
+	if m.alerter != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := m.alerter.SendAlert(ctx, "critical", "WhatsApp Disconnected",
+			fmt.Sprintf("WhatsApp connection failed after %d attempts. Manual intervention required.", attempts))
+		if err != nil {
+			m.log.Error().Err(err).Msg("Failed to send admin alert")
+		}
+	}
+}
+
+// ForceReconnect triggers an immediate reconnection attempt.
+func (m *Manager) ForceReconnect() {
+	select {
+	case m.reconnectChan <- struct{}{}:
+		m.log.Info().Msg("Force reconnect signal sent")
+	default:
+		m.log.Warn().Msg("Reconnect already in progress")
+	}
+}
+
+// SetAlerter sets the alert notifier for admin notifications.
+func (m *Manager) SetAlerter(alerter AlertNotifier) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.alerter = alerter
+}
+
+// GetConnectionStatus returns detailed connection status.
+func (m *Manager) GetConnectionStatus() ConnectionStatus {
+	return ConnectionStatus{
+		State:           m.State(),
+		ReconnectCount:  int(m.reconnectCount.Load()),
+		LastConnectedAt: time.Unix(m.lastConnectedAt.Load(), 0),
+		UptimeSeconds:   m.getUptimeSeconds(),
+	}
+}
+
+// ConnectionStatus represents detailed connection status.
+type ConnectionStatus struct {
+	State           ConnectionState `json:"state"`
+	ReconnectCount  int             `json:"reconnect_count"`
+	LastConnectedAt time.Time       `json:"last_connected_at"`
+	UptimeSeconds   int64           `json:"uptime_seconds"`
+}
+
+func (m *Manager) getUptimeSeconds() int64 {
+	if m.State() != StateConnected {
+		return 0
+	}
+	lastConn := m.lastConnectedAt.Load()
+	if lastConn == 0 {
+		return 0
+	}
+	return time.Now().Unix() - lastConn
 }
 
 func extractPhoneNumber(jid types.JID) string {
