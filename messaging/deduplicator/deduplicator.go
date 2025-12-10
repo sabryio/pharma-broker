@@ -1,9 +1,11 @@
-package whatsapp
+package deduplicator
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -26,6 +28,14 @@ func isNil[T any](v T) bool {
 	}
 }
 
+// absDuration returns the absolute value of a duration.
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
 // DeduplicatorConfig holds configuration for the message deduplicator.
 type DeduplicatorConfig struct {
 	// Window is the time window for detecting duplicates.
@@ -36,6 +46,27 @@ type DeduplicatorConfig struct {
 	CacheSize int
 	// CacheTTL is how long entries stay in cache.
 	CacheTTL time.Duration
+	// CleanupInterval is how often expired entries are removed from cache.
+	CleanupInterval time.Duration
+}
+
+// Validate checks that the configuration values are valid.
+func (cfg DeduplicatorConfig) Validate() error {
+	if cfg.Window <= 0 {
+		return errors.New("window must be positive")
+	}
+	if cfg.UseInMemoryCache {
+		if cfg.CacheSize <= 0 {
+			return errors.New("cache size must be positive when cache is enabled")
+		}
+		if cfg.CacheTTL <= 0 {
+			return errors.New("cache TTL must be positive when cache is enabled")
+		}
+		if cfg.CleanupInterval <= 0 {
+			return errors.New("cleanup interval must be positive when cache is enabled")
+		}
+	}
+	return nil
 }
 
 // DefaultDeduplicatorConfig returns sensible defaults.
@@ -45,6 +76,7 @@ func DefaultDeduplicatorConfig() DeduplicatorConfig {
 		UseInMemoryCache: true,
 		CacheSize:        10000,
 		CacheTTL:         30 * time.Second,
+		CleanupInterval:  time.Minute,
 	}
 }
 
@@ -76,9 +108,13 @@ type Deduplicator[T DedupMessage] struct {
 	cache   map[string]cacheEntry
 	cacheMu sync.RWMutex
 
-	// Stats
-	hits   int64
-	misses int64
+	// Stats (atomic for thread safety)
+	hits   atomic.Int64
+	misses atomic.Int64
+
+	// Lifecycle management
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // cacheEntry represents a cached message for deduplication.
@@ -94,19 +130,37 @@ func cacheKey(groupJID, senderJID string) string {
 }
 
 // NewDeduplicator creates a new message deduplicator.
-func NewDeduplicator[T DedupMessage](cfg DeduplicatorConfig, lookup Lookup[T], log zerolog.Logger) *Deduplicator[T] {
+// The provided context controls the lifecycle of background goroutines.
+func NewDeduplicator[T DedupMessage](ctx context.Context, cfg DeduplicatorConfig, lookup Lookup[T], log zerolog.Logger) (*Deduplicator[T], error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
 	d := &Deduplicator[T]{
 		cfg:    cfg,
 		log:    log.With().Str("component", "deduplicator").Logger(),
 		lookup: lookup,
+		cancel: cancel,
 	}
 
 	if cfg.UseInMemoryCache {
 		d.cache = make(map[string]cacheEntry, cfg.CacheSize)
-		go d.cleanupLoop()
+		d.wg.Add(1)
+		go d.cleanupLoop(ctx)
 	}
 
-	return d
+	return d, nil
+}
+
+// Close stops background goroutines and releases resources.
+// It blocks until all goroutines have exited.
+func (d *Deduplicator[T]) Close() {
+	if d.cancel != nil {
+		d.cancel()
+	}
+	d.wg.Wait()
 }
 
 // IsDuplicate checks if a message is a duplicate of a recent message.
@@ -116,7 +170,7 @@ func (d *Deduplicator[T]) IsDuplicate(ctx context.Context, groupJID, senderJID, 
 	if d.cfg.UseInMemoryCache {
 		if d.checkCache(groupJID, senderJID, content, timestamp) {
 			metrics.DeduplicatorHits.Inc()
-			d.hits++
+			d.hits.Add(1)
 			return true
 		}
 	}
@@ -132,13 +186,13 @@ func (d *Deduplicator[T]) IsDuplicate(ctx context.Context, groupJID, senderJID, 
 		// Check if lastMsg is non-nil using reflection (needed for pointer types)
 		if !isNil(lastMsg) && d.isDuplicateOf(lastMsg, content, timestamp) {
 			metrics.DeduplicatorHits.Inc()
-			d.hits++
+			d.hits.Add(1)
 			return true
 		}
 	}
 
 	metrics.DeduplicatorMisses.Inc()
-	d.misses++
+	d.misses.Add(1)
 	return false
 }
 
@@ -160,7 +214,7 @@ func (d *Deduplicator[T]) RecordMessage(groupJID, senderJID, content string, tim
 
 	// Evict if cache is full
 	if len(d.cache) >= d.cfg.CacheSize {
-		d.evictOldest()
+		d.evictOne()
 	}
 
 	d.cache[key] = entry
@@ -198,31 +252,30 @@ func (d *Deduplicator[T]) isDuplicateOf(lastMsg T, content string, timestamp tim
 	return timeDiff < d.cfg.Window && lastMsg.GetContent() == content
 }
 
-// evictOldest removes the oldest entry from the cache.
+// evictOne removes one entry from the cache to make room.
+// Uses random eviction for O(1) performance.
 // Caller must hold the write lock.
-func (d *Deduplicator[T]) evictOldest() {
-	var oldestKey string
-	var oldestTime time.Time
-
-	for key, entry := range d.cache {
-		if oldestKey == "" || entry.Timestamp.Before(oldestTime) {
-			oldestKey = key
-			oldestTime = entry.Timestamp
-		}
-	}
-
-	if oldestKey != "" {
-		delete(d.cache, oldestKey)
+func (d *Deduplicator[T]) evictOne() {
+	for key := range d.cache {
+		delete(d.cache, key)
+		return
 	}
 }
 
 // cleanupLoop periodically removes expired entries from the cache.
-func (d *Deduplicator[T]) cleanupLoop() {
-	ticker := time.NewTicker(time.Minute)
+func (d *Deduplicator[T]) cleanupLoop(ctx context.Context) {
+	defer d.wg.Done()
+
+	ticker := time.NewTicker(d.cfg.CleanupInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		d.cleanup()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			d.cleanup()
+		}
 	}
 }
 
@@ -245,21 +298,24 @@ func (d *Deduplicator[T]) Stats() DeduplicatorStats {
 	cacheSize := len(d.cache)
 	d.cacheMu.RUnlock()
 
+	hits := d.hits.Load()
+	misses := d.misses.Load()
+
 	return DeduplicatorStats{
-		Hits:      d.hits,
-		Misses:    d.misses,
+		Hits:      hits,
+		Misses:    misses,
 		CacheSize: cacheSize,
-		HitRate:   d.calculateHitRate(),
+		HitRate:   calculateHitRate(hits, misses),
 	}
 }
 
 // calculateHitRate returns the cache hit rate as a percentage.
-func (d *Deduplicator[T]) calculateHitRate() float64 {
-	total := d.hits + d.misses
+func calculateHitRate(hits, misses int64) float64 {
+	total := hits + misses
 	if total == 0 {
 		return 0
 	}
-	return float64(d.hits) / float64(total) * 100
+	return float64(hits) / float64(total) * 100
 }
 
 // DeduplicatorStats holds deduplication statistics.
@@ -270,13 +326,13 @@ type DeduplicatorStats struct {
 	HitRate   float64 `json:"hit_rate_pct"`
 }
 
-// Clear clears the in-memory cache.
+// Clear clears the in-memory cache and resets stats.
 func (d *Deduplicator[T]) Clear() {
 	if d.cfg.UseInMemoryCache {
 		d.cacheMu.Lock()
 		d.cache = make(map[string]cacheEntry, d.cfg.CacheSize)
 		d.cacheMu.Unlock()
 	}
-	d.hits = 0
-	d.misses = 0
+	d.hits.Store(0)
+	d.misses.Store(0)
 }

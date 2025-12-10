@@ -9,6 +9,7 @@ import (
 
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
+	"pharmabroker/messaging/deduplicator"
 )
 
 // Constants for listener configuration
@@ -26,7 +27,7 @@ type Listener struct {
 	rawMsgRepo             repository.RawMessageRepository
 	groupRepo              repository.GroupRepository
 	queue                  *Queue
-	deduplicator           *Deduplicator[*entity.RawMessage]
+	deduplicator           *deduplicator.Deduplicator[*entity.RawMessage]
 	skipOwnMessagesChecker func() bool
 }
 
@@ -47,12 +48,22 @@ func NewListener(
 	groupRepo repository.GroupRepository,
 ) *Listener {
 	lookup := &RawMessageLookup{repo: rawMsgRepo}
+	dedup, err := deduplicator.NewDeduplicator(
+		context.Background(),
+		deduplicator.DefaultDeduplicatorConfig(),
+		lookup,
+		log,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create deduplicator, using nil")
+		dedup = nil
+	}
 	return &Listener{
 		log:                    log.With().Str("component", "listener").Logger(),
 		rawMsgRepo:             rawMsgRepo,
 		groupRepo:              groupRepo,
 		queue:                  NewQueue(DefaultQueueConfig(), log),
-		deduplicator:           NewDeduplicator(DefaultDeduplicatorConfig(), lookup, log),
+		deduplicator:           dedup,
 		skipOwnMessagesChecker: func() bool { return true },
 	}
 }
@@ -63,15 +74,25 @@ func NewListenerWithConfig(
 	rawMsgRepo repository.RawMessageRepository,
 	groupRepo repository.GroupRepository,
 	queueCfg QueueConfig,
-	dedupCfg DeduplicatorConfig,
+	dedupCfg deduplicator.DeduplicatorConfig,
 ) *Listener {
 	lookup := &RawMessageLookup{repo: rawMsgRepo}
+	dedup, err := deduplicator.NewDeduplicator(
+		context.Background(),
+		dedupCfg,
+		lookup,
+		log,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create deduplicator, using nil")
+		dedup = nil
+	}
 	return &Listener{
 		log:                    log.With().Str("component", "listener").Logger(),
 		rawMsgRepo:             rawMsgRepo,
 		groupRepo:              groupRepo,
 		queue:                  NewQueue(queueCfg, log),
-		deduplicator:           NewDeduplicator(dedupCfg, lookup, log),
+		deduplicator:           dedup,
 		skipOwnMessagesChecker: func() bool { return true },
 	}
 }
