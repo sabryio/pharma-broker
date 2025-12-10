@@ -18,6 +18,7 @@ import (
 	apiHandlers "pharmabroker/api/handlers"
 	"pharmabroker/api/monitor"
 	"pharmabroker/api/sse"
+	botcmds "pharmabroker/bot/commands"
 	whatsappbot "pharmabroker/bot/whatsapp"
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
@@ -416,12 +417,12 @@ func (c *Container) Run(ctx context.Context) error {
 			AuthorizedPhones: c.Config.WhatsApp.BotCommands.AuthorizedPhones,
 		}, c.Logger)
 
-		// Register commands
-		bot.RegisterCommand(whatsappbot.NewStatusCommand(c.Repos.Stats))
-		bot.RegisterCommand(whatsappbot.NewPendingCommand(c.Repos.Matches))
-		bot.RegisterCommand(whatsappbot.NewConfirmCommand(c.Repos.Matches, c.Repos.Audit))
-		bot.RegisterCommand(whatsappbot.NewRejectCommand(c.Repos.Matches, c.Repos.Audit))
-		bot.RegisterCommand(whatsappbot.NewHelpCommand())
+		// Register all shared commands
+		botcmds.RegisterAll(bot, botcmds.Repositories{
+			Stats:   c.Repos.Stats,
+			Matches: c.Repos.Matches,
+			Audit:   c.Repos.Audit,
+		})
 
 		c.WAManager.SetBotHandler(bot)
 		c.Logger.Info().
@@ -703,6 +704,15 @@ func updateLearningMetrics(scheduler *matching.LearningScheduler) {
 		metrics.ScoreSeparation.Set(status.LastMetrics.AvgScoreConfirmed - status.LastMetrics.AvgScoreRejected)
 		metrics.FeedbackSamplesAnalyzed.Set(float64(status.LastMetrics.SampleSize))
 	}
+}
+
+// auditAdapter adapts repository.AuditRepository to core.AuditLogger
+type auditAdapter struct {
+	repo repository.AuditRepository
+}
+
+func (a *auditAdapter) Log(ctx context.Context, action, entityID, details string) error {
+	return a.repo.Log(ctx, entity.AuditAction(action), entityID, details)
 }
 
 // Compile-time checks

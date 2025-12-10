@@ -31,19 +31,20 @@ type Message struct {
 
 // Response represents a bot response.
 type Response struct {
-	Text      string
-	ParseMode ParseMode
-	ReplyToID string // Optional: reply to specific message
-	Keyboard  any    // Platform-specific keyboard/buttons
+	Text           string
+	ParseMode      ParseMode
+	ReplyToID      string         // Optional: reply to specific message
+	InlineKeyboard InlineKeyboard // Optional: inline keyboard buttons
 }
 
 // ParseMode indicates how to parse the response text.
 type ParseMode string
 
 const (
-	ParseModeText     ParseMode = "text"
-	ParseModeMarkdown ParseMode = "markdown"
-	ParseModeHTML     ParseMode = "html"
+	ParseModeText       ParseMode = "text"
+	ParseModeMarkdownV1 ParseMode = "Markdown"
+	ParseModeMarkdownV2 ParseMode = "MarkdownV2"
+	ParseModeHTML       ParseMode = "html"
 )
 
 // Command represents a parsed bot command.

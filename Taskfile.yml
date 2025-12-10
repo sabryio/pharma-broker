@@ -63,6 +63,11 @@ tasks:
     cmds:
       - go run ./cmd/tools/refresh_embeddings
 
+  start:telegram:
+    desc: Start Telegram bot
+    cmds:
+      - go run ./cmd/playground/telegram/main.go
+
   workflow:test:
     desc: Run comprehensive workflow test
     cmds:
