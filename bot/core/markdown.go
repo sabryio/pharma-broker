@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/go-telegram/bot"
+	"github.com/mattn/go-runewidth"
 )
 
 // EscapeMarkdownV2 escapes special characters for Telegram MarkdownV2.
@@ -37,10 +38,13 @@ type InlineButton struct {
 // InlineKeyboard represents a row of inline buttons.
 type InlineKeyboard [][]InlineButton
 
-// Separator returns a line of separator characters matching the given text width.
-// Uses ━ (box drawing heavy horizontal) for a clean look.
 func Separator(text string) string {
-	// Count runes for proper Unicode handling
-	runeCount := len([]rune(text))
-	return strings.Repeat("━", runeCount)
+	width := runewidth.StringWidth(text)
+	sepChar := "━"
+	sepWidth := runewidth.StringWidth(sepChar)
+
+	// number of separator characters needed
+	count := width / sepWidth
+
+	return strings.Repeat(sepChar, count)
 }

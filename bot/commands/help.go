@@ -22,19 +22,28 @@ func (c *HelpCommand) Handle(ctx context.Context, cmd *core.Command, msg *core.M
 
 	return core.Response{
 		Text: "*" + core.EscapeMarkdownV2(title) + "*\n" +
-			separator + "\n" +
+			separator + "\n\n" +
+			"*📊 Overview*\n" +
 			"/start \\- Welcome message\n" +
-			"/status \\- Show system status\n" +
-			"/pending \\- List pending matches\n" +
+			"/status \\- Quick system status\n" +
+			"/dashboard \\- Full dashboard\n\n" +
+			"*💊 Inventory*\n" +
+			"/offers \\- Active medication offers\n" +
+			"/requests \\- Active medication requests\n\n" +
+			"*🔄 Matching*\n" +
+			"/pending \\- Pending matches\n" +
 			"/confirm \\<id\\> \\- Confirm a match\n" +
 			"/reject \\<id\\> \\- Reject a match\n" +
-			"/help \\- Show this help\n" +
+			"/confirmed \\- Recently confirmed\n\n" +
+			"*⚙️ Admin*\n" +
+			"/groups \\- Monitored WhatsApp groups\n" +
+			"/help \\- Show this help\n\n" +
 			separator + "\n" +
-			"أوامر بوت فارما بروكر\n" +
-			"/status \\- حالة النظام\n" +
-			"/pending \\- المطابقات المعلقة\n" +
-			"/confirm \\- تأكيد مطابقة\n" +
-			"/reject \\- رفض مطابقة",
+			"_أوامر بوت فارما بروكر_\n" +
+			"/dashboard \\- لوحة التحكم\n" +
+			"/offers \\- العروض المتاحة\n" +
+			"/requests \\- الطلبات المتاحة\n" +
+			"/pending \\- المطابقات المعلقة",
 		ParseMode: core.ParseModeMarkdownV2,
 	}
 }

@@ -419,9 +419,12 @@ func (c *Container) Run(ctx context.Context) error {
 
 		// Register all shared commands
 		botcmds.RegisterAll(bot, botcmds.Repositories{
-			Stats:   c.Repos.Stats,
-			Matches: c.Repos.Matches,
-			Audit:   c.Repos.Audit,
+			Stats:    c.Repos.Stats,
+			Matches:  c.Repos.Matches,
+			Audit:    c.Repos.Audit,
+			Offers:   c.Repos.Offers,
+			Requests: c.Repos.Requests,
+			Groups:   c.Repos.Groups,
 		})
 
 		c.WAManager.SetBotHandler(bot)
@@ -704,15 +707,6 @@ func updateLearningMetrics(scheduler *matching.LearningScheduler) {
 		metrics.ScoreSeparation.Set(status.LastMetrics.AvgScoreConfirmed - status.LastMetrics.AvgScoreRejected)
 		metrics.FeedbackSamplesAnalyzed.Set(float64(status.LastMetrics.SampleSize))
 	}
-}
-
-// auditAdapter adapts repository.AuditRepository to core.AuditLogger
-type auditAdapter struct {
-	repo repository.AuditRepository
-}
-
-func (a *auditAdapter) Log(ctx context.Context, action, entityID, details string) error {
-	return a.repo.Log(ctx, entity.AuditAction(action), entityID, details)
 }
 
 // Compile-time checks

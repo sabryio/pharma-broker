@@ -69,6 +69,7 @@ func main() {
 	requestRepo := storageGorm.NewRequestRepo(db)
 	statsRepo := storageGorm.NewStatsRepo(db)
 	auditRepo := storageGorm.NewAuditRepo(db)
+	groupRepo := storageGorm.NewGroupRepo(db)
 
 	log.Info().Msg("✅ Repositories initialized")
 
@@ -93,18 +94,20 @@ func main() {
 	}
 
 	// Register REAL commands (shared across WhatsApp and Telegram)
-	// Register all shared commands
 	repos := botcmds.Repositories{
-		Stats:   statsRepo,
-		Matches: matchRepo,
-		Audit:   auditRepo,
+		Stats:    statsRepo,
+		Matches:  matchRepo,
+		Offers:   offerRepo,
+		Requests: requestRepo,
+		Groups:   groupRepo,
+		Audit:    auditRepo,
 	}
 	botcmds.RegisterAll(bot, repos)
 
 	// Register Telegram callback handlers for inline buttons
 	bot.RegisterMatchCallbacks(repos)
 
-	log.Info().Msg("✅ Registered commands and callbacks: /status, /pending, /confirm, /reject, /help")
+	log.Info().Msg("✅ Registered all commands and callbacks")
 
 	// ============================================================
 	// Print Summary

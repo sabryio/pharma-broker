@@ -59,10 +59,37 @@ func (b *Bot) Start(ctx context.Context) error {
 	}
 	b.client = client
 
+	// Set commands in Telegram menu
+	b.setCommands(ctx)
+
 	b.log.Info().Msg("Starting Telegram bot...")
 	client.Start(ctx)
 	b.log.Info().Msg("Telegram bot stopped")
 	return nil
+}
+
+// setCommands registers bot commands with Telegram to show in the menu.
+func (b *Bot) setCommands(ctx context.Context) {
+	commands := []models.BotCommand{
+		{Command: "start", Description: "🏥 Welcome message"},
+		{Command: "dashboard", Description: "📊 Full system dashboard"},
+		{Command: "status", Description: "📈 Quick system status"},
+		{Command: "pending", Description: "🔄 Pending matches"},
+		{Command: "offers", Description: "💊 Active offers"},
+		{Command: "requests", Description: "📋 Active requests"},
+		{Command: "confirmed", Description: "✅ Recently confirmed"},
+		{Command: "groups", Description: "📱 Monitored groups"},
+		{Command: "help", Description: "❓ Show all commands"},
+	}
+
+	_, err := b.client.SetMyCommands(ctx, &bot.SetMyCommandsParams{
+		Commands: commands,
+	})
+	if err != nil {
+		b.log.Warn().Err(err).Msg("Failed to set bot commands menu")
+	} else {
+		b.log.Info().Int("commands", len(commands)).Msg("Bot commands menu updated")
+	}
 }
 
 // RegisterCommand adds a command handler.
