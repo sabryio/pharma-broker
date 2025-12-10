@@ -143,4 +143,22 @@ var (
 		Name: "pharma_last_learning_job_timestamp",
 		Help: "Unix timestamp of last learning job execution",
 	})
+
+	// ========== Cronjob Scheduler Metrics ==========
+
+	CronJobSuccess = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pharma_cronjob_success_total",
+		Help: "Total number of successful cronjob executions",
+	}, []string{"job"})
+
+	CronJobFailed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pharma_cronjob_failed_total",
+		Help: "Total number of failed cronjob executions",
+	}, []string{"job"})
+
+	CronJobDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "pharma_cronjob_duration_seconds",
+		Help:    "Duration of cronjob executions",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"job"})
 )

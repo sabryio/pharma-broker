@@ -7,13 +7,15 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+
+	"pharmabroker/pkg/cronjob"
 )
 
 // SchedulerConfig holds scheduler settings
 type SchedulerConfig struct {
 	Enabled      bool   `yaml:"enabled"`
-	Schedule     string `yaml:"schedule"`      // Cron expression or simple interval
-	IntervalMins int    `yaml:"interval_mins"` // Simple interval in minutes (if no cron)
+	Schedule     string `yaml:"schedule"`      // Cron expression (e.g., "0 * * * *" for hourly)
+	IntervalMins int    `yaml:"interval_mins"` // Simple interval in minutes (fallback if no cron)
 	Timezone     string `yaml:"timezone"`
 }
 
@@ -22,7 +24,17 @@ type NotificationSender interface {
 	SendReport(ctx context.Context, summaryText, htmlReport string, csvData []byte, csvFilename string) error
 }
 
-// Scheduler runs reports on a schedule
+// SchedulerStatus represents the current status of the scheduler.
+type SchedulerStatus struct {
+	Enabled      bool       `json:"enabled"`
+	Running      bool       `json:"running"`
+	IntervalMins int        `json:"interval_mins,omitempty"`
+	Schedule     string     `json:"schedule,omitempty"`
+	JobID        string     `json:"job_id"`
+	NextRun      *time.Time `json:"next_run,omitempty"`
+}
+
+// Scheduler runs reports on a schedule using the cronjob package.
 type Scheduler struct {
 	generator    *Generator
 	notifier     NotificationSender
@@ -30,13 +42,13 @@ type Scheduler struct {
 	reportConfig ReportConfig
 	log          zerolog.Logger
 
-	stopChan chan struct{}
-	wg       sync.WaitGroup
-	running  bool
-	mu       sync.Mutex
+	cronScheduler cronjob.Scheduler
+	jobID         string
+	mu            sync.Mutex
+	running       bool
 }
 
-// NewScheduler creates a new report scheduler
+// NewScheduler creates a new report scheduler.
 func NewScheduler(
 	generator *Generator,
 	notifier NotificationSender,
@@ -44,106 +56,84 @@ func NewScheduler(
 	reportConfig ReportConfig,
 	log zerolog.Logger,
 ) *Scheduler {
+	logger := cronjob.NewZerologAdapter(log)
+	metrics := cronjob.NewPrometheusMetricsAdapter()
+
 	return &Scheduler{
-		generator:    generator,
-		notifier:     notifier,
-		config:       schedulerConfig,
-		reportConfig: reportConfig,
-		log:          log.With().Str("component", "scheduler").Logger(),
-		stopChan:     make(chan struct{}),
+		generator:     generator,
+		notifier:      notifier,
+		config:        schedulerConfig,
+		reportConfig:  reportConfig,
+		log:           log.With().Str("component", "report-scheduler").Logger(),
+		cronScheduler: cronjob.NewScheduler(logger, metrics),
+		jobID:         "report-generator",
 	}
 }
 
-// Start begins the scheduled report generation
+// Start begins the scheduled report generation.
 func (s *Scheduler) Start(ctx context.Context) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.running {
-		s.mu.Unlock()
 		return fmt.Errorf("scheduler already running")
 	}
-	s.running = true
-	s.mu.Unlock()
 
 	if !s.config.Enabled {
 		s.log.Info().Msg("Scheduler disabled, not starting")
 		return nil
 	}
 
-	// Determine interval
-	interval := time.Duration(s.config.IntervalMins) * time.Minute
-	if interval <= 0 {
-		interval = time.Hour // Default to hourly
+	// Determine schedule expression
+	schedule := s.config.Schedule
+	if schedule == "" {
+		// Fallback to interval-based schedule
+		interval := s.config.IntervalMins
+		if interval <= 0 {
+			interval = 60 // Default to hourly
+		}
+		schedule = fmt.Sprintf("@every %dm", interval)
 	}
 
-	s.log.Info().
-		Dur("interval", interval).
-		Bool("enabled", s.config.Enabled).
-		Msg("Starting report scheduler")
+	// Create the report job
+	job := cronjob.NewFuncJob(s.jobID, schedule, func(ctx context.Context) error {
+		s.executeReport(ctx)
+		return nil
+	})
 
-	s.wg.Add(1)
-	go s.run(ctx, interval)
+	// Schedule the job
+	if _, err := s.cronScheduler.ScheduleJob(job); err != nil {
+		return fmt.Errorf("failed to schedule report job: %w", err)
+	}
+
+	// Start the cron scheduler
+	s.cronScheduler.Start()
+	s.running = true
+
+	s.log.Info().
+		Str("schedule", schedule).
+		Bool("enabled", s.config.Enabled).
+		Msg("Report scheduler started")
 
 	return nil
 }
 
-// Stop stops the scheduler
+// Stop stops the scheduler gracefully.
 func (s *Scheduler) Stop() {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if !s.running {
-		s.mu.Unlock()
 		return
 	}
-	s.mu.Unlock()
 
-	close(s.stopChan)
-	s.wg.Wait()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	s.mu.Lock()
+	s.cronScheduler.Stop(ctx)
 	s.running = false
-	s.stopChan = make(chan struct{})
-	s.mu.Unlock()
 
-	s.log.Info().Msg("Scheduler stopped")
-}
-
-func (s *Scheduler) run(ctx context.Context, interval time.Duration) {
-	defer s.wg.Done()
-
-	// Calculate next run time (align to hour if hourly)
-	var nextRun time.Time
-	if interval >= time.Hour {
-		now := time.Now()
-		nextRun = now.Truncate(time.Hour).Add(time.Hour)
-	} else {
-		nextRun = time.Now().Add(interval)
-	}
-
-	s.log.Info().Time("next_run", nextRun).Msg("First report scheduled")
-
-	for {
-		waitDuration := time.Until(nextRun)
-		if waitDuration < 0 {
-			waitDuration = interval
-			nextRun = time.Now().Add(interval)
-		}
-
-		timer := time.NewTimer(waitDuration)
-
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			s.log.Info().Msg("Scheduler context cancelled")
-			return
-		case <-s.stopChan:
-			timer.Stop()
-			s.log.Info().Msg("Scheduler stop requested")
-			return
-		case <-timer.C:
-			s.executeReport(ctx)
-			nextRun = nextRun.Add(interval)
-			s.log.Debug().Time("next_run", nextRun).Msg("Next report scheduled")
-		}
-	}
+	s.log.Info().Msg("Report scheduler stopped")
 }
 
 func (s *Scheduler) executeReport(ctx context.Context) {
@@ -189,21 +179,39 @@ func (s *Scheduler) executeReport(ctx context.Context) {
 	}
 }
 
-// RunNow triggers an immediate report generation (for manual testing)
+// RunNow triggers an immediate report generation (for manual testing).
 func (s *Scheduler) RunNow(ctx context.Context) error {
 	s.log.Info().Msg("Manual report trigger")
 	s.executeReport(ctx)
 	return nil
 }
 
-// GetStatus returns scheduler status
-func (s *Scheduler) GetStatus() map[string]interface{} {
+// GetStatus returns scheduler status.
+func (s *Scheduler) GetStatus() SchedulerStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return map[string]interface{}{
-		"enabled":       s.config.Enabled,
-		"running":       s.running,
-		"interval_mins": s.config.IntervalMins,
+	status := SchedulerStatus{
+		Enabled:      s.config.Enabled,
+		Running:      s.running,
+		IntervalMins: s.config.IntervalMins,
+		Schedule:     s.config.Schedule,
+		JobID:        s.jobID,
 	}
+
+	// Add next run time if available
+	if cs, ok := s.cronScheduler.(*cronjob.CronScheduler); ok {
+		if nextRun, found := cs.NextRun(s.jobID); found {
+			status.NextRun = &nextRun
+		}
+	}
+
+	return status
+}
+
+// IsRunning returns whether the scheduler is currently running.
+func (s *Scheduler) IsRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.running
 }
