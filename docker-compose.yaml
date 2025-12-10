@@ -1,12 +1,36 @@
-# Docker Compose configuration for PharmaBroker with AI model support
-# Requires Docker Compose v2.38+ for models support
+name: pharmabroker
 
 services:
-  pharmabroker:
+  # PostgreSQL with pgvector for semantic search
+  postgres:
+    image: pgvector/pgvector:pg18-trixie
+    container_name: postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pharmabroker}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - pharmabroker-network
+
+  app:
     build: .
     ports:
       - "8080:8080" # Main HTTP API + Dashboard
       - "5051:5050" # Health check endpoint (external 5051)
+    container_name: app
+    depends_on:
+      - postgres
     environment:
       # AI Provider Selection
       - PB_AI_PROVIDER=docker # Use Docker Model Runner
@@ -25,6 +49,8 @@ services:
       - llm # Bind to the llm model
       - embedding-model # Bind to the customized embedding model
     restart: unless-stopped
+    networks:
+      - pharmabroker-network
     healthcheck:
       test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5050/health" ]
       interval: 30s
@@ -53,3 +79,9 @@ models:
 
 volumes:
   pharmabroker-data:
+
+
+networks:
+  pharmabroker-network:
+    name: pharmabroker-network
+    driver: bridge
