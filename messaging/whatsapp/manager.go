@@ -22,6 +22,16 @@ import (
 	"pharmabroker/pkg/config"
 )
 
+// Constants for timeouts and limits
+const (
+	defaultConnectTimeout = 30 * time.Second
+	groupInfoTimeout      = 5 * time.Second
+	botResponseTimeout    = 30 * time.Second
+	maxReconnectAttempts  = 5
+	maxReconnectDelay     = 5 * time.Minute
+	qrChannelBufferSize   = 1
+)
+
 // Manager manages WhatsApp client connections
 type Manager struct {
 	cfg      *config.WhatsAppConfig
@@ -90,7 +100,7 @@ func NewManager(ctx context.Context, cfg *config.WhatsAppConfig, log zerolog.Log
 		cfg:       cfg,
 		store:     container,
 		log:       log.With().Str("component", "whatsapp").Logger(),
-		qrChannel: make(chan string, 1),
+		qrChannel: make(chan string, qrChannelBufferSize),
 		stopChan:  make(chan struct{}),
 	}, nil
 }
@@ -229,7 +239,7 @@ func (m *Manager) SyncGroups(ctx context.Context, saveFunc func(jid, name, descr
 }
 
 // handleEvent processes WhatsApp events
-func (m *Manager) handleEvent(evt interface{}) {
+func (m *Manager) handleEvent(evt any) {
 	switch v := evt.(type) {
 	case *events.Message:
 		m.handleMessageEvent(v)
@@ -243,75 +253,71 @@ func (m *Manager) handleEvent(evt interface{}) {
 		m.connected = false
 		m.mu.Unlock()
 		m.log.Warn().Msg("WhatsApp disconnected")
-		go m.reconnect()
+		go m.reconnectWithBackoff()
 	case *events.HistorySync:
-		m.log.Info().
-			Str("type", fmt.Sprintf("%v", v.Data.SyncType)).
-			Int("conversations", len(v.Data.Conversations)).
-			Msg("📥 Processing History Sync...")
+		m.handleHistorySync(v)
+	}
+}
 
-		for _, conv := range v.Data.Conversations {
-			for _, waMsg := range conv.Messages {
-				if waMsg.Message == nil || waMsg.Message.Key == nil {
-					continue
-				}
+// handleHistorySync processes history sync events
+func (m *Manager) handleHistorySync(v *events.HistorySync) {
+	m.log.Info().
+		Str("type", fmt.Sprintf("%v", v.Data.SyncType)).
+		Int("conversations", len(v.Data.Conversations)).
+		Msg("Processing History Sync")
 
-				// Extract basics
-				key := waMsg.Message.Key
-				ts := int64(0)
-				if waMsg.Message.MessageTimestamp != nil {
-					ts = int64(*waMsg.Message.MessageTimestamp)
-				}
+	for _, conv := range v.Data.Conversations {
+		for _, waMsg := range conv.Messages {
+			if waMsg.Message == nil || waMsg.Message.Key == nil {
+				continue
+			}
 
-				pushName := ""
-				if waMsg.Message.PushName != nil {
-					pushName = *waMsg.Message.PushName
-				}
+			key := waMsg.Message.Key
+			ts := int64(0)
+			if waMsg.Message.MessageTimestamp != nil {
+				ts = int64(*waMsg.Message.MessageTimestamp)
+			}
 
-				// Construct MessageInfo
-				info := types.MessageInfo{
-					ID:        key.GetID(),
-					Timestamp: time.Unix(ts, 0),
-					PushName:  pushName,
-				}
-				info.IsFromMe = key.GetFromMe()
+			pushName := ""
+			if waMsg.Message.PushName != nil {
+				pushName = *waMsg.Message.PushName
+			}
 
-				// Parse JIDs
-				if key.RemoteJID != nil {
-					chatJID, err := types.ParseJID(*key.RemoteJID)
-					if err == nil {
-						info.Chat = chatJID
-					}
-				}
-				if key.Participant != nil {
-					senderJID, err := types.ParseJID(*key.Participant)
-					if err == nil {
-						info.Sender = senderJID
-					}
-				} else {
-					// In DM, sender is RemoteJid if not from me
-					if !info.IsFromMe {
-						info.Sender = info.Chat
-					}
-				}
+			info := types.MessageInfo{
+				ID:        key.GetID(),
+				Timestamp: time.Unix(ts, 0),
+				PushName:  pushName,
+			}
+			info.IsFromMe = key.GetFromMe()
 
-				// Handle Group logic
-				if info.Chat.Server == "g.us" {
-					info.IsGroup = true
-					// For groups, sender is in Participant. If missing and not from me, might be issue.
-					// HistorySync usually has Participant for groups.
+			// Parse chat JID
+			if key.RemoteJID != nil {
+				if chatJID, err := types.ParseJID(*key.RemoteJID); err == nil {
+					info.Chat = chatJID
 				}
+			}
 
+			// Parse sender JID
+			if key.Participant != nil {
+				if senderJID, err := types.ParseJID(*key.Participant); err == nil {
+					info.Sender = senderJID
+				}
+			} else if !info.IsFromMe {
+				info.Sender = info.Chat
+			}
+
+			// Mark as group if chat server is g.us
+			if info.Chat.Server == "g.us" {
+				info.IsGroup = true
+			}
+
+			// Only process group messages
+			if info.IsGroup {
 				msgEvt := &events.Message{
 					Info:    info,
 					Message: waMsg.Message.Message,
-					// Raw: waMsg.Message, // Removed as it caused error and unused
 				}
-
-				// Only process if it looks like a valid group message
-				if info.IsGroup {
-					m.handleMessageEvent(msgEvt)
-				}
+				m.handleMessageEvent(msgEvt)
 			}
 		}
 	}
@@ -323,32 +329,20 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 		return
 	}
 
-	// Extract message content
-	var content string
-	if evt.Message.Conversation != nil {
-		content = *evt.Message.Conversation
-	} else if evt.Message.ExtendedTextMessage != nil && evt.Message.ExtendedTextMessage.Text != nil {
-		content = *evt.Message.ExtendedTextMessage.Text
-	} else {
-		// Skip non-text messages
-		return
+	// Extract message content using helper
+	content := extractTextContent(evt.Message)
+	if content == "" {
+		return // Skip non-text messages
 	}
 
-	// Get group info
+	// Get group info with timeout
 	groupJID := evt.Info.Chat.String()
-	groupName := groupJID // Will be updated if we can get group info
+	groupName := m.fetchGroupName(evt.Info.Chat, groupJID)
 
-	// Try to get actual group name
+	// Get bot handler under lock
 	m.mu.RLock()
-	client := m.client
 	botHandler := m.botHandler
 	m.mu.RUnlock()
-
-	if client != nil {
-		if groupInfo, err := client.GetGroupInfo(context.Background(), evt.Info.Chat); err == nil {
-			groupName = groupInfo.Name
-		}
-	}
 
 	// Build incoming message
 	msg := &IncomingMessage{
@@ -364,33 +358,12 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 	}
 
 	// Extract reply context if this is a reply to another message
-	if evt.Message.ExtendedTextMessage != nil {
-		if ctxInfo := evt.Message.ExtendedTextMessage.ContextInfo; ctxInfo != nil {
-			// Extract quoted message ID
-			if ctxInfo.StanzaID != nil {
-				msg.ReplyToID = *ctxInfo.StanzaID
-			}
-			// Extract sender of quoted message
-			if ctxInfo.Participant != nil {
-				msg.ReplyToSender = *ctxInfo.Participant
-			}
-			// Extract quoted message content
-			if ctxInfo.QuotedMessage != nil {
-				if ctxInfo.QuotedMessage.Conversation != nil {
-					msg.ReplyToContent = *ctxInfo.QuotedMessage.Conversation
-				} else if ctxInfo.QuotedMessage.ExtendedTextMessage != nil &&
-					ctxInfo.QuotedMessage.ExtendedTextMessage.Text != nil {
-					msg.ReplyToContent = *ctxInfo.QuotedMessage.ExtendedTextMessage.Text
-				}
-			}
-		}
-	}
+	m.extractReplyContext(evt.Message, msg)
 
 	// Check if this is a bot command (before group monitoring check)
 	if botHandler != nil && IsCommand(content) {
 		response := botHandler.HandleCommand(context.Background(), msg)
 		if response != "" {
-			// Send response back to the sender
 			go m.sendBotResponse(evt.Info.Chat, response)
 		}
 		return // Don't process as regular message
@@ -402,6 +375,68 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 	}
 
 	// Notify handlers with panic recovery
+	m.notifyHandlers(msg)
+}
+
+// extractTextContent extracts text content from a WhatsApp message
+func extractTextContent(msg *waE2E.Message) string {
+	if msg == nil {
+		return ""
+	}
+	if msg.Conversation != nil {
+		return *msg.Conversation
+	}
+	if msg.ExtendedTextMessage != nil && msg.ExtendedTextMessage.Text != nil {
+		return *msg.ExtendedTextMessage.Text
+	}
+	return ""
+}
+
+// fetchGroupName retrieves the group name with timeout, falling back to JID
+func (m *Manager) fetchGroupName(chat types.JID, fallback string) string {
+	m.mu.RLock()
+	client := m.client
+	m.mu.RUnlock()
+
+	if client == nil {
+		return fallback
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), groupInfoTimeout)
+	defer cancel()
+
+	groupInfo, err := client.GetGroupInfo(ctx, chat)
+	if err != nil {
+		m.log.Debug().Err(err).Str("jid", fallback).Msg("Failed to get group info")
+		return fallback
+	}
+	return groupInfo.Name
+}
+
+// extractReplyContext extracts reply context from an extended text message
+func (m *Manager) extractReplyContext(waMsg *waE2E.Message, msg *IncomingMessage) {
+	if waMsg.ExtendedTextMessage == nil {
+		return
+	}
+
+	ctxInfo := waMsg.ExtendedTextMessage.ContextInfo
+	if ctxInfo == nil {
+		return
+	}
+
+	if ctxInfo.StanzaID != nil {
+		msg.ReplyToID = *ctxInfo.StanzaID
+	}
+	if ctxInfo.Participant != nil {
+		msg.ReplyToSender = *ctxInfo.Participant
+	}
+	if ctxInfo.QuotedMessage != nil {
+		msg.ReplyToContent = extractTextContent(ctxInfo.QuotedMessage)
+	}
+}
+
+// notifyHandlers sends the message to all registered handlers with panic recovery
+func (m *Manager) notifyHandlers(msg *IncomingMessage) {
 	m.mu.RLock()
 	handlers := m.handlers
 	m.mu.RUnlock()
@@ -431,24 +466,48 @@ func (m *Manager) isGroupMonitored(jid string) bool {
 	return slices.Contains(m.cfg.MonitoredGroups, jid)
 }
 
-func (m *Manager) reconnect() {
-	m.mu.Lock()
-	if m.connected {
-		m.mu.Unlock()
-		return
+// reconnectWithBackoff attempts to reconnect with exponential backoff
+func (m *Manager) reconnectWithBackoff() {
+	baseDelay := m.cfg.ReconnectDelay
+	if baseDelay == 0 {
+		baseDelay = 5 * time.Second
 	}
-	m.mu.Unlock()
 
-	m.log.Info().Dur("delay", m.cfg.ReconnectDelay).Msg("Attempting reconnection...")
-	time.Sleep(m.cfg.ReconnectDelay)
+	for attempt := range maxReconnectAttempts {
+		m.mu.RLock()
+		isConnected := m.connected
+		m.mu.RUnlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+		if isConnected {
+			return // Already reconnected
+		}
 
-	if err := m.Connect(ctx); err != nil {
-		m.log.Error().Err(err).Msg("Reconnection failed")
-		go m.reconnect() // Try again
+		// Exponential backoff: delay * 2^attempt, capped at maxReconnectDelay
+		delay := min(baseDelay*time.Duration(1<<attempt), maxReconnectDelay)
+
+		m.log.Info().
+			Int("attempt", attempt+1).
+			Int("max_attempts", maxReconnectAttempts).
+			Dur("delay", delay).
+			Msg("Attempting reconnection")
+
+		time.Sleep(delay)
+
+		ctx, cancel := context.WithTimeout(context.Background(), defaultConnectTimeout)
+		err := m.Connect(ctx)
+		cancel()
+
+		if err == nil {
+			m.log.Info().Int("attempt", attempt+1).Msg("Reconnection successful")
+			return
+		}
+
+		m.log.Error().Err(err).Int("attempt", attempt+1).Msg("Reconnection failed")
 	}
+
+	m.log.Error().
+		Int("max_attempts", maxReconnectAttempts).
+		Msg("Max reconnection attempts reached, giving up")
 }
 
 func extractPhoneNumber(jid types.JID) string {
@@ -503,7 +562,7 @@ func (m *Manager) sendBotResponse(chat types.JID, response string) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), botResponseTimeout)
 	defer cancel()
 
 	msg := &waE2E.Message{

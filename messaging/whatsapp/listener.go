@@ -11,13 +11,23 @@ import (
 	"pharmabroker/domain/repository"
 )
 
+// Constants for listener configuration
+const (
+	messageChannelBuffer     = 1000
+	deduplicationTimeout     = 2 * time.Second
+	deduplicationWindow      = 10 * time.Second
+	groupCheckTimeout        = 5 * time.Second
+	groupStatsUpdateTimeout  = 5 * time.Second
+	defaultLogTruncateLength = 100
+)
+
 // Listener listens for WhatsApp messages and queues them for processing
 type Listener struct {
 	log                    zerolog.Logger
 	rawMsgRepo             repository.RawMessageRepository
 	groupRepo              repository.GroupRepository
 	msgChannel             chan *entity.RawMessage
-	skipOwnMessagesChecker func() bool // Check if should skip own messages
+	skipOwnMessagesChecker func() bool
 }
 
 // NewListener creates a new message listener
@@ -30,8 +40,8 @@ func NewListener(
 		log:                    log.With().Str("component", "listener").Logger(),
 		rawMsgRepo:             rawMsgRepo,
 		groupRepo:              groupRepo,
-		msgChannel:             make(chan *entity.RawMessage, 1000), // Buffer for burst handling
-		skipOwnMessagesChecker: func() bool { return true },         // Default: skip own messages
+		msgChannel:             make(chan *entity.RawMessage, messageChannelBuffer),
+		skipOwnMessagesChecker: func() bool { return true },
 	}
 }
 
@@ -47,83 +57,130 @@ func (l *Listener) MessageChannel() <-chan *entity.RawMessage {
 
 // HandleMessage implements EventHandler interface
 func (l *Listener) HandleMessage(msg *IncomingMessage) {
-	// Log every incoming message
+	l.logMessageReceived(msg)
+
+	// Skip own messages if configured
+	if l.shouldSkipOwnMessage(msg) {
+		return
+	}
+
+	// Check for duplicate messages (spam/repetition filter)
+	if l.isDuplicateMessage(msg) {
+		return
+	}
+
+	// Check if this group is monitored
+	ctx, cancel := context.WithTimeout(context.Background(), groupCheckTimeout)
+	defer cancel()
+
+	if !l.checkGroupMonitored(ctx, msg) {
+		return
+	}
+
+	// Create and save raw message
+	rawMsg := l.createRawMessage(msg)
+	if err := l.saveMessage(ctx, rawMsg); err != nil {
+		return
+	}
+
+	// Update group stats asynchronously
+	l.updateGroupStatsAsync(msg.GroupJID)
+
+	// Queue for processing
+	l.queueMessage(rawMsg)
+}
+
+// logMessageReceived logs the incoming message
+func (l *Listener) logMessageReceived(msg *IncomingMessage) {
 	l.log.Info().
 		Str("step", "1_RECEIVED").
 		Str("group", msg.GroupName).
 		Str("sender", msg.SenderName).
-		Str("content_preview", truncate(msg.Content, 100)).
-		Msg("📥 Message received from WhatsApp")
+		Str("content_preview", truncate(msg.Content, defaultLogTruncateLength)).
+		Msg("Message received from WhatsApp")
+}
 
-	// Skip own messages if configured
-	if msg.IsFromMe && l.skipOwnMessagesChecker() {
+// shouldSkipOwnMessage checks if own messages should be skipped
+func (l *Listener) shouldSkipOwnMessage(msg *IncomingMessage) bool {
+	if !msg.IsFromMe {
+		return false
+	}
+
+	if l.skipOwnMessagesChecker() {
 		l.log.Debug().
 			Str("step", "1_SKIPPED").
-			Msg("⏭️ Skipping own message (config: skip_own_messages=true)")
-		return
+			Msg("Skipping own message (config: skip_own_messages=true)")
+		return true
 	}
 
-	if msg.IsFromMe {
-		l.log.Info().
-			Str("step", "1_OWN_MESSAGE").
-			Str("content", msg.Content).
-			Msg("📨 Processing OWN message (config: skip_own_messages=false)")
-	}
+	l.log.Info().
+		Str("step", "1_OWN_MESSAGE").
+		Str("content", msg.Content).
+		Msg("Processing OWN message (config: skip_own_messages=false)")
+	return false
+}
 
-	// ----------------------------------------------------
-	// Semantic Deduplication (Spam/Repetition Filter)
-	// ----------------------------------------------------
-	// Check if this user sent the exact same message very recently (e.g. < 10s)
-	// This prevents duplicate requests if they double-tap send or history sync re-sends logic.
-	ctxShort, cancelShort := context.WithTimeout(context.Background(), 2*time.Second)
-	lastMsg, err := l.rawMsgRepo.GetLastMessageBySender(ctxShort, msg.GroupJID, msg.SenderJID)
-	cancelShort()
-
-	if err == nil && lastMsg != nil {
-		// Time threshold: 10 seconds
-		timeDiff := msg.Timestamp.Sub(lastMsg.Timestamp)
-		if timeDiff < 0 {
-			timeDiff = -timeDiff // Handle out-of-order clocks slightly
-		}
-
-		if timeDiff < 10*time.Second && lastMsg.Content == msg.Content {
-			l.log.Warn().
-				Str("step", "1_DUPLICATE_IGNORED").
-				Str("sender", msg.SenderName).
-				Str("content", truncate(msg.Content, 50)).
-				Dur("time_diff", timeDiff).
-				Msg("🛑 Ignoring duplicate message from same user < 10s")
-			return
-		}
-	}
-
-	// Check if this group is monitored
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// isDuplicateMessage checks if this is a duplicate message within the deduplication window
+func (l *Listener) isDuplicateMessage(msg *IncomingMessage) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), deduplicationTimeout)
 	defer cancel()
 
+	lastMsg, err := l.rawMsgRepo.GetLastMessageBySender(ctx, msg.GroupJID, msg.SenderJID)
+	if err != nil || lastMsg == nil {
+		return false
+	}
+
+	timeDiff := absDuration(msg.Timestamp.Sub(lastMsg.Timestamp))
+	if timeDiff < deduplicationWindow && lastMsg.Content == msg.Content {
+		l.log.Warn().
+			Str("step", "1_DUPLICATE_IGNORED").
+			Str("sender", msg.SenderName).
+			Str("content", truncate(msg.Content, 50)).
+			Dur("time_diff", timeDiff).
+			Msg("Ignoring duplicate message from same user")
+		return true
+	}
+
+	return false
+}
+
+// absDuration returns the absolute value of a duration
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
+// checkGroupMonitored verifies the group is monitored and logs appropriately
+func (l *Listener) checkGroupMonitored(ctx context.Context, msg *IncomingMessage) bool {
 	monitored, err := l.isGroupMonitored(ctx, msg.GroupJID)
 	if err != nil {
 		l.log.Error().Err(err).Str("jid", msg.GroupJID).Msg("Failed to check if group is monitored")
-		return
+		return false
 	}
+
 	if !monitored {
 		l.log.Warn().
 			Str("step", "2_NOT_MONITORED").
 			Str("group", msg.GroupName).
 			Str("jid", msg.GroupJID).
-			Msg("⚠️ Group NOT monitored - message ignored")
-		return
+			Msg("Group NOT monitored - message ignored")
+		return false
 	}
 
 	l.log.Info().
 		Str("step", "2_MONITORED").
 		Str("group", msg.GroupName).
-		Msg("✅ Group is monitored - processing")
+		Msg("Group is monitored - processing")
+	return true
+}
 
-	// Create raw message
-	rawMsg := &entity.RawMessage{
+// createRawMessage converts an IncomingMessage to a RawMessage entity
+func (l *Listener) createRawMessage(msg *IncomingMessage) *entity.RawMessage {
+	return &entity.RawMessage{
 		ID:             uuid.New().String(),
-		ExternalID:     msg.ID, // WhatsApp Message ID
+		ExternalID:     msg.ID,
 		GroupJID:       msg.GroupJID,
 		GroupName:      msg.GroupName,
 		SenderJID:      msg.SenderJID,
@@ -135,37 +192,49 @@ func (l *Listener) HandleMessage(msg *IncomingMessage) {
 		ReplyToContent: msg.ReplyToContent,
 		ReplyToSender:  msg.ReplyToSender,
 	}
+}
 
-	// Save to database
+// saveMessage persists the raw message to the database
+func (l *Listener) saveMessage(ctx context.Context, rawMsg *entity.RawMessage) error {
 	if err := l.rawMsgRepo.Save(ctx, rawMsg); err != nil {
 		l.log.Error().Err(err).Str("msg_id", rawMsg.ID).Msg("Failed to save raw message")
-		return
+		return err
 	}
 
 	l.log.Info().
 		Str("step", "3_SAVED").
 		Str("msg_id", rawMsg.ID).
 		Str("group", rawMsg.GroupName).
-		Msg("💾 Message saved to database")
+		Msg("Message saved to database")
+	return nil
+}
 
-	// Update group stats
+// updateGroupStatsAsync updates group statistics in a background goroutine
+func (l *Listener) updateGroupStatsAsync(groupJID string) {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), groupStatsUpdateTimeout)
 		defer cancel()
-		_ = l.groupRepo.UpdateLastMessage(ctx, msg.GroupJID)
-		_ = l.groupRepo.IncrementMessageCount(ctx, msg.GroupJID)
-	}()
 
-	// Queue for processing
+		if err := l.groupRepo.UpdateLastMessage(ctx, groupJID); err != nil {
+			l.log.Debug().Err(err).Str("jid", groupJID).Msg("Failed to update last message timestamp")
+		}
+		if err := l.groupRepo.IncrementMessageCount(ctx, groupJID); err != nil {
+			l.log.Debug().Err(err).Str("jid", groupJID).Msg("Failed to increment message count")
+		}
+	}()
+}
+
+// queueMessage adds the message to the processing queue
+func (l *Listener) queueMessage(rawMsg *entity.RawMessage) {
 	select {
 	case l.msgChannel <- rawMsg:
 		l.log.Info().
 			Str("step", "4_QUEUED").
 			Str("msg_id", rawMsg.ID).
 			Str("content", rawMsg.Content).
-			Msg("📤 Message queued for AI processing")
+			Msg("Message queued for AI processing")
 	default:
-		l.log.Error().Str("msg_id", rawMsg.ID).Msg("❌ Message queue full, dropping message")
+		l.log.Error().Str("msg_id", rawMsg.ID).Msg("Message queue full, dropping message")
 	}
 }
 
@@ -191,16 +260,10 @@ func (l *Listener) isGroupMonitored(ctx context.Context, jid string) (bool, erro
 
 // HandleGroupJoined implements EventHandler interface
 func (l *Listener) HandleGroupJoined(group *GroupInfo) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), groupCheckTimeout)
 	defer cancel()
 
-	g := &entity.Group{
-		JID:         group.JID,
-		Name:        group.Name,
-		Description: group.Description,
-		Monitored:   true,
-		AddedAt:     time.Now(),
-	}
+	g := l.groupInfoToEntity(group, true)
 
 	if err := l.groupRepo.Save(ctx, g); err != nil {
 		l.log.Error().Err(err).Str("jid", group.JID).Msg("Failed to save group")
@@ -213,18 +276,23 @@ func (l *Listener) HandleGroupJoined(group *GroupInfo) {
 // SyncGroups synchronizes known groups with database (defaults to not monitored)
 func (l *Listener) SyncGroups(ctx context.Context, groups []*GroupInfo) error {
 	for _, g := range groups {
-		group := &entity.Group{
-			JID:         g.JID,
-			Name:        g.Name,
-			Description: g.Description,
-			Monitored:   false, // Default to false - user must explicitly enable
-			AddedAt:     time.Now(),
-		}
+		group := l.groupInfoToEntity(g, false)
 		if err := l.groupRepo.Save(ctx, group); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// groupInfoToEntity converts GroupInfo to entity.Group
+func (l *Listener) groupInfoToEntity(g *GroupInfo, monitored bool) *entity.Group {
+	return &entity.Group{
+		JID:         g.JID,
+		Name:        g.Name,
+		Description: g.Description,
+		Monitored:   monitored,
+		AddedAt:     time.Now(),
+	}
 }
 
 // truncate limits string length for log output
