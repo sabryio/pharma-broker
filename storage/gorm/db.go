@@ -34,7 +34,7 @@ func NewDB(cfg *Config) (*DB, error) {
 			return time.Now().UTC()
 		},
 		SkipDefaultTransaction: true,
-		PrepareStmt:            true,
+		PrepareStmt:            false,
 	}
 
 	db, err := gorm.Open(postgres.Open(cfg.DSN), gormConfig)
@@ -135,7 +135,8 @@ func (db *DB) setupFullTextSearch() error {
 	}
 
 	// Add tsvector columns to requests table (if not exists)
-	requestsFTS := `
+	// Add tsvector columns to requests table (if not exists)
+	requestsCol := `
 		DO $$ BEGIN
 			IF NOT EXISTS (
 				SELECT 1 FROM information_schema.columns 
@@ -143,21 +144,23 @@ func (db *DB) setupFullTextSearch() error {
 			) THEN
 				ALTER TABLE requests ADD COLUMN search_vector tsvector
 				GENERATED ALWAYS AS (
-					setweight(to_tsvector('simple', coalesce(medication, '')), 'A') ||
-					setweight(to_tsvector('simple', coalesce(medication_raw, '')), 'B') ||
-					setweight(to_tsvector('simple', coalesce(notes, '')), 'C') ||
-					setweight(to_tsvector('simple', coalesce(raw_message, '')), 'D')
+					setweight(to_tsvector('simple', translate(coalesce(medication, ''), '-./()', '     ')), 'A') ||
+					setweight(to_tsvector('simple', translate(coalesce(medication_raw, ''), '-./()', '     ')), 'B') ||
+					setweight(to_tsvector('simple', translate(coalesce(notes, ''), '-./()', '     ')), 'C') ||
+					setweight(to_tsvector('simple', translate(coalesce(raw_message, ''), '-./()', '     ')), 'D')
 				) STORED;
 			END IF;
 		END $$;
-		CREATE INDEX IF NOT EXISTS idx_requests_search ON requests USING GIN(search_vector);
 	`
-	if err := db.Conn.Exec(requestsFTS).Error; err != nil {
-		return fmt.Errorf("setup requests FTS: %w", err)
+	if err := db.Conn.Exec(requestsCol).Error; err != nil {
+		return fmt.Errorf("setup requests FTS column: %w", err)
+	}
+	if err := db.Conn.Exec("CREATE INDEX IF NOT EXISTS idx_requests_search ON requests USING GIN(search_vector)").Error; err != nil {
+		return fmt.Errorf("setup requests FTS index: %w", err)
 	}
 
 	// Add tsvector columns to offers table (if not exists)
-	offersFTS := `
+	offersCol := `
 		DO $$ BEGIN
 			IF NOT EXISTS (
 				SELECT 1 FROM information_schema.columns 
@@ -165,28 +168,30 @@ func (db *DB) setupFullTextSearch() error {
 			) THEN
 				ALTER TABLE offers ADD COLUMN search_vector tsvector
 				GENERATED ALWAYS AS (
-					setweight(to_tsvector('simple', coalesce(medication, '')), 'A') ||
-					setweight(to_tsvector('simple', coalesce(medication_raw, '')), 'B') ||
-					setweight(to_tsvector('simple', coalesce(notes, '')), 'C') ||
-					setweight(to_tsvector('simple', coalesce(raw_message, '')), 'D')
+					setweight(to_tsvector('simple', translate(coalesce(medication, ''), '-./()', '     ')), 'A') ||
+					setweight(to_tsvector('simple', translate(coalesce(medication_raw, ''), '-./()', '     ')), 'B') ||
+					setweight(to_tsvector('simple', translate(coalesce(notes, ''), '-./()', '     ')), 'C') ||
+					setweight(to_tsvector('simple', translate(coalesce(raw_message, ''), '-./()', '     ')), 'D')
 				) STORED;
 			END IF;
 		END $$;
-		CREATE INDEX IF NOT EXISTS idx_offers_search ON offers USING GIN(search_vector);
 	`
-	if err := db.Conn.Exec(offersFTS).Error; err != nil {
-		return fmt.Errorf("setup offers FTS: %w", err)
+	if err := db.Conn.Exec(offersCol).Error; err != nil {
+		return fmt.Errorf("setup offers FTS column: %w", err)
+	}
+	if err := db.Conn.Exec("CREATE INDEX IF NOT EXISTS idx_offers_search ON offers USING GIN(search_vector)").Error; err != nil {
+		return fmt.Errorf("setup offers FTS index: %w", err)
 	}
 
 	// Add trigram indexes for medication_mappings (fuzzy Arabic search)
-	medicationMappingsFTS := `
-		CREATE INDEX IF NOT EXISTS idx_medication_mappings_arabic_trgm 
-			ON medication_mappings USING GIN(arabic_name gin_trgm_ops);
-		CREATE INDEX IF NOT EXISTS idx_medication_mappings_english_trgm 
-			ON medication_mappings USING GIN(english_name gin_trgm_ops);
-	`
-	if err := db.Conn.Exec(medicationMappingsFTS).Error; err != nil {
-		return fmt.Errorf("setup medication_mappings trigram: %w", err)
+	// Add trigram indexes for medication_mappings (fuzzy Arabic search)
+	if err := db.Conn.Exec(`CREATE INDEX IF NOT EXISTS idx_medication_mappings_arabic_trgm 
+			ON medication_mappings USING GIN(arabic_name gin_trgm_ops);`).Error; err != nil {
+		return fmt.Errorf("setup medication_mappings arabic trigram: %w", err)
+	}
+	if err := db.Conn.Exec(`CREATE INDEX IF NOT EXISTS idx_medication_mappings_english_trgm 
+			ON medication_mappings USING GIN(english_name gin_trgm_ops);`).Error; err != nil {
+		return fmt.Errorf("setup medication_mappings english trigram: %w", err)
 	}
 
 	return nil

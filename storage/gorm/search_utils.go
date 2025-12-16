@@ -83,12 +83,16 @@ func SanitizePgQuery(query string) string {
 	return strings.Join(processed, " | ")
 }
 
-// removeSpecialChars removes characters that break PostgreSQL tsquery
+// removeSpecialChars replaces characters that break PostgreSQL tsquery with spaces
 func removeSpecialChars(s string) string {
 	var result strings.Builder
 	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == '*' {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
 			result.WriteRune(r)
+		} else if r == '*' {
+			result.WriteRune(r)
+		} else {
+			result.WriteRune(' ')
 		}
 	}
 	return result.String()
@@ -141,27 +145,43 @@ func BuildPgSearchQuery(query string, useOR, prefixSearch, normalizeArabicText b
 
 		// Clean the term
 		cleanPart := removeSpecialChars(part)
-		if cleanPart == "" {
+		if strings.TrimSpace(cleanPart) == "" {
 			continue
 		}
 
-		// Add prefix to last term if requested
-		isLastTerm := i == len(parts)-1
-		if prefixSearch && isLastTerm && !strings.HasSuffix(cleanPart, "*") {
-			terms = append(terms, cleanPart+":*")
+		// Split cleaned part into sub-terms (e.g. "Augmentin-1.2g" -> "Augmentin", "1", "2g")
+		subTerms := strings.Fields(cleanPart)
+		if len(subTerms) == 0 {
 			continue
 		}
 
-		// Handle existing prefix notation
-		if strings.HasSuffix(part, "*") {
-			term := strings.TrimSuffix(cleanPart, "*")
-			if term != "" {
-				terms = append(terms, term+":*")
+		// Join sub-terms with AND since they came from the same token
+		var groupedTerm string
+		if len(subTerms) > 1 {
+			var validSubTerms []string
+			for j, sub := range subTerms {
+				// Handle prefix on last sub-term if needed
+				isLastPart := i == len(parts)-1
+				isLastSub := j == len(subTerms)-1
+
+				if prefixSearch && isLastPart && isLastSub {
+					if !strings.HasSuffix(sub, "*") {
+						sub += ":*"
+					}
+				}
+				validSubTerms = append(validSubTerms, sub)
 			}
-			continue
+			groupedTerm = "(" + strings.Join(validSubTerms, " & ") + ")"
+		} else {
+			groupedTerm = subTerms[0]
+			// Add prefix to last term if requested
+			isLastPart := i == len(parts)-1
+			if prefixSearch && isLastPart && !strings.HasSuffix(groupedTerm, "*") {
+				groupedTerm += ":*"
+			}
 		}
 
-		terms = append(terms, cleanPart)
+		terms = append(terms, groupedTerm)
 	}
 
 	// If no valid terms, return empty

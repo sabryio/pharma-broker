@@ -25,13 +25,13 @@ type BotUser struct {
 	// Authorization
 	Role         string     `gorm:"type:text;default:'viewer'"`
 	IsAuthorized bool       `gorm:"default:false"`
-	AuthorizedAt *time.Time `gorm:"type:datetime"`
+	AuthorizedAt *time.Time `gorm:"type:timestamptz"`
 	AuthorizedBy string     `gorm:"type:text"`
 
 	// Metadata
-	CreatedAt    time.Time `gorm:"type:datetime;not null"`
-	UpdatedAt    time.Time `gorm:"type:datetime;not null"`
-	LastActiveAt time.Time `gorm:"type:datetime"`
+	CreatedAt    time.Time `gorm:"type:timestamptz;not null"`
+	UpdatedAt    time.Time `gorm:"type:timestamptz;not null"`
+	LastActiveAt time.Time `gorm:"type:timestamptz"`
 	Platform     string    `gorm:"type:text;not null"`
 }
 

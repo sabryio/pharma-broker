@@ -38,8 +38,8 @@ services:
       # - LLM_URL                          # Auto-set from models binding
       # - LLM_MODEL                        # Auto-set from models binding
       # Database
-      - PB_DATABASE_PATH=/app/data/pharmabroker.db
-      # WhatsApp session
+      - PB_DATABASE_DSN=postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable
+      - PB_WHATSAPP_SESSION_DB_DSN=postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable
       - PB_WHATSAPP_SESSION_DIR=/app/data/whatsapp
     volumes:
       - ./data:/app/data # Share local session with Docker
