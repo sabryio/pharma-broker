@@ -36,9 +36,11 @@ services:
     environment:
       # AI Provider - uses Docker Model Runner
       - PB_AI_PROVIDER=docker
-      # Database
+      # Main application database
       - PB_DATABASE_DSN=postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable
-      - PB_WHATSAPP_SESSION_DB_DSN=postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable
+      # WhatsApp session database (separate for isolation)
+      - PB_WHATSAPP_SESSION_DB_DSN=postgres://postgres:password@postgres:5432/whatsapp_sessions?sslmode=disable
+      # WhatsApp session files
       - PB_WHATSAPP_SESSION_DIR=/app/data/whatsapp
     volumes:
       - ./data:/app/data
@@ -47,6 +49,7 @@ services:
     restart: unless-stopped
     networks:
       - pharmabroker-network
+
     healthcheck:
       test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5050/health" ]
       interval: 30s

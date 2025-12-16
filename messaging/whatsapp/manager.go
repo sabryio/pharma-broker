@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq" // PostgreSQL driver for sqlstore
+	"github.com/mdp/qrterminal/v3"
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -232,6 +233,7 @@ func (m *Manager) Connect(ctx context.Context) error {
 			switch evt.Event {
 			case "code":
 				m.log.Info().Msg("QR code received, waiting for scan...")
+				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
 				select {
 				case m.qrChannel <- evt.Code:
 				default:
