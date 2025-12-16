@@ -53,33 +53,23 @@ services:
       timeout: 10s
       retries: 3
     # Bind to AI models using long syntax with custom env var names
-    # models:
-    #   llm:
-    #     endpoint_var: LLM_URL
-    #     model_var: LLM_MODEL
-    #   embedding-model:
-    #     endpoint_var: EMBEDDING_MODEL_URL
-    #     model_var: EMBEDDING_MODEL_MODEL
+    models:
+      llm:
+        endpoint_var: LLM_URL
+        model_var: LLM_MODEL
+      embedding-model:
+        endpoint_var: EMBEDDING_MODEL_URL
+        model_var: EMBEDDING_MODEL_MODEL
 
-    # Local AI models via Docker Model Runner
-    # models:
-    #   llm:
-    #     model: ai/qwen3-vl:latest
-    #     context_size: 16384
-    #     runtime_flags:
-    #       - "--temp"
-    #       - "0.1"
-    #       - "--threads"
-    #       - "8"
-    #       - "--mlock"
+# Local AI models via Docker Model Runner
+models:
+  llm:
+    model: ai/qwen3-vl:latest
+    context_size: 16384
 
-    #   embedding-model:
-    #     model: ai/embeddinggemma:latest
-    #     context_size: 8192
-    #     runtime_flags:
-    #       - "--threads"
-    #       - "4"
-    #       - "--mlock"
+  embedding-model:
+    model: ai/embeddinggemma:latest
+    context_size: 8192
 
 volumes:
   pharmabroker-data:

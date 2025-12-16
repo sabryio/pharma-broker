@@ -184,21 +184,30 @@ func BuildPgSearchQuery(query string, useOR, prefixSearch, normalizeArabicText b
 		terms = append(terms, groupedTerm)
 	}
 
+	// Filter out empty terms and clean up operators
+	var cleanTerms []string
+	for _, t := range terms {
+		t = strings.TrimSpace(t)
+		if t != "" && t != "|" && t != "&" && t != "!" {
+			cleanTerms = append(cleanTerms, t)
+		}
+	}
+
 	// If no valid terms, return empty
-	if len(terms) == 0 {
+	if len(cleanTerms) == 0 {
 		return ""
 	}
 
 	// If only one term, return it directly
-	if len(terms) == 1 {
-		return terms[0]
+	if len(cleanTerms) == 1 {
+		return cleanTerms[0]
 	}
 
 	// Join with appropriate operator
 	if useOR {
-		return strings.Join(terms, " | ")
+		return strings.Join(cleanTerms, " | ")
 	}
-	return strings.Join(terms, " & ")
+	return strings.Join(cleanTerms, " & ")
 }
 
 // BuildMedicationSearchQuery creates an optimized query for medication search.

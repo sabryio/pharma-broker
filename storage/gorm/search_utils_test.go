@@ -1,6 +1,7 @@
 package gorm
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -218,6 +219,77 @@ func TestBuildSearchQuery(t *testing.T) {
 			if result != tt.expected {
 				t.Errorf("BuildSearchQuery(%q, %v, %v, %v) = %q, want %q",
 					tt.query, tt.useOR, tt.prefixSearch, tt.normalizeArabic, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestBuildPgSearchQuery_NoConsecutiveOperators ensures valid PostgreSQL tsquery syntax
+func TestBuildPgSearchQuery_NoConsecutiveOperators(t *testing.T) {
+	tests := []struct {
+		name            string
+		query           string
+		useOR           bool
+		prefixSearch    bool
+		normalizeArabic bool
+	}{
+		{"medication with dosage", "Augmentin 1g", true, true, false},
+		{"medication with dot", "Ozempic 0.5", true, true, false},
+		{"multi-word medication", "Panadol Extra", true, true, false},
+		{"arabic medication", "كتافلام 50", true, true, true},
+		{"complex dosage", "Zoledronic Acid 3.6", true, true, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := BuildPgSearchQuery(tt.query, tt.useOR, tt.prefixSearch, tt.normalizeArabic)
+
+			// Check for invalid patterns
+			if strings.Contains(result, "| |") {
+				t.Errorf("BuildPgSearchQuery(%q) = %q, contains consecutive '| |' operators", tt.query, result)
+			}
+			if strings.Contains(result, "& &") {
+				t.Errorf("BuildPgSearchQuery(%q) = %q, contains consecutive '& &' operators", tt.query, result)
+			}
+			if strings.Contains(result, "| &") || strings.Contains(result, "& |") {
+				t.Errorf("BuildPgSearchQuery(%q) = %q, contains mixed operators without term", tt.query, result)
+			}
+			// Check no leading/trailing operators
+			trimmed := strings.TrimSpace(result)
+			if strings.HasPrefix(trimmed, "|") || strings.HasPrefix(trimmed, "&") {
+				t.Errorf("BuildPgSearchQuery(%q) = %q, starts with operator", tt.query, result)
+			}
+			if strings.HasSuffix(trimmed, "|") || strings.HasSuffix(trimmed, "&") {
+				t.Errorf("BuildPgSearchQuery(%q) = %q, ends with operator", tt.query, result)
+			}
+		})
+	}
+}
+
+// TestBuildPgSearchQuery_ValidSyntax tests specific expected outputs
+func TestBuildPgSearchQuery_ValidSyntax(t *testing.T) {
+	tests := []struct {
+		name            string
+		query           string
+		useOR           bool
+		prefixSearch    bool
+		normalizeArabic bool
+		wantNonEmpty    bool // just check it's not empty and valid
+	}{
+		{"simple term", "Augmentin", false, false, false, true},
+		{"two terms with OR and prefix", "Augmentin 1g", true, true, false, true},
+		{"decimal dosage", "Ozempic 0.5", true, true, false, true},
+		{"empty query", "", true, true, false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := BuildPgSearchQuery(tt.query, tt.useOR, tt.prefixSearch, tt.normalizeArabic)
+			if tt.wantNonEmpty && result == "" {
+				t.Errorf("BuildPgSearchQuery(%q) = empty, expected non-empty", tt.query)
+			}
+			if !tt.wantNonEmpty && result != "" {
+				t.Errorf("BuildPgSearchQuery(%q) = %q, expected empty", tt.query, result)
 			}
 		})
 	}

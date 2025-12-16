@@ -66,7 +66,7 @@ func (r *ReportRepo) GetMatchesForReport(ctx context.Context, config reports.Rep
 			r.medication as request_medication,
 			r.quantity as request_qty,
 			COALESCE(r.max_price, 0) as request_max_price,
-			COALESCE(r.urgent, 0) as request_urgent,
+			CASE WHEN r.urgent THEN 1 ELSE 0 END as request_urgent,
 			COALESCE(r.source_name, '') as buyer_name,
 			COALESCE(r.source_phone, '') as buyer_phone,
 			r.source_group as buyer_group_jid,
