@@ -106,6 +106,7 @@ type MedicationMappingRepository interface {
 	GetByArabicName(ctx context.Context, arabicName string) (*entity.MedicationMapping, error)
 	GetAll(ctx context.Context) ([]*entity.MedicationMapping, error)
 	Search(ctx context.Context, query string) ([]*entity.MedicationMapping, error)
+	FindSimilar(ctx context.Context, embedding []float32, limit int) ([]*entity.MedicationMapping, error)
 	Count(ctx context.Context) (int, error)
 }
 

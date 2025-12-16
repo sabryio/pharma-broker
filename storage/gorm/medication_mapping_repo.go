@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/pgvector/pgvector-go"
 	"gorm.io/gorm"
 
 	"pharmabroker/domain/entity"
@@ -92,4 +93,32 @@ func (r *MedicationMappingRepo) Count(ctx context.Context) (int, error) {
 		Model(&MedicationMapping{}).
 		Count(&count).Error
 	return int(count), err
+}
+
+// FindSimilar finds medication mappings by vector similarity using pgvector cosine distance
+func (r *MedicationMappingRepo) FindSimilar(ctx context.Context, embedding []float32, limit int) ([]*entity.MedicationMapping, error) {
+	if len(embedding) == 0 {
+		return []*entity.MedicationMapping{}, nil
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var mappings []MedicationMapping
+
+	// Use pgvector <=> operator for cosine distance (smaller = more similar)
+	err := r.db.Conn.WithContext(ctx).
+		Raw(`
+			SELECT id, arabic_name, english_name, synonyms, embedding, created_at, updated_at
+			FROM medication_mappings
+			WHERE embedding IS NOT NULL
+			ORDER BY embedding <=> ?
+			LIMIT ?
+		`, pgvector.NewVector(embedding), limit).
+		Scan(&mappings).Error
+
+	if err != nil {
+		return nil, err
+	}
+	return ToMedicationMappingsEntity(mappings), nil
 }

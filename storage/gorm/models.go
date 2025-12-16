@@ -146,13 +146,13 @@ func (Group) TableName() string { return "groups" }
 
 // MedicationMapping represents medication name translation/mapping
 type MedicationMapping struct {
-	ID          string          `gorm:"column:id;primaryKey"`
-	ArabicName  string          `gorm:"column:arabic_name;not null;uniqueIndex"`
-	EnglishName string          `gorm:"column:english_name;not null"`
-	Synonyms    datatypes.JSON  `gorm:"column:synonyms;type:jsonb;default:'[]'"`
-	Embedding   pgvector.Vector `gorm:"column:embedding;type:vector(768)"`
-	CreatedAt   time.Time       `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt   time.Time       `gorm:"column:updated_at;autoUpdateTime"`
+	ID          string           `gorm:"column:id;primaryKey"`
+	ArabicName  string           `gorm:"column:arabic_name;not null;uniqueIndex"`
+	EnglishName string           `gorm:"column:english_name;not null"`
+	Synonyms    datatypes.JSON   `gorm:"column:synonyms;type:jsonb;default:'[]'"`
+	Embedding   *pgvector.Vector `gorm:"column:embedding;type:vector(768)"`
+	CreatedAt   time.Time        `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt   time.Time        `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (MedicationMapping) TableName() string { return "medication_mappings" }
@@ -239,7 +239,7 @@ type ReviewQueue struct {
 	SenderName     string     `gorm:"column:sender_name;not null"`
 	Content        string     `gorm:"column:content;not null;type:text"`
 	ReplyContext   *string    `gorm:"column:reply_context;type:text"`
-	PartialItems   string     `gorm:"column:partial_items;type:text"` // JSON array of ParsedItem
+	PartialItems   string     `gorm:"column:partial_items;type:jsonb"` // JSON array of ParsedItem
 	ParsePass      int        `gorm:"column:parse_pass;not null;default:1"`
 	AvgConfidence  float64    `gorm:"column:avg_confidence;not null;default:0"`
 	FailureReason  *string    `gorm:"column:failure_reason"`
@@ -247,7 +247,7 @@ type ReviewQueue struct {
 	ReviewedBy     *string    `gorm:"column:reviewed_by"`
 	ReviewedAt     *time.Time `gorm:"column:reviewed_at"`
 	ReviewNote     *string    `gorm:"column:review_note"`
-	CorrectedItems *string    `gorm:"column:corrected_items;type:text"` // JSON array of ParsedItem
+	CorrectedItems *string    `gorm:"column:corrected_items;type:jsonb"` // JSON array of ParsedItem
 	CreatedAt      time.Time  `gorm:"column:created_at;autoCreateTime;index"`
 	UpdatedAt      time.Time  `gorm:"column:updated_at;autoUpdateTime"`
 
@@ -279,7 +279,7 @@ func (FeedbackRecord) TableName() string { return "feedback_records" }
 // WeightHistory represents weight change history
 type WeightHistory struct {
 	ID                 string    `gorm:"column:id;primaryKey"`
-	Weights            string    `gorm:"column:weights;type:text;not null"`
+	Weights            string    `gorm:"column:weights;type:jsonb;not null"`
 	Source             string    `gorm:"column:source;not null"`
 	Improvement        *float64  `gorm:"column:improvement"`
 	Notes              *string   `gorm:"column:notes"`

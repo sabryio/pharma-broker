@@ -2,6 +2,7 @@
 package gorm
 
 import (
+	"context"
 	"fmt"
 	"pharmabroker/storage/gorm/models"
 	"time"
@@ -132,7 +133,22 @@ func (db *DB) Migrate() error {
 		&WeightHistory{},
 		&models.BotUser{},
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("auto-migrate: %w", err)
+	}
+
+	// Create HNSW index for vector similarity search (faster than IVFFlat, handles empty tables)
+	// HNSW uses hierarchical navigable small world graph for approximate nearest neighbor
+	if err := db.Conn.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_medication_embedding 
+		ON medication_mappings USING hnsw (embedding vector_cosine_ops)
+		WITH (m = 16, ef_construction = 64)
+	`).Error; err != nil {
+		// Log but don't fail - index creation may fail on edge cases
+		db.Conn.Logger.Warn(context.Background(), "HNSW index creation skipped: %v", err)
+	}
+
+	return nil
 }
 
 // setupFullTextSearch creates PostgreSQL full-text search indexes

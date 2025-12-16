@@ -191,6 +191,9 @@ func (m *MockMedicationRepo) GetByArabicName(ctx context.Context, arabicName str
 	return nil, nil
 }
 func (m *MockMedicationRepo) Count(ctx context.Context) (int, error) { return 0, nil }
+func (m *MockMedicationRepo) FindSimilar(ctx context.Context, embedding []float32, limit int) ([]*entity.MedicationMapping, error) {
+	return []*entity.MedicationMapping{}, nil
+}
 
 // MockMatchQueueRepo
 type MockMatchQueueRepo struct {
