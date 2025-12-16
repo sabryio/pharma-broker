@@ -284,11 +284,12 @@ func ToGroupsEntity(models []Group) []*entity.Group {
 
 // ToMedicationMappingModel converts entity.MedicationMapping to gorm MedicationMapping
 func ToMedicationMappingModel(d *entity.MedicationMapping) *MedicationMapping {
+	synonymsJSON, _ := json.Marshal(d.Synonyms)
 	return &MedicationMapping{
 		ID:          d.ID,
 		ArabicName:  d.ArabicName,
 		EnglishName: d.EnglishName,
-		Synonyms:    serializeSynonyms(d.Synonyms),
+		Synonyms:    synonymsJSON,
 		CreatedAt:   d.CreatedAt,
 		UpdatedAt:   d.UpdatedAt,
 	}
@@ -296,11 +297,15 @@ func ToMedicationMappingModel(d *entity.MedicationMapping) *MedicationMapping {
 
 // ToMedicationMappingEntity converts gorm MedicationMapping to entity.MedicationMapping
 func ToMedicationMappingEntity(m *MedicationMapping) *entity.MedicationMapping {
+	var synonyms []string
+	if len(m.Synonyms) > 0 {
+		json.Unmarshal(m.Synonyms, &synonyms)
+	}
 	return &entity.MedicationMapping{
 		ID:          m.ID,
 		ArabicName:  m.ArabicName,
 		EnglishName: m.EnglishName,
-		Synonyms:    deserializeSynonyms(m.Synonyms),
+		Synonyms:    synonyms,
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
 	}
@@ -455,25 +460,6 @@ func derefFloat(f *float64) float64 {
 		return 0
 	}
 	return *f
-}
-
-// serializeSynonyms converts a slice of strings to JSON
-func serializeSynonyms(synonyms []string) string {
-	if len(synonyms) == 0 {
-		return "[]"
-	}
-	data, _ := json.Marshal(synonyms)
-	return string(data)
-}
-
-// deserializeSynonyms converts JSON to a slice of strings
-func deserializeSynonyms(s string) []string {
-	if s == "" || s == "[]" {
-		return nil
-	}
-	var result []string
-	json.Unmarshal([]byte(s), &result)
-	return result
 }
 
 // ========================================

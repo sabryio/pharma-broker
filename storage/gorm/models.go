@@ -3,6 +3,9 @@ package gorm
 
 import (
 	"time"
+
+	"github.com/pgvector/pgvector-go"
+	"gorm.io/datatypes"
 )
 
 // RawMessage represents an incoming WhatsApp message before AI processing
@@ -143,13 +146,13 @@ func (Group) TableName() string { return "groups" }
 
 // MedicationMapping represents medication name translation/mapping
 type MedicationMapping struct {
-	ID          string    `gorm:"column:id;primaryKey"`
-	ArabicName  string    `gorm:"column:arabic_name;not null;uniqueIndex"`
-	EnglishName string    `gorm:"column:english_name;not null"`
-	Synonyms    string    `gorm:"column:synonyms;default:'[]'"`
-	Embedding   []byte    `gorm:"column:embedding"`
-	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt   time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	ID          string          `gorm:"column:id;primaryKey"`
+	ArabicName  string          `gorm:"column:arabic_name;not null;uniqueIndex"`
+	EnglishName string          `gorm:"column:english_name;not null"`
+	Synonyms    datatypes.JSON  `gorm:"column:synonyms;type:jsonb;default:'[]'"`
+	Embedding   pgvector.Vector `gorm:"column:embedding;type:vector(768)"`
+	CreatedAt   time.Time       `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt   time.Time       `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (MedicationMapping) TableName() string { return "medication_mappings" }

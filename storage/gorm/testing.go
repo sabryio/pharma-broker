@@ -2,13 +2,15 @@ package gorm
 
 import (
 	"context"
-	"os"
 	"pharmabroker/domain/entity"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // =============================================================================
@@ -18,19 +20,45 @@ import (
 // TestDB wraps DB for testing with cleanup helpers
 type TestDB struct {
 	*DB
-	t *testing.T
+	t         *testing.T
+	container testcontainers.Container
 }
 
-// SetupTestDB creates a PostgreSQL database connection for testing.
-// Requires a running PostgreSQL instance.
-// Set TEST_DATABASE_DSN environment variable or uses default test DSN.
+// SetupTestDB creates a PostgreSQL database using testcontainers.
+// Automatically starts a pgvector-enabled PostgreSQL container.
+// No external dependencies required - Docker handles everything.
 func SetupTestDB(t *testing.T) *TestDB {
 	t.Helper()
+	ctx := context.Background()
 
-	// Use environment variable or default test DSN
-	dsn := os.Getenv("TEST_DATABASE_DSN")
-	if dsn == "" {
-		dsn = "postgres://postgres:password@localhost:5432/pharmabroker_test?sslmode=disable"
+	// Start PostgreSQL container with pgvector support
+	// Using Reuse to avoid spinning up new container for each test
+	container, err := postgres.Run(ctx,
+		"pgvector/pgvector:pg18-trixie",
+		postgres.WithDatabase("pharmabroker_test"),
+		postgres.WithUsername("postgres"),
+		postgres.WithPassword("password"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(60*time.Second),
+		),
+		testcontainers.CustomizeRequest(testcontainers.GenericContainerRequest{
+			ContainerRequest: testcontainers.ContainerRequest{
+				Name: "pharmabroker-test-postgres",
+			},
+			Reuse: true,
+		}),
+	)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %v", err)
+	}
+
+	// Get connection string
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		container.Terminate(ctx)
+		t.Fatalf("Failed to get connection string: %v", err)
 	}
 
 	cfg := Config{
@@ -41,6 +69,7 @@ func SetupTestDB(t *testing.T) *TestDB {
 
 	db, err := NewDB(&cfg)
 	if err != nil {
+		container.Terminate(ctx)
 		t.Fatalf("Failed to create test database: %v", err)
 	}
 
@@ -56,14 +85,16 @@ func SetupTestDB(t *testing.T) *TestDB {
 		db.Conn.Exec("TRUNCATE TABLE " + table + " CASCADE")
 	}
 
-	return &TestDB{DB: db, t: t}
+	return &TestDB{DB: db, t: t, container: container}
 }
 
-// Close cleans up the test database
+// Close cleans up the test database connection.
+// Note: Container is not terminated to allow reuse across tests.
 func (tdb *TestDB) Close() {
 	if err := tdb.DB.Close(); err != nil {
 		tdb.t.Errorf("Failed to close test database: %v", err)
 	}
+	// Don't terminate container - it's reused across tests
 }
 
 // =============================================================================

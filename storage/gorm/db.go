@@ -104,6 +104,14 @@ func (db *DB) GORM() *gorm.DB {
 
 // Migrate runs database migrations for all models
 func (db *DB) Migrate() error {
+	// Create extensions before AutoMigrate (required for vector and trgm types)
+	if err := db.Conn.Exec("CREATE EXTENSION IF NOT EXISTS vector").Error; err != nil {
+		return fmt.Errorf("create vector extension: %w", err)
+	}
+	if err := db.Conn.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm").Error; err != nil {
+		return fmt.Errorf("create pg_trgm extension: %w", err)
+	}
+
 	// Run migrations for all models
 	err := db.Conn.AutoMigrate(
 		&RawMessage{},
@@ -129,6 +137,11 @@ func (db *DB) Migrate() error {
 
 // setupFullTextSearch creates PostgreSQL full-text search indexes
 func (db *DB) setupFullTextSearch() error {
+	// Enable pgvector extension for vector similarity search
+	if err := db.Conn.Exec("CREATE EXTENSION IF NOT EXISTS vector").Error; err != nil {
+		return fmt.Errorf("create vector extension: %w", err)
+	}
+
 	// Enable pg_trgm extension for trigram similarity search
 	if err := db.Conn.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm").Error; err != nil {
 		return fmt.Errorf("create pg_trgm extension: %w", err)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -142,26 +141,16 @@ func NewManagerWithConfig(ctx context.Context, cfg *config.WhatsAppConfig, recon
 		return nil, fmt.Errorf("create session directory: %w", err)
 	}
 
-	// Initialize session store (PostgreSQL or SQLite)
-	var container *sqlstore.Container
-	var err error
-
-	if cfg.SessionDBDSN != "" {
-		// Use PostgreSQL for session storage
-		container, err = sqlstore.New(ctx, "postgres", cfg.SessionDBDSN, waLog.Noop)
-		if err != nil {
-			return nil, fmt.Errorf("create PostgreSQL session store: %w", err)
-		}
-		log.Info().Msg("WhatsApp session store: PostgreSQL")
-	} else {
-		// Fallback to SQLite (original behavior)
-		dbPath := filepath.Join(cfg.SessionDir, "whatsapp.db")
-		container, err = sqlstore.New(ctx, "sqlite", fmt.Sprintf("file:%s?_pragma=foreign_keys(1)", dbPath), waLog.Noop)
-		if err != nil {
-			return nil, fmt.Errorf("create SQLite session store: %w", err)
-		}
-		log.Info().Str("path", dbPath).Msg("WhatsApp session store: SQLite")
+	// Initialize session store (PostgreSQL only - SQLite removed)
+	if cfg.SessionDBDSN == "" {
+		return nil, fmt.Errorf("SessionDBDSN is required: PostgreSQL is the only supported session store")
 	}
+
+	container, err := sqlstore.New(ctx, "postgres", cfg.SessionDBDSN, waLog.Noop)
+	if err != nil {
+		return nil, fmt.Errorf("create PostgreSQL session store: %w", err)
+	}
+	log.Info().Msg("WhatsApp session store: PostgreSQL")
 
 	m := &Manager{
 		cfg:           cfg,
