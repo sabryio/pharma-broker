@@ -131,3 +131,32 @@ func (r *MatchRepo) CountConfirmedToday(ctx context.Context) (int64, error) {
 		Count(&count).Error
 	return count, err
 }
+
+// GetStaleMatches finds matches older than maxAge with specified statuses (for escalation)
+func (r *MatchRepo) GetStaleMatches(ctx context.Context, statuses []entity.MatchStatus, maxAge time.Duration, limit int) ([]*entity.Match, error) {
+	if len(statuses) == 0 {
+		return nil, nil
+	}
+
+	// Convert statuses to strings
+	statusStrings := make([]string, len(statuses))
+	for i, s := range statuses {
+		statusStrings[i] = string(s)
+	}
+
+	cutoff := time.Now().Add(-maxAge)
+
+	var matches []Match
+	err := r.db.Conn.WithContext(ctx).
+		Where("status IN ?", statusStrings).
+		Where("created_at < ?", cutoff).
+		Where("confirmed_at IS NULL"). // Only unresolved matches
+		Order("created_at ASC").       // Oldest first
+		Limit(limit).
+		Find(&matches).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return ToMatchesEntity(matches), nil
+}

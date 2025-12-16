@@ -104,6 +104,9 @@ func (m *mockMatchRepo) GetByRequestID(ctx context.Context, requestID string) ([
 func (m *mockMatchRepo) CountConfirmedToday(ctx context.Context) (int64, error) {
 	return 0, nil
 }
+func (m *mockMatchRepo) GetStaleMatches(ctx context.Context, statuses []entity.MatchStatus, maxAge time.Duration, limit int) ([]*entity.Match, error) {
+	return nil, nil
+}
 
 var _ repository.MatchRepository = (*mockMatchRepo)(nil)
 

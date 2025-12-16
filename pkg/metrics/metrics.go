@@ -60,6 +60,58 @@ var (
 		Buckets: prometheus.DefBuckets,
 	})
 
+	// Match Escalation Metrics
+	MatchesEscalated = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_matches_escalated_total",
+		Help: "Total number of matches escalated due to age",
+	})
+
+	// ========== Match Scoring Metrics ==========
+
+	// Score distribution histogram - tracks overall match score distribution
+	MatchScoreDistribution = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pharma_match_score",
+		Help:    "Distribution of match scores (0.0 to 1.0)",
+		Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
+	})
+
+	// Scores by confidence band - count of matches per band
+	MatchesByConfidenceBand = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pharma_matches_by_confidence_total",
+		Help: "Total matches categorized by confidence band",
+	}, []string{"band"}) // band: AUTO, SUGGEST, REVIEW, NONE
+
+	// Component score breakdown histograms
+	MatchScoreMedication = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pharma_match_score_medication",
+		Help:    "Distribution of medication matching scores",
+		Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
+	})
+
+	MatchScoreDosage = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pharma_match_score_dosage",
+		Help:    "Distribution of dosage matching scores",
+		Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
+	})
+
+	MatchScoreQuantity = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pharma_match_score_quantity",
+		Help:    "Distribution of quantity matching scores",
+		Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
+	})
+
+	MatchScorePrice = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pharma_match_score_price",
+		Help:    "Distribution of price matching scores",
+		Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
+	})
+
+	MatchScoreRecency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pharma_match_score_recency",
+		Help:    "Distribution of recency scores",
+		Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
+	})
+
 	// Goroutine Metrics
 	ActiveWorkers = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "pharma_active_workers",

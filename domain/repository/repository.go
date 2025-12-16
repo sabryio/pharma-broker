@@ -57,6 +57,8 @@ type MatchReader interface {
 	GetByRequestID(ctx context.Context, requestID string) ([]*entity.Match, error)
 	CountPending(ctx context.Context) (int64, error)
 	CountConfirmedToday(ctx context.Context) (int64, error)
+	// GetStaleMatches finds matches older than maxAge with specified statuses (for escalation)
+	GetStaleMatches(ctx context.Context, statuses []entity.MatchStatus, maxAge time.Duration, limit int) ([]*entity.Match, error)
 }
 
 // MatchWriter provides write operations for matches

@@ -3,6 +3,7 @@ package parsing
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"pharmabroker/domain/entity"
@@ -10,6 +11,7 @@ import (
 	"pharmabroker/matching"
 
 	"pharmabroker/pkg/matcher/similarity"
+	"pharmabroker/pkg/metrics"
 
 	strUtils "pharmabroker/pkg/text"
 
@@ -66,9 +68,8 @@ func (ms *MatchingService) FindMatchesForOffer(ctx context.Context, offer *entit
 		return
 	}
 
-	for _, req := range requests {
-		ms.processMatch(ctx, offer, req, nil)
-	}
+	// Process matches in parallel with bounded concurrency
+	ms.processMatchesParallel(ctx, offer, requests, nil)
 }
 
 // FindMatchesForRequest finds matching offers for a given request
@@ -85,9 +86,60 @@ func (ms *MatchingService) FindMatchesForRequest(ctx context.Context, request *e
 		return
 	}
 
-	for _, offer := range offers {
-		ms.processMatch(ctx, offer, nil, request)
+	// Process matches in parallel with bounded concurrency
+	ms.processMatchesParallel(ctx, nil, nil, &matchContext{offers: offers, request: request})
+}
+
+// matchContext holds context for parallel offer matching
+type matchContext struct {
+	offers  []*entity.Offer
+	request *entity.Request
+}
+
+// processMatchesParallel scores candidates in parallel with bounded concurrency
+func (ms *MatchingService) processMatchesParallel(ctx context.Context, offer *entity.Offer, requests []*entity.Request, offerCtx *matchContext) {
+	const maxConcurrency = 5 // Limit concurrent scoring goroutines
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxConcurrency)
+
+	if requests != nil {
+		// Matching requests for an offer
+		for _, req := range requests {
+			wg.Add(1)
+			go func(r *entity.Request) {
+				defer wg.Done()
+
+				select {
+				case <-ctx.Done():
+					return
+				case sem <- struct{}{}:
+				}
+				defer func() { <-sem }()
+
+				ms.processMatch(ctx, offer, r, nil)
+			}(req)
+		}
+	} else if offerCtx != nil {
+		// Matching offers for a request
+		for _, o := range offerCtx.offers {
+			wg.Add(1)
+			go func(offer *entity.Offer) {
+				defer wg.Done()
+
+				select {
+				case <-ctx.Done():
+					return
+				case sem <- struct{}{}:
+				}
+				defer func() { <-sem }()
+
+				ms.processMatch(ctx, offer, nil, offerCtx.request)
+			}(o)
+		}
 	}
+
+	wg.Wait()
 }
 
 func (ms *MatchingService) processMatch(ctx context.Context, offer *entity.Offer, req *entity.Request, existingReq *entity.Request) {
@@ -104,6 +156,9 @@ func (ms *MatchingService) processMatch(ctx context.Context, offer *entity.Offer
 
 	// Get full match score with breakdown
 	matchScore := ms.scorer.ScoreMatch(offer, request, medicationScore)
+
+	// Record scoring metrics
+	ms.recordScoreMetrics(matchScore)
 
 	// Skip matches below minimum threshold (NONE confidence)
 	if matchScore.Confidence == matching.ConfidenceNone {
@@ -203,4 +258,20 @@ func (ms *MatchingService) calculateMedicationScore(offerMed, requestMed string)
 
 	// Semantic not available: use lexical only
 	return normalizedLexical
+}
+
+// recordScoreMetrics records match scoring metrics for observability
+func (ms *MatchingService) recordScoreMetrics(score *matching.MatchScore) {
+	// Record overall score distribution
+	metrics.MatchScoreDistribution.Observe(score.Total)
+
+	// Record by confidence band
+	metrics.MatchesByConfidenceBand.WithLabelValues(string(score.Confidence)).Inc()
+
+	// Record component score breakdowns
+	metrics.MatchScoreMedication.Observe(score.MedicationScore)
+	metrics.MatchScoreDosage.Observe(score.DosageScore)
+	metrics.MatchScoreQuantity.Observe(score.QuantityScore)
+	metrics.MatchScorePrice.Observe(score.PriceScore)
+	metrics.MatchScoreRecency.Observe(score.RecencyScore)
 }

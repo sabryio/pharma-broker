@@ -315,7 +315,8 @@ func TestScheduler_JobExecution(t *testing.T) {
 
 	select {
 	case <-done:
-		// Success
+		// Wait a bit for metrics to be recorded (job has run but metrics need to complete)
+		time.Sleep(100 * time.Millisecond)
 	case <-time.After(3 * time.Second):
 		t.Fatal("Job did not execute within timeout")
 	}

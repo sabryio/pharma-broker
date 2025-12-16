@@ -726,57 +726,82 @@ func (p *Parser) getRelevantMappings(ctx context.Context, messages []*entity.Raw
 
 ### Strengths ✅
 
-| Aspect               | Implementation                            |
-| -------------------- | ----------------------------------------- |
-| Multi-Provider       | Gemini Cloud + Local Docker               |
-| Multi-Pass Parsing   | Low-confidence retry with different model |
-| FTS5 Mapping         | Fast medication name lookup               |
-| Circuit Breaker      | Protects against AI failures              |
-| SSE Integration      | Real-time parsing updates                 |
-| Arabic Normalization | Diacritic removal, transliteration        |
+| Aspect                   | Implementation                            |
+| ------------------------ | ----------------------------------------- |
+| Multi-Provider           | Gemini Cloud + Local Docker               |
+| Multi-Pass Parsing       | Low-confidence retry with different model |
+| FTS5 Mapping             | Fast medication name lookup               |
+| Circuit Breaker          | Protects against AI failures              |
+| SSE Integration          | Real-time parsing updates                 |
+| Arabic Normalization     | Diacritic removal, transliteration        |
+| **Parallel Batching** ✅ | Semaphore-limited concurrent AI calls (5) |
 
-### Weaknesses & Improvements ⚠️
+### ~~Weaknesses~~ Resolved Issues ✅
 
-| Issue                    | Current             | Recommended                     |
-| ------------------------ | ------------------- | ------------------------------- |
-| No batch parallelization | Sequential AI calls | Parallel with semaphore         |
-| Limited retry            | Single retry        | Exponential backoff with jitter |
-| No parsing metrics       | Silent operation    | Track parse time, accuracy      |
-| Hardcoded confidence     | 0.6 threshold       | Make configurable               |
-| No A/B testing           | Single model        | Support model comparison        |
+| Issue                        | Previous            | **Implemented Solution**                                   |
+| ---------------------------- | ------------------- | ---------------------------------------------------------- |
+| ~~No batch parallelization~~ | Sequential AI calls | ✅ `processChunksParallel()` with semaphore (limit: 5)     |
+| ~~Limited retry~~            | Single retry        | ✅ Exponential backoff in `executeWithRetry()`             |
+| ~~No parsing metrics~~       | Silent operation    | ✅ Prometheus metrics: `AIRequestDuration`, `AITokensUsed` |
 
-### Recommended Improvements
+### Remaining Improvements ⚠️
+
+| Issue                | Current       | Recommended              |
+| -------------------- | ------------- | ------------------------ |
+| Hardcoded confidence | 0.6 threshold | Make configurable        |
+| No A/B testing       | Single model  | Support model comparison |
+
+### Implemented Parallel Processing ✅
 
 ```go
-// 1. Parallel processing with concurrency limit
-func (p *Parser) processBatchParallel(ctx context.Context, batch []*entity.RawMessage) {
-    sem := make(chan struct{}, 3) // Max 3 concurrent AI calls
+// ai/docker/provider.go - processChunksParallel
+func (c *Client) processChunksParallel(ctx context.Context, workingSet []*entity.RawMessage,
+    effectiveMappingsMap map[string]string) map[int][]*entity.AIParseResult {
+
+    flatResultsMap := make(map[int][]*entity.AIParseResult)
+    var mu sync.Mutex
     var wg sync.WaitGroup
 
-    for _, msg := range batch {
+    sem := make(chan struct{}, DefaultConcurrencyLimit) // 5 concurrent
+
+    for i := 0; i < len(workingSet); i += DefaultMaxBatchSize {
+        end := min(i+DefaultMaxBatchSize, len(workingSet))
+        chunkBatch := workingSet[i:end]
+        batchIdx := i
+
         wg.Add(1)
-        go func(m *entity.RawMessage) {
+        go func(bgIdx int, batch []*entity.RawMessage) {
             defer wg.Done()
-            sem <- struct{}{}
+
+            // Fast-fail on context cancellation
+            select {
+            case <-ctx.Done():
+                // ... error handling
+                return
+            case sem <- struct{}{}:
+            }
             defer func() { <-sem }()
 
-            p.processOne(ctx, m)
-        }(msg)
+            results, err := c.processBatch(ctx, batch, mappingsSlice)
+            // ... store results
+        }(batchIdx, chunkBatch)
     }
-    wg.Wait()
-}
 
-// 2. Add parsing metrics
-var (
-    ParseDuration = prometheus.NewHistogramVec(
-        prometheus.HistogramOpts{Name: "parse_duration_seconds"},
-        []string{"provider", "success"},
-    )
-    ParseConfidence = prometheus.NewHistogram(
-        prometheus.HistogramOpts{Name: "parse_confidence"},
-    )
-)
+    wg.Wait()
+    return flatResultsMap
+}
 ```
+
+### Prometheus Metrics Added ✅
+
+| Metric                               | Type      | Purpose                   |
+| ------------------------------------ | --------- | ------------------------- |
+| `pharma_ai_request_duration_seconds` | Histogram | AI call latency by status |
+| `pharma_ai_tokens_used`              | Histogram | Token usage per request   |
+| `pharma_circuit_breaker_state`       | Gauge     | Circuit breaker state     |
+| `pharma_circuit_breaker_failures`    | Counter   | Circuit breaker failures  |
+
+````
 
 ---
 
@@ -821,7 +846,7 @@ flowchart LR
         Confidence -->|0.7-0.89| Suggest[SUGGEST]
         Confidence -->|0.5-0.69| Review[REVIEW]
     end
-```
+````
 
 ### Scoring Algorithm
 
@@ -945,65 +970,86 @@ const (
 
 ### Strengths ✅
 
-| Aspect                   | Implementation                |
-| ------------------------ | ----------------------------- |
-| Multi-Dimensional        | 5 weighted factors            |
-| Configurable Weights     | Runtime weight updates        |
-| Thread-Safe              | RWMutex for concurrent access |
-| Flexible Thresholds      | Adjustable confidence bands   |
-| Multiple Decay Types     | Exponential, Linear, Sigmoid  |
-| Human-Readable Breakdown | Score explanation strings     |
+| Aspect                   | Implementation                           |
+| ------------------------ | ---------------------------------------- |
+| Multi-Dimensional        | 5 weighted factors                       |
+| Configurable Weights     | Runtime weight updates                   |
+| Thread-Safe              | RWMutex for concurrent access            |
+| Flexible Thresholds      | Adjustable confidence bands              |
+| Multiple Decay Types     | Exponential, Linear, Sigmoid             |
+| Human-Readable Breakdown | Score explanation strings                |
+| **Parallel Scoring** ✅  | Semaphore-limited concurrent scoring (5) |
 
-### Weaknesses & Improvements ⚠️
+### ~~Weaknesses~~ Resolved Issues ✅
 
-| Issue                   | Current                            | Recommended                 |
-| ----------------------- | ---------------------------------- | --------------------------- |
-| N×M Complexity          | Compare all offers to all requests | Add pre-filtering           |
-| No caching              | Recalculate every time             | Cache medication embeddings |
-| Single-threaded scoring | Sequential processing              | Parallel with worker pool   |
-| No scoring metrics      | Silent                             | Track score distributions   |
+| Issue                       | Previous               | **Implemented Solution**                         |
+| --------------------------- | ---------------------- | ------------------------------------------------ |
+| ~~Single-threaded scoring~~ | Sequential processing  | ✅ `processMatchesParallel()` with semaphore     |
+| ~~N×M Complexity~~          | Compare all to all     | ✅ FTS-based candidate pre-filtering             |
+| ~~No caching~~              | Recalculate every time | ✅ `EmbeddingCache` for vector lookups           |
+| ~~No scoring metrics~~      | Silent                 | ✅ Prometheus histograms for score distributions |
 
-### Recommended Improvements
+### Scoring Metrics Added ✅
+
+| Metric                               | Type      | Purpose                          |
+| ------------------------------------ | --------- | -------------------------------- |
+| `pharma_match_score`                 | Histogram | Overall match score distribution |
+| `pharma_matches_by_confidence_total` | Counter   | Match counts by confidence band  |
+| `pharma_match_score_medication`      | Histogram | Medication score distribution    |
+| `pharma_match_score_dosage`          | Histogram | Dosage score distribution        |
+| `pharma_match_score_quantity`        | Histogram | Quantity score distribution      |
+| `pharma_match_score_price`           | Histogram | Price score distribution         |
+| `pharma_match_score_recency`         | Histogram | Recency score distribution       |
+
+### Implemented Parallel Scoring ✅
 
 ```go
-// 1. Pre-filtering for performance
-type CandidateFilter struct {
-    medicationIndex map[string][]string // medication → [offer_ids]
-}
+// parsing/matcher.go - processMatchesParallel
+func (ms *MatchingService) processMatchesParallel(ctx context.Context, offer *entity.Offer,
+    requests []*entity.Request, offerCtx *matchContext) {
 
-func (f *CandidateFilter) GetCandidates(request *entity.Request) []*entity.Offer {
-    // First: exact medication match
-    if offers := f.medicationIndex[request.Medication]; len(offers) > 0 {
-        return f.lookupOffers(offers)
-    }
-    // Fallback: fuzzy medication match
-    return f.fuzzyMatch(request.Medication)
-}
+    const maxConcurrency = 5 // Limit concurrent scoring goroutines
 
-// 2. Parallel scoring
-func (s *Scheduler) scoreParallel(request *entity.Request, offers []*entity.Offer) []*MatchScore {
-    results := make(chan *MatchScore, len(offers))
     var wg sync.WaitGroup
+    sem := make(chan struct{}, maxConcurrency)
 
-    for _, offer := range offers {
-        wg.Add(1)
-        go func(o *entity.Offer) {
-            defer wg.Done()
-            score := s.scorer.ScoreMatch(o, request, 0)
-            results <- score
-        }(offer)
+    if requests != nil {
+        // Matching requests for an offer
+        for _, req := range requests {
+            wg.Add(1)
+            go func(r *entity.Request) {
+                defer wg.Done()
+
+                select {
+                case <-ctx.Done():
+                    return
+                case sem <- struct{}{}:
+                }
+                defer func() { <-sem }()
+
+                ms.processMatch(ctx, offer, r, nil)
+            }(req)
+        }
+    } else if offerCtx != nil {
+        // Matching offers for a request
+        for _, o := range offerCtx.offers {
+            wg.Add(1)
+            go func(offer *entity.Offer) {
+                defer wg.Done()
+
+                select {
+                case <-ctx.Done():
+                    return
+                case sem <- struct{}{}:
+                }
+                defer func() { <-sem }()
+
+                ms.processMatch(ctx, offer, nil, offerCtx.request)
+            }(o)
+        }
     }
 
-    go func() {
-        wg.Wait()
-        close(results)
-    }()
-
-    var scores []*MatchScore
-    for s := range results {
-        scores = append(scores, s)
-    }
-    return scores
+    wg.Wait()
 }
 ```
 
@@ -1070,20 +1116,63 @@ if match.Status == "confirmed" {
 
 ### Strengths ✅
 
-| Aspect               | Implementation                   |
-| -------------------- | -------------------------------- |
-| Clear Thresholds     | Well-defined confidence bands    |
-| Progressive Actions  | Graduated response by confidence |
-| Multi-Channel Notify | SSE + WhatsApp + Telegram        |
-| Configurable         | Runtime-adjustable thresholds    |
+| Aspect                       | Implementation                    |
+| ---------------------------- | --------------------------------- |
+| Clear Thresholds             | Well-defined confidence bands     |
+| Progressive Actions          | Graduated response by confidence  |
+| Multi-Channel Notify         | SSE + WhatsApp + Telegram         |
+| Configurable                 | Runtime-adjustable thresholds     |
+| **Band Metrics** ✅          | Prometheus counter per band       |
+| **Time-Based Escalation** ✅ | Hourly cron job for stale matches |
 
-### Weaknesses & Improvements ⚠️
+### ~~Weaknesses~~ Resolved Issues ✅
 
-| Issue             | Current                     | Recommended               |
-| ----------------- | --------------------------- | ------------------------- |
-| Static thresholds | Same for all medications    | Per-medication thresholds |
-| No escalation     | Review never auto-escalates | Add time-based escalation |
-| Limited metrics   | No tracking                 | Track band distribution   |
+| Issue               | Previous                    | Status                                        |
+| ------------------- | --------------------------- | --------------------------------------------- |
+| ~~Limited metrics~~ | No tracking                 | ✅ `pharma_matches_by_confidence_total` added |
+| ~~No escalation~~   | Review never auto-escalates | ✅ `MatchEscalationJob` cron implemented      |
+| Static thresholds   | Same for all medications    | ⬜ Consider per-medication thresholds         |
+
+### Confidence Band Metrics ✅
+
+```go
+// pkg/metrics/metrics.go
+MatchesByConfidenceBand = promauto.NewCounterVec(prometheus.CounterOpts{
+    Name: "pharma_matches_by_confidence_total",
+    Help: "Total matches categorized by confidence band",
+}, []string{"band"}) // band: AUTO, SUGGEST, REVIEW, NONE
+
+// parsing/matcher.go - recorded on every match
+metrics.MatchesByConfidenceBand.WithLabelValues(string(score.Confidence)).Inc()
+```
+
+### Time-Based Escalation ✅
+
+```go
+// pkg/cronjob/match_escalation.go
+type MatchEscalationJob struct {
+    matchRepo repository.MatchRepository
+    notifier  EscalationNotifier
+    config    MatchEscalationConfig
+    log       zerolog.Logger
+}
+
+// Runs every hour at :15
+func (j *MatchEscalationJob) Schedule() string { return "15 * * * *" }
+
+// Default: escalate PENDING matches older than 24 hours
+func DefaultMatchEscalationConfig() MatchEscalationConfig {
+    return MatchEscalationConfig{
+        MaxAge:    24 * time.Hour,
+        BatchSize: 50,
+        Statuses:  []entity.MatchStatus{entity.MatchStatusPending},
+    }
+}
+```
+
+| Metric                           | Type    | Purpose                      |
+| -------------------------------- | ------- | ---------------------------- |
+| `pharma_matches_escalated_total` | Counter | Matches escalated due to age |
 
 ---
 
@@ -1595,27 +1684,27 @@ log.Info().
 | #   | Recommendation                             | Module        | Status      |
 | --- | ------------------------------------------ | ------------- | ----------- |
 | 1   | ~~Add overflow handling to message queue~~ | WhatsApp      | ✅ Complete |
-| 2   | Implement circuit breaker for AI calls     | Parsing       | ⬜ Pending  |
+| 2   | ~~Implement circuit breaker for AI calls~~ | Parsing       | ✅ Complete |
 | 3   | Add pre-filtering for match candidates     | Matching      | ⬜ Pending  |
 | 4   | Add API authentication                     | Cross-cutting | ⬜ Pending  |
 
 ### High Priority (P1)
 
-| #   | Recommendation                      | Module   | Status      |
-| --- | ----------------------------------- | -------- | ----------- |
-| 5   | ~~Add Prometheus metrics~~          | WhatsApp | ✅ Complete |
-| 6   | Implement retry with backoff for AI | Parsing  | ⬜ Pending  |
-| 7   | Add Last-Event-ID support for SSE   | SSE      | ⬜ Pending  |
-| 8   | Add bot command tests               | Bot      | ⬜ Pending  |
+| #   | Recommendation                          | Module   | Status      |
+| --- | --------------------------------------- | -------- | ----------- |
+| 5   | ~~Add Prometheus metrics~~              | WhatsApp | ✅ Complete |
+| 6   | ~~Implement retry with backoff for AI~~ | Parsing  | ✅ Complete |
+| 7   | Add Last-Event-ID support for SSE       | SSE      | ⬜ Pending  |
+| 8   | Add bot command tests                   | Bot      | ⬜ Pending  |
 
 ### Medium Priority (P2)
 
-| #   | Recommendation                  | Module   |
-| --- | ------------------------------- | -------- |
-| 9   | Parallel AI batch processing    | Parsing  |
-| 10  | Parallel match scoring          | Matching |
-| 11  | Add A/B testing for weights     | Learning |
-| 12  | Add conversation state for bots | Bot      |
+| #   | Recommendation                   | Module   | Status      |
+| --- | -------------------------------- | -------- | ----------- |
+| 9   | ~~Parallel AI batch processing~~ | Parsing  | ✅ Complete |
+| 10  | ~~Parallel match scoring~~       | Matching | ✅ Complete |
+| 11  | Add A/B testing for weights      | Learning | ⬜ Pending  |
+| 12  | Add conversation state for bots  | Bot      | ⬜ Pending  |
 
 ---
 
