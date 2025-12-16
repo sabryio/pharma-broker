@@ -60,3 +60,10 @@ drizzle.config.ts
 tmp/
 temp/
 *.tmp
+
+# Docker files (don't invalidate cache when these change)
+docker-compose.yaml
+docker-compose.*.yaml
+docker-compose.override.yaml
+Dockerfile
+.dockerignore

@@ -23,31 +23,27 @@ services:
     networks:
       - pharmabroker-network
 
+  # Main application
   app:
     build: .
     ports:
       - "8080:8080" # Main HTTP API + Dashboard
-      - "5051:5050" # Health check endpoint (external 5051)
-    container_name: app
+      - "5051:5050" # Health check endpoint
+    container_name: pharmabroker-app
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
-      # AI Provider Selection
-      - PB_AI_PROVIDER=docker # Use Docker Model Runner
-      # Docker Model Runner (auto-injected by Compose models)
-      # - LLM_URL                          # Auto-set from models binding
-      # - LLM_MODEL                        # Auto-set from models binding
+      # AI Provider - uses Docker Model Runner
+      - PB_AI_PROVIDER=docker
       # Database
       - PB_DATABASE_DSN=postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable
       - PB_WHATSAPP_SESSION_DB_DSN=postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable
       - PB_WHATSAPP_SESSION_DIR=/app/data/whatsapp
     volumes:
-      - ./data:/app/data # Share local session with Docker
+      - ./data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    models:
-      - llm # Bind to the llm model
-      - embedding-model # Bind to the customized embedding model
     restart: unless-stopped
     networks:
       - pharmabroker-network
@@ -56,26 +52,34 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    # Bind to AI models using long syntax with custom env var names
+    # models:
+    #   llm:
+    #     endpoint_var: LLM_URL
+    #     model_var: LLM_MODEL
+    #   embedding-model:
+    #     endpoint_var: EMBEDDING_MODEL_URL
+    #     model_var: EMBEDDING_MODEL_MODEL
 
-# Local LLM model via Docker Model Runner
-models:
-  llm:
-    model: ai/qwen3-vl:latest
-    context_size: 16384
-    runtime_flags:
-      - "--temp"
-      - "0.1" # Low temperature for consistent parsing
-      - "--threads"
-      - "8" # Number of threads for generation
-      - "--mlock" # Lock memory to prevent swapping
+    # Local AI models via Docker Model Runner
+    # models:
+    #   llm:
+    #     model: ai/qwen3-vl:latest
+    #     context_size: 16384
+    #     runtime_flags:
+    #       - "--temp"
+    #       - "0.1"
+    #       - "--threads"
+    #       - "8"
+    #       - "--mlock"
 
-  embedding-model:
-    model: ai/embeddinggemma:latest
-    context_size: 8192
-    runtime_flags:
-      - "--threads"
-      - "4"
-      - "--mlock"
+    #   embedding-model:
+    #     model: ai/embeddinggemma:latest
+    #     context_size: 8192
+    #     runtime_flags:
+    #       - "--threads"
+    #       - "4"
+    #       - "--mlock"
 
 volumes:
   pharmabroker-data:

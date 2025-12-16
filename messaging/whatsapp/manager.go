@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	_ "github.com/lib/pq" // PostgreSQL driver for sqlstore
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"

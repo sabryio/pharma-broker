@@ -49,10 +49,9 @@ whatsapp:
   # Persistent storage allows login without re-scanning QR code
   session_dir: ./data/whatsapp
 
-  # PostgreSQL DSN for storing WhatsApp session (optional)
-  # If set, uses PostgreSQL instead of SQLite for session storage.
-  # Override with WHATSAPP_SESSION_DB_DSN environment variable.
-  # session_db_dsn: postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable
+  # PostgreSQL DSN for storing WhatsApp session (REQUIRED - no SQLite fallback)
+  # Override with PB_WHATSAPP_SESSION_DB_DSN environment variable.
+  session_db_dsn: postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable
 
   # Time to wait before reconnecting after connection failure
   reconnect_delay: 5s
@@ -140,8 +139,8 @@ api:
 # ---------------------------------
 database:
   # PostgreSQL connection string (DSN)
-  # Override with DATABASE_DSN environment variable
-  dsn: postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable
+  # Override with PB_DATABASE_DSN environment variable
+  dsn: postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable
 
   # Connection pool settings
   max_open_conns: 25
