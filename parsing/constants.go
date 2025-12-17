@@ -55,3 +55,8 @@ const (
 	DefaultTargetAcceptRate           = 0.85 // Target acceptance rate
 	DefaultAcceptRateTolerance        = 0.05 // Tolerance around target rate
 )
+
+// Match filtering constants (not in const block due to time.Duration)
+var (
+	DefaultMaxOfferAge = 7 * 24 * time.Hour // 7 days - offers older than this are considered stale
+)

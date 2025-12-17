@@ -78,109 +78,6 @@ This document provides a comprehensive analysis of each core functionality in Ph
 | ~~Confidence Threshold Static~~ | ~~Low~~    | ~~Hardcoded thresholds~~      | ~~No adaptation to AI model changes~~   | ✅ Fixed |
 | ~~Reply Context Ignored~~       | ~~Medium~~ | ~~`ReplyToContent` not used~~ | ~~Missing context for replies~~         | ✅ Fixed |
 
-### Enhancement Recommendations
-
-#### 2.1 Retry with Exponential Backoff
-
-```go
-func (p *Parser) parseWithAI(ctx context.Context, batch []*entity.RawMessage) ([]*entity.AIParseResult, error) {
-    var lastErr error
-    for attempt := 0; attempt < 3; attempt++ {
-        results, err := p.doParseWithAI(ctx, batch)
-        if err == nil {
-            return results, nil
-        }
-        lastErr = err
-
-        // Exponential backoff: 1s, 2s, 4s
-        select {
-        case <-ctx.Done():
-            return nil, ctx.Err()
-        case <-time.After(time.Duration(1<<attempt) * time.Second):
-        }
-
-        p.log.Warn().
-            Int("attempt", attempt+1).
-            Err(err).
-            Msg("Retrying AI parse")
-    }
-    return nil, fmt.Errorf("AI parse failed after 3 attempts: %w", lastErr)
-}
-```
-
-#### 2.2 Token-Aware Batching
-
-```go
-const MaxTokensPerBatch = 4000 // Leave room for response
-
-func (p *Parser) splitBatchByTokens(batch []*entity.RawMessage) [][]*entity.RawMessage {
-    var batches [][]*entity.RawMessage
-    var current []*entity.RawMessage
-    currentTokens := 0
-
-    for _, msg := range batch {
-        // Rough estimate: 1 token ≈ 4 chars for Arabic
-        msgTokens := len(msg.Content) / 3
-
-        if currentTokens+msgTokens > MaxTokensPerBatch && len(current) > 0 {
-            batches = append(batches, current)
-            current = nil
-            currentTokens = 0
-        }
-
-        current = append(current, msg)
-        currentTokens += msgTokens
-    }
-
-    if len(current) > 0 {
-        batches = append(batches, current)
-    }
-    return batches
-}
-```
-
-#### 2.3 Include Reply Context in Parsing
-
-```go
-func (p *Parser) buildParseContext(msg *entity.RawMessage) string {
-    var sb strings.Builder
-
-    // Include reply context if available
-    if msg.ReplyToContent != "" {
-        sb.WriteString("في رد على: ")
-        sb.WriteString(msg.ReplyToContent)
-        sb.WriteString("\n---\n")
-    }
-
-    sb.WriteString(msg.Content)
-    return sb.String()
-}
-```
-
-#### 2.4 Dynamic Confidence Thresholds
-
-```go
-type DynamicThresholds struct {
-    mu         sync.RWMutex
-    strict     float64
-    relaxed    float64
-    lastUpdate time.Time
-}
-
-func (dt *DynamicThresholds) AdjustFromFeedback(confirmRate float64) {
-    dt.mu.Lock()
-    defer dt.mu.Unlock()
-
-    // If confirmation rate is high, we can be more lenient
-    if confirmRate > 0.9 {
-        dt.strict = max(0.5, dt.strict-0.05)
-    } else if confirmRate < 0.7 {
-        dt.strict = min(0.9, dt.strict+0.05)
-    }
-    dt.lastUpdate = time.Now()
-}
-```
-
 ---
 
 ## 3. Intelligent Matching Engine
@@ -201,13 +98,13 @@ func (dt *DynamicThresholds) AdjustFromFeedback(confirmRate float64) {
 
 ### Weaknesses & Edge Cases ⚠️
 
-| Issue                   | Severity | Current Behavior      | Impact                                            |
-| ----------------------- | -------- | --------------------- | ------------------------------------------------- |
-| No Semantic Similarity  | High     | Lexical matching only | Misses synonyms (e.g., "باراسيتامول" vs "بنادول") |
-| Quantity Unit Mismatch  | Medium   | No unit conversion    | "100 قرص" vs "10 علبة" not comparable             |
-| Price Currency Mismatch | Low      | Assumes EGP           | International trades fail                         |
-| Stale Offers            | Medium   | Recency decay only    | Expired offers still matched                      |
-| Same-Sender Matching    | Low      | No exclusion          | Self-matching possible                            |
+| Issue                    | Severity   | Current Behavior       | Impact                                            | Status   |
+| ------------------------ | ---------- | ---------------------- | ------------------------------------------------- | -------- |
+| No Semantic Similarity   | High       | Lexical matching only  | Misses synonyms (e.g., "باراسيتامول" vs "بنادول") | Open     |
+| Quantity Unit Mismatch   | Medium     | No unit conversion     | "100 قرص" vs "10 علبة" not comparable             | Open     |
+| Price Currency Mismatch  | Low        | Assumes EGP            | International trades fail                         | Open     |
+| ~~Stale Offers~~         | ~~Medium~~ | ~~Recency decay only~~ | ~~Expired offers still matched~~                  | ✅ Fixed |
+| ~~Same-Sender Matching~~ | ~~Low~~    | ~~No exclusion~~       | ~~Self-matching possible~~                        | ✅ Fixed |
 
 ### Enhancement Recommendations
 
@@ -1312,3 +1209,5 @@ _Last updated: December 17, 2024_
 | 2024-12-17 | Implemented Token-Aware Batching (6000 tokens/batch, auto-split)    | `parsing`            |
 | 2024-12-17 | Implemented Reply Context in Parsing (extracts tokens from replies) | `parsing`            |
 | 2024-12-17 | Implemented Dynamic Confidence Thresholds (adaptive adjustment)     | `parsing`            |
+| 2024-12-17 | Implemented Stale Offer Filtering (7-day max age, configurable)     | `parsing`            |
+| 2024-12-17 | Implemented Same-Sender Exclusion (prevents self-matching)          | `parsing`            |

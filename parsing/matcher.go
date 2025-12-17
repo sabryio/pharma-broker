@@ -28,6 +28,7 @@ type MatchingService struct {
 	scorer         *matching.Scorer
 	embeddings     *EmbeddingCache
 	sseBroadcaster SSEBroadcaster
+	matchFilter    *MatchFilter
 	log            zerolog.Logger
 }
 
@@ -42,6 +43,9 @@ func NewMatchingService(
 	sseBroadcaster SSEBroadcaster,
 	log zerolog.Logger,
 ) *MatchingService {
+	// Initialize match filter with default config
+	matchFilter := NewMatchFilter(DefaultMatchFilterConfig(), log)
+
 	return &MatchingService{
 		offerRepo:      offerRepo,
 		requestRepo:    requestRepo,
@@ -50,6 +54,7 @@ func NewMatchingService(
 		scorer:         scorer,
 		embeddings:     embeddings,
 		sseBroadcaster: sseBroadcaster,
+		matchFilter:    matchFilter,
 		log:            log,
 	}
 }
@@ -68,6 +73,11 @@ func (ms *MatchingService) FindMatchesForOffer(ctx context.Context, offer *entit
 		return
 	}
 
+	// Filter candidates (stale offers, same-sender exclusion)
+	if ms.matchFilter != nil {
+		requests = ms.matchFilter.FilterRequests(requests, offer)
+	}
+
 	// Process matches in parallel with bounded concurrency
 	ms.processMatchesParallel(ctx, offer, requests, nil)
 }
@@ -84,6 +94,11 @@ func (ms *MatchingService) FindMatchesForRequest(ctx context.Context, request *e
 	if err != nil {
 		ms.log.Error().Err(err).Msg("Failed to search for matching offers")
 		return
+	}
+
+	// Filter candidates (stale offers, same-sender exclusion)
+	if ms.matchFilter != nil {
+		offers = ms.matchFilter.FilterOffers(offers, request)
 	}
 
 	// Process matches in parallel with bounded concurrency
@@ -274,4 +289,52 @@ func (ms *MatchingService) recordScoreMetrics(score *matching.MatchScore) {
 	metrics.MatchScoreQuantity.Observe(score.QuantityScore)
 	metrics.MatchScorePrice.Observe(score.PriceScore)
 	metrics.MatchScoreRecency.Observe(score.RecencyScore)
+}
+
+// =============================================================================
+// Match Filter Configuration Methods
+// =============================================================================
+
+// GetMatchFilterStats returns the current match filter statistics.
+func (ms *MatchingService) GetMatchFilterStats() map[string]int64 {
+	if ms.matchFilter == nil {
+		return nil
+	}
+	return ms.matchFilter.GetStats()
+}
+
+// GetMatchFilterConfig returns the current match filter configuration.
+func (ms *MatchingService) GetMatchFilterConfig() MatchFilterConfig {
+	if ms.matchFilter == nil {
+		return MatchFilterConfig{}
+	}
+	return ms.matchFilter.GetConfig()
+}
+
+// SetMatchFilterConfig updates the match filter configuration.
+func (ms *MatchingService) SetMatchFilterConfig(cfg MatchFilterConfig) {
+	if ms.matchFilter != nil {
+		ms.matchFilter.SetConfig(cfg)
+	}
+}
+
+// SetMaxOfferAge sets the maximum offer age for stale filtering.
+func (ms *MatchingService) SetMaxOfferAge(age time.Duration) {
+	if ms.matchFilter != nil {
+		ms.matchFilter.SetMaxOfferAge(age)
+	}
+}
+
+// EnableStaleFilter enables or disables stale offer filtering.
+func (ms *MatchingService) EnableStaleFilter(enabled bool) {
+	if ms.matchFilter != nil {
+		ms.matchFilter.EnableStaleFilter(enabled)
+	}
+}
+
+// EnableSameSenderExclusion enables or disables same-sender exclusion.
+func (ms *MatchingService) EnableSameSenderExclusion(enabled bool) {
+	if ms.matchFilter != nil {
+		ms.matchFilter.EnableSameSenderExclusion(enabled)
+	}
 }
