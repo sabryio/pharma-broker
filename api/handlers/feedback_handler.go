@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
+
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-
-	"github.com/rs/zerolog"
 )
 
 // FeedbackHandler handles feedback-related operations
@@ -59,7 +60,6 @@ func (h *FeedbackHandler) RecordFeedback(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	// Get the match to record original score
 	match, err := h.matchRepo.GetByID(ctx, matchID)
 	if err != nil {
 		h.log.Error().Err(err).Str("match_id", matchID).Msg("Failed to get match for feedback")
@@ -105,15 +105,6 @@ func (h *FeedbackHandler) GetFeedbackAnalysis(w http.ResponseWriter, r *http.Req
 	defer cancel()
 
 	days := 30
-	if d := r.URL.Query().Get("days"); d != "" {
-		// Simplified safe atoi logic implicitly handled? No, logic copied roughly
-		// Wait, copied logic had strconv.Atoi check. I'll stick to getPagination style helper or inline it cleanly
-		// Inline clean version:
-		// Note: removed strconv import? Need to add it.
-		// I will rely on implicit helper function OR re-import strconv.
-	}
-	// Re-reading imported structure:
-	// Missing strconv import in this file block. I will add it.
 
 	analysis, err := h.repo.AnalyzeFeedback(ctx, days)
 	if err != nil {
@@ -135,7 +126,7 @@ func (h *FeedbackHandler) GetRecentFeedback(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	limit, _ := getPagination(r) // Use helper
+	limit, _ := getPagination(r)
 
 	feedback, err := h.repo.GetRecentFeedback(ctx, limit)
 	if err != nil {
@@ -145,4 +136,115 @@ func (h *FeedbackHandler) GetRecentFeedback(w http.ResponseWriter, r *http.Reque
 	}
 
 	success(w, feedback)
+}
+
+// ============================================================================
+// Gin Handlers
+// ============================================================================
+
+// RecordFeedbackGin records operator feedback on a match (Gin)
+func (h *FeedbackHandler) RecordFeedbackGin(c *gin.Context) {
+	if h.repo == nil {
+		InternalErrorGin(c, "Feedback service not configured")
+		return
+	}
+
+	matchID, ok := GetPathIDGin(c, "id")
+	if !ok {
+		return
+	}
+
+	var req struct {
+		Decision   string `json:"decision"`
+		Reason     string `json:"reason,omitempty"`
+		OperatorID string `json:"operator_id,omitempty"`
+	}
+	if !BindJSONGin(c, &req) {
+		return
+	}
+
+	if req.Decision != "CONFIRMED" && req.Decision != "REJECTED" {
+		BadRequestGin(c, "Decision must be CONFIRMED or REJECTED")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	match, err := h.matchRepo.GetByID(ctx, matchID)
+	if err != nil {
+		h.log.Error().Err(err).Str("match_id", matchID).Msg("Failed to get match for feedback")
+		NotFoundGin(c, ErrMatchNotFound())
+		return
+	}
+
+	feedback := &entity.MatchFeedback{
+		MatchID:            matchID,
+		OperatorID:         req.OperatorID,
+		Decision:           entity.FeedbackDecision(req.Decision),
+		Reason:             req.Reason,
+		OriginalScore:      match.Score,
+		OriginalConfidence: match.MatchedBy,
+	}
+
+	if err := h.repo.RecordFeedback(ctx, feedback); err != nil {
+		h.log.Error().Err(err).Msg("Failed to record feedback")
+		DatabaseErrorGin(c, "Failed to record feedback")
+		return
+	}
+
+	h.log.Info().
+		Str("match_id", matchID).
+		Str("decision", req.Decision).
+		Float64("original_score", match.Score).
+		Msg("Feedback recorded")
+
+	SuccessGin(c, map[string]interface{}{
+		"success":  true,
+		"feedback": feedback,
+	})
+}
+
+// GetFeedbackAnalysisGin returns aggregated feedback statistics (Gin)
+func (h *FeedbackHandler) GetFeedbackAnalysisGin(c *gin.Context) {
+	if h.repo == nil {
+		InternalErrorGin(c, "Feedback service not configured")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	days := GetQueryInt(c, "days", 30)
+
+	analysis, err := h.repo.AnalyzeFeedback(ctx, days)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to analyze feedback")
+		DatabaseErrorGin(c, "Failed to analyze feedback")
+		return
+	}
+
+	SuccessGin(c, analysis)
+}
+
+// GetRecentFeedbackGin returns recent feedback entries (Gin)
+func (h *FeedbackHandler) GetRecentFeedbackGin(c *gin.Context) {
+	if h.repo == nil {
+		InternalErrorGin(c, "Feedback service not configured")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	limit, _ := GetPaginationGin(c)
+
+	feedback, err := h.repo.GetRecentFeedback(ctx, limit)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to get recent feedback")
+		DatabaseErrorGin(c, "Failed to get feedback")
+		return
+	}
+
+	SuccessGin(c, feedback)
 }

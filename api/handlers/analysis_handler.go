@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 )
 
@@ -55,4 +56,39 @@ func (h *AnalysisHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 	}
 
 	success(w, result)
+}
+
+// ============================================================================
+// Gin Handlers
+// ============================================================================
+
+// AnalyzeGin handles manual text analysis with AI (Gin)
+func (h *AnalysisHandler) AnalyzeGin(c *gin.Context) {
+	if h.analyzeFunc == nil {
+		InternalErrorGin(c, "Analyze function not configured")
+		return
+	}
+
+	var req struct {
+		Text       string `json:"text"`
+		SourceName string `json:"source_name,omitempty"`
+		GroupName  string `json:"group_name,omitempty"`
+	}
+	if !BindJSONGin(c, &req) {
+		return
+	}
+
+	if req.Text == "" {
+		BadRequestGin(c, "Text is required")
+		return
+	}
+
+	result, err := h.analyzeFunc(req.Text)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to analyze text")
+		ErrorGin(c, http.StatusInternalServerError, ErrAIParse("Analysis failed: "+err.Error()))
+		return
+	}
+
+	SuccessGin(c, result)
 }

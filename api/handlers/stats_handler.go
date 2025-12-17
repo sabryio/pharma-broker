@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"pharmabroker/domain/repository"
-
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
+
+	"pharmabroker/domain/repository"
 )
 
 // StatsHandler handles statistics-related operations
@@ -37,4 +38,23 @@ func (h *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	success(w, stats)
+}
+
+// ============================================================================
+// Gin Handlers
+// ============================================================================
+
+// GetStatsGin returns dashboard statistics (Gin)
+func (h *StatsHandler) GetStatsGin(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	stats, err := h.repo.GetStats(ctx)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to get stats")
+		DatabaseErrorGin(c, "Failed to fetch stats")
+		return
+	}
+
+	SuccessGin(c, stats)
 }

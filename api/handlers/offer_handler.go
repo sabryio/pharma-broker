@@ -5,10 +5,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
+
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-
-	"github.com/rs/zerolog"
 )
 
 // OfferHandler handles offer-related requests
@@ -70,4 +71,54 @@ func (h *OfferHandler) GetOffer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	success(w, offer)
+}
+
+// ============================================================================
+// Gin Handlers
+// ============================================================================
+
+// GetOffersGin returns active offers with pagination (Gin)
+func (h *OfferHandler) GetOffersGin(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	limit, offset := GetPaginationGin(c)
+	query := c.Query("q")
+
+	var offers []*entity.Offer
+	var err error
+
+	if query != "" {
+		offers, err = h.repo.Search(ctx, query, limit, offset)
+	} else {
+		offers, err = h.repo.GetActive(ctx, limit, offset)
+	}
+
+	if err != nil {
+		h.log.Error().Err(err).Msg("Failed to get offers")
+		DatabaseErrorGin(c, "Failed to fetch offers")
+		return
+	}
+
+	total, _ := h.repo.CountActive(ctx)
+	SuccessWithMetaGin(c, offers, &Meta{Total: total, Limit: limit, Offset: offset})
+}
+
+// GetOfferGin returns a single offer by ID (Gin)
+func (h *OfferHandler) GetOfferGin(c *gin.Context) {
+	id, ok := GetPathIDGin(c, "id")
+	if !ok {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	offer, err := h.repo.GetByID(ctx, id)
+	if err != nil {
+		NotFoundGin(c, ErrOfferNotFound())
+		return
+	}
+
+	SuccessGin(c, offer)
 }

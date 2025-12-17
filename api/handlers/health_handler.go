@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 // HealthStatus represents the health of a component
@@ -238,4 +240,142 @@ func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
 // FullHealthHandler returns detailed health with all metrics
 func (h *HealthChecker) FullHealthHandler(w http.ResponseWriter, r *http.Request) {
 	h.ReadyHandler(w, r)
+}
+
+// ============================================================================
+// Gin Handlers
+// ============================================================================
+
+// LiveGin returns a simple liveness probe (Gin)
+func (h *HealthChecker) LiveGin(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "OK",
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+}
+
+// ReadyGin returns readiness probe (Gin)
+func (h *HealthChecker) ReadyGin(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	h.mu.RLock()
+	dbPing := h.dbPingFunc
+	waConnected := h.waConnectedFunc
+	aiHealth := h.aiHealthFunc
+	waStatus := h.waStatusFunc
+	h.mu.RUnlock()
+
+	response := HealthResponse{
+		Status:     HealthOK,
+		Timestamp:  time.Now().Format(time.RFC3339),
+		Components: make(map[string]ComponentHealth),
+	}
+
+	// Check Database
+	if dbPing != nil {
+		start := time.Now()
+		if err := dbPing(ctx); err != nil {
+			response.Components["database"] = ComponentHealth{
+				Status:  HealthDown,
+				Message: err.Error(),
+			}
+			response.Status = HealthDown
+		} else {
+			response.Components["database"] = ComponentHealth{
+				Status:  HealthOK,
+				Latency: time.Since(start).String(),
+			}
+		}
+	} else {
+		response.Components["database"] = ComponentHealth{
+			Status:  HealthDegraded,
+			Message: "health check not configured",
+		}
+	}
+
+	// Check WhatsApp
+	if waStatus != nil {
+		state, reconnectCount, lastConnected, uptimeSeconds := waStatus()
+		isConnected := state == "CONNECTED"
+
+		waHealth := &WhatsAppHealth{
+			State:          state,
+			ReconnectCount: reconnectCount,
+			UptimeSeconds:  uptimeSeconds,
+		}
+
+		if !lastConnected.IsZero() {
+			waHealth.LastConnectedAt = lastConnected.Format(time.RFC3339)
+		}
+
+		if isConnected {
+			waHealth.Status = HealthOK
+			response.Components["whatsapp"] = ComponentHealth{Status: HealthOK}
+		} else {
+			waHealth.Status = HealthDegraded
+			waHealth.Message = "state: " + state
+			response.Components["whatsapp"] = ComponentHealth{
+				Status:  HealthDegraded,
+				Message: state,
+			}
+			if response.Status == HealthOK {
+				response.Status = HealthDegraded
+			}
+		}
+		response.WhatsApp = waHealth
+	} else if waConnected != nil {
+		if waConnected() {
+			response.Components["whatsapp"] = ComponentHealth{Status: HealthOK}
+		} else {
+			response.Components["whatsapp"] = ComponentHealth{
+				Status:  HealthDegraded,
+				Message: "not connected",
+			}
+			if response.Status == HealthOK {
+				response.Status = HealthDegraded
+			}
+		}
+	} else {
+		response.Components["whatsapp"] = ComponentHealth{
+			Status:  HealthDegraded,
+			Message: "health check not configured",
+		}
+	}
+
+	// Check AI Provider
+	if aiHealth != nil {
+		start := time.Now()
+		if err := aiHealth(ctx); err != nil {
+			response.Components["ai"] = ComponentHealth{
+				Status:  HealthDegraded,
+				Message: err.Error(),
+			}
+			if response.Status == HealthOK {
+				response.Status = HealthDegraded
+			}
+		} else {
+			response.Components["ai"] = ComponentHealth{
+				Status:  HealthOK,
+				Latency: time.Since(start).String(),
+			}
+		}
+	} else {
+		response.Components["ai"] = ComponentHealth{
+			Status:  HealthOK,
+			Message: "always available (Docker)",
+		}
+	}
+
+	statusCode := http.StatusOK
+	if response.Status == HealthDown {
+		statusCode = http.StatusServiceUnavailable
+	}
+
+	c.JSON(statusCode, response)
+}
+
+// FullHealthGin returns detailed health with all metrics (Gin)
+func (h *HealthChecker) FullHealthGin(c *gin.Context) {
+	h.ReadyGin(c)
 }

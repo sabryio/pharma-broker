@@ -65,3 +65,7 @@ func ErrWhatsApp(message string) *APIError {
 func ErrConfig(message string) *APIError {
 	return NewAPIError(ErrCodeConfigError, message)
 }
+
+func ErrRateLimited(message string) *APIError {
+	return NewAPIError(ErrCodeRateLimited, message)
+}
