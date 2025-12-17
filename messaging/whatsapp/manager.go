@@ -440,7 +440,7 @@ func (q *OrderedMessageQueue) Enqueue(msg *IncomingMessage) {
 }
 
 // processGroup processes messages for a single group in order.
-func (q *OrderedMessageQueue) processGroup(groupJID string, queue chan *IncomingMessage) {
+func (q *OrderedMessageQueue) processGroup(_ string, queue chan *IncomingMessage) {
 	defer q.wg.Done()
 
 	for {

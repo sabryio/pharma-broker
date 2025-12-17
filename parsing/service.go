@@ -10,10 +10,10 @@ import (
 	"github.com/rs/zerolog"
 
 	ai "pharmabroker/ai"
-	breaker "pharmabroker/pkg/breaker"
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
 	"pharmabroker/matching"
+	breaker "pharmabroker/pkg/breaker"
 	"pharmabroker/pkg/config"
 )
 
@@ -62,6 +62,9 @@ type Parser struct {
 	// Circuit Breaker for AI calls
 	aiCircuitBreaker *breaker.Breaker
 
+	// AI Retry Executor for transient error handling
+	retryExecutor *AIRetryExecutor
+
 	// Real-time updates and Dynamic Config
 	// Real-time updates and Dynamic Config
 	sseBroadcaster SSEBroadcaster
@@ -77,6 +80,12 @@ type Parser struct {
 	// Multi-Pass Parsing
 	reviewQueueRepo repository.ReviewQueueRepository
 	multiPassConfig MultiPassConfig
+
+	// Token-Aware Batching
+	tokenBatcher *TokenBatcher
+
+	// Dynamic Confidence Thresholds
+	confidenceManager *ConfidenceManager
 
 	// Synchronization
 	stopOnce sync.Once
@@ -112,6 +121,15 @@ func NewParser(
 		logger,
 	)
 
+	// Initialize retry executor with default config
+	retryExecutor := NewAIRetryExecutor(DefaultRetryConfig(), logger)
+
+	// Initialize token-aware batcher
+	tokenBatcher := NewTokenBatcher(DefaultTokenBatchConfig(), logger)
+
+	// Initialize dynamic confidence manager
+	confidenceManager := NewConfidenceManager(DefaultConfidenceConfig(), logger)
+
 	return &Parser{
 		rawMsgRepo:     rawMsgRepo,
 		aiProvider:     aiProvider,
@@ -135,6 +153,9 @@ func NewParser(
 			Timeout:          DefaultCircuitBreakerTimeout,
 			FailureThreshold: DefaultCircuitBreakerThreshold,
 		}, logger),
+		retryExecutor:      retryExecutor,
+		tokenBatcher:       tokenBatcher,
+		confidenceManager:  confidenceManager,
 		isAutoParseEnabled: func() bool { return true },
 		embeddingCache:     embeddingCache,
 		matchingService:    matchingService,
@@ -323,24 +344,40 @@ var tokenReplacer = strings.NewReplacer(
 // contentReplacer normalizes message content
 var contentReplacer = strings.NewReplacer("\n", " ", ",", " ", ".", " ", "-", " ")
 
+// extractTokens extracts and normalizes tokens from content into the uniqueTokens map.
+func (p *Parser) extractTokens(content string, uniqueTokens map[string]struct{}) {
+	if content == "" {
+		return
+	}
+	// Normalize and split using reusable replacer
+	normalized := strings.ToLower(content)
+	normalized = contentReplacer.Replace(normalized)
+
+	words := strings.Fields(normalized)
+	for _, w := range words {
+		// Filter out short words and common junk
+		if len(w) > 2 {
+			uniqueTokens[w] = struct{}{}
+		}
+	}
+}
+
 // getRelevantMappings extracts tokens from messages and queries the FTS index.
 // It uses both exact and fuzzy matching to find relevant medication mappings.
+// Now includes reply context for better medication resolution.
 func (p *Parser) getRelevantMappings(ctx context.Context, messages []*entity.RawMessage) map[string]string {
 	relevant := make(map[string]string)
 
 	// Tokenize messages to form a search query
 	uniqueTokens := make(map[string]struct{})
 	for _, msg := range messages {
-		// Normalize and split using reusable replacer
-		content := strings.ToLower(msg.Content)
-		content = contentReplacer.Replace(content)
+		// Extract tokens from main content
+		p.extractTokens(msg.Content, uniqueTokens)
 
-		words := strings.Fields(content)
-		for _, w := range words {
-			// Filter out short words and common junk
-			if len(w) > 2 {
-				uniqueTokens[w] = struct{}{}
-			}
+		// Include reply context for better medication resolution
+		// This helps when messages reference medications from replied messages
+		if msg.ReplyToContent != "" {
+			p.extractTokens(msg.ReplyToContent, uniqueTokens)
 		}
 	}
 
@@ -444,4 +481,122 @@ func (p *Parser) getRelevantMappings(ctx context.Context, messages []*entity.Raw
 	}
 
 	return relevant
+}
+
+// =============================================================================
+// Retry Configuration Methods
+// =============================================================================
+
+// GetRetryStats returns the current retry statistics.
+func (p *Parser) GetRetryStats() map[string]int64 {
+	if p.retryExecutor == nil {
+		return nil
+	}
+	return p.retryExecutor.GetStats()
+}
+
+// GetRetryConfig returns the current retry configuration.
+func (p *Parser) GetRetryConfig() RetryConfig {
+	if p.retryExecutor == nil {
+		return RetryConfig{}
+	}
+	return p.retryExecutor.GetConfig()
+}
+
+// SetRetryConfig updates the retry configuration.
+func (p *Parser) SetRetryConfig(cfg RetryConfig) {
+	if p.retryExecutor != nil {
+		p.retryExecutor.SetConfig(cfg)
+	}
+}
+
+// =============================================================================
+// Token Batching Methods
+// =============================================================================
+
+// GetTokenBatchStats returns the current token batching statistics.
+func (p *Parser) GetTokenBatchStats() map[string]int64 {
+	if p.tokenBatcher == nil {
+		return nil
+	}
+	return p.tokenBatcher.GetStats()
+}
+
+// GetTokenBatchConfig returns the current token batching configuration.
+func (p *Parser) GetTokenBatchConfig() TokenBatchConfig {
+	if p.tokenBatcher == nil {
+		return TokenBatchConfig{}
+	}
+	return p.tokenBatcher.GetConfig()
+}
+
+// SetTokenBatchConfig updates the token batching configuration.
+func (p *Parser) SetTokenBatchConfig(cfg TokenBatchConfig) {
+	if p.tokenBatcher != nil {
+		p.tokenBatcher.SetConfig(cfg)
+	}
+}
+
+// =============================================================================
+// Dynamic Confidence Methods
+// =============================================================================
+
+// GetConfidenceStats returns the current confidence statistics.
+func (p *Parser) GetConfidenceStats() map[string]interface{} {
+	if p.confidenceManager == nil {
+		return nil
+	}
+	return p.confidenceManager.GetStats()
+}
+
+// GetConfidenceConfig returns the current confidence configuration.
+func (p *Parser) GetConfidenceConfig() ConfidenceConfig {
+	if p.confidenceManager == nil {
+		return ConfidenceConfig{}
+	}
+	return p.confidenceManager.GetConfig()
+}
+
+// SetConfidenceConfig updates the confidence configuration.
+func (p *Parser) SetConfidenceConfig(cfg ConfidenceConfig) {
+	if p.confidenceManager != nil {
+		p.confidenceManager.SetConfig(cfg)
+	}
+}
+
+// SetStrictConfidenceThreshold sets the strict confidence threshold.
+func (p *Parser) SetStrictConfidenceThreshold(threshold float64) {
+	if p.confidenceManager != nil {
+		p.confidenceManager.SetStrictThreshold(threshold)
+	}
+}
+
+// SetRelaxedConfidenceThreshold sets the relaxed confidence threshold.
+func (p *Parser) SetRelaxedConfidenceThreshold(threshold float64) {
+	if p.confidenceManager != nil {
+		p.confidenceManager.SetRelaxedThreshold(threshold)
+	}
+}
+
+// EnableAdaptiveConfidence enables or disables adaptive threshold adjustment.
+func (p *Parser) EnableAdaptiveConfidence(enabled bool) {
+	if p.confidenceManager != nil {
+		p.confidenceManager.EnableAdaptive(enabled)
+	}
+}
+
+// GetCurrentStrictThreshold returns the current strict confidence threshold.
+func (p *Parser) GetCurrentStrictThreshold() float64 {
+	if p.confidenceManager != nil {
+		return p.confidenceManager.GetStrictThreshold()
+	}
+	return DefaultStrictConfidence
+}
+
+// GetCurrentRelaxedThreshold returns the current relaxed confidence threshold.
+func (p *Parser) GetCurrentRelaxedThreshold() float64 {
+	if p.confidenceManager != nil {
+		return p.confidenceManager.GetRelaxedThreshold()
+	}
+	return DefaultRelaxedConfidence
 }

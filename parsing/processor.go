@@ -193,6 +193,28 @@ func (p *Parser) processBatch(ctx context.Context, batch []*entity.RawMessage) {
 		return
 	}
 
+	// Token-aware batching: split if batch exceeds token limits
+	var subBatches [][]*entity.RawMessage
+	if p.tokenBatcher != nil {
+		subBatches = p.tokenBatcher.SplitIntoBatches(batch)
+	} else {
+		subBatches = [][]*entity.RawMessage{batch}
+	}
+
+	// Process each sub-batch
+	for subIdx, subBatch := range subBatches {
+		if len(subBatches) > 1 {
+			p.log.Info().
+				Int("sub_batch", subIdx+1).
+				Int("total_sub_batches", len(subBatches)).
+				Int("sub_batch_size", len(subBatch)).
+				Msg("📦 Processing token-aware sub-batch")
+		}
+		p.processSubBatch(ctx, subBatch)
+	}
+}
+
+func (p *Parser) processSubBatch(ctx context.Context, batch []*entity.RawMessage) {
 	p.log.Info().
 		Str("phase", "batch_processing").
 		Int("batch_size", len(batch)).
@@ -235,10 +257,19 @@ func (p *Parser) parseWithAI(ctx context.Context, batch []*entity.RawMessage) ([
 
 	mappingsSlice := mapToMedicationMappings(mappings)
 
-	// Use circuit breaker if configured
+	// Define the AI call operation for retry
+	aiOperation := func(ctx context.Context) (any, error) {
+		return p.aiProvider.ParseMessages(ctx, batch, mappingsSlice)
+	}
+
+	// Use circuit breaker with retry if configured
 	if p.aiCircuitBreaker != nil {
 		result, err := p.aiCircuitBreaker.ExecuteWithContext(ctx, func(ctx context.Context) (any, error) {
-			return p.aiProvider.ParseMessages(ctx, batch, mappingsSlice)
+			// Wrap AI call with retry executor for transient error handling
+			if p.retryExecutor != nil {
+				return p.retryExecutor.Execute(ctx, "ai_parse_messages", aiOperation)
+			}
+			return aiOperation(ctx)
 		})
 
 		// Update metrics
@@ -264,7 +295,23 @@ func (p *Parser) parseWithAI(ctx context.Context, batch []*entity.RawMessage) ([
 		return results, nil
 	}
 
-	// Fallback: no circuit breaker configured
+	// Fallback: use retry executor without circuit breaker
+	if p.retryExecutor != nil {
+		result, err := p.retryExecutor.Execute(ctx, "ai_parse_messages", aiOperation)
+		if err != nil {
+			return nil, err
+		}
+
+		results := result.([]*entity.AIParseResult)
+		p.log.Info().
+			Str("step", "7_AI_RESPONSE").
+			Int("result_count", len(results)).
+			Msg("✅ AI response received")
+
+		return results, nil
+	}
+
+	// Fallback: no retry or circuit breaker configured
 	results, err := p.aiProvider.ParseMessages(ctx, batch, mappingsSlice)
 	if err != nil {
 		return nil, err
@@ -337,14 +384,22 @@ func (p *Parser) processSingleResult(ctx context.Context, msg *entity.RawMessage
 		return
 	}
 
-	// Check average confidence - queue low-confidence results for review
+	// Check average confidence using dynamic thresholds
 	avgConfidence := p.calculateAvgConfidence(result.Items)
-	if avgConfidence < p.multiPassConfig.StrictMinConfidence && p.multiPassConfig.EnableReviewQueue {
+	strictThreshold := p.GetCurrentStrictThreshold()
+
+	// Track confidence for adaptive adjustment
+	if p.confidenceManager != nil {
+		p.confidenceManager.EvaluateConfidence(avgConfidence)
+	}
+
+	// Queue low-confidence results for review
+	if avgConfidence < strictThreshold && p.multiPassConfig.EnableReviewQueue {
 		p.log.Info().
 			Str("step", "8_LOW_CONFIDENCE").
 			Str("msg_id", msg.ID).
 			Float64("avg_confidence", avgConfidence).
-			Float64("threshold", p.multiPassConfig.StrictMinConfidence).
+			Float64("threshold", strictThreshold).
 			Msg("📋 Low confidence result, queuing for review")
 
 		if p.reviewQueueRepo != nil {

@@ -32,4 +32,26 @@ const (
 
 	// Embedding refresh
 	EmbeddingRefreshTimeout = 2 * time.Minute
+
+	// AI Retry configuration
+	DefaultMaxRetries      = 3                // Maximum retry attempts
+	DefaultRetryBaseDelay  = 1 * time.Second  // Initial delay before first retry
+	DefaultRetryMaxDelay   = 30 * time.Second // Maximum delay between retries
+	DefaultRetryMultiplier = 2.0              // Exponential backoff multiplier
+	DefaultRetryJitter     = 0.1              // Jitter factor (10% randomization)
+
+	// Token-Aware Batching configuration
+	DefaultMaxTokensPerBatch = 6000 // Max tokens per AI batch (leaves room for response)
+	DefaultPromptOverhead    = 2000 // Estimated tokens for system prompt + mappings
+	DefaultTokensPerMessage  = 50   // Overhead per message structure (labels, formatting)
+
+	// Dynamic Confidence Thresholds
+	DefaultStrictConfidence           = 0.7  // Minimum confidence for strict pass
+	DefaultRelaxedConfidence          = 0.4  // Minimum confidence for relaxed pass
+	DefaultConfidenceAdjustmentStep   = 0.02 // Step size for adaptive adjustment
+	DefaultMinConfidenceThreshold     = 0.3  // Minimum allowed threshold
+	DefaultMaxConfidenceThreshold     = 0.95 // Maximum allowed threshold
+	DefaultConfidenceEvaluationWindow = 100  // Results to evaluate before adjusting
+	DefaultTargetAcceptRate           = 0.85 // Target acceptance rate
+	DefaultAcceptRateTolerance        = 0.05 // Tolerance around target rate
 )

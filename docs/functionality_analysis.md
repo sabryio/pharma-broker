@@ -70,13 +70,13 @@ This document provides a comprehensive analysis of each core functionality in Ph
 
 ### Weaknesses & Edge Cases ⚠️
 
-| Issue                       | Severity | Current Behavior                     | Impact                              |
-| --------------------------- | -------- | ------------------------------------ | ----------------------------------- |
-| No Retry on Partial Failure | High     | Single AI call per batch             | Lost data on transient errors       |
-| Arabic Diacritics           | Medium   | Basic removal in tokenizer           | Missed medication matches           |
-| Context Window Limits       | Medium   | No token counting                    | Truncated prompts for large batches |
-| Confidence Threshold Static | Low      | Hardcoded thresholds                 | No adaptation to AI model changes   |
-| Reply Context Ignored       | Medium   | `ReplyToContent` not used in parsing | Missing context for replies         |
+| Issue                           | Severity   | Current Behavior              | Impact                                  | Status   |
+| ------------------------------- | ---------- | ----------------------------- | --------------------------------------- | -------- |
+| ~~No Retry on Partial Failure~~ | ~~High~~   | ~~Single AI call per batch~~  | ~~Lost data on transient errors~~       | ✅ Fixed |
+| Arabic Diacritics               | Medium     | Basic removal in tokenizer    | Missed medication matches               | Open     |
+| ~~Context Window Limits~~       | ~~Medium~~ | ~~No token counting~~         | ~~Truncated prompts for large batches~~ | ✅ Fixed |
+| ~~Confidence Threshold Static~~ | ~~Low~~    | ~~Hardcoded thresholds~~      | ~~No adaptation to AI model changes~~   | ✅ Fixed |
+| ~~Reply Context Ignored~~       | ~~Medium~~ | ~~`ReplyToContent` not used~~ | ~~Missing context for replies~~         | ✅ Fixed |
 
 ### Enhancement Recommendations
 
@@ -1301,10 +1301,14 @@ _Last updated: December 17, 2024_
 
 ## Changelog
 
-| Date       | Change                                                 | Module               |
-| ---------- | ------------------------------------------------------ | -------------------- |
-| 2024-12-17 | Implemented History Sync Deduplication with 11 tests   | `messaging/whatsapp` |
-| 2024-12-17 | Implemented GroupInfoCache (500 entries, 30min TTL)    | `messaging/whatsapp` |
-| 2024-12-17 | Implemented OrderedMessageQueue for per-group ordering | `messaging/whatsapp` |
-| 2024-12-17 | Implemented message size limits (10KB) with truncation | `messaging/whatsapp` |
-| 2024-12-17 | Implemented OutboundRateLimiter (token bucket, 20/min) | `messaging/whatsapp` |
+| Date       | Change                                                              | Module               |
+| ---------- | ------------------------------------------------------------------- | -------------------- |
+| 2024-12-17 | Implemented History Sync Deduplication with 11 tests                | `messaging/whatsapp` |
+| 2024-12-17 | Implemented GroupInfoCache (500 entries, 30min TTL)                 | `messaging/whatsapp` |
+| 2024-12-17 | Implemented OrderedMessageQueue for per-group ordering              | `messaging/whatsapp` |
+| 2024-12-17 | Implemented message size limits (10KB) with truncation              | `messaging/whatsapp` |
+| 2024-12-17 | Implemented OutboundRateLimiter (token bucket, 20/min)              | `messaging/whatsapp` |
+| 2024-12-17 | Implemented AI Retry with Exponential Backoff (3 retries, jitter)   | `parsing`            |
+| 2024-12-17 | Implemented Token-Aware Batching (6000 tokens/batch, auto-split)    | `parsing`            |
+| 2024-12-17 | Implemented Reply Context in Parsing (extracts tokens from replies) | `parsing`            |
+| 2024-12-17 | Implemented Dynamic Confidence Thresholds (adaptive adjustment)     | `parsing`            |

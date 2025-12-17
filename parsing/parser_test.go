@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"pharmabroker/domain/entity"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,6 +124,15 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 		zerolog.Nop(),
 	)
 
+	// Configure fast retry for testing (minimal delays)
+	parser.SetRetryConfig(RetryConfig{
+		MaxRetries: 1,
+		BaseDelay:  1 * time.Millisecond,
+		MaxDelay:   5 * time.Millisecond,
+		Multiplier: 1.5,
+		Jitter:     0,
+	})
+
 	msg := &entity.RawMessage{ID: "msg-error"}
 
 	// Expectations
@@ -135,7 +145,8 @@ func TestParser_ProcessBatch_AIError(t *testing.T) {
 	}
 
 	mockRawRepo.OnMarkProcessed = func(ctx context.Context, id string, err error) error {
-		if id == "msg-error" && err != nil && err.Error() == "AI overloaded" {
+		// Error is now wrapped by retry executor, so check if it contains the original error
+		if id == "msg-error" && err != nil && strings.Contains(err.Error(), "AI overloaded") {
 			return nil
 		}
 		t.Errorf("MarkProcessed called with unexpected args: id=%s, err=%v", id, err)
