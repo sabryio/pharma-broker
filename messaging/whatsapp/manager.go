@@ -34,7 +34,487 @@ const (
 	groupInfoTimeout      = 5 * time.Second
 	botResponseTimeout    = 30 * time.Second
 	qrChannelBufferSize   = 1
+
+	// History sync deduplication constants
+	historySyncCooldown    = 5 * time.Minute // Minimum time between processing history syncs
+	historySyncMaxAge      = 24 * time.Hour  // Only process messages newer than this
+	historySyncMaxMessages = 1000            // Maximum messages to process per sync
+	processedIDsCacheSize  = 10000           // Size of processed message IDs cache
+	processedIDsCacheTTL   = 1 * time.Hour   // TTL for processed IDs cache entries
+
+	// Group info cache constants
+	groupInfoCacheSize = 500              // Maximum cached group names
+	groupInfoCacheTTL  = 30 * time.Minute // TTL for cached group info
+
+	// Message size limits
+	maxMessageContentSize  = 10000 // Maximum message content size in bytes (10KB)
+	truncatedMessageSuffix = "... [truncated]"
+
+	// Ordered queue constants
+	orderedQueueBufferSize = 100 // Buffer size per group queue
+
+	// Outbound rate limiter constants
+	defaultOutboundRatePerMinute = 20               // Default: 20 messages per minute
+	defaultOutboundBurstSize     = 5                // Allow burst of 5 messages
+	rateLimitWaitTimeout         = 30 * time.Second // Max wait time for rate limit
 )
+
+// =============================================================================
+// Outbound Rate Limiter
+// =============================================================================
+
+// OutboundRateLimiter controls the rate of outgoing messages to prevent WhatsApp bans.
+// Uses a token bucket algorithm with configurable rate and burst size.
+type OutboundRateLimiter struct {
+	// Configuration
+	ratePerMinute float64
+	burstSize     int
+	enabled       atomic.Bool
+
+	// Token bucket state
+	tokens     float64
+	lastRefill time.Time
+	mu         sync.Mutex
+
+	// Statistics
+	stats OutboundRateLimiterStats
+
+	// Logging
+	log zerolog.Logger
+}
+
+// OutboundRateLimiterStats tracks rate limiter statistics.
+type OutboundRateLimiterStats struct {
+	TotalRequests   atomic.Int64 // Total send requests
+	TotalAllowed    atomic.Int64 // Requests allowed immediately
+	TotalWaited     atomic.Int64 // Requests that had to wait
+	TotalDropped    atomic.Int64 // Requests dropped due to timeout
+	TotalWaitTimeMs atomic.Int64 // Cumulative wait time in milliseconds
+}
+
+// OutboundRateLimiterConfig holds configuration for the rate limiter.
+type OutboundRateLimiterConfig struct {
+	RatePerMinute float64 // Messages allowed per minute
+	BurstSize     int     // Maximum burst size
+	Enabled       bool    // Whether rate limiting is enabled
+}
+
+// DefaultOutboundRateLimiterConfig returns sensible defaults.
+func DefaultOutboundRateLimiterConfig() OutboundRateLimiterConfig {
+	return OutboundRateLimiterConfig{
+		RatePerMinute: defaultOutboundRatePerMinute,
+		BurstSize:     defaultOutboundBurstSize,
+		Enabled:       true,
+	}
+}
+
+// NewOutboundRateLimiter creates a new rate limiter with the given configuration.
+func NewOutboundRateLimiter(cfg OutboundRateLimiterConfig, log zerolog.Logger) *OutboundRateLimiter {
+	if cfg.RatePerMinute <= 0 {
+		cfg.RatePerMinute = defaultOutboundRatePerMinute
+	}
+	if cfg.BurstSize <= 0 {
+		cfg.BurstSize = defaultOutboundBurstSize
+	}
+
+	rl := &OutboundRateLimiter{
+		ratePerMinute: cfg.RatePerMinute,
+		burstSize:     cfg.BurstSize,
+		tokens:        float64(cfg.BurstSize), // Start with full bucket
+		lastRefill:    time.Now(),
+		log:           log.With().Str("component", "rate-limiter").Logger(),
+	}
+	rl.enabled.Store(cfg.Enabled)
+
+	rl.log.Info().
+		Float64("rate_per_minute", cfg.RatePerMinute).
+		Int("burst_size", cfg.BurstSize).
+		Bool("enabled", cfg.Enabled).
+		Msg("Outbound rate limiter initialized")
+
+	return rl
+}
+
+// Wait blocks until a token is available or the context is cancelled.
+// Returns nil if a token was acquired, or an error if the wait was cancelled/timed out.
+func (rl *OutboundRateLimiter) Wait(ctx context.Context) error {
+	rl.stats.TotalRequests.Add(1)
+
+	// If disabled, allow immediately
+	if !rl.enabled.Load() {
+		rl.stats.TotalAllowed.Add(1)
+		return nil
+	}
+
+	startWait := time.Now()
+
+	for {
+		// Try to acquire a token
+		if rl.tryAcquire() {
+			waitTime := time.Since(startWait)
+			if waitTime > time.Millisecond {
+				rl.stats.TotalWaited.Add(1)
+				rl.stats.TotalWaitTimeMs.Add(waitTime.Milliseconds())
+				rl.log.Debug().
+					Dur("wait_time", waitTime).
+					Msg("Rate limit wait completed")
+			} else {
+				rl.stats.TotalAllowed.Add(1)
+			}
+			return nil
+		}
+
+		// Calculate time until next token
+		waitDuration := rl.timeUntilNextToken()
+
+		// Check context before waiting
+		select {
+		case <-ctx.Done():
+			rl.stats.TotalDropped.Add(1)
+			rl.log.Warn().
+				Dur("waited", time.Since(startWait)).
+				Msg("Rate limit wait cancelled")
+			return ctx.Err()
+		case <-time.After(waitDuration):
+			// Continue loop to try acquiring again
+		}
+	}
+}
+
+// Allow checks if a message can be sent immediately without waiting.
+// Returns true if allowed, false if rate limited.
+func (rl *OutboundRateLimiter) Allow() bool {
+	rl.stats.TotalRequests.Add(1)
+
+	if !rl.enabled.Load() {
+		rl.stats.TotalAllowed.Add(1)
+		return true
+	}
+
+	if rl.tryAcquire() {
+		rl.stats.TotalAllowed.Add(1)
+		return true
+	}
+
+	rl.stats.TotalDropped.Add(1)
+	return false
+}
+
+// tryAcquire attempts to acquire a token from the bucket.
+// Returns true if successful, false if no tokens available.
+func (rl *OutboundRateLimiter) tryAcquire() bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	rl.refillTokens()
+
+	if rl.tokens >= 1.0 {
+		rl.tokens -= 1.0
+		return true
+	}
+
+	return false
+}
+
+// refillTokens adds tokens based on elapsed time since last refill.
+// Must be called with mutex held.
+func (rl *OutboundRateLimiter) refillTokens() {
+	now := time.Now()
+	elapsed := now.Sub(rl.lastRefill)
+	rl.lastRefill = now
+
+	// Calculate tokens to add: (elapsed_minutes * rate_per_minute)
+	tokensToAdd := elapsed.Minutes() * rl.ratePerMinute
+
+	// Add tokens, capped at burst size
+	rl.tokens = min(rl.tokens+tokensToAdd, float64(rl.burstSize))
+}
+
+// timeUntilNextToken calculates how long until the next token is available.
+func (rl *OutboundRateLimiter) timeUntilNextToken() time.Duration {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.tokens >= 1.0 {
+		return 0
+	}
+
+	// Time for one token: 60 seconds / rate_per_minute
+	tokenInterval := time.Duration(60.0/rl.ratePerMinute*1000) * time.Millisecond
+	tokensNeeded := 1.0 - rl.tokens
+
+	return time.Duration(float64(tokenInterval) * tokensNeeded)
+}
+
+// SetEnabled enables or disables the rate limiter.
+func (rl *OutboundRateLimiter) SetEnabled(enabled bool) {
+	rl.enabled.Store(enabled)
+	rl.log.Info().Bool("enabled", enabled).Msg("Rate limiter state changed")
+}
+
+// IsEnabled returns whether the rate limiter is enabled.
+func (rl *OutboundRateLimiter) IsEnabled() bool {
+	return rl.enabled.Load()
+}
+
+// SetRate updates the rate limit configuration.
+func (rl *OutboundRateLimiter) SetRate(ratePerMinute float64, burstSize int) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if ratePerMinute > 0 {
+		rl.ratePerMinute = ratePerMinute
+	}
+	if burstSize > 0 {
+		rl.burstSize = burstSize
+		// Cap current tokens at new burst size
+		rl.tokens = min(rl.tokens, float64(burstSize))
+	}
+
+	rl.log.Info().
+		Float64("rate_per_minute", rl.ratePerMinute).
+		Int("burst_size", rl.burstSize).
+		Msg("Rate limiter configuration updated")
+}
+
+// GetStats returns a snapshot of rate limiter statistics.
+func (rl *OutboundRateLimiter) GetStats() map[string]int64 {
+	return map[string]int64{
+		"total_requests":     rl.stats.TotalRequests.Load(),
+		"total_allowed":      rl.stats.TotalAllowed.Load(),
+		"total_waited":       rl.stats.TotalWaited.Load(),
+		"total_dropped":      rl.stats.TotalDropped.Load(),
+		"total_wait_time_ms": rl.stats.TotalWaitTimeMs.Load(),
+	}
+}
+
+// GetCurrentTokens returns the current number of available tokens.
+func (rl *OutboundRateLimiter) GetCurrentTokens() float64 {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rl.refillTokens()
+	return rl.tokens
+}
+
+// Reset resets the rate limiter to its initial state.
+func (rl *OutboundRateLimiter) Reset() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	rl.tokens = float64(rl.burstSize)
+	rl.lastRefill = time.Now()
+
+	rl.log.Info().Msg("Rate limiter reset")
+}
+
+// GroupInfoCache caches group names to reduce API calls.
+type GroupInfoCache struct {
+	entries map[string]*groupInfoEntry
+	mu      sync.RWMutex
+}
+
+type groupInfoEntry struct {
+	name      string
+	fetchedAt time.Time
+}
+
+// NewGroupInfoCache creates a new group info cache.
+func NewGroupInfoCache() *GroupInfoCache {
+	return &GroupInfoCache{
+		entries: make(map[string]*groupInfoEntry, groupInfoCacheSize),
+	}
+}
+
+// Get retrieves a cached group name, returns empty string if not found or expired.
+func (c *GroupInfoCache) Get(jid string) (string, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	entry, exists := c.entries[jid]
+	if !exists {
+		return "", false
+	}
+
+	// Check TTL
+	if time.Since(entry.fetchedAt) > groupInfoCacheTTL {
+		return "", false
+	}
+
+	return entry.name, true
+}
+
+// Set stores a group name in the cache.
+func (c *GroupInfoCache) Set(jid, name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Evict oldest entries if at capacity
+	if len(c.entries) >= groupInfoCacheSize {
+		c.evictOldest()
+	}
+
+	c.entries[jid] = &groupInfoEntry{
+		name:      name,
+		fetchedAt: time.Now(),
+	}
+}
+
+// evictOldest removes the oldest entry from the cache (must be called with lock held).
+func (c *GroupInfoCache) evictOldest() {
+	var oldestJID string
+	var oldestTime time.Time
+
+	for jid, entry := range c.entries {
+		if oldestJID == "" || entry.fetchedAt.Before(oldestTime) {
+			oldestJID = jid
+			oldestTime = entry.fetchedAt
+		}
+	}
+
+	if oldestJID != "" {
+		delete(c.entries, oldestJID)
+	}
+}
+
+// Size returns the number of cached entries.
+func (c *GroupInfoCache) Size() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.entries)
+}
+
+// Clear removes all entries from the cache.
+func (c *GroupInfoCache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = make(map[string]*groupInfoEntry, groupInfoCacheSize)
+}
+
+// OrderedMessageQueue provides per-group ordered message processing.
+type OrderedMessageQueue struct {
+	queues   map[string]chan *IncomingMessage
+	handlers []EventHandler
+	mu       sync.RWMutex
+	wg       sync.WaitGroup
+	done     chan struct{}
+	log      zerolog.Logger
+}
+
+// NewOrderedMessageQueue creates a new ordered message queue.
+func NewOrderedMessageQueue(log zerolog.Logger) *OrderedMessageQueue {
+	return &OrderedMessageQueue{
+		queues: make(map[string]chan *IncomingMessage),
+		done:   make(chan struct{}),
+		log:    log.With().Str("component", "ordered-queue").Logger(),
+	}
+}
+
+// SetHandlers sets the event handlers for message processing.
+func (q *OrderedMessageQueue) SetHandlers(handlers []EventHandler) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.handlers = handlers
+}
+
+// Enqueue adds a message to the appropriate group queue for ordered processing.
+func (q *OrderedMessageQueue) Enqueue(msg *IncomingMessage) {
+	q.mu.Lock()
+	queue, exists := q.queues[msg.GroupJID]
+	if !exists {
+		queue = make(chan *IncomingMessage, orderedQueueBufferSize)
+		q.queues[msg.GroupJID] = queue
+		q.wg.Add(1)
+		go q.processGroup(msg.GroupJID, queue)
+	}
+	q.mu.Unlock()
+
+	select {
+	case queue <- msg:
+		// Message queued
+	default:
+		q.log.Warn().
+			Str("group_jid", msg.GroupJID).
+			Str("msg_id", msg.ID).
+			Msg("Ordered queue full, message dropped")
+	}
+}
+
+// processGroup processes messages for a single group in order.
+func (q *OrderedMessageQueue) processGroup(groupJID string, queue chan *IncomingMessage) {
+	defer q.wg.Done()
+
+	for {
+		select {
+		case <-q.done:
+			return
+		case msg, ok := <-queue:
+			if !ok {
+				return
+			}
+			q.deliverToHandlers(msg)
+		}
+	}
+}
+
+// deliverToHandlers sends the message to all handlers with panic recovery.
+func (q *OrderedMessageQueue) deliverToHandlers(msg *IncomingMessage) {
+	q.mu.RLock()
+	handlers := q.handlers
+	q.mu.RUnlock()
+
+	for _, h := range handlers {
+		func(handler EventHandler) {
+			defer func() {
+				if r := recover(); r != nil {
+					q.log.Error().
+						Interface("panic", r).
+						Str("message_id", msg.ID).
+						Str("group", msg.GroupName).
+						Msg("Handler panic recovered in ordered queue")
+				}
+			}()
+			handler.HandleMessage(msg)
+		}(h)
+	}
+}
+
+// Stop gracefully shuts down the ordered queue.
+func (q *OrderedMessageQueue) Stop() {
+	close(q.done)
+	q.wg.Wait()
+
+	q.mu.Lock()
+	for _, queue := range q.queues {
+		close(queue)
+	}
+	q.queues = make(map[string]chan *IncomingMessage)
+	q.mu.Unlock()
+}
+
+// Stats returns queue statistics.
+func (q *OrderedMessageQueue) Stats() OrderedQueueStats {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	stats := OrderedQueueStats{
+		ActiveGroups: len(q.queues),
+		QueueSizes:   make(map[string]int),
+	}
+
+	for jid, queue := range q.queues {
+		stats.QueueSizes[jid] = len(queue)
+		stats.TotalPending += len(queue)
+	}
+
+	return stats
+}
+
+// OrderedQueueStats contains statistics about the ordered queue.
+type OrderedQueueStats struct {
+	ActiveGroups int            `json:"active_groups"`
+	TotalPending int            `json:"total_pending"`
+	QueueSizes   map[string]int `json:"queue_sizes,omitempty"`
+}
 
 // ConnectionState represents the current state of the WhatsApp connection.
 type ConnectionState int32
@@ -93,10 +573,46 @@ type Manager struct {
 	reconnectCount  atomic.Int32
 	lastConnectedAt atomic.Int64 // Unix timestamp
 
+	// History sync deduplication
+	lastHistorySyncAt atomic.Int64     // Unix timestamp of last history sync
+	processedMsgIDs   map[string]int64 // Message ID -> timestamp (for dedup)
+	processedMsgIDsMu sync.RWMutex     // Mutex for processedMsgIDs
+	historySyncStats  HistorySyncStats // Statistics for monitoring
+
+	// Group info cache (reduces API calls)
+	groupInfoCache *GroupInfoCache
+
+	// Ordered message queue (optional, for strict ordering)
+	orderedQueue    *OrderedMessageQueue
+	useOrderedQueue bool
+
+	// Message processing stats
+	messageStats MessageProcessingStats
+
+	// Outbound rate limiter (prevents WhatsApp bans)
+	outboundRateLimiter *OutboundRateLimiter
+
 	// Channels
 	qrChannel     chan string
 	stopChan      chan struct{}
 	reconnectChan chan struct{} // Signal to trigger reconnect
+}
+
+// MessageProcessingStats tracks message processing statistics.
+type MessageProcessingStats struct {
+	TotalReceived  atomic.Int64 // Total messages received
+	TotalProcessed atomic.Int64 // Messages successfully processed
+	TotalTruncated atomic.Int64 // Messages truncated due to size
+	TotalDropped   atomic.Int64 // Messages dropped (queue full, etc.)
+}
+
+// HistorySyncStats tracks history sync processing statistics.
+type HistorySyncStats struct {
+	TotalSyncs        atomic.Int64 // Total history sync events received
+	SkippedCooldown   atomic.Int64 // Syncs skipped due to cooldown
+	MessagesReceived  atomic.Int64 // Total messages in sync events
+	MessagesSkipped   atomic.Int64 // Messages skipped (old, duplicate, etc.)
+	MessagesProcessed atomic.Int64 // Messages actually processed
 }
 
 // EventHandler processes WhatsApp events
@@ -155,12 +671,18 @@ func NewManagerWithConfig(ctx context.Context, cfg *config.WhatsAppConfig, recon
 	log.Info().Msg("WhatsApp session store: PostgreSQL")
 
 	m := &Manager{
-		cfg:           cfg,
-		store:         container,
-		log:           log.With().Str("component", "whatsapp").Logger(),
-		qrChannel:     make(chan string, qrChannelBufferSize),
-		stopChan:      make(chan struct{}),
-		reconnectChan: make(chan struct{}, 1),
+		cfg:             cfg,
+		store:           container,
+		log:             log.With().Str("component", "whatsapp").Logger(),
+		qrChannel:       make(chan string, qrChannelBufferSize),
+		stopChan:        make(chan struct{}),
+		reconnectChan:   make(chan struct{}, 1),
+		processedMsgIDs: make(map[string]int64, processedIDsCacheSize),
+		groupInfoCache:  NewGroupInfoCache(),
+		outboundRateLimiter: NewOutboundRateLimiter(
+			DefaultOutboundRateLimiterConfig(),
+			log,
+		),
 	}
 
 	// Initialize reconnector with callbacks
@@ -371,24 +893,92 @@ func (m *Manager) handleEvent(evt any) {
 	}
 }
 
-// handleHistorySync processes history sync events
+// handleHistorySync processes history sync events with deduplication.
+// It prevents duplicate processing by:
+// 1. Enforcing a cooldown period between syncs
+// 2. Filtering out old messages beyond the max age
+// 3. Tracking processed message IDs to prevent duplicates
+// 4. Limiting the number of messages processed per sync
 func (m *Manager) handleHistorySync(v *events.HistorySync) {
+	m.historySyncStats.TotalSyncs.Add(1)
+
+	// Check cooldown - skip if we processed a sync recently
+	lastSync := m.lastHistorySyncAt.Load()
+	now := time.Now().Unix()
+	if lastSync > 0 && now-lastSync < int64(historySyncCooldown.Seconds()) {
+		m.historySyncStats.SkippedCooldown.Add(1)
+		m.log.Info().
+			Int64("last_sync_ago_seconds", now-lastSync).
+			Int64("cooldown_seconds", int64(historySyncCooldown.Seconds())).
+			Msg("Skipping history sync - cooldown active")
+		return
+	}
+
+	// Update last sync timestamp
+	m.lastHistorySyncAt.Store(now)
+
+	// Calculate cutoff time for old messages
+	cutoffTime := time.Now().Add(-historySyncMaxAge)
+
+	// Count messages for logging
+	totalMessages := 0
+	for _, conv := range v.Data.Conversations {
+		totalMessages += len(conv.Messages)
+	}
+	m.historySyncStats.MessagesReceived.Add(int64(totalMessages))
+
 	m.log.Info().
 		Str("type", fmt.Sprintf("%v", v.Data.SyncType)).
 		Int("conversations", len(v.Data.Conversations)).
-		Msg("Processing History Sync")
+		Int("total_messages", totalMessages).
+		Time("cutoff_time", cutoffTime).
+		Msg("Processing History Sync with deduplication")
+
+	// Clean up old entries from processed IDs cache
+	m.cleanupProcessedIDsCache()
+
+	processedCount := 0
+	skippedOld := 0
+	skippedDuplicate := 0
 
 	for _, conv := range v.Data.Conversations {
 		for _, waMsg := range conv.Messages {
+			// Check message limit
+			if processedCount >= historySyncMaxMessages {
+				m.log.Warn().
+					Int("limit", historySyncMaxMessages).
+					Msg("History sync message limit reached")
+				goto done
+			}
+
 			if waMsg.Message == nil || waMsg.Message.Key == nil {
 				continue
 			}
 
 			key := waMsg.Message.Key
+			msgID := key.GetID()
+
+			// Get timestamp
 			ts := int64(0)
 			if waMsg.Message.MessageTimestamp != nil {
 				ts = int64(*waMsg.Message.MessageTimestamp)
 			}
+			msgTime := time.Unix(ts, 0)
+
+			// Skip old messages
+			if msgTime.Before(cutoffTime) {
+				skippedOld++
+				continue
+			}
+
+			// Skip already processed messages
+			if m.isMessageProcessed(msgID) {
+				skippedDuplicate++
+				continue
+			}
+
+			// Mark as processed
+			m.markMessageProcessed(msgID)
 
 			pushName := ""
 			if waMsg.Message.PushName != nil {
@@ -396,8 +986,8 @@ func (m *Manager) handleHistorySync(v *events.HistorySync) {
 			}
 
 			info := types.MessageInfo{
-				ID:        key.GetID(),
-				Timestamp: time.Unix(ts, 0),
+				ID:        msgID,
+				Timestamp: msgTime,
 				PushName:  pushName,
 			}
 			info.IsFromMe = key.GetFromMe()
@@ -430,9 +1020,222 @@ func (m *Manager) handleHistorySync(v *events.HistorySync) {
 					Message: waMsg.Message.Message,
 				}
 				m.handleMessageEvent(msgEvt)
+				processedCount++
 			}
 		}
 	}
+
+done:
+	m.historySyncStats.MessagesSkipped.Add(int64(skippedOld + skippedDuplicate))
+	m.historySyncStats.MessagesProcessed.Add(int64(processedCount))
+
+	m.log.Info().
+		Int("processed", processedCount).
+		Int("skipped_old", skippedOld).
+		Int("skipped_duplicate", skippedDuplicate).
+		Int("total", totalMessages).
+		Msg("History sync completed")
+}
+
+// isMessageProcessed checks if a message ID has already been processed.
+func (m *Manager) isMessageProcessed(msgID string) bool {
+	m.processedMsgIDsMu.RLock()
+	defer m.processedMsgIDsMu.RUnlock()
+	_, exists := m.processedMsgIDs[msgID]
+	return exists
+}
+
+// markMessageProcessed marks a message ID as processed.
+func (m *Manager) markMessageProcessed(msgID string) {
+	m.processedMsgIDsMu.Lock()
+	defer m.processedMsgIDsMu.Unlock()
+	m.processedMsgIDs[msgID] = time.Now().Unix()
+}
+
+// cleanupProcessedIDsCache removes old entries from the processed IDs cache.
+func (m *Manager) cleanupProcessedIDsCache() {
+	m.processedMsgIDsMu.Lock()
+	defer m.processedMsgIDsMu.Unlock()
+
+	cutoff := time.Now().Add(-processedIDsCacheTTL).Unix()
+	deleted := 0
+
+	for id, ts := range m.processedMsgIDs {
+		if ts < cutoff {
+			delete(m.processedMsgIDs, id)
+			deleted++
+		}
+	}
+
+	// If still over capacity, remove oldest entries
+	if len(m.processedMsgIDs) > processedIDsCacheSize {
+		// Find and remove oldest entries until under capacity
+		for id := range m.processedMsgIDs {
+			if len(m.processedMsgIDs) <= processedIDsCacheSize {
+				break
+			}
+			delete(m.processedMsgIDs, id)
+			deleted++
+		}
+	}
+
+	if deleted > 0 {
+		m.log.Debug().
+			Int("deleted", deleted).
+			Int("remaining", len(m.processedMsgIDs)).
+			Msg("Cleaned up processed message IDs cache")
+	}
+}
+
+// GetHistorySyncStats returns the current history sync statistics.
+func (m *Manager) GetHistorySyncStats() HistorySyncStats {
+	return HistorySyncStats{
+		TotalSyncs:        atomic.Int64{},
+		SkippedCooldown:   atomic.Int64{},
+		MessagesReceived:  atomic.Int64{},
+		MessagesSkipped:   atomic.Int64{},
+		MessagesProcessed: atomic.Int64{},
+	}
+}
+
+// ResetHistorySyncState resets the history sync deduplication state.
+// Useful for testing or manual intervention.
+func (m *Manager) ResetHistorySyncState() {
+	m.lastHistorySyncAt.Store(0)
+	m.processedMsgIDsMu.Lock()
+	m.processedMsgIDs = make(map[string]int64, processedIDsCacheSize)
+	m.processedMsgIDsMu.Unlock()
+	m.log.Info().Msg("History sync state reset")
+}
+
+// EnableOrderedQueue enables per-group ordered message processing.
+// When enabled, messages from the same group are processed sequentially.
+func (m *Manager) EnableOrderedQueue() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.orderedQueue == nil {
+		m.orderedQueue = NewOrderedMessageQueue(m.log)
+	}
+	m.orderedQueue.SetHandlers(m.handlers)
+	m.useOrderedQueue = true
+	m.log.Info().Msg("Ordered message queue enabled")
+}
+
+// DisableOrderedQueue disables ordered message processing.
+func (m *Manager) DisableOrderedQueue() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.orderedQueue != nil {
+		m.orderedQueue.Stop()
+	}
+	m.useOrderedQueue = false
+	m.log.Info().Msg("Ordered message queue disabled")
+}
+
+// IsOrderedQueueEnabled returns whether ordered queue is enabled.
+func (m *Manager) IsOrderedQueueEnabled() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.useOrderedQueue
+}
+
+// GetOrderedQueueStats returns statistics about the ordered queue.
+func (m *Manager) GetOrderedQueueStats() *OrderedQueueStats {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.orderedQueue == nil {
+		return nil
+	}
+	stats := m.orderedQueue.Stats()
+	return &stats
+}
+
+// GetMessageStats returns message processing statistics.
+func (m *Manager) GetMessageStats() MessageProcessingStats {
+	return MessageProcessingStats{
+		TotalReceived:  atomic.Int64{},
+		TotalProcessed: atomic.Int64{},
+		TotalTruncated: atomic.Int64{},
+		TotalDropped:   atomic.Int64{},
+	}
+}
+
+// GetMessageStatsSnapshot returns a snapshot of message processing statistics.
+func (m *Manager) GetMessageStatsSnapshot() map[string]int64 {
+	return map[string]int64{
+		"total_received":  m.messageStats.TotalReceived.Load(),
+		"total_processed": m.messageStats.TotalProcessed.Load(),
+		"total_truncated": m.messageStats.TotalTruncated.Load(),
+		"total_dropped":   m.messageStats.TotalDropped.Load(),
+	}
+}
+
+// GetGroupInfoCacheStats returns statistics about the group info cache.
+func (m *Manager) GetGroupInfoCacheStats() map[string]int {
+	if m.groupInfoCache == nil {
+		return nil
+	}
+	return map[string]int{
+		"size":     m.groupInfoCache.Size(),
+		"capacity": groupInfoCacheSize,
+	}
+}
+
+// ClearGroupInfoCache clears the group info cache.
+func (m *Manager) ClearGroupInfoCache() {
+	if m.groupInfoCache != nil {
+		m.groupInfoCache.Clear()
+		m.log.Info().Msg("Group info cache cleared")
+	}
+}
+
+// =============================================================================
+// Rate Limiter Management
+// =============================================================================
+
+// GetOutboundRateLimiter returns the outbound rate limiter for direct access.
+func (m *Manager) GetOutboundRateLimiter() *OutboundRateLimiter {
+	return m.outboundRateLimiter
+}
+
+// SetOutboundRateLimit updates the outbound rate limit configuration.
+func (m *Manager) SetOutboundRateLimit(ratePerMinute float64, burstSize int) {
+	if m.outboundRateLimiter != nil {
+		m.outboundRateLimiter.SetRate(ratePerMinute, burstSize)
+	}
+}
+
+// EnableOutboundRateLimit enables the outbound rate limiter.
+func (m *Manager) EnableOutboundRateLimit() {
+	if m.outboundRateLimiter != nil {
+		m.outboundRateLimiter.SetEnabled(true)
+	}
+}
+
+// DisableOutboundRateLimit disables the outbound rate limiter.
+func (m *Manager) DisableOutboundRateLimit() {
+	if m.outboundRateLimiter != nil {
+		m.outboundRateLimiter.SetEnabled(false)
+	}
+}
+
+// IsOutboundRateLimitEnabled returns whether the outbound rate limiter is enabled.
+func (m *Manager) IsOutboundRateLimitEnabled() bool {
+	if m.outboundRateLimiter != nil {
+		return m.outboundRateLimiter.IsEnabled()
+	}
+	return false
+}
+
+// GetOutboundRateLimitStats returns statistics about the outbound rate limiter.
+func (m *Manager) GetOutboundRateLimitStats() map[string]int64 {
+	if m.outboundRateLimiter != nil {
+		return m.outboundRateLimiter.GetStats()
+	}
+	return nil
 }
 
 func (m *Manager) handleMessageEvent(evt *events.Message) {
@@ -441,13 +1244,24 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 		return
 	}
 
-	// Extract message content using helper
-	content := extractTextContent(evt.Message)
+	m.messageStats.TotalReceived.Add(1)
+
+	// Extract message content with size limit
+	content, wasTruncated := extractTextContentWithLimit(evt.Message, maxMessageContentSize)
 	if content == "" {
 		return // Skip non-text messages
 	}
 
-	// Get group info with timeout
+	if wasTruncated {
+		m.messageStats.TotalTruncated.Add(1)
+		m.log.Debug().
+			Str("msg_id", evt.Info.ID).
+			Int("original_size", len(extractTextContent(evt.Message))).
+			Int("truncated_size", len(content)).
+			Msg("Message content truncated due to size limit")
+	}
+
+	// Get group info with caching
 	groupJID := evt.Info.Chat.String()
 	groupName := m.fetchGroupName(evt.Info.Chat, groupJID)
 
@@ -486,26 +1300,93 @@ func (m *Manager) handleMessageEvent(evt *events.Message) {
 		return
 	}
 
-	// Notify handlers with panic recovery
-	m.notifyHandlers(msg)
+	// Use ordered queue if enabled, otherwise notify handlers directly
+	if m.useOrderedQueue && m.orderedQueue != nil {
+		m.orderedQueue.Enqueue(msg)
+	} else {
+		m.notifyHandlers(msg)
+	}
+
+	m.messageStats.TotalProcessed.Add(1)
 }
 
-// extractTextContent extracts text content from a WhatsApp message
+// extractTextContent extracts text content from a WhatsApp message.
+// Returns the content and whether it was truncated.
 func extractTextContent(msg *waE2E.Message) string {
 	if msg == nil {
 		return ""
 	}
+
+	var content string
 	if msg.Conversation != nil {
-		return *msg.Conversation
+		content = *msg.Conversation
+	} else if msg.ExtendedTextMessage != nil && msg.ExtendedTextMessage.Text != nil {
+		content = *msg.ExtendedTextMessage.Text
 	}
-	if msg.ExtendedTextMessage != nil && msg.ExtendedTextMessage.Text != nil {
-		return *msg.ExtendedTextMessage.Text
-	}
-	return ""
+
+	return content
 }
 
-// fetchGroupName retrieves the group name with timeout, falling back to JID
+// extractTextContentWithLimit extracts text content with size limit enforcement.
+// Returns the content (possibly truncated) and whether truncation occurred.
+func extractTextContentWithLimit(msg *waE2E.Message, maxSize int) (string, bool) {
+	content := extractTextContent(msg)
+	if content == "" {
+		return "", false
+	}
+
+	return TruncateContent(content, maxSize)
+}
+
+// TruncateContent truncates content to the specified maximum size.
+// Returns the content (possibly truncated) and whether truncation occurred.
+func TruncateContent(content string, maxSize int) (string, bool) {
+	if maxSize <= 0 {
+		maxSize = maxMessageContentSize
+	}
+
+	if len(content) <= maxSize {
+		return content, false
+	}
+
+	// Truncate and add suffix
+	truncateAt := maxSize - len(truncatedMessageSuffix)
+	if truncateAt < 0 {
+		truncateAt = 0
+	}
+
+	// Try to truncate at a word boundary
+	truncated := content[:truncateAt]
+	lastSpace := findLastSpace(truncated)
+	if lastSpace > truncateAt/2 {
+		truncated = truncated[:lastSpace]
+	}
+
+	return truncated + truncatedMessageSuffix, true
+}
+
+// findLastSpace finds the last space character in a string.
+func findLastSpace(s string) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == ' ' || s[i] == '\n' || s[i] == '\t' {
+			return i
+		}
+	}
+	return -1
+}
+
+// fetchGroupName retrieves the group name with caching and timeout, falling back to JID.
+// Uses a cache to reduce API calls and improve performance.
 func (m *Manager) fetchGroupName(chat types.JID, fallback string) string {
+	jidStr := chat.String()
+
+	// Check cache first
+	if m.groupInfoCache != nil {
+		if name, found := m.groupInfoCache.Get(jidStr); found {
+			return name
+		}
+	}
+
 	m.mu.RLock()
 	client := m.client
 	m.mu.RUnlock()
@@ -520,8 +1401,18 @@ func (m *Manager) fetchGroupName(chat types.JID, fallback string) string {
 	groupInfo, err := client.GetGroupInfo(ctx, chat)
 	if err != nil {
 		m.log.Debug().Err(err).Str("jid", fallback).Msg("Failed to get group info")
+		// Cache the fallback to avoid repeated failed lookups
+		if m.groupInfoCache != nil {
+			m.groupInfoCache.Set(jidStr, fallback)
+		}
 		return fallback
 	}
+
+	// Cache the successful result
+	if m.groupInfoCache != nil {
+		m.groupInfoCache.Set(jidStr, groupInfo.Name)
+	}
+
 	return groupInfo.Name
 }
 
@@ -677,7 +1568,7 @@ func extractPhoneNumber(jid types.JID) string {
 	return jid.User
 }
 
-// SendMessage sends a text message to the specified JID
+// SendMessage sends a text message to the specified JID with rate limiting.
 func (m *Manager) SendMessage(ctx context.Context, jidStr, content string) error {
 	m.mu.RLock()
 	client := m.client
@@ -685,6 +1576,13 @@ func (m *Manager) SendMessage(ctx context.Context, jidStr, content string) error
 
 	if client == nil {
 		return fmt.Errorf("not connected")
+	}
+
+	// Apply rate limiting
+	if m.outboundRateLimiter != nil {
+		if err := m.outboundRateLimiter.Wait(ctx); err != nil {
+			return fmt.Errorf("rate limit exceeded: %w", err)
+		}
 	}
 
 	jid, err := types.ParseJID(jidStr)
@@ -714,7 +1612,7 @@ func (m *Manager) SetBotHandler(handler *whatsappbot.Bot) {
 	m.botHandler = handler
 }
 
-// sendBotResponse sends a response message back to the chat
+// sendBotResponse sends a response message back to the chat with rate limiting.
 func (m *Manager) sendBotResponse(chat types.JID, response string) {
 	m.mu.RLock()
 	client := m.client
@@ -723,6 +1621,20 @@ func (m *Manager) sendBotResponse(chat types.JID, response string) {
 	if client == nil {
 		m.log.Warn().Msg("Cannot send bot response - not connected")
 		return
+	}
+
+	// Apply rate limiting
+	if m.outboundRateLimiter != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), rateLimitWaitTimeout)
+		defer cancel()
+
+		if err := m.outboundRateLimiter.Wait(ctx); err != nil {
+			m.log.Warn().
+				Err(err).
+				Str("chat", chat.String()).
+				Msg("Bot response dropped due to rate limit")
+			return
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), botResponseTimeout)
