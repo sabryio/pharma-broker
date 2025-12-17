@@ -70,16 +70,13 @@ func (h *MatchHandler) GetMatchesGin(c *gin.Context) {
 
 // ConfirmMatchGin confirms a pending match
 func (h *MatchHandler) ConfirmMatchGin(c *gin.Context) {
-	id, ok := GetPathIDGin(c, "id")
+	id, ok := ValidateID(c, "id")
 	if !ok {
 		return
 	}
 
-	var req struct {
-		MatchedBy string `json:"matched_by"`
-		Notes     string `json:"notes"`
-	}
-	if !BindJSONGin(c, &req) {
+	var req ConfirmMatchRequest
+	if !BindAndValidate(c, &req) {
 		return
 	}
 
@@ -115,15 +112,20 @@ func (h *MatchHandler) ConfirmMatchGin(c *gin.Context) {
 
 // RejectMatchGin rejects a pending match
 func (h *MatchHandler) RejectMatchGin(c *gin.Context) {
-	id, ok := GetPathIDGin(c, "id")
+	id, ok := ValidateID(c, "id")
 	if !ok {
 		return
 	}
 
-	var req struct {
-		MatchedBy string `json:"matched_by"`
+	var req RejectMatchRequest
+	// Optional body - don't fail if empty
+	c.ShouldBindJSON(&req)
+	// Validate if body was provided
+	if req.MatchedBy != "" || req.Reason != "" {
+		if !req.Validate().ValidateGin(c) {
+			return
+		}
 	}
-	c.ShouldBindJSON(&req) // Optional body
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
@@ -141,7 +143,7 @@ func (h *MatchHandler) RejectMatchGin(c *gin.Context) {
 		})
 	}
 
-	h.logAudit(ctx, entity.AuditMatchRejected, id, "")
+	h.logAudit(ctx, entity.AuditMatchRejected, id, req.Reason)
 
 	SuccessGin(c, map[string]string{"status": "rejected"})
 }

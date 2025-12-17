@@ -54,7 +54,7 @@ func (h *RequestHandler) GetRequestsGin(c *gin.Context) {
 
 // GetRequestGin returns a single request by ID
 func (h *RequestHandler) GetRequestGin(c *gin.Context) {
-	id, ok := GetPathIDGin(c, "id")
+	id, ok := ValidateID(c, "id")
 	if !ok {
 		return
 	}

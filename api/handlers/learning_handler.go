@@ -191,13 +191,8 @@ func (h *LearningHandler) ApplyPendingWeightsGin(c *gin.Context) {
 		return
 	}
 
-	var req ApplyPendingRequest
-	if !BindJSONGin(c, &req) {
-		return
-	}
-
-	if !req.Confirm {
-		BadRequestGin(c, "Must set confirm=true to apply weights")
+	var req ApplyPendingWeightsRequest
+	if !BindAndValidate(c, &req) {
 		return
 	}
 
@@ -371,27 +366,21 @@ func (h *LearningHandler) UpdateWeightsManuallyGin(c *gin.Context) {
 		return
 	}
 
-	var req ManualWeightsRequest
-	if !BindJSONGin(c, &req) {
+	var reqDTO ManualWeightsRequestDTO
+	if !BindAndValidate(c, &reqDTO) {
 		return
 	}
 
-	// Validate weights sum to 1.0
-	sum := req.Weights.Medication + req.Weights.Dosage + req.Weights.Quantity +
-		req.Weights.Price + req.Weights.Recency
-	if sum < 0.99 || sum > 1.01 {
-		BadRequestGin(c, "Weights must sum to 1.0")
-		return
-	}
-
-	// Validate individual weights
-	if req.Weights.Medication < 0.05 || req.Weights.Medication > 0.70 ||
-		req.Weights.Dosage < 0.05 || req.Weights.Dosage > 0.70 ||
-		req.Weights.Quantity < 0.05 || req.Weights.Quantity > 0.70 ||
-		req.Weights.Price < 0.05 || req.Weights.Price > 0.70 ||
-		req.Weights.Recency < 0.05 || req.Weights.Recency > 0.70 {
-		BadRequestGin(c, "Each weight must be between 0.05 and 0.70")
-		return
+	// Convert DTO to internal type
+	req := ManualWeightsRequest{
+		Weights: matching.Weights{
+			Medication: reqDTO.Weights.Medication,
+			Dosage:     reqDTO.Weights.Dosage,
+			Quantity:   reqDTO.Weights.Quantity,
+			Price:      reqDTO.Weights.Price,
+			Recency:    reqDTO.Weights.Recency,
+		},
+		Notes: reqDTO.Notes,
 	}
 
 	ctx := c.Request.Context()

@@ -32,10 +32,29 @@ type ApproveReviewRequest struct {
 	Note           string              `json:"note,omitempty"`
 }
 
+// Validate validates the request
+func (r *ApproveReviewRequest) Validate() *Validator {
+	return NewValidator().
+		MaxLength("reviewed_by", r.ReviewedBy, 100).
+		MaxLength("note", r.Note, 1000).
+		NoHTML("reviewed_by", r.ReviewedBy).
+		NoHTML("note", r.Note)
+}
+
 // RejectReviewRequest represents rejection request body
 type RejectReviewRequest struct {
 	ReviewedBy string `json:"reviewed_by"`
 	Reason     string `json:"reason"`
+}
+
+// Validate validates the request
+func (r *RejectReviewRequest) Validate() *Validator {
+	return NewValidator().
+		Required("reason", r.Reason).
+		MaxLength("reviewed_by", r.ReviewedBy, 100).
+		MaxLength("reason", r.Reason, 1000).
+		NoHTML("reviewed_by", r.ReviewedBy).
+		NoHTML("reason", r.Reason)
 }
 
 // GetPendingReviewsGin returns pending review items with pagination
@@ -73,7 +92,7 @@ func (h *ReviewHandler) GetReviewCountGin(c *gin.Context) {
 
 // GetReviewItemGin returns a specific review item by ID
 func (h *ReviewHandler) GetReviewItemGin(c *gin.Context) {
-	id, ok := GetPathIDGin(c, "id")
+	id, ok := ValidateID(c, "id")
 	if !ok {
 		return
 	}
@@ -98,13 +117,13 @@ func (h *ReviewHandler) GetReviewItemGin(c *gin.Context) {
 
 // ApproveReviewGin approves a review item with optional corrections
 func (h *ReviewHandler) ApproveReviewGin(c *gin.Context) {
-	id, ok := GetPathIDGin(c, "id")
+	id, ok := ValidateID(c, "id")
 	if !ok {
 		return
 	}
 
 	var req ApproveReviewRequest
-	if !BindJSONGin(c, &req) {
+	if !BindAndValidate(c, &req) {
 		return
 	}
 
@@ -142,13 +161,13 @@ func (h *ReviewHandler) ApproveReviewGin(c *gin.Context) {
 
 // RejectReviewGin rejects a review item
 func (h *ReviewHandler) RejectReviewGin(c *gin.Context) {
-	id, ok := GetPathIDGin(c, "id")
+	id, ok := ValidateID(c, "id")
 	if !ok {
 		return
 	}
 
 	var req RejectReviewRequest
-	if !BindJSONGin(c, &req) {
+	if !BindAndValidate(c, &req) {
 		return
 	}
 

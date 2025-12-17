@@ -54,7 +54,7 @@ func (h *OfferHandler) GetOffersGin(c *gin.Context) {
 
 // GetOfferGin returns a single offer by ID
 func (h *OfferHandler) GetOfferGin(c *gin.Context) {
-	id, ok := GetPathIDGin(c, "id")
+	id, ok := ValidateID(c, "id")
 	if !ok {
 		return
 	}
