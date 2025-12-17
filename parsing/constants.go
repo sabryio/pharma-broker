@@ -64,4 +64,5 @@ var (
 // Auto-action constants
 const (
 	DefaultAutoConfirmThreshold = 0.9 // Minimum score for auto-confirmation
+	DefaultTransitionWidth      = 0.1 // 10% transition zone around thresholds
 )

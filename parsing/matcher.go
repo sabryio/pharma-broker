@@ -21,16 +21,17 @@ import (
 
 // MatchingService handles matching logic
 type MatchingService struct {
-	offerRepo      repository.OfferRepository
-	requestRepo    repository.RequestRepository
-	matchRepo      repository.MatchRepository
-	matchQueueRepo repository.MatchQueueRepository
-	scorer         *matching.Scorer
-	embeddings     *EmbeddingCache
-	sseBroadcaster SSEBroadcaster
-	matchFilter    *MatchFilter
-	autoAction     *AutoActionHandler
-	log            zerolog.Logger
+	offerRepo       repository.OfferRepository
+	requestRepo     repository.RequestRepository
+	matchRepo       repository.MatchRepository
+	matchQueueRepo  repository.MatchQueueRepository
+	scorer          *matching.Scorer
+	embeddings      *EmbeddingCache
+	sseBroadcaster  SSEBroadcaster
+	matchFilter     *MatchFilter
+	autoAction      *AutoActionHandler
+	smoothThreshold *SmoothThresholdCalculator
+	log             zerolog.Logger
 }
 
 // NewMatchingService creates a new matching service
@@ -50,17 +51,21 @@ func NewMatchingService(
 	// Initialize auto-action handler with default config
 	autoAction := NewAutoActionHandler(DefaultAutoActionConfig(), nil, log)
 
+	// Initialize smooth threshold calculator
+	smoothThreshold := NewSmoothThresholdCalculator(DefaultSmoothThresholdConfig(), log)
+
 	return &MatchingService{
-		offerRepo:      offerRepo,
-		requestRepo:    requestRepo,
-		matchRepo:      matchRepo,
-		matchQueueRepo: matchQueueRepo,
-		scorer:         scorer,
-		embeddings:     embeddings,
-		sseBroadcaster: sseBroadcaster,
-		matchFilter:    matchFilter,
-		autoAction:     autoAction,
-		log:            log,
+		offerRepo:       offerRepo,
+		requestRepo:     requestRepo,
+		matchRepo:       matchRepo,
+		matchQueueRepo:  matchQueueRepo,
+		scorer:          scorer,
+		embeddings:      embeddings,
+		sseBroadcaster:  sseBroadcaster,
+		matchFilter:     matchFilter,
+		autoAction:      autoAction,
+		smoothThreshold: smoothThreshold,
+		log:             log,
 	}
 }
 
@@ -400,5 +405,62 @@ func (ms *MatchingService) SetMinScoreForAutoConfirm(score float64) {
 func (ms *MatchingService) SetMatchNotifier(notifier MatchNotifier) {
 	if ms.autoAction != nil {
 		ms.autoAction.SetNotifier(notifier)
+	}
+}
+
+// =============================================================================
+// Smooth Threshold Configuration Methods
+// =============================================================================
+
+// GetSmoothConfidence calculates smooth confidence for a score.
+func (ms *MatchingService) GetSmoothConfidence(score float64) SmoothConfidenceResult {
+	if ms.smoothThreshold == nil {
+		return SmoothConfidenceResult{
+			RawScore:         score,
+			SmoothConfidence: score,
+			BandStrength:     1.0,
+		}
+	}
+	return ms.smoothThreshold.CalculateSmoothConfidence(score)
+}
+
+// GetAdjustedAction returns adjusted action based on smooth confidence.
+func (ms *MatchingService) GetAdjustedAction(score float64) AdjustedActionResult {
+	if ms.smoothThreshold == nil {
+		return AdjustedActionResult{
+			RawScore:         score,
+			SmoothConfidence: score,
+			BandStrength:     1.0,
+		}
+	}
+	return ms.smoothThreshold.GetAdjustedAction(score)
+}
+
+// GetSmoothThresholdConfig returns the smooth threshold configuration.
+func (ms *MatchingService) GetSmoothThresholdConfig() SmoothThresholdConfig {
+	if ms.smoothThreshold == nil {
+		return SmoothThresholdConfig{}
+	}
+	return ms.smoothThreshold.GetConfig()
+}
+
+// SetSmoothThresholdConfig updates the smooth threshold configuration.
+func (ms *MatchingService) SetSmoothThresholdConfig(cfg SmoothThresholdConfig) {
+	if ms.smoothThreshold != nil {
+		ms.smoothThreshold.SetConfig(cfg)
+	}
+}
+
+// SetTransitionWidth sets the transition zone width.
+func (ms *MatchingService) SetTransitionWidth(width float64) {
+	if ms.smoothThreshold != nil {
+		ms.smoothThreshold.SetTransitionWidth(width)
+	}
+}
+
+// EnableSmoothTransitions enables or disables smooth transitions.
+func (ms *MatchingService) EnableSmoothTransitions(enabled bool) {
+	if ms.smoothThreshold != nil {
+		ms.smoothThreshold.EnableSmoothing(enabled)
 	}
 }
