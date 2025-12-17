@@ -231,6 +231,28 @@ var (
 		Help: "Total number of failed WhatsApp reconnection cycles (max attempts reached)",
 	})
 
+	// Group sync metrics
+	WhatsAppGroupSyncSuccess = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_whatsapp_group_sync_success_total",
+		Help: "Total successful WhatsApp group syncs",
+	})
+
+	WhatsAppGroupSyncFailure = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pharma_whatsapp_group_sync_failure_total",
+		Help: "Total failed WhatsApp group syncs",
+	}, []string{"reason"}) // reason: transient, max_retries, cancelled
+
+	WhatsAppGroupSyncDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pharma_whatsapp_group_sync_duration_seconds",
+		Help:    "Duration of WhatsApp group sync operations",
+		Buckets: []float64{0.5, 1, 2, 5, 10, 30},
+	})
+
+	WhatsAppGroupsSynced = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pharma_whatsapp_groups_synced",
+		Help: "Number of groups synced in last successful sync",
+	})
+
 	// ========== Message Queue Metrics ==========
 
 	MessageQueueSize = promauto.NewGauge(prometheus.GaugeOpts{

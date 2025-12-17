@@ -299,22 +299,6 @@ func containsSpecialChars(s string) bool {
 	return false
 }
 
-// ============================================================
-// DEPRECATED FUNCTIONS - Kept for backward compatibility
-// These were used for SQLite FTS5 and should be replaced
-// ============================================================
-
-// Deprecated: Use SanitizePgQuery instead
-func SanitizeFTSQuery(query string) string {
-	return SanitizePgQuery(query)
-}
-
-// Deprecated: Use BuildPgSearchQuery instead
-func BuildSearchQuery(query string, useOR, prefixSearch, normalizeArabicText bool) string {
-	return BuildPgSearchQuery(query, useOR, prefixSearch, normalizeArabicText)
-}
-
-// Deprecated: BuildProximityQuery was used for FTS5 NEAR queries
 // PostgreSQL uses phrase search <-> or <N> operators instead
 func BuildProximityQuery(distance int, terms ...string) string {
 	if len(terms) < 2 {

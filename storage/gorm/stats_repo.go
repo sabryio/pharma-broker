@@ -49,7 +49,7 @@ func (r *StatsRepo) GetStats(ctx context.Context) (*entity.Stats, error) {
 
 	// Monitored groups count
 	var monitoredGroups int64
-	r.db.Conn.WithContext(ctx).Model(&Group{}).Where("monitored = 1").Count(&monitoredGroups)
+	r.db.Conn.WithContext(ctx).Model(&Group{}).Where("monitored = ?", true).Count(&monitoredGroups)
 	stats.MonitoredGroups = int(monitoredGroups)
 
 	return stats, nil

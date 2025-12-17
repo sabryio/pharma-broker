@@ -43,6 +43,12 @@ const (
 	autoSyncTimeout      = 2 * time.Minute
 	autoSyncPollInterval = 500 * time.Millisecond
 
+	// Group sync configuration
+	connectionStabilizationDelay = 2 * time.Second  // Wait after connection before sync
+	maxSyncAttempts              = 3                // Retry attempts for initial sync
+	backgroundSyncInterval       = 5 * time.Minute  // Retry interval if initial sync fails
+	maxBackoff                   = 30 * time.Second // Maximum backoff between retries
+
 	// Default config values
 	defaultReportIntervalMins = 60
 )
@@ -564,7 +570,7 @@ func (c *Container) Close() error {
 	return lastErr
 }
 
-// autoSyncGroups syncs WhatsApp groups after connection
+// autoSyncGroups syncs WhatsApp groups after connection with retry logic
 func (c *Container) autoSyncGroups(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -572,34 +578,139 @@ func (c *Container) autoSyncGroups(ctx context.Context) {
 		}
 	}()
 
+	// Wait for WhatsApp connection
 	timeout := time.After(autoSyncTimeout)
 	for !c.WAManager.IsConnected() {
 		select {
 		case <-ctx.Done():
+			metrics.WhatsAppGroupSyncFailure.WithLabelValues("cancelled").Inc()
 			return
 		case <-timeout:
 			c.Logger.Warn().Msg("Timeout waiting for WhatsApp connection - skipping auto-sync")
+			metrics.WhatsAppGroupSyncFailure.WithLabelValues("timeout").Inc()
 			return
 		case <-time.After(autoSyncPollInterval):
 		}
 	}
 
+	// Wait for connection to stabilize before syncing
+	c.Logger.Debug().Dur("delay", connectionStabilizationDelay).Msg("Waiting for connection to stabilize...")
+	time.Sleep(connectionStabilizationDelay)
+
+	// Attempt sync with retries
 	c.Logger.Info().Msg("Auto-syncing groups from WhatsApp...")
-	if err := c.WAManager.SyncGroups(ctx, func(jid, name, desc string) error {
-		return c.Repos.Groups.SaveFromSync(ctx, jid, name, desc)
-	}); err != nil {
-		c.Logger.Warn().Err(err).Msg("Failed to auto-sync groups")
-	} else {
-		c.Logger.Info().Msg("Groups synced successfully")
+	groupCount, err := c.syncGroupsWithRetry(ctx, maxSyncAttempts)
+	if err != nil {
+		c.Logger.Error().Err(err).Msg("Initial group sync failed - scheduling background retry")
+		metrics.WhatsAppGroupSyncFailure.WithLabelValues("max_retries").Inc()
+		go c.scheduleBackgroundSync(ctx)
+		return
 	}
 
-	if len(c.Config.WhatsApp.MonitoredGroups) > 0 {
-		enabled, err := c.Repos.Groups.EnableFromConfig(ctx, c.Config.WhatsApp.MonitoredGroups)
-		if err != nil {
-			c.Logger.Warn().Err(err).Msg("Failed to enable some groups from config")
-		} else if enabled > 0 {
-			c.Logger.Info().Int("count", enabled).Msg("Enabled groups from config")
+	c.Logger.Info().Int("groups", groupCount).Msg("Groups synced successfully")
+	metrics.WhatsAppGroupSyncSuccess.Inc()
+	metrics.WhatsAppGroupsSynced.Set(float64(groupCount))
+
+	// Enable groups from config
+	c.enableConfiguredGroups(ctx)
+}
+
+// syncGroupsWithRetry attempts to sync groups with exponential backoff
+func (c *Container) syncGroupsWithRetry(ctx context.Context, maxAttempts int) (int, error) {
+	var lastErr error
+	backoff := 1 * time.Second
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		start := time.Now()
+
+		var groupCount int
+		err := c.WAManager.SyncGroups(ctx, func(jid, name, desc string) error {
+			groupCount++
+			return c.Repos.Groups.SaveFromSync(ctx, jid, name, desc)
+		})
+
+		metrics.WhatsAppGroupSyncDuration.Observe(time.Since(start).Seconds())
+
+		if err == nil {
+			return groupCount, nil
 		}
+
+		lastErr = err
+		c.Logger.Warn().
+			Err(err).
+			Int("attempt", attempt).
+			Int("max_attempts", maxAttempts).
+			Dur("next_backoff", backoff).
+			Msg("Group sync failed, retrying...")
+
+		metrics.WhatsAppGroupSyncFailure.WithLabelValues("transient").Inc()
+
+		// Wait before retry (unless last attempt)
+		if attempt < maxAttempts {
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			case <-time.After(backoff):
+				backoff *= 2 // Exponential backoff
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("group sync failed after %d attempts: %w", maxAttempts, lastErr)
+}
+
+// scheduleBackgroundSync retries group sync periodically until success
+func (c *Container) scheduleBackgroundSync(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.Logger.Error().Interface("panic", r).Msg("Panic in background sync goroutine")
+		}
+	}()
+
+	c.Logger.Info().Dur("interval", backgroundSyncInterval).Msg("Background group sync scheduled")
+
+	ticker := time.NewTicker(backgroundSyncInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.Logger.Debug().Msg("Background sync cancelled")
+			return
+		case <-ticker.C:
+			if !c.WAManager.IsConnected() {
+				c.Logger.Debug().Msg("WhatsApp not connected - skipping background sync")
+				continue
+			}
+
+			c.Logger.Info().Msg("Attempting background group sync...")
+			groupCount, err := c.syncGroupsWithRetry(ctx, 2) // Fewer retries for background
+			if err == nil {
+				c.Logger.Info().Int("groups", groupCount).Msg("Background group sync successful")
+				metrics.WhatsAppGroupSyncSuccess.Inc()
+				metrics.WhatsAppGroupsSynced.Set(float64(groupCount))
+				c.enableConfiguredGroups(ctx)
+				return // Success - stop background sync
+			}
+			c.Logger.Warn().Err(err).Msg("Background sync failed - will retry")
+		}
+	}
+}
+
+// enableConfiguredGroups enables groups from config after sync
+func (c *Container) enableConfiguredGroups(ctx context.Context) {
+	if len(c.Config.WhatsApp.MonitoredGroups) == 0 {
+		return
+	}
+
+	enabled, err := c.Repos.Groups.EnableFromConfig(ctx, c.Config.WhatsApp.MonitoredGroups)
+	if err != nil {
+		c.Logger.Warn().Err(err).Msg("Failed to enable some groups from config")
+	} else if enabled > 0 {
+		c.Logger.Info().Int("count", enabled).Msg("Enabled groups from config")
 	}
 }
 

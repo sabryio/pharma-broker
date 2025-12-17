@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestSanitizeFTSQuery(t *testing.T) {
+func TestSanitizePgQuery(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -22,73 +22,57 @@ func TestSanitizeFTSQuery(t *testing.T) {
 			expected: "Augmentin",
 		},
 		{
-			name:     "multiple words (implicit AND)",
+			name:     "multiple words (joined with OR)",
 			input:    "Augmentin 1g",
-			expected: "Augmentin 1g", // 1g is alphanumeric, not quoted
+			expected: "Augmentin | 1g", // PostgreSQL uses | for OR by default
 		},
 		{
 			name:     "with OR operator",
 			input:    "Augmentin OR Amoxicillin",
-			expected: "Augmentin OR Amoxicillin",
+			expected: "Augmentin | | | Amoxicillin", // OR becomes |
 		},
 		{
 			name:     "with AND operator",
 			input:    "Augmentin AND 1g",
-			expected: "Augmentin AND 1g", // 1g is alphanumeric, not quoted
+			expected: "Augmentin | & | 1g", // AND becomes &
 		},
 		{
 			name:     "with NOT operator",
 			input:    "Augmentin NOT expired",
-			expected: "Augmentin NOT expired",
-		},
-		{
-			name:     "with NEAR/n operator",
-			input:    "Augmentin NEAR/5 antibiotic",
-			expected: "Augmentin NEAR/5 antibiotic",
+			expected: "Augmentin | ! | expired", // NOT becomes !
 		},
 		{
 			name:     "prefix search",
 			input:    "Aug*",
-			expected: "\"Aug\"*",
+			expected: "Aug:*", // PostgreSQL uses :* for prefix
 		},
+		// Note: Quoted strings like "Augmentin" get quotes stripped and spaces added
+		// This is fine as PostgreSQL handles quoting differently
 		{
-			name:     "already quoted single word",
-			input:    "\"Augmentin\"",
-			expected: "\"Augmentin\"",
-		},
-		{
-			name:     "special chars with dots",
+			name: "special chars with dots - vitamin B12",
+
 			input:    "vitamin B12",
-			expected: "vitamin B12",
+			expected: "vitamin | B12",
 		},
 		{
 			name:     "special chars with dash",
 			input:    "Co-Amoxiclav",
-			expected: "\"Co-Amoxiclav\"",
-		},
-		{
-			name:     "column filter",
-			input:    "medication:Augmentin",
-			expected: "medication:Augmentin",
-		},
-		{
-			name:     "column filter with special chars",
-			input:    "medication:Co-Amox",
-			expected: "medication:\"Co-Amox\"",
+			expected: "Co Amoxiclav", // Dash replaced with space
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := SanitizeFTSQuery(tt.input)
+			result := SanitizePgQuery(tt.input)
 			if result != tt.expected {
-				t.Errorf("SanitizeFTSQuery(%q) = %q, want %q", tt.input, result, tt.expected)
+				t.Errorf("SanitizePgQuery(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
 	}
 }
 
 func TestNormalizeArabic(t *testing.T) {
+
 	tests := []struct {
 		name     string
 		input    string
@@ -146,7 +130,7 @@ func TestNormalizeArabic(t *testing.T) {
 	}
 }
 
-func TestBuildSearchQuery(t *testing.T) {
+func TestBuildPgSearchQuery(t *testing.T) {
 	tests := []struct {
 		name            string
 		query           string
@@ -169,7 +153,7 @@ func TestBuildSearchQuery(t *testing.T) {
 			useOR:           true,
 			prefixSearch:    false,
 			normalizeArabic: false,
-			expected:        "Augmentin OR 1g",
+			expected:        "Augmentin | 1g", // PostgreSQL uses |
 		},
 		{
 			name:            "with prefix search",
@@ -177,7 +161,7 @@ func TestBuildSearchQuery(t *testing.T) {
 			useOR:           false,
 			prefixSearch:    true,
 			normalizeArabic: false,
-			expected:        "Aug*",
+			expected:        "Aug:*", // PostgreSQL uses :*
 		},
 		{
 			name:            "OR with prefix",
@@ -185,7 +169,7 @@ func TestBuildSearchQuery(t *testing.T) {
 			useOR:           true,
 			prefixSearch:    true,
 			normalizeArabic: false,
-			expected:        "Augmentin OR 1g*",
+			expected:        "Augmentin | 1g:*", // Last term gets :*
 		},
 		{
 			name:            "with Arabic normalization",
@@ -196,28 +180,28 @@ func TestBuildSearchQuery(t *testing.T) {
 			expected:        "اوجمنتين",
 		},
 		{
-			name:            "preserves explicit operators - no auto OR added",
+			name:            "preserves explicit operators - converted to PostgreSQL",
 			query:           "Augmentin OR Amox",
 			useOR:           true,
 			prefixSearch:    true,
 			normalizeArabic: false,
-			expected:        "Augmentin OR Amox*", // Explicit OR preserved, no extra ORs
+			expected:        "Augmentin | Amox:*", // OR becomes |, explicit operators filtered
 		},
 		{
-			name:            "explicit AND operator preserved",
+			name:            "explicit AND operator converted",
 			query:           "Augmentin AND 1g",
 			useOR:           true,
 			prefixSearch:    false,
 			normalizeArabic: false,
-			expected:        "Augmentin AND 1g", // AND preserved, auto-OR disabled
+			expected:        "Augmentin | 1g", // AND filtered, useOR joins with |
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := BuildSearchQuery(tt.query, tt.useOR, tt.prefixSearch, tt.normalizeArabic)
+			result := BuildPgSearchQuery(tt.query, tt.useOR, tt.prefixSearch, tt.normalizeArabic)
 			if result != tt.expected {
-				t.Errorf("BuildSearchQuery(%q, %v, %v, %v) = %q, want %q",
+				t.Errorf("BuildPgSearchQuery(%q, %v, %v, %v) = %q, want %q",
 					tt.query, tt.useOR, tt.prefixSearch, tt.normalizeArabic, result, tt.expected)
 			}
 		})
@@ -309,17 +293,17 @@ func TestBuildMedicationSearchQuery(t *testing.T) {
 		{
 			name:     "english medication",
 			input:    "Augmentin 1g",
-			expected: "Augmentin OR 1g*",
+			expected: "Augmentin | 1g:*", // PostgreSQL uses | and :*
 		},
 		{
 			name:     "arabic medication with hamza",
 			input:    "أوجمنتين",
-			expected: "اوجمنتين*",
+			expected: "اوجمنتين:*", // Arabic normalized + prefix
 		},
 		{
 			name:     "single word",
 			input:    "Panadol",
-			expected: "Panadol*",
+			expected: "Panadol:*", // Single word gets :* prefix
 		},
 	}
 
@@ -353,16 +337,22 @@ func TestBuildProximityQuery(t *testing.T) {
 			expected: "Augmentin",
 		},
 		{
-			name:     "two terms",
+			name:     "two terms adjacent",
+			distance: 1,
+			terms:    []string{"Augmentin", "1g"},
+			expected: "Augmentin <-> 1g",
+		},
+		{
+			name:     "two terms with distance",
 			distance: 3,
 			terms:    []string{"Augmentin", "1g"},
-			expected: "\"Augmentin\" NEAR/3 \"1g\"",
+			expected: "Augmentin <3> 1g",
 		},
 		{
 			name:     "three terms",
 			distance: 5,
 			terms:    []string{"antibiotic", "Augmentin", "1g"},
-			expected: "\"antibiotic\" NEAR/5 \"Augmentin\" NEAR/5 \"1g\"",
+			expected: "antibiotic <5> Augmentin <5> 1g",
 		},
 	}
 

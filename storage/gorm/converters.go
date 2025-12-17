@@ -359,14 +359,23 @@ func ToMatchQueueItemsEntity(models []MatchQueue) []*entity.MatchQueueItem {
 
 // ToReviewQueueModel converts entity.ReviewQueueItem to gorm ReviewQueue
 func ToReviewQueueModel(d *entity.ReviewQueueItem) *ReviewQueue {
-	var partialJSON, correctedJSON string
+	// PostgreSQL JSON columns require valid JSON - use "[]" for empty slices
+	var partialJSON, correctedJSON *string
+
 	if len(d.PartialItems) > 0 {
 		data, _ := json.Marshal(d.PartialItems)
-		partialJSON = string(data)
+		s := string(data)
+		partialJSON = &s
+	} else {
+		// Empty slice should be "[]" not empty string for PostgreSQL JSON
+		s := "[]"
+		partialJSON = &s
 	}
+
 	if len(d.CorrectedItems) > 0 {
 		data, _ := json.Marshal(d.CorrectedItems)
-		correctedJSON = string(data)
+		s := string(data)
+		correctedJSON = &s
 	}
 
 	return &ReviewQueue{
@@ -376,7 +385,7 @@ func ToReviewQueueModel(d *entity.ReviewQueueItem) *ReviewQueue {
 		SenderName:     d.SenderName,
 		Content:        d.Content,
 		ReplyContext:   nilIfEmpty(d.ReplyContext),
-		PartialItems:   partialJSON,
+		PartialItems:   *partialJSON,
 		ParsePass:      d.ParsePass,
 		AvgConfidence:  d.AvgConfidence,
 		FailureReason:  nilIfEmpty(d.FailureReason),
@@ -384,7 +393,7 @@ func ToReviewQueueModel(d *entity.ReviewQueueItem) *ReviewQueue {
 		ReviewedBy:     nilIfEmpty(d.ReviewedBy),
 		ReviewedAt:     d.ReviewedAt,
 		ReviewNote:     nilIfEmpty(d.ReviewNote),
-		CorrectedItems: nilIfEmpty(correctedJSON),
+		CorrectedItems: correctedJSON,
 		CreatedAt:      d.CreatedAt,
 		UpdatedAt:      d.UpdatedAt,
 	}
