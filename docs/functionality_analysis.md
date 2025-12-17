@@ -478,174 +478,6 @@ func (h *timeoutHandler) Handle(ctx context.Context, cmd *Command, msg *Message)
 | ~~Memory Leak on Slow Clients~~ | ~~Medium~~ | ~~Skipped events, no cleanup~~      | ~~Resource exhaustion~~ | ✅ Fixed |
 | ~~No Event Filtering~~          | ~~Low~~    | ~~All events to all clients~~       | ~~Bandwidth waste~~     | ✅ Fixed |
 
-### Enhancement Recommendations
-
-#### 6.1 Event Sequencing
-
-```go
-type SequencedEvent struct {
-    Sequence uint64    `json:"seq"`
-    Type     string    `json:"type"`
-    Data     any       `json:"data"`
-    Time     time.Time `json:"time"`
-}
-
-type SSEHub struct {
-    // ... existing fields
-    sequence atomic.Uint64
-    eventLog *ring.Buffer[SequencedEvent] // Last N events for replay
-}
-
-func (h *SSEHub) Broadcast(event SSEEvent) {
-    seq := h.sequence.Add(1)
-    seqEvent := SequencedEvent{
-        Sequence: seq,
-        Type:     event.Type,
-        Data:     event.Data,
-        Time:     time.Now(),
-    }
-
-    // Store for replay
-    h.eventLog.Push(seqEvent)
-
-    // Broadcast with sequence
-    h.broadcast <- seqEvent
-}
-
-// Client can request replay from sequence N
-func (h *SSEHub) ReplayFrom(seq uint64) []SequencedEvent {
-    var events []SequencedEvent
-    h.eventLog.ForEach(func(e SequencedEvent) bool {
-        if e.Sequence > seq {
-            events = append(events, e)
-        }
-        return true
-    })
-    return events
-}
-```
-
-#### 6.2 Authenticated SSE Connections
-
-```go
-func (h *SSEHub) AuthenticatedGinHandler(jwtMiddleware gin.HandlerFunc) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        // Validate JWT from query param (SSE can't use headers easily)
-        token := c.Query("token")
-        if token == "" {
-            c.JSON(401, gin.H{"error": "Missing authentication token"})
-            return
-        }
-
-        // Validate token
-        claims, err := h.validateToken(token)
-        if err != nil {
-            c.JSON(401, gin.H{"error": "Invalid token"})
-            return
-        }
-
-        // Store user context for filtering
-        c.Set("user_id", claims.UserID)
-        c.Set("scopes", claims.Scopes)
-
-        // Continue to SSE handler
-        h.GinHandler()(c)
-    }
-}
-```
-
-#### 6.3 Event Filtering by Subscription
-
-```go
-type ClientSubscription struct {
-    client     chan SSEEvent
-    eventTypes map[string]bool // Subscribed event types
-    groupIDs   map[string]bool // Subscribed groups (optional)
-}
-
-func (h *SSEHub) Subscribe(eventTypes []string, groupIDs []string) *ClientSubscription {
-    sub := &ClientSubscription{
-        client:     make(chan SSEEvent, ClientBufferSize),
-        eventTypes: make(map[string]bool),
-        groupIDs:   make(map[string]bool),
-    }
-
-    for _, t := range eventTypes {
-        sub.eventTypes[t] = true
-    }
-    for _, g := range groupIDs {
-        sub.groupIDs[g] = true
-    }
-
-    h.mu.Lock()
-    h.subscriptions[sub.client] = sub
-    h.mu.Unlock()
-
-    return sub
-}
-
-func (h *SSEHub) broadcastFiltered(event SSEEvent) {
-    h.mu.RLock()
-    defer h.mu.RUnlock()
-
-    for _, sub := range h.subscriptions {
-        // Check event type filter
-        if len(sub.eventTypes) > 0 && !sub.eventTypes[event.Type] {
-            continue
-        }
-
-        // Check group filter (if event has group context)
-        if groupID, ok := event.Data.(map[string]any)["group_id"].(string); ok {
-            if len(sub.groupIDs) > 0 && !sub.groupIDs[groupID] {
-                continue
-            }
-        }
-
-        select {
-        case sub.client <- event:
-        default:
-            // Client too slow
-        }
-    }
-}
-```
-
-#### 6.4 Slow Client Detection and Cleanup
-
-```go
-type ClientHealth struct {
-    missedEvents atomic.Int32
-    lastActivity time.Time
-}
-
-func (h *SSEHub) monitorClientHealth() {
-    ticker := time.NewTicker(10 * time.Second)
-    defer ticker.Stop()
-
-    for {
-        select {
-        case <-h.done:
-            return
-        case <-ticker.C:
-            h.mu.Lock()
-            for client, health := range h.clientHealth {
-                // Disconnect clients that missed too many events
-                if health.missedEvents.Load() > 50 {
-                    h.log.Warn().Msg("Disconnecting slow client")
-                    delete(h.clients, client)
-                    delete(h.clientHealth, client)
-                    close(client)
-                }
-
-                // Reset counter for next interval
-                health.missedEvents.Store(0)
-            }
-            h.mu.Unlock()
-        }
-    }
-}
-```
-
 ---
 
 ## 7. Adaptive Learning
@@ -680,49 +512,21 @@ func (h *SSEHub) monitorClientHealth() {
 
 ### 8.1 Error Handling
 
-| Aspect         | Current State       | Recommendation                                  |
-| -------------- | ------------------- | ----------------------------------------------- |
-| Error Wrapping | Inconsistent        | Use `fmt.Errorf("context: %w", err)` everywhere |
-| Error Types    | Generic errors      | Create domain-specific error types              |
-| Panic Recovery | Present in handlers | Add to all goroutines                           |
-| Error Logging  | Good coverage       | Add correlation IDs                             |
-
-```go
-// Recommended: Domain error types
-type DomainError struct {
-    Code    string
-    Message string
-    Cause   error
-    Context map[string]any
-}
-
-func (e *DomainError) Error() string {
-    if e.Cause != nil {
-        return fmt.Sprintf("%s: %s: %v", e.Code, e.Message, e.Cause)
-    }
-    return fmt.Sprintf("%s: %s", e.Code, e.Message)
-}
-
-func (e *DomainError) Unwrap() error {
-    return e.Cause
-}
-
-// Usage
-var (
-    ErrMatchNotFound    = &DomainError{Code: "MATCH_NOT_FOUND", Message: "Match not found"}
-    ErrInvalidInput     = &DomainError{Code: "INVALID_INPUT", Message: "Invalid input"}
-    ErrAIProviderFailed = &DomainError{Code: "AI_FAILED", Message: "AI provider failed"}
-)
-```
+| Aspect         | Current State                      | Recommendation                                  | Status   |
+| -------------- | ---------------------------------- | ----------------------------------------------- | -------- |
+| Error Wrapping | ✅ `pkg/errors` with Wrap/Wrapf    | Use `fmt.Errorf("context: %w", err)` everywhere | ✅ Fixed |
+| Error Types    | ✅ DomainError with codes          | Create domain-specific error types              | ✅ Fixed |
+| Panic Recovery | Present in handlers                | Add to all goroutines                           | Open     |
+| Error Logging  | ✅ CorrelationID support in errors | Add correlation IDs                             | ✅ Fixed |
 
 ### 8.2 Observability
 
-| Aspect   | Current State                | Recommendation                  |
-| -------- | ---------------------------- | ------------------------------- |
-| Metrics  | Prometheus via `pkg/metrics` | Add SLI/SLO dashboards          |
-| Logging  | Zerolog structured           | Add trace IDs                   |
-| Tracing  | Not implemented              | Add OpenTelemetry               |
-| Alerting | Basic via `AlertNotifier`    | Add PagerDuty/Slack integration |
+| Aspect   | Current State                        | Recommendation                  | Status   |
+| -------- | ------------------------------------ | ------------------------------- | -------- |
+| Metrics  | Prometheus via `pkg/metrics`         | Add SLI/SLO dashboards          | Open     |
+| Logging  | ✅ `pkg/trace` with zerolog Logger() | Add trace IDs                   | ✅ Fixed |
+| Tracing  | ✅ W3C Trace Context, Gin middleware | Add OpenTelemetry               | ✅ Fixed |
+| Alerting | Basic via `AlertNotifier`            | Add PagerDuty/Slack integration | Open     |
 
 ```go
 // Recommended: Trace context propagation
@@ -918,3 +722,5 @@ _Last updated: December 17, 2024_
 | 2024-12-17 | Implemented SSE Authentication (HMAC tokens, API keys, scopes)      | `api/sse`            |
 | 2024-12-17 | Medication Name Priority (80% weight, gate at 50% min score)        | `matching`           |
 | 2024-12-17 | Arabic Diacritics Normalization (removes tashkeel, normalizes alef) | `parsing`            |
+| 2024-12-17 | Domain Error Types (DomainError, codes, correlation IDs, context)   | `pkg/errors`         |
+| 2024-12-17 | Trace Context (W3C traceparent, Gin/HTTP middleware, zerolog)       | `pkg/trace`          |
