@@ -31,10 +31,10 @@ func (r *LeaderboardRepo) GetTopDemand(ctx context.Context, limit int) ([]*entit
 		SELECT 
 			r.medication,
 			COUNT(DISTINCT r.id) as request_count,
-			COALESCE(o.offer_count, 0) as offer_count,
-			CASE WHEN COALESCE(o.offer_count, 0) = 0 
+			COALESCE(MAX(o.offer_count), 0) as offer_count,
+			CASE WHEN COALESCE(MAX(o.offer_count), 0) = 0 
 				 THEN 999.0 
-				 ELSE CAST(COUNT(DISTINCT r.id) AS REAL) / o.offer_count 
+				 ELSE CAST(COUNT(DISTINCT r.id) AS REAL) / MAX(o.offer_count) 
 			END as demand_ratio
 		FROM requests r
 		LEFT JOIN (
@@ -134,12 +134,12 @@ func (r *LeaderboardRepo) RefreshLeaderboard(ctx context.Context) error {
 		SELECT 
 			r.medication,
 			COUNT(DISTINCT r.id) as request_count,
-			COALESCE(o.offer_count, 0) as offer_count,
-			CASE WHEN COALESCE(o.offer_count, 0) = 0 
+			COALESCE(MAX(o.offer_count), 0) as offer_count,
+			CASE WHEN COALESCE(MAX(o.offer_count), 0) = 0 
 				 THEN 999.0 
-				 ELSE CAST(COUNT(DISTINCT r.id) AS REAL) / o.offer_count 
+				 ELSE CAST(COUNT(DISTINCT r.id) AS REAL) / MAX(o.offer_count) 
 			END as demand_ratio,
-			datetime('now')
+			NOW()
 		FROM requests r
 		LEFT JOIN (
 			SELECT medication, COUNT(*) as offer_count 
