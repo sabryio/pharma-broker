@@ -60,3 +60,8 @@ const (
 var (
 	DefaultMaxOfferAge = 7 * 24 * time.Hour // 7 days - offers older than this are considered stale
 )
+
+// Auto-action constants
+const (
+	DefaultAutoConfirmThreshold = 0.9 // Minimum score for auto-confirmation
+)

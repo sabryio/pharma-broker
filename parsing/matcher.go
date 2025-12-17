@@ -29,6 +29,7 @@ type MatchingService struct {
 	embeddings     *EmbeddingCache
 	sseBroadcaster SSEBroadcaster
 	matchFilter    *MatchFilter
+	autoAction     *AutoActionHandler
 	log            zerolog.Logger
 }
 
@@ -46,6 +47,9 @@ func NewMatchingService(
 	// Initialize match filter with default config
 	matchFilter := NewMatchFilter(DefaultMatchFilterConfig(), log)
 
+	// Initialize auto-action handler with default config
+	autoAction := NewAutoActionHandler(DefaultAutoActionConfig(), nil, log)
+
 	return &MatchingService{
 		offerRepo:      offerRepo,
 		requestRepo:    requestRepo,
@@ -55,6 +59,7 @@ func NewMatchingService(
 		embeddings:     embeddings,
 		sseBroadcaster: sseBroadcaster,
 		matchFilter:    matchFilter,
+		autoAction:     autoAction,
 		log:            log,
 	}
 }
@@ -175,15 +180,25 @@ func (ms *MatchingService) processMatch(ctx context.Context, offer *entity.Offer
 	// Record scoring metrics
 	ms.recordScoreMetrics(matchScore)
 
-	// Skip matches below minimum threshold (NONE confidence)
-	if matchScore.Confidence == matching.ConfidenceNone {
-		return
+	// Use auto-action handler to determine what to do with this match
+	var actionResult MatchActionResult
+	if ms.autoAction != nil {
+		actionResult = ms.autoAction.DetermineAction(matchScore)
+	} else {
+		// Fallback: basic logic if no auto-action handler
+		if matchScore.Confidence == matching.ConfidenceNone {
+			return
+		}
+		actionResult = MatchActionResult{
+			Action:     ActionReview,
+			Status:     entity.MatchStatusPending,
+			ShouldSave: true,
+		}
 	}
 
-	// Determine match status based on confidence band
-	status := entity.MatchStatusPending
-	if matchScore.Confidence == matching.ConfidenceAuto {
-		status = entity.MatchStatusConfirmed // Auto-confirm high-confidence matches
+	// Skip if action says to ignore
+	if !actionResult.ShouldSave {
+		return
 	}
 
 	match := &entity.Match{
@@ -191,15 +206,15 @@ func (ms *MatchingService) processMatch(ctx context.Context, offer *entity.Offer
 		OfferID:   offer.ID,
 		RequestID: request.ID,
 		Score:     matchScore.Total,
-		Status:    status,
-		MatchedBy: string(matchScore.Confidence), // Store confidence band in MatchedBy for now
+		Status:    actionResult.Status,
+		MatchedBy: string(matchScore.Confidence),
 		Reasoning: matchScore.Breakdown,
 		CreatedAt: time.Now(),
 	}
 
-	if status == entity.MatchStatusConfirmed {
-		now := time.Now()
-		match.ConfirmedAt = &now
+	// Process auto-action (sets status, timestamps, sends notifications)
+	if ms.autoAction != nil {
+		ms.autoAction.ProcessMatchAction(ctx, match, offer, request, actionResult)
 	}
 
 	// Save match
@@ -213,9 +228,10 @@ func (ms *MatchingService) processMatch(ctx context.Context, offer *entity.Offer
 			Str("match_id", match.ID).
 			Float64("score", match.Score).
 			Str("status", string(match.Status)).
+			Str("action", string(actionResult.Action)).
 			Str("confidence", string(matchScore.Confidence)).
 			Str("breakdown", match.Reasoning).
-			Msg("Created match")
+			Msg("✅ Created match with auto-action")
 
 		// Notify via SSE if real-time
 		if ms.sseBroadcaster != nil {
@@ -336,5 +352,53 @@ func (ms *MatchingService) EnableStaleFilter(enabled bool) {
 func (ms *MatchingService) EnableSameSenderExclusion(enabled bool) {
 	if ms.matchFilter != nil {
 		ms.matchFilter.EnableSameSenderExclusion(enabled)
+	}
+}
+
+// =============================================================================
+// Auto-Action Configuration Methods
+// =============================================================================
+
+// GetAutoActionStats returns the current auto-action statistics.
+func (ms *MatchingService) GetAutoActionStats() map[string]int64 {
+	if ms.autoAction == nil {
+		return nil
+	}
+	return ms.autoAction.GetStats()
+}
+
+// GetAutoActionConfig returns the current auto-action configuration.
+func (ms *MatchingService) GetAutoActionConfig() AutoActionConfig {
+	if ms.autoAction == nil {
+		return AutoActionConfig{}
+	}
+	return ms.autoAction.GetConfig()
+}
+
+// SetAutoActionConfig updates the auto-action configuration.
+func (ms *MatchingService) SetAutoActionConfig(cfg AutoActionConfig) {
+	if ms.autoAction != nil {
+		ms.autoAction.SetConfig(cfg)
+	}
+}
+
+// EnableAutoConfirm enables or disables auto-confirmation.
+func (ms *MatchingService) EnableAutoConfirm(enabled bool) {
+	if ms.autoAction != nil {
+		ms.autoAction.EnableAutoConfirm(enabled)
+	}
+}
+
+// SetMinScoreForAutoConfirm sets the minimum score for auto-confirmation.
+func (ms *MatchingService) SetMinScoreForAutoConfirm(score float64) {
+	if ms.autoAction != nil {
+		ms.autoAction.SetMinScoreForAutoConfirm(score)
+	}
+}
+
+// SetMatchNotifier sets the notifier for match notifications.
+func (ms *MatchingService) SetMatchNotifier(notifier MatchNotifier) {
+	if ms.autoAction != nil {
+		ms.autoAction.SetNotifier(notifier)
 	}
 }
