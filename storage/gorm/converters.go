@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 
 	"pharmabroker/domain/entity"
+
+	"github.com/pgvector/pgvector-go"
 )
 
 // ========================================
@@ -285,11 +287,17 @@ func ToGroupsEntity(models []Group) []*entity.Group {
 // ToMedicationMappingModel converts entity.MedicationMapping to gorm MedicationMapping
 func ToMedicationMappingModel(d *entity.MedicationMapping) *MedicationMapping {
 	synonymsJSON, _ := json.Marshal(d.Synonyms)
+	var embedding *pgvector.Vector
+	if len(d.Embedding) > 0 {
+		vec := pgvector.NewVector(d.Embedding)
+		embedding = &vec
+	}
 	return &MedicationMapping{
 		ID:          d.ID,
 		ArabicName:  d.ArabicName,
 		EnglishName: d.EnglishName,
 		Synonyms:    synonymsJSON,
+		Embedding:   embedding,
 		CreatedAt:   d.CreatedAt,
 		UpdatedAt:   d.UpdatedAt,
 	}
@@ -301,11 +309,16 @@ func ToMedicationMappingEntity(m *MedicationMapping) *entity.MedicationMapping {
 	if len(m.Synonyms) > 0 {
 		json.Unmarshal(m.Synonyms, &synonyms)
 	}
+	var embedding []float32
+	if m.Embedding != nil {
+		embedding = m.Embedding.Slice()
+	}
 	return &entity.MedicationMapping{
 		ID:          m.ID,
 		ArabicName:  m.ArabicName,
 		EnglishName: m.EnglishName,
 		Synonyms:    synonyms,
+		Embedding:   embedding,
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
 	}
