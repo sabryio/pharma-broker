@@ -385,16 +385,8 @@ func registerAuthRoutes(rg *gin.RouterGroup, resources *ServerResources) {
 // This is a placeholder - integrate with your user authentication system
 func authLoginHandler(jwtAuth *middleware.JWTAuth) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			Username string `json:"username" binding:"required"`
-			Password string `json:"password" binding:"required"`
-		}
-
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, handlers.Response{
-				Success: false,
-				Error:   handlers.ErrBadRequest("invalid request body"),
-			})
+		var req handlers.LoginRequest
+		if !handlers.BindAndValidate(c, &req) {
 			return
 		}
 
@@ -420,15 +412,8 @@ func authLoginHandler(jwtAuth *middleware.JWTAuth) gin.HandlerFunc {
 // authRefreshHandler handles token refresh
 func authRefreshHandler(jwtAuth *middleware.JWTAuth) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			RefreshToken string `json:"refresh_token" binding:"required"`
-		}
-
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, handlers.Response{
-				Success: false,
-				Error:   handlers.ErrBadRequest("invalid request body"),
-			})
+		var req handlers.RefreshTokenRequest
+		if !handlers.BindAndValidate(c, &req) {
 			return
 		}
 

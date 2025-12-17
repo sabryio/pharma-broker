@@ -73,15 +73,13 @@ func (h *GroupHandler) SyncGroupsGin(c *gin.Context) {
 
 // UpdateGroupMonitoringGin toggles group monitoring (Gin)
 func (h *GroupHandler) UpdateGroupMonitoringGin(c *gin.Context) {
-	jid, ok := GetPathIDGin(c, "jid")
+	jid, ok := ValidateID(c, "jid")
 	if !ok {
 		return
 	}
 
-	var req struct {
-		Monitored bool `json:"monitored"`
-	}
-	if !BindJSONGin(c, &req) {
+	var req UpdateGroupRequest
+	if !BindAndValidate(c, &req) {
 		return
 	}
 

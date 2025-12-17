@@ -51,8 +51,14 @@ func (h *ConfigHandler) UpdateConfigGin(c *gin.Context) {
 		return
 	}
 
-	var updates map[string]any
-	if !BindJSONGin(c, &updates) {
+	var updates UpdateConfigRequest
+	if err := c.ShouldBindJSON(&updates); err != nil {
+		ErrorGin(c, 400, ErrValidation("Invalid request body: "+err.Error()))
+		return
+	}
+
+	// Validate config values
+	if !updates.Validate().ValidateGin(c) {
 		return
 	}
 

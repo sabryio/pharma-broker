@@ -258,3 +258,16 @@ func BindAndValidate[T interface{ Validate() *Validator }](c *gin.Context, req T
 
 	return req.Validate().ValidateGin(c)
 }
+
+// ExportRequest represents an export request with filters
+type ExportRequest struct {
+	Status string `json:"status"`
+	Format string `json:"format"`
+}
+
+// Validate validates the request
+func (r *ExportRequest) Validate() *Validator {
+	return NewValidator().
+		OneOf("status", r.Status, "pending", "confirmed", "rejected", "").
+		OneOf("format", r.Format, "csv", "json", "")
+}
