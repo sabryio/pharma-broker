@@ -36,7 +36,7 @@ func (r *UnmappedRepo) Save(ctx context.Context, rawText, aiOutput, sourceMessag
 	return r.db.Conn.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "raw_text"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"count":      clause.Expr{SQL: "count + 1"},
+			"count":      clause.Expr{SQL: "unmapped_medications.count + 1"},
 			"updated_at": time.Now(),
 		}),
 	}).Create(record).Error
