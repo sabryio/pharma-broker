@@ -286,7 +286,7 @@ func (p *Parser) handleBatchError(ctx context.Context, batch []*entity.RawMessag
 	metrics.SystemErrors.Inc()
 
 	if p.errorNotifier != nil {
-		p.errorNotifier.NotifyError(err)
+		p.errorNotifier.NotifyError(ctx, err)
 	}
 	// Mark all as failed
 	for _, msg := range batch {
