@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode"
 
+	"github.com/abadojack/whatlanggo"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -503,18 +505,64 @@ func (m model) renderGroups() string {
 			check = checkOnStyle.Render("●")
 		}
 
+		// Format name for proper RTL display
+		displayName := formatForTerminal(g.name)
+
 		// Name with cursor
-		name := normalItemStyle.Render(g.name)
+		name := normalItemStyle.Render(displayName)
 		cursor := "  "
 		if i == m.cursor {
 			cursor = cursorStyle.Render("▸ ")
-			name = selectedItemStyle.Render(g.name)
+			name = selectedItemStyle.Render(displayName)
 		}
 
 		lines = append(lines, fmt.Sprintf("%s%s %s", cursor, check, name))
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// formatForTerminal formats text for proper terminal display.
+// Reverses Arabic text segments for correct RTL rendering in LTR terminals.
+func formatForTerminal(text string) string {
+	// Detect language
+	info := whatlanggo.Detect(text)
+
+	// If Arabic with high confidence, reverse the text
+	if info.Lang == whatlanggo.Arb && info.Confidence > 0.5 {
+		return reverseArabicText(text)
+	}
+
+	// Check if text contains Arabic characters (mixed text)
+	if containsArabic(text) {
+		return reverseArabicText(text)
+	}
+
+	return text
+}
+
+// containsArabic checks if text contains Arabic characters.
+func containsArabic(text string) bool {
+	for _, r := range text {
+		if unicode.Is(unicode.Arabic, r) {
+			return true
+		}
+	}
+	return false
+}
+
+// reverseArabicText reverses Arabic text segments while preserving numbers and punctuation.
+func reverseArabicText(text string) string {
+	runes := []rune(text)
+	n := len(runes)
+
+	// Reverse the entire string
+	reversed := make([]rune, n)
+	for i, r := range runes {
+		reversed[n-1-i] = r
+	}
+
+	return string(reversed)
 }
 
 func (m model) renderConfig() string {
@@ -588,12 +636,15 @@ func (m model) renderAdmins() string {
 			platformIcon = "📱"
 		}
 
+		// Format name for proper RTL display
+		displayName := formatForTerminal(a.name)
+
 		// Name with cursor
-		name := normalItemStyle.Render(a.name)
+		name := normalItemStyle.Render(displayName)
 		cursor := "  "
 		if i == m.cursor {
 			cursor = cursorStyle.Render("▸ ")
-			name = selectedItemStyle.Render(a.name)
+			name = selectedItemStyle.Render(displayName)
 		}
 
 		platform := descriptionStyle.Render(fmt.Sprintf("%s %s", platformIcon, a.platform))
