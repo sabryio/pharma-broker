@@ -50,18 +50,18 @@ const (
 // Modern color palette
 var (
 	// Base colors - Dark theme
-	colorBg        = lipgloss.Color("#0F172A") // Deep navy
-	colorSurface   = lipgloss.Color("#1E293B") // Card bg
-	colorBorder    = lipgloss.Color("#334155") // Border
-	colorText      = lipgloss.Color("#F1F5F9") // Primary text
-	colorMuted     = lipgloss.Color("#64748B") // Muted text
-	colorHighlight = lipgloss.Color("#475569") // Selection bg
+	colorBg      = lipgloss.Color("#0F172A") // Deep navy
+	colorSurface = lipgloss.Color("#1E293B") // Card bg
+	colorBorder  = lipgloss.Color("#334155") // Border
+	colorText    = lipgloss.Color("#F1F5F9") // Primary text
+	colorMuted   = lipgloss.Color("#64748B") // Muted text
+	// colorHighlight = lipgloss.Color("#475569") // Selection bg
 
 	// Accent colors
 	colorPrimary   = lipgloss.Color("#A855F7") // Purple
 	colorSecondary = lipgloss.Color("#22D3EE") // Cyan
 	colorSuccess   = lipgloss.Color("#22C55E") // Green
-	colorWarning   = lipgloss.Color("#F59E0B") // Amber
+	// colorWarning   = lipgloss.Color("#F59E0B") // Amber
 )
 
 // Styles - base styles without fixed widths (applied dynamically)
@@ -187,13 +187,14 @@ type adminItem struct {
 // model is the Bubble Tea model
 type model struct {
 	// State
-	activeTab Tab
-	cursor    int
-	quitting  bool
-	saved     bool
-	err       error
-	width     int
-	height    int
+	activeTab    Tab
+	cursor       int
+	scrollOffset int // For viewport scrolling
+	quitting     bool
+	saved        bool
+	err          error
+	width        int
+	height       int
 
 	// Data
 	groups  []groupItem
@@ -244,11 +245,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab", "right":
 			m.activeTab = (m.activeTab + 1) % 3
 			m.cursor = 0
+			m.scrollOffset = 0 // Reset scroll on tab change
 			return m, nil
 
 		case "shift+tab", "left":
 			m.activeTab = (m.activeTab + 2) % 3
 			m.cursor = 0
+			m.scrollOffset = 0 // Reset scroll on tab change
 			return m, nil
 
 		case "1":
@@ -267,6 +270,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+				// Scroll up if cursor goes above viewport
+				if m.cursor < m.scrollOffset {
+					m.scrollOffset = m.cursor
+				}
 			}
 			return m, nil
 
@@ -274,6 +281,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			maxItems := m.getMaxItems()
 			if m.cursor < maxItems-1 {
 				m.cursor++
+				// Scroll down if cursor goes below viewport
+				visibleLines := m.getVisibleLines()
+				if m.cursor >= m.scrollOffset+visibleLines {
+					m.scrollOffset = m.cursor - visibleLines + 1
+				}
 			}
 			return m, nil
 
@@ -317,6 +329,16 @@ func (m *model) getMaxItems() int {
 		return len(m.admins)
 	}
 	return 0
+}
+
+// getVisibleLines returns the number of lines visible in the viewport
+func (m model) getVisibleLines() int {
+	// Panel height minus title and padding
+	visible := m.height - 14 // Account for header, tabs, status bar, borders
+	if visible < 5 {
+		visible = 5
+	}
+	return visible
 }
 
 func (m *model) toggleCurrentItem() {
@@ -497,8 +519,23 @@ func (m model) renderGroups() string {
 		return emptyStyle.Render("No groups found.\nMake sure you're in WhatsApp groups.")
 	}
 
+	visibleLines := m.getVisibleLines()
+	endIdx := m.scrollOffset + visibleLines
+	if endIdx > len(m.groups) {
+		endIdx = len(m.groups)
+	}
+
 	var lines []string
-	for i, g := range m.groups {
+
+	// Show scroll indicator at top if scrolled down
+	if m.scrollOffset > 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(fmt.Sprintf("  ↑ %d more above", m.scrollOffset)))
+	}
+
+	// Render only visible items
+	for i := m.scrollOffset; i < endIdx; i++ {
+		g := m.groups[i]
+
 		// Indicator
 		check := checkOffStyle.Render("○")
 		if g.monitored {
@@ -517,6 +554,12 @@ func (m model) renderGroups() string {
 		}
 
 		lines = append(lines, fmt.Sprintf("%s%s %s", cursor, check, name))
+	}
+
+	// Show scroll indicator at bottom if more items below
+	remaining := len(m.groups) - endIdx
+	if remaining > 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(fmt.Sprintf("  ↓ %d more below", remaining)))
 	}
 
 	return strings.Join(lines, "\n")

@@ -58,3 +58,6 @@ logs/
 # Results
 test_*.json
 results*.json
+
+# Reports
+reports/
