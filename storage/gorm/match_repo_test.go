@@ -140,7 +140,7 @@ func TestMatchRepo_UpdateStatus_Confirm(t *testing.T) {
 	assertNoError(t, matchRepo.Save(ctx, match), "Save match")
 
 	// Confirm match
-	err := matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "OPERATOR")
+	err := matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "OPERATOR", "Test confirmation note")
 	assertNoError(t, err, "UpdateStatus should succeed")
 
 	// Verify status and confirmed_at
@@ -171,7 +171,7 @@ func TestMatchRepo_UpdateStatus_Reject(t *testing.T) {
 	assertNoError(t, matchRepo.Save(ctx, match), "Save match")
 
 	// Reject match
-	err := matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusRejected, "OPERATOR")
+	err := matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusRejected, "OPERATOR", "Test rejection reason")
 	assertNoError(t, err, "UpdateStatus should succeed")
 
 	// Verify status

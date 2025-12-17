@@ -57,7 +57,7 @@ func (c *ConfirmCommand) Handle(ctx context.Context, cmd *core.Command, msg *cor
 	}
 
 	senderPhone := extractPhone(msg.SenderID)
-	err = c.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "bot:"+senderPhone)
+	err = c.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "bot:"+senderPhone, "Confirmed via bot")
 	if err != nil {
 		return core.Response{Text: core.EscapeMarkdownV2("❌ Error confirming match. Please try again."), ParseMode: core.ParseModeMarkdownV2}
 	}
@@ -80,7 +80,7 @@ func (c *ConfirmCommand) ConfirmByID(ctx context.Context, matchID, senderID stri
 	}
 
 	senderPhone := extractPhone(senderID)
-	err = c.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "bot:"+senderPhone)
+	err = c.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusConfirmed, "bot:"+senderPhone, "Confirmed via button")
 	if err != nil {
 		return "", err
 	}

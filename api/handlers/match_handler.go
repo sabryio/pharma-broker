@@ -89,7 +89,7 @@ func (h *MatchHandler) ConfirmMatchGin(c *gin.Context) {
 		return
 	}
 
-	if err := h.matchRepo.UpdateStatus(ctx, id, entity.MatchStatusConfirmed, req.MatchedBy); err != nil {
+	if err := h.matchRepo.UpdateStatus(ctx, id, entity.MatchStatusConfirmed, req.MatchedBy, req.Notes); err != nil {
 		h.log.Error().Err(err).Msg("Failed to confirm match")
 		InternalErrorGin(c, "Failed to confirm match")
 		return
@@ -130,7 +130,7 @@ func (h *MatchHandler) RejectMatchGin(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	if err := h.matchRepo.UpdateStatus(ctx, id, entity.MatchStatusRejected, req.MatchedBy); err != nil {
+	if err := h.matchRepo.UpdateStatus(ctx, id, entity.MatchStatusRejected, req.MatchedBy, req.Reason); err != nil {
 		h.log.Error().Err(err).Msg("Failed to reject match")
 		InternalErrorGin(c, "Failed to reject match")
 		return

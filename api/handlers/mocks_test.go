@@ -92,7 +92,7 @@ func (m *mockMatchRepo) GetPending(ctx context.Context, limit, offset int) ([]*e
 func (m *mockMatchRepo) CountPending(ctx context.Context) (int64, error) {
 	return int64(len(m.matches)), nil
 }
-func (m *mockMatchRepo) UpdateStatus(ctx context.Context, id string, status entity.MatchStatus, matchedBy string) error {
+func (m *mockMatchRepo) UpdateStatus(ctx context.Context, id string, status entity.MatchStatus, matchedBy string, notes string) error {
 	return nil
 }
 func (m *mockMatchRepo) GetByOfferID(ctx context.Context, offerID string) ([]*entity.Match, error) {

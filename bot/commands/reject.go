@@ -57,7 +57,7 @@ func (c *RejectCommand) Handle(ctx context.Context, cmd *core.Command, msg *core
 	}
 
 	senderPhone := extractPhone(msg.SenderID)
-	err = c.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusRejected, "bot:"+senderPhone)
+	err = c.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusRejected, "bot:"+senderPhone, "Rejected via bot")
 	if err != nil {
 		return core.Response{Text: core.EscapeMarkdownV2("❌ Error rejecting match. Please try again."), ParseMode: core.ParseModeMarkdownV2}
 	}
@@ -80,7 +80,7 @@ func (c *RejectCommand) RejectByID(ctx context.Context, matchID, senderID string
 	}
 
 	senderPhone := extractPhone(senderID)
-	err = c.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusRejected, "bot:"+senderPhone)
+	err = c.matchRepo.UpdateStatus(ctx, match.ID, entity.MatchStatusRejected, "bot:"+senderPhone, "Rejected via button")
 	if err != nil {
 		return "", err
 	}

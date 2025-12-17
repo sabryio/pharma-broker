@@ -64,7 +64,7 @@ type MatchReader interface {
 // MatchWriter provides write operations for matches
 type MatchWriter interface {
 	Save(ctx context.Context, match *entity.Match) error
-	UpdateStatus(ctx context.Context, id string, status entity.MatchStatus, matchedBy string) error
+	UpdateStatus(ctx context.Context, id string, status entity.MatchStatus, matchedBy, notes string) error
 }
 
 // MatchRepository combines read and write operations

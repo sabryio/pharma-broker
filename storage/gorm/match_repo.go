@@ -96,10 +96,11 @@ func (r *MatchRepo) GetByRequestID(ctx context.Context, requestID string) ([]*en
 }
 
 // UpdateStatus updates the status of a match
-func (r *MatchRepo) UpdateStatus(ctx context.Context, id string, status entity.MatchStatus, matchedBy string) error {
+func (r *MatchRepo) UpdateStatus(ctx context.Context, id string, status entity.MatchStatus, matchedBy, notes string) error {
 	updates := map[string]interface{}{
 		"status":     string(status),
 		"matched_by": matchedBy,
+		"notes":      notes,
 	}
 
 	if status == entity.MatchStatusConfirmed {
