@@ -1,17 +1,17 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
-	"pharmabroker/domain/entity"
-
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
+
+	"pharmabroker/domain/entity"
 )
 
 func TestOfferHandler_GetOffers(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockOfferRepo{offers: []*entity.Offer{
 		{ID: "offer-1", Medication: "Paracetamol", Quantity: 100, Status: entity.StatusActive},
@@ -19,21 +19,16 @@ func TestOfferHandler_GetOffers(t *testing.T) {
 	}}
 	h := NewOfferHandler(repo, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/offers", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/offers", nil)
 
-	h.GetOffers(w, req)
+	h.GetOffersGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusOK)
 
 	var resp struct {
 		Data []*entity.Offer `json:"data"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
+	th.AssertJSONResponse(w, &resp)
 
 	if len(resp.Data) != 2 {
 		t.Errorf("Expected 2 offers, got %d", len(resp.Data))
@@ -41,37 +36,31 @@ func TestOfferHandler_GetOffers(t *testing.T) {
 }
 
 func TestOfferHandler_GetOffer(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockOfferRepo{offers: []*entity.Offer{
 		{ID: "offer-1", Medication: "Paracetamol", Quantity: 100, Status: entity.StatusActive},
 	}}
 	h := NewOfferHandler(repo, log)
 
-	// Note: PathValue requires Go 1.22+ routing with path patterns
-	// For testing, we can create a request with PathValue set manually
-	req := httptest.NewRequest(http.MethodGet, "/api/offers/offer-1", nil)
-	req.SetPathValue("id", "offer-1")
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/offers/offer-1", nil)
+	c.Params = gin.Params{{Key: "id", Value: "offer-1"}}
 
-	h.GetOffer(w, req)
+	h.GetOfferGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusOK)
 }
 
 func TestOfferHandler_GetOffer_MissingID(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockOfferRepo{}
 	h := NewOfferHandler(repo, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/offers/", nil)
-	// ID not set, so PathValue("id") returns ""
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/offers/", nil)
+	// No params set - ID will be empty
 
-	h.GetOffer(w, req)
+	h.GetOfferGin(c)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusBadRequest)
 }

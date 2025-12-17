@@ -1,15 +1,17 @@
 package api
 
 import (
+	"context"
 	"net/http"
-
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/zerolog"
-
 	"pharmabroker/api/handlers"
 	"pharmabroker/api/middleware"
 	"pharmabroker/api/sse"
 	"pharmabroker/pkg/config"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog"
 )
 
 // Handlers bundles all API handlers
@@ -30,110 +32,264 @@ type Handlers struct {
 	Health      *handlers.HealthChecker
 }
 
-// NewRouter creates the HTTP router with middleware
-func NewRouter(h *Handlers, cfg *config.APIConfig, log zerolog.Logger) http.Handler {
-	mux := http.NewServeMux()
+// ServerResources holds resources that need lifecycle management
+type ServerResources struct {
+	RateLimiter *middleware.RateLimiter
+}
 
-	// API routes
-	if h.Offer != nil {
-		mux.HandleFunc("GET /api/offers", h.Offer.GetOffers)
-		mux.HandleFunc("GET /api/offers/{id}", h.Offer.GetOffer)
+// Stop cleans up server resources
+func (r *ServerResources) Stop() {
+	if r.RateLimiter != nil {
+		r.RateLimiter.Stop()
 	}
+}
 
-	if h.Request != nil {
-		mux.HandleFunc("GET /api/requests", h.Request.GetRequests)
-		mux.HandleFunc("GET /api/requests/{id}", h.Request.GetRequest)
-	}
+// NewGinRouter creates the Gin HTTP router with middleware and routes.
+// Returns the router and resources that need cleanup when the server stops.
+func NewGinRouter(ctx context.Context, h *Handlers, cfg *config.APIConfig, log zerolog.Logger) (*gin.Engine, *ServerResources) {
+	// Gin automatically checks GIN_MODE env var (debug/release/test)
+	// For production, set GIN_MODE=release
 
-	if h.Match != nil {
-		mux.HandleFunc("GET /api/matches", h.Match.GetMatches)
-		mux.HandleFunc("GET /api/matches/export", h.Match.ExportMatchesCSV)
-		mux.HandleFunc("POST /api/matches/{id}/confirm", h.Match.ConfirmMatch)
-		mux.HandleFunc("POST /api/matches/{id}/reject", h.Match.RejectMatch)
-	}
+	r := gin.New()
+	resources := &ServerResources{}
 
-	if h.Stats != nil {
-		mux.HandleFunc("GET /api/stats", h.Stats.GetStats)
-	}
+	// Create rate limiter with TTL-based cleanup
+	rateLimiter := middleware.NewRateLimiterWithTTL(cfg.RateLimitRPS, cfg.RateLimitBurst, 10*time.Minute)
+	rateLimiter.StartCleanup(ctx, 5*time.Minute)
+	resources.RateLimiter = rateLimiter
 
-	if h.Group != nil {
-		mux.HandleFunc("GET /api/groups", h.Group.GetGroups)
-		mux.HandleFunc("POST /api/groups/sync", h.Group.SyncGroups)
-		mux.HandleFunc("PATCH /api/groups/{jid}", h.Group.UpdateGroupMonitoring)
-	}
+	// Global middleware stack
+	r.Use(middleware.GinRecovery(log))
+	r.Use(middleware.GinTracing(log))
+	r.Use(middleware.GinRateLimitWithLimiter(rateLimiter))
+	r.Use(middleware.GinTimeout(middleware.TimeoutConfig{
+		Timeout:   cfg.RequestTimeout,
+		SkipPaths: []string{"/api/events"}, // Skip SSE endpoint
+	}))
+	r.Use(corsMiddleware(cfg))
 
-	if h.Analysis != nil {
-		mux.HandleFunc("POST /api/analyze", h.Analysis.Analyze)
-	}
+	// Register route groups
+	api := r.Group("/api")
+	{
+		registerOfferRoutes(api, h)
+		registerRequestRoutes(api, h)
+		registerMatchRoutes(api, h)
+		registerGroupRoutes(api, h)
+		registerStatsRoutes(api, h)
+		registerConfigRoutes(api, h)
+		registerFeedbackRoutes(api, h)
+		registerLeaderboardRoutes(api, h)
+		registerAuditRoutes(api, h)
+		registerReviewRoutes(api, h)
+		registerAnalysisRoutes(api, h)
+		registerSSERoutes(api, h)
 
-	if h.Config != nil {
-		mux.HandleFunc("GET /api/config", h.Config.GetConfig)
-		mux.HandleFunc("PATCH /api/config", h.Config.UpdateConfig)
-	}
-
-	if h.Feedback != nil {
-		mux.HandleFunc("POST /api/matches/{id}/feedback", h.Feedback.RecordFeedback)
-		mux.HandleFunc("GET /api/feedback/analysis", h.Feedback.GetFeedbackAnalysis)
-		mux.HandleFunc("GET /api/feedback/recent", h.Feedback.GetRecentFeedback)
-	}
-
-	if h.Leaderboard != nil {
-		mux.HandleFunc("GET /api/leaderboard", h.Leaderboard.GetDemandLeaderboard)
-		mux.HandleFunc("GET /api/leaderboard/{medication}", h.Leaderboard.GetMedicationDemand)
-		mux.HandleFunc("POST /api/leaderboard/refresh", h.Leaderboard.RefreshLeaderboard)
-	}
-
-	if h.Audit != nil {
-		mux.HandleFunc("GET /api/audit", h.Audit.GetAuditLogs)
-	}
-
-	if h.Review != nil {
-		mux.HandleFunc("GET /api/review/queue", h.Review.GetPendingReviews)
-		mux.HandleFunc("GET /api/review/count", h.Review.GetReviewCount)
-		mux.HandleFunc("GET /api/review/{id}", h.Review.GetReviewItem)
-		mux.HandleFunc("POST /api/review/{id}/approve", h.Review.ApproveReview)
-		mux.HandleFunc("POST /api/review/{id}/reject", h.Review.RejectReview)
-	}
-
-	if h.Learning != nil {
-		mux.HandleFunc("GET /api/admin/learning/status", h.Learning.GetLearningStatus)
-		mux.HandleFunc("POST /api/admin/learning/trigger", h.Learning.TriggerLearning)
-		mux.HandleFunc("POST /api/admin/learning/apply", h.Learning.ApplyPendingWeights)
-		mux.HandleFunc("POST /api/admin/learning/reject", h.Learning.RejectPendingWeights)
-		mux.HandleFunc("POST /api/admin/learning/rollback", h.Learning.RollbackWeights)
-		mux.HandleFunc("GET /api/admin/learning/history", h.Learning.GetWeightHistory)
-		mux.HandleFunc("GET /api/admin/learning/weights", h.Learning.GetCurrentWeights)
-		mux.HandleFunc("PUT /api/admin/learning/weights", h.Learning.UpdateWeightsManually)
-		mux.HandleFunc("GET /api/admin/learning/feedback-stats", h.Learning.GetFeedbackStats)
-	}
-
-	if h.SSE != nil {
-		mux.HandleFunc("GET /api/events", h.SSE.ServeHTTP)
+		// Admin routes
+		admin := api.Group("/admin")
+		{
+			registerLearningRoutes(admin, h)
+		}
 	}
 
 	// Health check endpoints
-	if h.Health != nil {
-		mux.HandleFunc("GET /health", h.Health.FullHealthHandler)
-		mux.HandleFunc("GET /health/live", h.Health.LiveHandler)
-		mux.HandleFunc("GET /health/ready", h.Health.ReadyHandler)
+	registerHealthRoutes(r, h)
+
+	// Prometheus metrics
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	return r, resources
+}
+
+// corsMiddleware returns a CORS configuration middleware
+func corsMiddleware(cfg *config.APIConfig) gin.HandlerFunc {
+	// Use allowed origins from config, default to "*" for development
+	allowedOrigins := cfg.CorsAllowedOrigins
+	if len(allowedOrigins) == 0 {
+		allowedOrigins = []string{"*"}
 	}
 
-	// Metrics endpoint
-	mux.Handle("GET /metrics", promhttp.Handler())
+	return func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
+		allowAll := len(allowedOrigins) == 1 && allowedOrigins[0] == "*"
 
-	// Middleware stack
-	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst)
+		if allowAll {
+			c.Header("Access-Control-Allow-Origin", "*")
+		} else if origin != "" {
+			for _, allowed := range allowedOrigins {
+				if origin == allowed {
+					c.Header("Access-Control-Allow-Origin", origin)
+					c.Header("Vary", "Origin")
+					break
+				}
+			}
+		}
 
-	// Apply middleware: CORS -> Recovery -> Rate Limit -> Tracing -> Handler
-	// Using chained middleware helper or explicit nested calls
-	handler := middleware.CorsMiddleware(
-		middleware.RecoveryMiddleware(
-			middleware.RateLimitMiddleware(rateLimiter)(
-				middleware.TracingMiddleware(mux, log),
-			),
-			log,
-		),
-	)
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization, X-Trace-ID")
+		c.Header("Access-Control-Expose-Headers", "X-Trace-ID")
+		c.Header("Access-Control-Max-Age", "86400")
 
-	return handler
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// Route registration functions
+
+func registerOfferRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Offer == nil {
+		return
+	}
+	offers := rg.Group("/offers")
+	{
+		offers.GET("", h.Offer.GetOffersGin)
+		offers.GET("/:id", h.Offer.GetOfferGin)
+	}
+}
+
+func registerRequestRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Request == nil {
+		return
+	}
+	requests := rg.Group("/requests")
+	{
+		requests.GET("", h.Request.GetRequestsGin)
+		requests.GET("/:id", h.Request.GetRequestGin)
+	}
+}
+
+func registerMatchRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Match == nil {
+		return
+	}
+	matches := rg.Group("/matches")
+	{
+		matches.GET("", h.Match.GetMatchesGin)
+		matches.GET("/export", h.Match.ExportMatchesCSVGin)
+		matches.POST("/:id/confirm", h.Match.ConfirmMatchGin)
+		matches.POST("/:id/reject", h.Match.RejectMatchGin)
+	}
+}
+
+func registerGroupRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Group == nil {
+		return
+	}
+	groups := rg.Group("/groups")
+	{
+		groups.GET("", h.Group.GetGroupsGin)
+		groups.POST("/sync", h.Group.SyncGroupsGin)
+		groups.PATCH("/:jid", h.Group.UpdateGroupMonitoringGin)
+	}
+}
+
+func registerStatsRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Stats == nil {
+		return
+	}
+	rg.GET("/stats", h.Stats.GetStatsGin)
+}
+
+func registerConfigRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Config == nil {
+		return
+	}
+	rg.GET("/config", h.Config.GetConfigGin)
+	rg.PATCH("/config", h.Config.UpdateConfigGin)
+}
+
+func registerFeedbackRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Feedback == nil {
+		return
+	}
+	rg.POST("/matches/:id/feedback", h.Feedback.RecordFeedbackGin)
+
+	feedback := rg.Group("/feedback")
+	{
+		feedback.GET("/analysis", h.Feedback.GetFeedbackAnalysisGin)
+		feedback.GET("/recent", h.Feedback.GetRecentFeedbackGin)
+	}
+}
+
+func registerLeaderboardRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Leaderboard == nil {
+		return
+	}
+	leaderboard := rg.Group("/leaderboard")
+	{
+		leaderboard.GET("", h.Leaderboard.GetDemandLeaderboardGin)
+		leaderboard.GET("/:medication", h.Leaderboard.GetMedicationDemandGin)
+		leaderboard.POST("/refresh", h.Leaderboard.RefreshLeaderboardGin)
+	}
+}
+
+func registerAuditRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Audit == nil {
+		return
+	}
+	rg.GET("/audit", h.Audit.GetAuditLogsGin)
+}
+
+func registerReviewRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Review == nil {
+		return
+	}
+	review := rg.Group("/review")
+	{
+		review.GET("/queue", h.Review.GetPendingReviewsGin)
+		review.GET("/count", h.Review.GetReviewCountGin)
+		review.GET("/:id", h.Review.GetReviewItemGin)
+		review.POST("/:id/approve", h.Review.ApproveReviewGin)
+		review.POST("/:id/reject", h.Review.RejectReviewGin)
+	}
+}
+
+func registerAnalysisRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Analysis == nil {
+		return
+	}
+	rg.POST("/analyze", h.Analysis.AnalyzeGin)
+}
+
+func registerSSERoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.SSE == nil {
+		return
+	}
+	rg.GET("/events", h.SSE.GinHandler())
+}
+
+func registerLearningRoutes(rg *gin.RouterGroup, h *Handlers) {
+	if h.Learning == nil {
+		return
+	}
+	learning := rg.Group("/learning")
+	{
+		learning.GET("/status", h.Learning.GetLearningStatusGin)
+		learning.POST("/trigger", h.Learning.TriggerLearningGin)
+		learning.POST("/apply", h.Learning.ApplyPendingWeightsGin)
+		learning.POST("/reject", h.Learning.RejectPendingWeightsGin)
+		learning.POST("/rollback", h.Learning.RollbackWeightsGin)
+		learning.GET("/history", h.Learning.GetWeightHistoryGin)
+		learning.GET("/weights", h.Learning.GetCurrentWeightsGin)
+		learning.PUT("/weights", h.Learning.UpdateWeightsManuallyGin)
+		learning.GET("/feedback-stats", h.Learning.GetFeedbackStatsGin)
+	}
+}
+
+func registerHealthRoutes(r *gin.Engine, h *Handlers) {
+	if h.Health == nil {
+		return
+	}
+	r.GET("/health", h.Health.FullHealthGin)
+	r.GET("/health/live", h.Health.LiveGin)
+	r.GET("/health/ready", h.Health.ReadyGin)
+}
+
+// GinHandlerAdapter wraps an http.Handler to work with Gin
+func GinHandlerAdapter(h http.Handler) gin.HandlerFunc {
+	return gin.WrapH(h)
 }

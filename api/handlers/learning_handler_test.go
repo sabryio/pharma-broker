@@ -1,11 +1,8 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -97,20 +94,19 @@ func (m *mockLearningScheduler) ApplyWeightsManual(ctx context.Context, weights 
 }
 
 func TestGetLearningStatus_NoScheduler(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	handlers := NewLearningHandler(nil, nil, nil, log)
 
-	req := httptest.NewRequest("GET", "/api/admin/learning/status", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/admin/learning/status", nil)
 
-	handlers.GetLearningStatus(w, req)
+	handlers.GetLearningStatusGin(c)
 
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusServiceUnavailable)
-	}
+	th.AssertStatus(w, http.StatusServiceUnavailable)
 }
 
 func TestGetLearningStatus_Success(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	scheduler := &mockLearningScheduler{
 		status: ai.SchedulerStatus{
@@ -120,23 +116,17 @@ func TestGetLearningStatus_Success(t *testing.T) {
 	}
 	handlers := NewLearningHandler(scheduler, nil, nil, log)
 
-	req := httptest.NewRequest("GET", "/api/admin/learning/status", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/admin/learning/status", nil)
 
-	handlers.GetLearningStatus(w, req)
+	handlers.GetLearningStatusGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
-	}
+	th.AssertStatus(w, http.StatusOK)
 
-	// Decode the wrapper response first
 	var wrapper struct {
 		Success bool                   `json:"success"`
 		Data    LearningStatusResponse `json:"data"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&wrapper); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
+	th.AssertJSONResponse(w, &wrapper)
 
 	if !wrapper.Success {
 		t.Error("Expected Success = true")
@@ -150,51 +140,46 @@ func TestGetLearningStatus_Success(t *testing.T) {
 }
 
 func TestTriggerLearning_NoScheduler(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	handlers := NewLearningHandler(nil, nil, nil, log)
 
-	req := httptest.NewRequest("POST", "/api/admin/learning/trigger", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("POST", "/api/admin/learning/trigger", nil)
 
-	handlers.TriggerLearning(w, req)
+	handlers.TriggerLearningGin(c)
 
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusServiceUnavailable)
-	}
+	th.AssertStatus(w, http.StatusServiceUnavailable)
 }
 
 func TestApplyPendingWeights_NoConfirm(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	scheduler := &mockLearningScheduler{}
 	handlers := NewLearningHandler(scheduler, nil, nil, log)
 
-	body := bytes.NewBufferString(`{"confirm": false}`)
-	req := httptest.NewRequest("POST", "/api/admin/learning/apply", body)
-	w := httptest.NewRecorder()
+	body := map[string]bool{"confirm": false}
+	c, w := th.CreateContext("POST", "/api/admin/learning/apply", body)
 
-	handlers.ApplyPendingWeights(w, req)
+	handlers.ApplyPendingWeightsGin(c)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusBadRequest)
-	}
+	th.AssertStatus(w, http.StatusBadRequest)
 }
 
 func TestRejectPendingWeights_Success(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	scheduler := &mockLearningScheduler{}
 	handlers := NewLearningHandler(scheduler, nil, nil, log)
 
-	req := httptest.NewRequest("POST", "/api/admin/learning/reject", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("POST", "/api/admin/learning/reject", nil)
 
-	handlers.RejectPendingWeights(w, req)
+	handlers.RejectPendingWeightsGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
-	}
+	th.AssertStatus(w, http.StatusOK)
 }
 
 func TestGetWeightHistory_Success(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	historyRepo := &mockLearningWeightHistoryRepo{
 		history: []*entity.WeightHistory{
@@ -213,22 +198,17 @@ func TestGetWeightHistory_Success(t *testing.T) {
 
 	handlers := NewLearningHandler(nil, nil, historyRepo, log)
 
-	req := httptest.NewRequest("GET", "/api/admin/learning/history", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/admin/learning/history", nil)
 
-	handlers.GetWeightHistory(w, req)
+	handlers.GetWeightHistoryGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
-	}
+	th.AssertStatus(w, http.StatusOK)
 
 	var wrapper struct {
 		Success bool                  `json:"success"`
 		Data    WeightHistoryResponse `json:"data"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&wrapper); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
+	th.AssertJSONResponse(w, &wrapper)
 
 	if wrapper.Data.Total != 1 {
 		t.Errorf("Total = %d, want 1", wrapper.Data.Total)
@@ -236,6 +216,7 @@ func TestGetWeightHistory_Success(t *testing.T) {
 }
 
 func TestGetFeedbackStats_Success(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	feedbackRepo := &mockLearningFeedbackRepo{
 		stats: &entity.FeedbackStats{
@@ -252,22 +233,17 @@ func TestGetFeedbackStats_Success(t *testing.T) {
 
 	handlers := NewLearningHandler(nil, feedbackRepo, nil, log)
 
-	req := httptest.NewRequest("GET", "/api/admin/learning/feedback-stats", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/admin/learning/feedback-stats", nil)
 
-	handlers.GetFeedbackStats(w, req)
+	handlers.GetFeedbackStatsGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
-	}
+	th.AssertStatus(w, http.StatusOK)
 
 	var wrapper struct {
 		Success bool                  `json:"success"`
 		Data    FeedbackStatsResponse `json:"data"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&wrapper); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
+	th.AssertJSONResponse(w, &wrapper)
 
 	if wrapper.Data.TotalFeedbacks != 200 {
 		t.Errorf("TotalFeedbacks = %d, want 200", wrapper.Data.TotalFeedbacks)
@@ -282,6 +258,7 @@ func TestGetFeedbackStats_Success(t *testing.T) {
 }
 
 func TestGetCurrentWeights_Default(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	historyRepo := &mockLearningWeightHistoryRepo{
 		err:     nil,
@@ -290,22 +267,17 @@ func TestGetCurrentWeights_Default(t *testing.T) {
 
 	handlers := NewLearningHandler(nil, nil, historyRepo, log)
 
-	req := httptest.NewRequest("GET", "/api/admin/learning/weights", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/admin/learning/weights", nil)
 
-	handlers.GetCurrentWeights(w, req)
+	handlers.GetCurrentWeightsGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
-	}
+	th.AssertStatus(w, http.StatusOK)
 
 	var wrapper struct {
 		Success bool                   `json:"success"`
 		Data    CurrentWeightsResponse `json:"data"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&wrapper); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
+	th.AssertJSONResponse(w, &wrapper)
 
 	if wrapper.Data.Source != "default" {
 		t.Errorf("Source = %s, want 'default'", wrapper.Data.Source)
@@ -313,21 +285,19 @@ func TestGetCurrentWeights_Default(t *testing.T) {
 }
 
 func TestUpdateWeightsManually_InvalidSum(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	scheduler := &mockLearningScheduler{}
 	handlers := NewLearningHandler(scheduler, nil, nil, log)
 
 	// Weights don't sum to 1.0
-	body := bytes.NewBufferString(`{
-		"weights": {"medication": 0.5, "dosage": 0.5, "quantity": 0.5, "price": 0.5, "recency": 0.5},
-		"notes": "test"
-	}`)
-	req := httptest.NewRequest("PUT", "/api/admin/learning/weights", body)
-	w := httptest.NewRecorder()
-
-	handlers.UpdateWeightsManually(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusBadRequest)
+	body := map[string]interface{}{
+		"weights": map[string]float64{"medication": 0.5, "dosage": 0.5, "quantity": 0.5, "price": 0.5, "recency": 0.5},
+		"notes":   "test",
 	}
+	c, w := th.CreateContext("PUT", "/api/admin/learning/weights", body)
+
+	handlers.UpdateWeightsManuallyGin(c)
+
+	th.AssertStatus(w, http.StatusBadRequest)
 }

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -63,36 +62,6 @@ type LearningStatusResponse struct {
 	CurrentWeights *matching.Weights          `json:"current_weights,omitempty"`
 }
 
-// GetLearningStatus returns current learning system status
-// GET /api/admin/learning/status
-func (h *LearningHandler) GetLearningStatus(w http.ResponseWriter, r *http.Request) {
-	if h.scheduler == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
-		return
-	}
-
-	status := h.scheduler.Status()
-
-	response := LearningStatusResponse{
-		Enabled:       status.Enabled,
-		Schedule:      status.Schedule,
-		LastStatus:    string(status.LastStatus),
-		PendingApply:  status.PendingApply,
-		PendingReason: status.PendingReason,
-		LastMetrics:   status.LastMetrics,
-	}
-
-	if !status.LastRun.IsZero() {
-		response.LastRun = &status.LastRun
-	}
-
-	if status.LastError != nil {
-		response.LastError = status.LastError.Error()
-	}
-
-	success(w, response)
-}
-
 // TriggerLearningRequest for manual trigger
 type TriggerLearningRequest struct {
 	Force bool `json:"force"` // Force run even if recently ran
@@ -105,106 +74,9 @@ type TriggerLearningResponse struct {
 	Status  string `json:"status"`
 }
 
-// TriggerLearning manually triggers a learning job
-// POST /api/admin/learning/trigger
-func (h *LearningHandler) TriggerLearning(w http.ResponseWriter, r *http.Request) {
-	if h.scheduler == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
-		return
-	}
-
-	err := h.scheduler.RunNow()
-
-	response := TriggerLearningResponse{
-		Success: err == nil,
-		Status:  string(h.scheduler.Status().LastStatus),
-	}
-
-	if err != nil {
-		response.Message = err.Error()
-	} else {
-		response.Message = "Learning job completed successfully"
-	}
-
-	success(w, response)
-}
-
 // ApplyPendingRequest for applying pending weights
 type ApplyPendingRequest struct {
 	Confirm bool `json:"confirm"` // Must be true to apply
-}
-
-// ApplyPendingWeights applies pending weights manually
-// POST /api/admin/learning/apply
-func (h *LearningHandler) ApplyPendingWeights(w http.ResponseWriter, r *http.Request) {
-	if h.scheduler == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
-		return
-	}
-
-	var req ApplyPendingRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		errorWithCode(w, http.StatusBadRequest, ErrBadRequest("Invalid request body"))
-		return
-	}
-
-	if !req.Confirm {
-		errorWithCode(w, http.StatusBadRequest, ErrBadRequest("Must set confirm=true to apply weights"))
-		return
-	}
-
-	ctx := r.Context()
-	err := h.scheduler.ApplyPending(ctx)
-	if err != nil {
-		errorWithCode(w, http.StatusBadRequest, ErrInternal(err.Error()))
-		return
-	}
-
-	success(w, map[string]string{
-		"status":  "success",
-		"message": "Pending weights applied successfully",
-	})
-}
-
-// RejectPendingWeights rejects pending weights
-// POST /api/admin/learning/reject
-func (h *LearningHandler) RejectPendingWeights(w http.ResponseWriter, r *http.Request) {
-	if h.scheduler == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
-		return
-	}
-
-	h.scheduler.RejectPending()
-
-	success(w, map[string]string{
-		"status":  "success",
-		"message": "Pending weights rejected",
-	})
-}
-
-// RollbackWeights reverts to previous weights
-// POST /api/admin/learning/rollback
-func (h *LearningHandler) RollbackWeights(w http.ResponseWriter, r *http.Request) {
-	if h.scheduler == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
-		return
-	}
-
-	ctx := r.Context()
-
-	currentWeights := h.scheduler.Status().PendingApply
-
-	err := h.scheduler.Rollback(ctx)
-	if err != nil {
-		errorWithCode(w, http.StatusInternalServerError, ErrInternal("Rollback failed: "+err.Error()))
-		return
-	}
-
-	success(w, map[string]interface{}{
-		"status":           "success",
-		"message":          "Weights rolled back to previous configuration",
-		"rolled_back_from": currentWeights,
-	})
 }
 
 // WeightHistoryResponse for weight history endpoint
@@ -227,44 +99,6 @@ type WeightHistoryItem struct {
 	Notes            string                     `json:"notes,omitempty"`
 }
 
-// GetWeightHistory returns historical weight changes
-// GET /api/admin/learning/history
-func (h *LearningHandler) GetWeightHistory(w http.ResponseWriter, r *http.Request) {
-	if h.weightHistoryRepo == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Weight history not configured"))
-		return
-	}
-
-	ctx := r.Context()
-	limit := 20
-
-	history, err := h.weightHistoryRepo.GetHistory(ctx, limit)
-	if err != nil {
-		errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch history: "+err.Error()))
-		return
-	}
-
-	items := make([]*WeightHistoryItem, 0, len(history))
-	for _, wh := range history {
-		items = append(items, &WeightHistoryItem{
-			ID:               wh.ID,
-			Timestamp:        wh.AppliedAt,
-			Source:           string(wh.Source),
-			MedicationWeight: wh.MedicationWeight,
-			DosageWeight:     wh.DosageWeight,
-			QuantityWeight:   wh.QuantityWeight,
-			PriceWeight:      wh.PriceWeight,
-			RecencyWeight:    wh.RecencyWeight,
-			Notes:            wh.Notes,
-		})
-	}
-
-	success(w, WeightHistoryResponse{
-		History: items,
-		Total:   len(items),
-	})
-}
-
 // FeedbackStatsResponse for feedback statistics
 type FeedbackStatsResponse struct {
 	Period           string  `json:"period"`
@@ -284,46 +118,6 @@ type FeedbackStatsResponse struct {
 	RecencyDiff    float64 `json:"recency_diff"`
 }
 
-// GetFeedbackStats returns feedback statistics for learning
-// GET /api/admin/learning/feedback-stats
-func (h *LearningHandler) GetFeedbackStats(w http.ResponseWriter, r *http.Request) {
-	if h.feedbackRepo == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Feedback repository not configured"))
-		return
-	}
-
-	ctx := r.Context()
-
-	endDate := time.Now()
-	startDate := endDate.Add(-30 * 24 * time.Hour)
-
-	stats, err := h.feedbackRepo.GetFeedbackStats(ctx, startDate, endDate)
-	if err != nil {
-		errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch stats: "+err.Error()))
-		return
-	}
-
-	response := FeedbackStatsResponse{
-		Period:           "30 days",
-		TotalFeedbacks:   stats.TotalFeedbacks,
-		ConfirmedCount:   stats.ConfirmedCount,
-		RejectedCount:    stats.RejectedCount,
-		ConfirmationRate: stats.ConfirmationRate,
-
-		ConfirmedAvgScore: stats.ConfirmedAvgTotal,
-		RejectedAvgScore:  stats.RejectedAvgTotal,
-		Separation:        stats.ConfirmedAvgTotal - stats.RejectedAvgTotal,
-
-		MedicationDiff: stats.MedicationDiff,
-		DosageDiff:     stats.DosageDiff,
-		QuantityDiff:   stats.QuantityDiff,
-		PriceDiff:      stats.PriceDiff,
-		RecencyDiff:    stats.RecencyDiff,
-	}
-
-	success(w, response)
-}
-
 // CurrentWeightsResponse for current weights
 type CurrentWeightsResponse struct {
 	Weights   matching.Weights `json:"weights"`
@@ -332,103 +126,16 @@ type CurrentWeightsResponse struct {
 	Notes     string           `json:"notes,omitempty"`
 }
 
-// GetCurrentWeights returns current scoring weights
-// GET /api/admin/learning/weights
-func (h *LearningHandler) GetCurrentWeights(w http.ResponseWriter, r *http.Request) {
-	if h.weightHistoryRepo == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Weight history not configured"))
-		return
-	}
-
-	ctx := r.Context()
-
-	current, err := h.weightHistoryRepo.GetCurrent(ctx)
-	if err != nil || current == nil {
-		defaultWeights := matching.DefaultWeights()
-		success(w, CurrentWeightsResponse{
-			Weights: defaultWeights,
-			Source:  "default",
-		})
-		return
-	}
-
-	response := CurrentWeightsResponse{
-		Weights: matching.Weights{
-			Medication: current.MedicationWeight,
-			Dosage:     current.DosageWeight,
-			Quantity:   current.QuantityWeight,
-			Price:      current.PriceWeight,
-			Recency:    current.RecencyWeight,
-		},
-		Source:    string(current.Source),
-		AppliedAt: &current.AppliedAt,
-		Notes:     current.Notes,
-	}
-
-	success(w, response)
-}
-
 // ManualWeightsRequest for manual weight updates
 type ManualWeightsRequest struct {
 	Weights matching.Weights `json:"weights"`
 	Notes   string           `json:"notes"`
 }
 
-// UpdateWeightsManually allows admin to set weights manually
-// PUT /api/admin/learning/weights
-func (h *LearningHandler) UpdateWeightsManually(w http.ResponseWriter, r *http.Request) {
-	if h.scheduler == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
-		return
-	}
-
-	var req ManualWeightsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		errorWithCode(w, http.StatusBadRequest, ErrBadRequest("Invalid request body"))
-		return
-	}
-
-	// Validate weights sum to 1.0
-	sum := req.Weights.Medication + req.Weights.Dosage + req.Weights.Quantity +
-		req.Weights.Price + req.Weights.Recency
-	if sum < 0.99 || sum > 1.01 {
-		errorWithCode(w, http.StatusBadRequest, ErrBadRequest("Weights must sum to 1.0"))
-		return
-	}
-
-	// Validate individual weights are within bounds
-	if req.Weights.Medication < 0.05 || req.Weights.Medication > 0.70 ||
-		req.Weights.Dosage < 0.05 || req.Weights.Dosage > 0.70 ||
-		req.Weights.Quantity < 0.05 || req.Weights.Quantity > 0.70 ||
-		req.Weights.Price < 0.05 || req.Weights.Price > 0.70 ||
-		req.Weights.Recency < 0.05 || req.Weights.Recency > 0.70 {
-		errorWithCode(w, http.StatusBadRequest, ErrBadRequest("Each weight must be between 0.05 and 0.70"))
-		return
-	}
-
-	ctx := r.Context()
-
-	err := h.scheduler.ApplyWeightsManual(ctx, req.Weights, req.Notes)
-	if err != nil {
-		errorWithCode(w, http.StatusInternalServerError, ErrInternal("Failed to apply weights: "+err.Error()))
-		return
-	}
-
-	success(w, map[string]interface{}{
-		"status":  "success",
-		"message": "Weights updated and persisted",
-		"weights": req.Weights,
-	})
-}
-
-// ============================================================================
-// Gin Handlers
-// ============================================================================
-
-// GetLearningStatusGin returns current learning system status (Gin)
+// GetLearningStatusGin returns current learning system status
 func (h *LearningHandler) GetLearningStatusGin(c *gin.Context) {
 	if h.scheduler == nil {
-		InternalErrorGin(c, "Learning scheduler not configured")
+		ErrorGin(c, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
 		return
 	}
 
@@ -454,10 +161,10 @@ func (h *LearningHandler) GetLearningStatusGin(c *gin.Context) {
 	SuccessGin(c, response)
 }
 
-// TriggerLearningGin manually triggers a learning job (Gin)
+// TriggerLearningGin manually triggers a learning job
 func (h *LearningHandler) TriggerLearningGin(c *gin.Context) {
 	if h.scheduler == nil {
-		InternalErrorGin(c, "Learning scheduler not configured")
+		ErrorGin(c, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
 		return
 	}
 
@@ -477,10 +184,10 @@ func (h *LearningHandler) TriggerLearningGin(c *gin.Context) {
 	SuccessGin(c, response)
 }
 
-// ApplyPendingWeightsGin applies pending weights manually (Gin)
+// ApplyPendingWeightsGin applies pending weights manually
 func (h *LearningHandler) ApplyPendingWeightsGin(c *gin.Context) {
 	if h.scheduler == nil {
-		InternalErrorGin(c, "Learning scheduler not configured")
+		ErrorGin(c, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
 		return
 	}
 
@@ -507,10 +214,10 @@ func (h *LearningHandler) ApplyPendingWeightsGin(c *gin.Context) {
 	})
 }
 
-// RejectPendingWeightsGin rejects pending weights (Gin)
+// RejectPendingWeightsGin rejects pending weights
 func (h *LearningHandler) RejectPendingWeightsGin(c *gin.Context) {
 	if h.scheduler == nil {
-		InternalErrorGin(c, "Learning scheduler not configured")
+		ErrorGin(c, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
 		return
 	}
 
@@ -522,10 +229,10 @@ func (h *LearningHandler) RejectPendingWeightsGin(c *gin.Context) {
 	})
 }
 
-// RollbackWeightsGin reverts to previous weights (Gin)
+// RollbackWeightsGin reverts to previous weights
 func (h *LearningHandler) RollbackWeightsGin(c *gin.Context) {
 	if h.scheduler == nil {
-		InternalErrorGin(c, "Learning scheduler not configured")
+		ErrorGin(c, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
 		return
 	}
 
@@ -545,7 +252,7 @@ func (h *LearningHandler) RollbackWeightsGin(c *gin.Context) {
 	})
 }
 
-// GetWeightHistoryGin returns historical weight changes (Gin)
+// GetWeightHistoryGin returns historical weight changes
 func (h *LearningHandler) GetWeightHistoryGin(c *gin.Context) {
 	if h.weightHistoryRepo == nil {
 		InternalErrorGin(c, "Weight history not configured")
@@ -582,7 +289,7 @@ func (h *LearningHandler) GetWeightHistoryGin(c *gin.Context) {
 	})
 }
 
-// GetFeedbackStatsGin returns feedback statistics for learning (Gin)
+// GetFeedbackStatsGin returns feedback statistics for learning
 func (h *LearningHandler) GetFeedbackStatsGin(c *gin.Context) {
 	if h.feedbackRepo == nil {
 		InternalErrorGin(c, "Feedback repository not configured")
@@ -622,7 +329,7 @@ func (h *LearningHandler) GetFeedbackStatsGin(c *gin.Context) {
 	SuccessGin(c, response)
 }
 
-// GetCurrentWeightsGin returns current scoring weights (Gin)
+// GetCurrentWeightsGin returns current scoring weights
 func (h *LearningHandler) GetCurrentWeightsGin(c *gin.Context) {
 	if h.weightHistoryRepo == nil {
 		InternalErrorGin(c, "Weight history not configured")
@@ -657,10 +364,10 @@ func (h *LearningHandler) GetCurrentWeightsGin(c *gin.Context) {
 	SuccessGin(c, response)
 }
 
-// UpdateWeightsManuallyGin allows admin to set weights manually (Gin)
+// UpdateWeightsManuallyGin allows admin to set weights manually
 func (h *LearningHandler) UpdateWeightsManuallyGin(c *gin.Context) {
 	if h.scheduler == nil {
-		InternalErrorGin(c, "Learning scheduler not configured")
+		ErrorGin(c, http.StatusServiceUnavailable, ErrInternal("Learning scheduler not configured"))
 		return
 	}
 

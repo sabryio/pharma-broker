@@ -335,9 +335,17 @@ func (c *Container) InitHandlers() error {
 }
 
 // InitRouter creates the HTTP router
-func (c *Container) InitRouter() {
-	c.Router = api.NewRouter(c.Handlers, &c.Config.API, c.Logger)
-	c.Logger.Info().Msg("HTTP router initialized")
+func (c *Container) InitRouter(ctx context.Context) {
+	router, resources := api.NewGinRouter(ctx, c.Handlers, &c.Config.API, c.Logger)
+	c.Router = router
+
+	// Register server resources for cleanup
+	c.addCloser(closerFunc(func() error {
+		resources.Stop()
+		return nil
+	}))
+
+	c.Logger.Info().Msg("Gin HTTP router initialized")
 }
 
 // InitLearningScheduler initializes adaptive learning if enabled

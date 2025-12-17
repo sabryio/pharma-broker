@@ -1,19 +1,18 @@
 package handlers
 
 import (
-	"bytes"
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"pharmabroker/domain/entity"
 
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 )
 
 func TestReviewHandler_GetPendingReviews(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockReviewRepo{items: []*entity.ReviewQueueItem{
 		{ID: "review-1", Status: entity.ReviewStatusPending, CreatedAt: time.Now()},
@@ -21,17 +20,15 @@ func TestReviewHandler_GetPendingReviews(t *testing.T) {
 	}}
 	h := NewReviewHandler(repo, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/review/queue", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/review/queue", nil)
 
-	h.GetPendingReviews(w, req)
+	h.GetPendingReviewsGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusOK)
 }
 
 func TestReviewHandler_GetReviewCount(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockReviewRepo{items: []*entity.ReviewQueueItem{
 		{ID: "review-1"},
@@ -39,14 +36,11 @@ func TestReviewHandler_GetReviewCount(t *testing.T) {
 	}}
 	h := NewReviewHandler(repo, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/review/count", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/review/count", nil)
 
-	h.GetReviewCount(w, req)
+	h.GetReviewCountGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusOK)
 
 	// Response is wrapped in {success: true, data: {...}}
 	var resp struct {
@@ -55,9 +49,7 @@ func TestReviewHandler_GetReviewCount(t *testing.T) {
 			PendingCount int64 `json:"pending_count"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
+	th.AssertJSONResponse(w, &resp)
 
 	if resp.Data.PendingCount != 2 {
 		t.Errorf("Expected pending_count 2, got %d", resp.Data.PendingCount)
@@ -65,96 +57,86 @@ func TestReviewHandler_GetReviewCount(t *testing.T) {
 }
 
 func TestReviewHandler_GetReviewItem(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockReviewRepo{items: []*entity.ReviewQueueItem{
 		{ID: "review-1", Status: entity.ReviewStatusPending},
 	}}
 	h := NewReviewHandler(repo, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/review/review-1", nil)
-	req.SetPathValue("id", "review-1")
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/review/review-1", nil)
+	c.Params = gin.Params{{Key: "id", Value: "review-1"}}
 
-	h.GetReviewItem(w, req)
+	h.GetReviewItemGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusOK)
 }
 
 func TestReviewHandler_GetReviewItem_NotFound(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockReviewRepo{items: []*entity.ReviewQueueItem{}}
 	h := NewReviewHandler(repo, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/review/nonexistent", nil)
-	req.SetPathValue("id", "nonexistent")
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/review/nonexistent", nil)
+	c.Params = gin.Params{{Key: "id", Value: "nonexistent"}}
 
-	h.GetReviewItem(w, req)
+	h.GetReviewItemGin(c)
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("Expected status 404, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusNotFound)
 }
 
 func TestReviewHandler_ApproveReview(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockReviewRepo{items: []*entity.ReviewQueueItem{
 		{ID: "review-1", Status: entity.ReviewStatusPending},
 	}}
 	h := NewReviewHandler(repo, log)
 
-	body, _ := json.Marshal(ApproveReviewRequest{
+	body := ApproveReviewRequest{
 		ReviewedBy: "admin",
 		Note:       "Looks good",
-	})
-	req := httptest.NewRequest(http.MethodPost, "/api/review/review-1/approve", bytes.NewReader(body))
-	req.SetPathValue("id", "review-1")
-	w := httptest.NewRecorder()
-
-	h.ApproveReview(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
 	}
+	c, w := th.CreateContext("POST", "/api/review/review-1/approve", body)
+	c.Params = gin.Params{{Key: "id", Value: "review-1"}}
+
+	h.ApproveReviewGin(c)
+
+	th.AssertStatus(w, http.StatusOK)
 }
 
 func TestReviewHandler_RejectReview(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockReviewRepo{items: []*entity.ReviewQueueItem{
 		{ID: "review-1", Status: entity.ReviewStatusPending},
 	}}
 	h := NewReviewHandler(repo, log)
 
-	body, _ := json.Marshal(RejectReviewRequest{
+	body := RejectReviewRequest{
 		ReviewedBy: "admin",
 		Reason:     "Invalid data",
-	})
-	req := httptest.NewRequest(http.MethodPost, "/api/review/review-1/reject", bytes.NewReader(body))
-	req.SetPathValue("id", "review-1")
-	w := httptest.NewRecorder()
-
-	h.RejectReview(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
 	}
+	c, w := th.CreateContext("POST", "/api/review/review-1/reject", body)
+	c.Params = gin.Params{{Key: "id", Value: "review-1"}}
+
+	h.RejectReviewGin(c)
+
+	th.AssertStatus(w, http.StatusOK)
 }
 
 func TestReviewHandler_ApproveReview_NotFound(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockReviewRepo{items: []*entity.ReviewQueueItem{}}
 	h := NewReviewHandler(repo, log)
 
-	body, _ := json.Marshal(ApproveReviewRequest{ReviewedBy: "admin"})
-	req := httptest.NewRequest(http.MethodPost, "/api/review/nonexistent/approve", bytes.NewReader(body))
-	req.SetPathValue("id", "nonexistent")
-	w := httptest.NewRecorder()
+	body := ApproveReviewRequest{ReviewedBy: "admin"}
+	c, w := th.CreateContext("POST", "/api/review/nonexistent/approve", body)
+	c.Params = gin.Params{{Key: "id", Value: "nonexistent"}}
 
-	h.ApproveReview(w, req)
+	h.ApproveReviewGin(c)
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("Expected status 404, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusNotFound)
 }

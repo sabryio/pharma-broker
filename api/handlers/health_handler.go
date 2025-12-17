@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"sync"
 	"time"
@@ -97,156 +96,7 @@ func (h *HealthChecker) SetWAStatusFunc(fn func() (state string, reconnectCount 
 	h.waStatusFunc = fn
 }
 
-// LiveHandler returns a simple liveness probe (is the process running?)
-func (h *HealthChecker) LiveHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "OK",
-		"timestamp": time.Now().Format(time.RFC3339),
-	})
-}
-
-// ReadyHandler returns readiness probe (is the app ready to serve traffic?)
-func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	h.mu.RLock()
-	dbPing := h.dbPingFunc
-	waConnected := h.waConnectedFunc
-	aiHealth := h.aiHealthFunc
-	h.mu.RUnlock()
-
-	response := HealthResponse{
-		Status:     HealthOK,
-		Timestamp:  time.Now().Format(time.RFC3339),
-		Components: make(map[string]ComponentHealth),
-	}
-
-	// Check Database
-	if dbPing != nil {
-		start := time.Now()
-		if err := dbPing(ctx); err != nil {
-			response.Components["database"] = ComponentHealth{
-				Status:  HealthDown,
-				Message: err.Error(),
-			}
-			response.Status = HealthDown
-		} else {
-			response.Components["database"] = ComponentHealth{
-				Status:  HealthOK,
-				Latency: time.Since(start).String(),
-			}
-		}
-	} else {
-		response.Components["database"] = ComponentHealth{
-			Status:  HealthDegraded,
-			Message: "health check not configured",
-		}
-	}
-
-	// Check WhatsApp (detailed)
-	h.mu.RLock()
-	waStatus := h.waStatusFunc
-	h.mu.RUnlock()
-
-	if waStatus != nil {
-		state, reconnectCount, lastConnected, uptimeSeconds := waStatus()
-		isConnected := state == "CONNECTED"
-
-		waHealth := &WhatsAppHealth{
-			State:          state,
-			ReconnectCount: reconnectCount,
-			UptimeSeconds:  uptimeSeconds,
-		}
-
-		if !lastConnected.IsZero() {
-			waHealth.LastConnectedAt = lastConnected.Format(time.RFC3339)
-		}
-
-		if isConnected {
-			waHealth.Status = HealthOK
-			response.Components["whatsapp"] = ComponentHealth{Status: HealthOK}
-		} else {
-			waHealth.Status = HealthDegraded
-			waHealth.Message = "state: " + state
-			response.Components["whatsapp"] = ComponentHealth{
-				Status:  HealthDegraded,
-				Message: state,
-			}
-			if response.Status == HealthOK {
-				response.Status = HealthDegraded
-			}
-		}
-
-		response.WhatsApp = waHealth
-	} else if waConnected != nil {
-		// Fallback to simple check
-		if waConnected() {
-			response.Components["whatsapp"] = ComponentHealth{
-				Status: HealthOK,
-			}
-		} else {
-			response.Components["whatsapp"] = ComponentHealth{
-				Status:  HealthDegraded,
-				Message: "not connected",
-			}
-			if response.Status == HealthOK {
-				response.Status = HealthDegraded
-			}
-		}
-	} else {
-		response.Components["whatsapp"] = ComponentHealth{
-			Status:  HealthDegraded,
-			Message: "health check not configured",
-		}
-	}
-
-	// Check AI Provider
-	if aiHealth != nil {
-		start := time.Now()
-		if err := aiHealth(ctx); err != nil {
-			response.Components["ai"] = ComponentHealth{
-				Status:  HealthDegraded,
-				Message: err.Error(),
-			}
-			if response.Status == HealthOK {
-				response.Status = HealthDegraded
-			}
-		} else {
-			response.Components["ai"] = ComponentHealth{
-				Status:  HealthOK,
-				Latency: time.Since(start).String(),
-			}
-		}
-	} else {
-		response.Components["ai"] = ComponentHealth{
-			Status:  HealthOK,
-			Message: "always available (Docker)",
-		}
-	}
-
-	statusCode := http.StatusOK
-	if response.Status == HealthDown {
-		statusCode = http.StatusServiceUnavailable
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
-}
-
-// FullHealthHandler returns detailed health with all metrics
-func (h *HealthChecker) FullHealthHandler(w http.ResponseWriter, r *http.Request) {
-	h.ReadyHandler(w, r)
-}
-
-// ============================================================================
-// Gin Handlers
-// ============================================================================
-
-// LiveGin returns a simple liveness probe (Gin)
+// LiveGin returns a simple liveness probe (is the process running?)
 func (h *HealthChecker) LiveGin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":    "OK",
@@ -254,7 +104,7 @@ func (h *HealthChecker) LiveGin(c *gin.Context) {
 	})
 }
 
-// ReadyGin returns readiness probe (Gin)
+// ReadyGin returns readiness probe
 func (h *HealthChecker) ReadyGin(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
@@ -375,7 +225,7 @@ func (h *HealthChecker) ReadyGin(c *gin.Context) {
 	c.JSON(statusCode, response)
 }
 
-// FullHealthGin returns detailed health with all metrics (Gin)
+// FullHealthGin returns detailed health with all metrics
 func (h *HealthChecker) FullHealthGin(c *gin.Context) {
 	h.ReadyGin(c)
 }
