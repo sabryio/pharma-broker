@@ -268,6 +268,11 @@ type APIConfig struct {
 	// MaxSSEClients is the maximum number of concurrent SSE connections.
 	// Default: 100
 	MaxSSEClients int `mapstructure:"max_sse_clients"`
+
+	// CorsAllowedOrigins is a list of allowed origins for CORS.
+	// Use ["*"] to allow all origins (development only).
+	// Default: ["*"]
+	CorsAllowedOrigins []string `mapstructure:"cors_allowed_origins"`
 }
 
 // DatabaseConfig configures PostgreSQL database settings
@@ -571,6 +576,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("api.rate_limit_rps", 10.0)
 	v.SetDefault("api.rate_limit_burst", 20)
 	v.SetDefault("api.max_sse_clients", 100)
+	v.SetDefault("api.cors_allowed_origins", []string{"*"})
 
 	// Database defaults
 	v.SetDefault("database.path", "./data/pharmabroker.db")
@@ -648,16 +654,17 @@ func loadFallback() *Config {
 			MessageBufferSize: 1000,
 		},
 		API: APIConfig{
-			RequestTimeout:   5 * time.Second,
-			ExportTimeout:    30 * time.Second,
-			SSEHeartbeat:     30 * time.Second,
-			ConfigCacheTTL:   30 * time.Second,
-			DefaultPageLimit: 50,
-			MaxExportRecords: 1000,
-			MaxPageSize:      100,
-			RateLimitRPS:     10.0,
-			RateLimitBurst:   20,
-			MaxSSEClients:    100,
+			RequestTimeout:     5 * time.Second,
+			ExportTimeout:      30 * time.Second,
+			SSEHeartbeat:       30 * time.Second,
+			ConfigCacheTTL:     30 * time.Second,
+			DefaultPageLimit:   50,
+			MaxExportRecords:   1000,
+			MaxPageSize:        100,
+			RateLimitRPS:       10.0,
+			RateLimitBurst:     20,
+			MaxSSEClients:      100,
+			CorsAllowedOrigins: []string{"*"},
 		},
 		Database: DatabaseConfig{
 			DSN:                 "postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable",

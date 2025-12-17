@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"context"
-	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-
-	"github.com/rs/zerolog"
 )
 
 // OfferHandler handles offer-related requests
@@ -25,13 +25,13 @@ func NewOfferHandler(repo repository.OfferRepository, log zerolog.Logger) *Offer
 	}
 }
 
-// GetOffers returns active offers with pagination
-func (h *OfferHandler) GetOffers(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+// GetOffersGin returns active offers with pagination
+func (h *OfferHandler) GetOffersGin(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	limit, offset := getPagination(r)
-	query := r.URL.Query().Get("q")
+	limit, offset := GetPaginationGin(c)
+	query := c.Query("q")
 
 	var offers []*entity.Offer
 	var err error
@@ -44,30 +44,29 @@ func (h *OfferHandler) GetOffers(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		h.log.Error().Err(err).Msg("Failed to get offers")
-		errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch offers"))
+		DatabaseErrorGin(c, "Failed to fetch offers")
 		return
 	}
 
 	total, _ := h.repo.CountActive(ctx)
-	successWithMeta(w, offers, &Meta{Total: total, Limit: limit, Offset: offset})
+	SuccessWithMetaGin(c, offers, &Meta{Total: total, Limit: limit, Offset: offset})
 }
 
-// GetOffer returns a single offer by ID
-func (h *OfferHandler) GetOffer(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == "" {
-		errorWithCode(w, http.StatusBadRequest, ErrBadRequest("Missing offer ID"))
+// GetOfferGin returns a single offer by ID
+func (h *OfferHandler) GetOfferGin(c *gin.Context) {
+	id, ok := GetPathIDGin(c, "id")
+	if !ok {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	offer, err := h.repo.GetByID(ctx, id)
 	if err != nil {
-		errorWithCode(w, http.StatusNotFound, ErrOfferNotFound())
+		NotFoundGin(c, ErrOfferNotFound())
 		return
 	}
 
-	success(w, offer)
+	SuccessGin(c, offer)
 }

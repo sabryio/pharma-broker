@@ -81,7 +81,7 @@ type MultiPassConfig struct {
 
 // ErrorNotifier interface for reporting system errors
 type ErrorNotifier interface {
-	NotifyError(err error)
+	NotifyError(ctx context.Context, err error)
 }
 
 // SSEBroadcaster interface for real-time updates

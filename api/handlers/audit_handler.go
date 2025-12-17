@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"context"
-	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-
-	"github.com/rs/zerolog"
 )
 
 // AuditHandler handles audit log operations
@@ -25,20 +25,19 @@ func NewAuditHandler(repo repository.AuditRepository, log zerolog.Logger) *Audit
 	}
 }
 
-// GetAuditLogs returns recent audit log entries
-func (h *AuditHandler) GetAuditLogs(w http.ResponseWriter, r *http.Request) {
+// GetAuditLogsGin returns recent audit log entries
+func (h *AuditHandler) GetAuditLogsGin(c *gin.Context) {
 	if h.repo == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Audit service not configured"))
+		InternalErrorGin(c, "Audit service not configured")
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	limit, _ := getPagination(r)
+	limit, _ := GetPaginationGin(c)
+	actionFilter := c.Query("action")
 
-	// Filter by action if specified
-	actionFilter := r.URL.Query().Get("action")
 	var logs []*entity.AuditLog
 	var err error
 
@@ -50,9 +49,9 @@ func (h *AuditHandler) GetAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		h.log.Error().Err(err).Msg("Failed to get audit logs")
-		errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to get audit logs"))
+		DatabaseErrorGin(c, "Failed to get audit logs")
 		return
 	}
 
-	success(w, logs)
+	SuccessGin(c, logs)
 }

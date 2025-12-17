@@ -3,10 +3,12 @@ package sse
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 )
 
@@ -237,4 +239,69 @@ func (h *SSEHub) BroadcastNewMatch(matchID string, score float64) {
 			"score": score,
 		},
 	})
+}
+
+// GinHandler returns a gin.HandlerFunc for SSE streaming
+func (h *SSEHub) GinHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Create client channel
+		client := make(chan SSEEvent, ClientBufferSize)
+
+		// Register client
+		h.mu.Lock()
+		if len(h.clients) >= h.maxClients {
+			h.mu.Unlock()
+			c.JSON(503, gin.H{"error": "Too many SSE connections"})
+			return
+		}
+		h.clients[client] = true
+		h.mu.Unlock()
+
+		// Cleanup on disconnect
+		defer func() {
+			h.mu.Lock()
+			if _, ok := h.clients[client]; ok {
+				delete(h.clients, client)
+				close(client)
+			}
+			h.mu.Unlock()
+		}()
+
+		// Set SSE headers
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("Access-Control-Allow-Origin", "*")
+
+		// Send initial connection event
+		c.SSEvent("connected", gin.H{"status": "connected"})
+		c.Writer.Flush()
+
+		log.Debug().Int("client_count", h.ClientCount()).Msg("SSE client connected (Gin)")
+
+		// Stream events using Gin's streaming API
+		c.Stream(func(w io.Writer) bool {
+			select {
+			case <-h.done:
+				return false
+			case <-c.Request.Context().Done():
+				log.Debug().Int("client_count", h.ClientCount()-1).Msg("SSE client disconnected (Gin)")
+				return false
+			case event, ok := <-client:
+				if !ok {
+					return false
+				}
+
+				data, err := json.Marshal(event.Data)
+				if err != nil {
+					log.Error().Err(err).Str("event_type", event.Type).Msg("Failed to marshal SSE event data")
+					return true // Continue streaming
+				}
+
+				// Write SSE formatted event
+				fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
+				return true
+			}
+		})
+	}
 }

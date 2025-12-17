@@ -2,42 +2,38 @@ package handlers
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
-	"pharmabroker/domain/entity"
-
 	"github.com/rs/zerolog"
+
+	"pharmabroker/domain/entity"
 )
 
 func TestRequestHandler_GetRequests(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockRequestRepo{requests: []*entity.Request{
 		{ID: "req-1", Medication: "Paracetamol", Quantity: 50, Status: entity.StatusActive},
 	}}
 	h := NewRequestHandler(repo, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/requests", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/requests", nil)
 
-	h.GetRequests(w, req)
+	h.GetRequestsGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusOK)
 }
 
 func TestRequestHandler_GetRequest_MissingID(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockRequestRepo{}
 	h := NewRequestHandler(repo, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/requests/", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/requests/", nil)
+	// No params set - ID will be empty
 
-	h.GetRequest(w, req)
+	h.GetRequestGin(c)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusBadRequest)
 }

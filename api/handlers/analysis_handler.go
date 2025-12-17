@@ -1,9 +1,9 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 )
 
@@ -25,10 +25,10 @@ func (h *AnalysisHandler) SetAnalyzeFunc(fn func(text string) (*AnalyzeResult, e
 	h.analyzeFunc = fn
 }
 
-// Analyze handles manual text analysis with AI
-func (h *AnalysisHandler) Analyze(w http.ResponseWriter, r *http.Request) {
+// AnalyzeGin handles manual text analysis with AI
+func (h *AnalysisHandler) AnalyzeGin(c *gin.Context) {
 	if h.analyzeFunc == nil {
-		errorWithCode(w, http.StatusServiceUnavailable, ErrInternal("Analyze function not configured"))
+		InternalErrorGin(c, "Analyze function not configured")
 		return
 	}
 
@@ -37,22 +37,21 @@ func (h *AnalysisHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 		SourceName string `json:"source_name,omitempty"`
 		GroupName  string `json:"group_name,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		errorWithCode(w, http.StatusBadRequest, ErrBadRequest("Invalid request body"))
+	if !BindJSONGin(c, &req) {
 		return
 	}
 
 	if req.Text == "" {
-		errorWithCode(w, http.StatusBadRequest, ErrBadRequest("Text is required"))
+		BadRequestGin(c, "Text is required")
 		return
 	}
 
 	result, err := h.analyzeFunc(req.Text)
 	if err != nil {
 		h.log.Error().Err(err).Msg("Failed to analyze text")
-		errorWithCode(w, http.StatusInternalServerError, ErrAIParse("Analysis failed: "+err.Error()))
+		ErrorGin(c, http.StatusInternalServerError, ErrAIParse("Analysis failed: "+err.Error()))
 		return
 	}
 
-	success(w, result)
+	SuccessGin(c, result)
 }

@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"context"
-	"net/http"
 	"time"
 
-	"pharmabroker/domain/repository"
-
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
+
+	"pharmabroker/domain/repository"
 )
 
 // StatsHandler handles statistics-related operations
@@ -24,17 +24,21 @@ func NewStatsHandler(repo repository.StatsRepository, log zerolog.Logger) *Stats
 	}
 }
 
-// GetStats returns dashboard statistics
-func (h *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+// ============================================================================
+// Gin Handlers
+// ============================================================================
+
+// GetStatsGin returns dashboard statistics (Gin)
+func (h *StatsHandler) GetStatsGin(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	stats, err := h.repo.GetStats(ctx)
 	if err != nil {
 		h.log.Error().Err(err).Msg("Failed to get stats")
-		errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch stats"))
+		DatabaseErrorGin(c, "Failed to fetch stats")
 		return
 	}
 
-	success(w, stats)
+	SuccessGin(c, stats)
 }

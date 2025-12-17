@@ -91,7 +91,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	if err := container.InitHandlers(); err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize handlers")
 	}
-	container.InitRouter()
+	container.InitRouter(ctx)
 
 	// Initialize optional schedulers
 	if err := container.InitLearningScheduler(ctx); err != nil {

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"pharmabroker/domain/entity"
@@ -11,18 +10,16 @@ import (
 )
 
 func TestAuditHandler_GetAuditLogs(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockAuditRepo{logs: []*entity.AuditLog{
 		{ID: "log-1", Action: entity.AuditMatchConfirmed, EntityID: "match-1"},
 	}}
 	h := NewAuditHandler(repo, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/audit", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/audit", nil)
 
-	h.GetAuditLogs(w, req)
+	h.GetAuditLogsGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusOK)
 }

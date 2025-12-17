@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"context"
-	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 
 	"pharmabroker/domain/entity"
 	"pharmabroker/domain/repository"
-
-	"github.com/rs/zerolog"
 )
 
 // RequestHandler handles request-related operations
@@ -25,13 +25,13 @@ func NewRequestHandler(repo repository.RequestRepository, log zerolog.Logger) *R
 	}
 }
 
-// GetRequests returns active requests with pagination
-func (h *RequestHandler) GetRequests(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+// GetRequestsGin returns active requests with pagination
+func (h *RequestHandler) GetRequestsGin(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	limit, offset := getPagination(r)
-	query := r.URL.Query().Get("q")
+	limit, offset := GetPaginationGin(c)
+	query := c.Query("q")
 
 	var requests []*entity.Request
 	var err error
@@ -44,30 +44,29 @@ func (h *RequestHandler) GetRequests(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		h.log.Error().Err(err).Msg("Failed to get requests")
-		errorWithCode(w, http.StatusInternalServerError, ErrDatabase("Failed to fetch requests"))
+		DatabaseErrorGin(c, "Failed to fetch requests")
 		return
 	}
 
 	total, _ := h.repo.CountActive(ctx)
-	successWithMeta(w, requests, &Meta{Total: total, Limit: limit, Offset: offset})
+	SuccessWithMetaGin(c, requests, &Meta{Total: total, Limit: limit, Offset: offset})
 }
 
-// GetRequest returns a single request by ID
-func (h *RequestHandler) GetRequest(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == "" {
-		errorWithCode(w, http.StatusBadRequest, ErrBadRequest("Missing request ID"))
+// GetRequestGin returns a single request by ID
+func (h *RequestHandler) GetRequestGin(c *gin.Context) {
+	id, ok := GetPathIDGin(c, "id")
+	if !ok {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	request, err := h.repo.GetByID(ctx, id)
 	if err != nil {
-		errorWithCode(w, http.StatusNotFound, ErrRequestNotFound())
+		NotFoundGin(c, ErrRequestNotFound())
 		return
 	}
 
-	success(w, request)
+	SuccessGin(c, request)
 }

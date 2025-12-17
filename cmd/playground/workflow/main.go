@@ -108,7 +108,7 @@ type NoOpErrorNotifier struct {
 	log zerolog.Logger
 }
 
-func (n *NoOpErrorNotifier) NotifyError(err error) {
+func (n *NoOpErrorNotifier) NotifyError(ctx context.Context, err error) {
 	n.log.Error().Err(err).Msg("Error notified")
 }
 

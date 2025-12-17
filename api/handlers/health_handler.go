@@ -2,10 +2,11 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 // HealthStatus represents the health of a component
@@ -95,25 +96,24 @@ func (h *HealthChecker) SetWAStatusFunc(fn func() (state string, reconnectCount 
 	h.waStatusFunc = fn
 }
 
-// LiveHandler returns a simple liveness probe (is the process running?)
-func (h *HealthChecker) LiveHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+// LiveGin returns a simple liveness probe (is the process running?)
+func (h *HealthChecker) LiveGin(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
 		"status":    "OK",
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
 }
 
-// ReadyHandler returns readiness probe (is the app ready to serve traffic?)
-func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+// ReadyGin returns readiness probe
+func (h *HealthChecker) ReadyGin(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	h.mu.RLock()
 	dbPing := h.dbPingFunc
 	waConnected := h.waConnectedFunc
 	aiHealth := h.aiHealthFunc
+	waStatus := h.waStatusFunc
 	h.mu.RUnlock()
 
 	response := HealthResponse{
@@ -144,11 +144,7 @@ func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check WhatsApp (detailed)
-	h.mu.RLock()
-	waStatus := h.waStatusFunc
-	h.mu.RUnlock()
-
+	// Check WhatsApp
 	if waStatus != nil {
 		state, reconnectCount, lastConnected, uptimeSeconds := waStatus()
 		isConnected := state == "CONNECTED"
@@ -177,14 +173,10 @@ func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
 				response.Status = HealthDegraded
 			}
 		}
-
 		response.WhatsApp = waHealth
 	} else if waConnected != nil {
-		// Fallback to simple check
 		if waConnected() {
-			response.Components["whatsapp"] = ComponentHealth{
-				Status: HealthOK,
-			}
+			response.Components["whatsapp"] = ComponentHealth{Status: HealthOK}
 		} else {
 			response.Components["whatsapp"] = ComponentHealth{
 				Status:  HealthDegraded,
@@ -230,12 +222,10 @@ func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
 		statusCode = http.StatusServiceUnavailable
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
+	c.JSON(statusCode, response)
 }
 
-// FullHealthHandler returns detailed health with all metrics
-func (h *HealthChecker) FullHealthHandler(w http.ResponseWriter, r *http.Request) {
-	h.ReadyHandler(w, r)
+// FullHealthGin returns detailed health with all metrics
+func (h *HealthChecker) FullHealthGin(c *gin.Context) {
+	h.ReadyGin(c)
 }

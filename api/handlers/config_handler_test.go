@@ -2,22 +2,19 @@ package handlers
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/rs/zerolog"
 )
 
 func TestConfigHandler_GetConfig(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	h := NewConfigHandler(&mockConfigRepo{}, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/config", nil)
 
-	h.GetConfig(w, req)
+	h.GetConfigGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusOK)
 }

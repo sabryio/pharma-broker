@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"pharmabroker/domain/entity"
@@ -11,33 +10,29 @@ import (
 )
 
 func TestGroupHandler_GetGroups(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	repo := &mockGroupRepo{groups: []*entity.Group{
 		{JID: "group-1@g.us", Name: "Pharmacy Group", Monitored: true},
 	}}
 	h := NewGroupHandler(repo, log)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/groups", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("GET", "/api/groups", nil)
 
-	h.GetGroups(w, req)
+	h.GetGroupsGin(c)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusOK)
 }
 
 func TestGroupHandler_SyncGroups_NotConfigured(t *testing.T) {
+	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	h := NewGroupHandler(&mockGroupRepo{}, log)
 	// syncFunc not set
 
-	req := httptest.NewRequest(http.MethodPost, "/api/groups/sync", nil)
-	w := httptest.NewRecorder()
+	c, w := th.CreateContext("POST", "/api/groups/sync", nil)
 
-	h.SyncGroups(w, req)
+	h.SyncGroupsGin(c)
 
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("Expected status 503, got %d", w.Code)
-	}
+	th.AssertStatus(w, http.StatusInternalServerError) // Gin internal error is 500
 }
