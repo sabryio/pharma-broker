@@ -86,11 +86,19 @@ type ContainerOptions struct {
 
 // ServiceRegistry holds core application services
 type ServiceRegistry struct {
-	AIProvider ai.Provider
-	Parser     *parsing.Parser
-	WAManager  *whatsapp.Manager
-	SSEHub     *sse.SSEHub
-	WarRoom    *monitor.WarRoom
+	AIProvider         ai.Provider
+	Parser             *parsing.Parser
+	WAManager          *whatsapp.Manager
+	SSEHub             *sse.SSEHub
+	SequencedSSEHub    *sse.SequencedSSEHub
+	SSEHealthMonitor   *sse.ClientHealthMonitor
+	SSESubscriptionMgr *sse.SubscriptionManager
+	SSEAuthHub         *sse.AuthenticatedSSEHub
+	SSETokenValidator  *sse.HMACTokenValidator
+	WarRoom            *monitor.WarRoom
+	ABTestManager      *matching.ABTestManager
+	WarmStartManager   *matching.WarmStartManager
+	OutlierDetector    *matching.OutlierDetector
 }
 
 // SchedulerRegistry holds background schedulers
@@ -247,10 +255,49 @@ func (c *Container) InitWhatsApp(ctx context.Context) error {
 	return nil
 }
 
-// InitSSE initializes the SSE hub
+// InitSSE initializes the SSE hub with enhanced features
 func (c *Container) InitSSE() {
+	// Initialize basic SSE hub (for backward compatibility)
 	c.Services.SSEHub = sse.NewSSEHub()
-	c.Logger.Info().Msg("SSE hub initialized")
+
+	// Initialize sequenced SSE hub with event persistence
+	c.Services.SequencedSSEHub = sse.NewSequencedSSEHub(
+		sse.DefaultMaxClients,
+		1000, // Event log capacity
+		c.Logger,
+	)
+
+	// Initialize client health monitor for slow client detection
+	c.Services.SSEHealthMonitor = sse.NewClientHealthMonitor(
+		sse.DefaultClientHealthConfig(),
+		c.Logger,
+	)
+	c.Services.SSEHealthMonitor.Start()
+
+	// Initialize subscription manager for event filtering
+	c.Services.SSESubscriptionMgr = sse.NewSubscriptionManager(c.Logger)
+
+	// Initialize SSE authentication
+	sseSecret := c.Config.API.JWT.Secret
+	if sseSecret == "" {
+		sseSecret = "pharmabroker-sse-default-secret" // Fallback for dev
+		c.Logger.Warn().Msg("Using default SSE secret - set API.JWT.Secret in production")
+	}
+	c.Services.SSETokenValidator = sse.NewHMACTokenValidator(sseSecret, c.Logger)
+
+	// Create authenticated SSE hub
+	authConfig := sse.DefaultAuthConfig()
+	authConfig.Enabled = c.Config.API.JWT.Enabled // Use JWT enabled flag for SSE auth
+	c.Services.SSEAuthHub = sse.NewAuthenticatedSSEHub(
+		c.Services.SSEHub,
+		c.Services.SSETokenValidator,
+		authConfig,
+		c.Logger,
+	)
+
+	c.Logger.Info().
+		Bool("auth_enabled", authConfig.Enabled).
+		Msg("SSE hub initialized with sequencing, health monitoring, subscriptions, and authentication")
 }
 
 // InitWarRoom initializes the monitoring/alerting system
@@ -372,6 +419,25 @@ func (c *Container) InitLearningScheduler(ctx context.Context) error {
 			AnalysisWindow: c.Config.AdaptiveLearning.Algorithm.AnalysisWindowDays,
 		},
 	)
+
+	// Initialize A/B Test Manager
+	baseWeights := scorer.GetWeights()
+	c.Services.ABTestManager = matching.NewABTestManager(baseWeights, c.Logger)
+	c.Logger.Info().Msg("A/B Test Manager initialized")
+
+	// Initialize Warm Start Manager for cold start handling
+	c.Services.WarmStartManager = matching.NewWarmStartManager(
+		matching.DefaultWarmStartConfig(),
+		c.Logger,
+	)
+	c.Logger.Info().Msg("Warm Start Manager initialized")
+
+	// Initialize Outlier Detector for feedback filtering
+	c.Services.OutlierDetector = matching.NewOutlierDetector(
+		matching.DefaultOutlierDetectorConfig(),
+		c.Logger,
+	)
+	c.Logger.Info().Msg("Outlier Detector initialized")
 
 	c.Schedulers.Learning = matching.NewLearningScheduler(
 		learner,
@@ -609,6 +675,16 @@ func (c *Container) Shutdown() {
 	// SSEHub has Shutdown() instead of Stop()
 	if c.Services.SSEHub != nil {
 		c.Services.SSEHub.Shutdown()
+	}
+
+	// Sequenced SSE Hub shutdown
+	if c.Services.SequencedSSEHub != nil {
+		c.Services.SequencedSSEHub.Shutdown()
+	}
+
+	// SSE Health Monitor stop
+	if c.Services.SSEHealthMonitor != nil {
+		c.Services.SSEHealthMonitor.Stop()
 	}
 
 	// WAManager has Disconnect() instead of Stop()

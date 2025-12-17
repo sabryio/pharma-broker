@@ -31,6 +31,8 @@ type MatchingService struct {
 	matchFilter     *MatchFilter
 	autoAction      *AutoActionHandler
 	smoothThreshold *SmoothThresholdCalculator
+	calibrator      *ConfidenceCalibrator
+	auditTrail      *AuditTrail
 	log             zerolog.Logger
 }
 
@@ -54,6 +56,13 @@ func NewMatchingService(
 	// Initialize smooth threshold calculator
 	smoothThreshold := NewSmoothThresholdCalculator(DefaultSmoothThresholdConfig(), log)
 
+	// Initialize confidence calibrator
+	calibrator := NewConfidenceCalibrator(DefaultCalibrationConfig(), log)
+
+	// Initialize audit trail with in-memory logger
+	auditLogger := NewMemoryAuditLogger(10000, log)
+	auditTrail := NewAuditTrail(DefaultAuditTrailConfig(), auditLogger, log)
+
 	return &MatchingService{
 		offerRepo:       offerRepo,
 		requestRepo:     requestRepo,
@@ -65,6 +74,8 @@ func NewMatchingService(
 		matchFilter:     matchFilter,
 		autoAction:      autoAction,
 		smoothThreshold: smoothThreshold,
+		calibrator:      calibrator,
+		auditTrail:      auditTrail,
 		log:             log,
 	}
 }
@@ -182,6 +193,18 @@ func (ms *MatchingService) processMatch(ctx context.Context, offer *entity.Offer
 	// Get full match score with breakdown
 	matchScore := ms.scorer.ScoreMatch(offer, request, medicationScore)
 
+	// Apply confidence calibration if enabled
+	if ms.calibrator != nil {
+		rawScore := matchScore.Total
+		matchScore.Total = ms.calibrator.Calibrate(rawScore)
+		if rawScore != matchScore.Total {
+			ms.log.Debug().
+				Float64("raw_score", rawScore).
+				Float64("calibrated_score", matchScore.Total).
+				Msg("📊 Applied confidence calibration")
+		}
+	}
+
 	// Record scoring metrics
 	ms.recordScoreMetrics(matchScore)
 
@@ -237,6 +260,12 @@ func (ms *MatchingService) processMatch(ctx context.Context, offer *entity.Offer
 			Str("confidence", string(matchScore.Confidence)).
 			Str("breakdown", match.Reasoning).
 			Msg("✅ Created match with auto-action")
+
+		// Log to audit trail for compliance
+		if ms.auditTrail != nil {
+			reason := "Score: " + matchScore.Breakdown
+			_ = ms.auditTrail.LogMatchAction(ctx, match, offer, request, actionResult.Action, reason)
+		}
 
 		// Notify via SSE if real-time
 		if ms.sseBroadcaster != nil {
@@ -463,4 +492,125 @@ func (ms *MatchingService) EnableSmoothTransitions(enabled bool) {
 	if ms.smoothThreshold != nil {
 		ms.smoothThreshold.EnableSmoothing(enabled)
 	}
+}
+
+// =============================================================================
+// Confidence Calibration Configuration Methods
+// =============================================================================
+
+// GetCalibrationStats returns the current calibration statistics.
+func (ms *MatchingService) GetCalibrationStats() map[string]int64 {
+	if ms.calibrator == nil {
+		return nil
+	}
+	return ms.calibrator.GetStats()
+}
+
+// GetCalibrationConfig returns the current calibration configuration.
+func (ms *MatchingService) GetCalibrationConfig() CalibrationConfig {
+	if ms.calibrator == nil {
+		return CalibrationConfig{}
+	}
+	return ms.calibrator.GetConfig()
+}
+
+// SetCalibrationConfig updates the calibration configuration.
+func (ms *MatchingService) SetCalibrationConfig(cfg CalibrationConfig) {
+	if ms.calibrator != nil {
+		ms.calibrator.SetConfig(cfg)
+	}
+}
+
+// EnableCalibration enables or disables confidence calibration.
+func (ms *MatchingService) EnableCalibration(enabled bool) {
+	if ms.calibrator != nil {
+		ms.calibrator.Enable(enabled)
+	}
+}
+
+// SetCalibrationSmoothingFactor sets the smoothing factor for calibration.
+func (ms *MatchingService) SetCalibrationSmoothingFactor(factor float64) {
+	if ms.calibrator != nil {
+		ms.calibrator.SetSmoothingFactor(factor)
+	}
+}
+
+// GetCalibrationReport returns a detailed calibration report.
+func (ms *MatchingService) GetCalibrationReport() CalibrationReport {
+	if ms.calibrator == nil {
+		return CalibrationReport{}
+	}
+	return ms.calibrator.GetCalibrationReport()
+}
+
+// RecordCalibrationOutcome records a prediction-outcome pair for calibration.
+func (ms *MatchingService) RecordCalibrationOutcome(predictedConfidence float64, actualPositive bool) {
+	if ms.calibrator != nil {
+		ms.calibrator.RecordOutcome(predictedConfidence, actualPositive)
+	}
+}
+
+// ResetCalibration clears all calibration data.
+func (ms *MatchingService) ResetCalibration() {
+	if ms.calibrator != nil {
+		ms.calibrator.Reset()
+	}
+}
+
+// CalibrateScore calibrates a raw confidence score.
+func (ms *MatchingService) CalibrateScore(rawScore float64) float64 {
+	if ms.calibrator == nil {
+		return rawScore
+	}
+	return ms.calibrator.Calibrate(rawScore)
+}
+
+// =============================================================================
+// Audit Trail Configuration Methods
+// =============================================================================
+
+// GetAuditTrailConfig returns the current audit trail configuration.
+func (ms *MatchingService) GetAuditTrailConfig() AuditTrailConfig {
+	if ms.auditTrail == nil {
+		return AuditTrailConfig{}
+	}
+	return ms.auditTrail.GetConfig()
+}
+
+// SetAuditTrailConfig updates the audit trail configuration.
+func (ms *MatchingService) SetAuditTrailConfig(cfg AuditTrailConfig) {
+	if ms.auditTrail != nil {
+		ms.auditTrail.SetConfig(cfg)
+	}
+}
+
+// EnableAuditTrail enables or disables the audit trail.
+func (ms *MatchingService) EnableAuditTrail(enabled bool) {
+	if ms.auditTrail != nil {
+		ms.auditTrail.Enable(enabled)
+	}
+}
+
+// GetMatchAuditHistory retrieves the audit history for a specific match.
+func (ms *MatchingService) GetMatchAuditHistory(ctx context.Context, matchID string) ([]AuditEntry, error) {
+	if ms.auditTrail == nil {
+		return nil, nil
+	}
+	return ms.auditTrail.GetMatchHistory(ctx, matchID)
+}
+
+// GetRecentAuditActions retrieves recent audit entries.
+func (ms *MatchingService) GetRecentAuditActions(ctx context.Context, limit int) ([]AuditEntry, error) {
+	if ms.auditTrail == nil {
+		return nil, nil
+	}
+	return ms.auditTrail.GetRecentActions(ctx, limit)
+}
+
+// LogAuditConfigChange logs a configuration change to the audit trail.
+func (ms *MatchingService) LogAuditConfigChange(ctx context.Context, configType string, oldValue, newValue interface{}, actor string) error {
+	if ms.auditTrail == nil {
+		return nil
+	}
+	return ms.auditTrail.LogConfigChange(ctx, configType, oldValue, newValue, actor)
 }

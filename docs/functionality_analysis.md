@@ -251,126 +251,12 @@ func (ms *MatchingService) FindMatchesForOffer(ctx context.Context, offer *entit
 
 ### Weaknesses & Edge Cases ⚠️
 
-| Issue                             | Severity   | Current Behavior                     | Impact                       | Status   |
-| --------------------------------- | ---------- | ------------------------------------ | ---------------------------- | -------- |
-| ~~No Auto-Action Implementation~~ | ~~High~~   | ~~Bands defined but not acted upon~~ | ~~Manual review for all~~    | ✅ Fixed |
-| ~~Threshold Cliff Effects~~       | ~~Medium~~ | ~~Sharp transitions at boundaries~~  | ~~Inconsistent UX at edges~~ | ✅ Fixed |
-| No Confidence Calibration         | Medium     | Raw scores used directly             | Overconfident/underconfident | Open     |
-| Missing Audit Trail               | Medium     | No logging of auto-actions           | Compliance risk              | Open     |
-
-### Enhancement Recommendations
-
-#### 4.1 Auto-Action Executor
-
-```go
-type AutoActionExecutor struct {
-    notifier    NotificationService
-    matchRepo   repository.MatchRepository
-    auditLogger AuditLogger
-    config      AutoActionConfig
-}
-
-type AutoActionConfig struct {
-    EnableAutoNotify  bool
-    EnableAutoConfirm bool
-    MinAutoScore      float64
-    RequireApproval   bool
-}
-
-func (e *AutoActionExecutor) ProcessMatch(ctx context.Context, match *entity.Match, score *MatchScore) error {
-    switch score.Confidence {
-    case ConfidenceAuto:
-        if e.config.EnableAutoNotify {
-            // Log audit trail
-            e.auditLogger.Log(ctx, "AUTO_NOTIFY", match.ID,
-                fmt.Sprintf("Score: %.2f, Band: AUTO", score.Total))
-
-            // Send notifications to both parties
-            return e.notifier.NotifyMatch(ctx, match)
-        }
-
-    case ConfidenceSuggest:
-        // Queue for operator review with priority
-        return e.queueForReview(ctx, match, PriorityHigh)
-
-    case ConfidenceReview:
-        return e.queueForReview(ctx, match, PriorityNormal)
-    }
-
-    return nil
-}
-```
-
-#### 4.2 Soft Threshold Transitions
-
-```go
-// Instead of hard cutoffs, use sigmoid smoothing
-func (s *Scorer) GetConfidenceBandSmooth(score float64) (ConfidenceBand, float64) {
-    // Calculate "confidence in the band" using sigmoid
-    autoProb := sigmoid((score - s.thresholds.Auto) * 10)
-    suggestProb := sigmoid((score - s.thresholds.Suggest) * 10)
-    reviewProb := sigmoid((score - s.thresholds.Review) * 10)
-
-    // Return band with confidence level
-    switch {
-    case autoProb > 0.8:
-        return ConfidenceAuto, autoProb
-    case suggestProb > 0.8:
-        return ConfidenceSuggest, suggestProb
-    case reviewProb > 0.8:
-        return ConfidenceReview, reviewProb
-    default:
-        return ConfidenceNone, 1 - reviewProb
-    }
-}
-
-func sigmoid(x float64) float64 {
-    return 1 / (1 + math.Exp(-x))
-}
-```
-
-#### 4.3 Confidence Calibration
-
-```go
-type ConfidenceCalibrator struct {
-    bins       []CalibrationBin
-    totalCount int
-}
-
-type CalibrationBin struct {
-    MinScore    float64
-    MaxScore    float64
-    Predictions int
-    Correct     int
-}
-
-func (c *ConfidenceCalibrator) CalibratedScore(rawScore float64) float64 {
-    for _, bin := range c.bins {
-        if rawScore >= bin.MinScore && rawScore < bin.MaxScore {
-            if bin.Predictions == 0 {
-                return rawScore
-            }
-            // Return actual success rate for this bin
-            return float64(bin.Correct) / float64(bin.Predictions)
-        }
-    }
-    return rawScore
-}
-
-func (c *ConfidenceCalibrator) UpdateFromFeedback(score float64, wasCorrect bool) {
-    for i := range c.bins {
-        if score >= c.bins[i].MinScore && score < c.bins[i].MaxScore {
-            c.bins[i].Predictions++
-            if wasCorrect {
-                c.bins[i].Correct++
-            }
-            break
-        }
-    }
-}
-```
-
----
+| Issue                             | Severity   | Current Behavior                     | Impact                           | Status   |
+| --------------------------------- | ---------- | ------------------------------------ | -------------------------------- | -------- |
+| ~~No Auto-Action Implementation~~ | ~~High~~   | ~~Bands defined but not acted upon~~ | ~~Manual review for all~~        | ✅ Fixed |
+| ~~Threshold Cliff Effects~~       | ~~Medium~~ | ~~Sharp transitions at boundaries~~  | ~~Inconsistent UX at edges~~     | ✅ Fixed |
+| ~~No Confidence Calibration~~     | ~~Medium~~ | ~~Raw scores used directly~~         | ~~Overconfident/underconfident~~ | ✅ Fixed |
+| ~~Missing Audit Trail~~           | ~~Medium~~ | ~~No logging of auto-actions~~       | ~~Compliance risk~~              | ✅ Fixed |
 
 ## 5. Multi-Platform Bot Commands
 
@@ -584,13 +470,13 @@ func (h *timeoutHandler) Handle(ctx context.Context, cmd *Command, msg *Message)
 
 ### Weaknesses & Edge Cases ⚠️
 
-| Issue                       | Severity | Current Behavior                | Impact              |
-| --------------------------- | -------- | ------------------------------- | ------------------- |
-| No Event Ordering           | Medium   | Events may arrive out of order  | UI inconsistency    |
-| No Event Persistence        | High     | Missed events during disconnect | Data loss           |
-| No Client Authentication    | High     | Any client can connect          | Security risk       |
-| Memory Leak on Slow Clients | Medium   | Skipped events, no cleanup      | Resource exhaustion |
-| No Event Filtering          | Low      | All events to all clients       | Bandwidth waste     |
+| Issue                           | Severity   | Current Behavior                    | Impact                  | Status   |
+| ------------------------------- | ---------- | ----------------------------------- | ----------------------- | -------- |
+| ~~No Event Ordering~~           | ~~Medium~~ | ~~Events may arrive out of order~~  | ~~UI inconsistency~~    | ✅ Fixed |
+| ~~No Event Persistence~~        | ~~High~~   | ~~Missed events during disconnect~~ | ~~Data loss~~           | ✅ Fixed |
+| ~~No Client Authentication~~    | ~~High~~   | ~~Any client can connect~~          | ~~Security risk~~       | ✅ Fixed |
+| ~~Memory Leak on Slow Clients~~ | ~~Medium~~ | ~~Skipped events, no cleanup~~      | ~~Resource exhaustion~~ | ✅ Fixed |
+| ~~No Event Filtering~~          | ~~Low~~    | ~~All events to all clients~~       | ~~Bandwidth waste~~     | ✅ Fixed |
 
 ### Enhancement Recommendations
 
@@ -780,207 +666,13 @@ func (h *SSEHub) monitorClientHealth() {
 
 ### Weaknesses & Edge Cases ⚠️
 
-| Issue                  | Severity | Current Behavior             | Impact                      |
-| ---------------------- | -------- | ---------------------------- | --------------------------- |
-| No A/B Testing         | High     | All users get same weights   | Can't validate improvements |
-| Cold Start Problem     | Medium   | Needs 100 samples minimum    | Slow initial learning       |
-| No Seasonal Adjustment | Low      | Static learning rate         | Slow adaptation to trends   |
-| Single Rollback Only   | Medium   | Only 1 previous state        | Limited recovery            |
-| No Anomaly Detection   | Medium   | Applies all feedback equally | Outliers skew weights       |
-
-### Enhancement Recommendations
-
-#### 7.1 A/B Testing Framework
-
-```go
-type ABTestConfig struct {
-    TestID       string
-    ControlPct   float64 // e.g., 0.5 = 50% control
-    TestWeights  Weights
-    StartTime    time.Time
-    EndTime      time.Time
-    MinSamples   int
-}
-
-type ABTestLearner struct {
-    *WeightLearner
-    activeTests map[string]*ABTestConfig
-    results     map[string]*ABTestResult
-    mu          sync.RWMutex
-}
-
-func (l *ABTestLearner) GetWeightsForUser(userID string) Weights {
-    l.mu.RLock()
-    defer l.mu.RUnlock()
-
-    for _, test := range l.activeTests {
-        if time.Now().Before(test.EndTime) {
-            // Deterministic assignment based on user ID
-            hash := fnv.New32a()
-            hash.Write([]byte(userID + test.TestID))
-            bucket := float64(hash.Sum32()) / float64(math.MaxUint32)
-
-            if bucket >= test.ControlPct {
-                return test.TestWeights
-            }
-        }
-    }
-
-    return l.scorer.GetWeights()
-}
-
-func (l *ABTestLearner) RecordFeedback(userID string, testID string, confirmed bool, score float64) {
-    l.mu.Lock()
-    defer l.mu.Unlock()
-
-    if result, ok := l.results[testID]; ok {
-        // Determine which group
-        hash := fnv.New32a()
-        hash.Write([]byte(userID + testID))
-        bucket := float64(hash.Sum32()) / float64(math.MaxUint32)
-
-        if bucket >= l.activeTests[testID].ControlPct {
-            result.TestConfirmed++
-            if confirmed {
-                result.TestSuccess++
-            }
-        } else {
-            result.ControlConfirmed++
-            if confirmed {
-                result.ControlSuccess++
-            }
-        }
-    }
-}
-```
-
-#### 7.2 Warm Start with Priors
-
-```go
-type WarmStartConfig struct {
-    PriorWeights    Weights
-    PriorStrength   int // Equivalent sample count
-    DecayHalfLife   int // Days until prior influence halves
-}
-
-func (wl *WeightLearner) CalculateWithPriors(
-    ctx context.Context,
-    startDate, endDate time.Time,
-    warmStart WarmStartConfig,
-) (*Weights, *entity.PerformanceMetrics, error) {
-    stats, err := wl.feedbackRepo.GetFeedbackStats(ctx, startDate, endDate)
-    if err != nil {
-        return nil, nil, err
-    }
-
-    // Calculate effective prior strength (decays over time)
-    daysSinceStart := time.Since(startDate).Hours() / 24
-    decayFactor := math.Pow(0.5, daysSinceStart/float64(warmStart.DecayHalfLife))
-    effectivePriorStrength := int(float64(warmStart.PriorStrength) * decayFactor)
-
-    // Blend prior with observed data
-    totalSamples := stats.TotalFeedbacks + effectivePriorStrength
-    priorWeight := float64(effectivePriorStrength) / float64(totalSamples)
-    dataWeight := 1 - priorWeight
-
-    // Calculate blended correlations
-    correlations := wl.calculateCorrelations(stats)
-    for k, v := range correlations {
-        // Blend with prior (prior assumes equal weights)
-        correlations[k] = dataWeight*v + priorWeight*0
-    }
-
-    // ... rest of weight calculation
-}
-```
-
-#### 7.3 Multi-Level Rollback
-
-```go
-type RollbackManager struct {
-    historyRepo WeightHistoryRepository
-    scorer      *Scorer
-    maxHistory  int
-}
-
-func (rm *RollbackManager) RollbackToVersion(ctx context.Context, version int) error {
-    history, err := rm.historyRepo.GetHistory(ctx, rm.maxHistory)
-    if err != nil {
-        return err
-    }
-
-    if version >= len(history) {
-        return fmt.Errorf("version %d not found (max: %d)", version, len(history)-1)
-    }
-
-    target := history[version]
-    weights := Weights{
-        Medication: target.MedicationWeight,
-        Dosage:     target.DosageWeight,
-        Quantity:   target.QuantityWeight,
-        Price:      target.PriceWeight,
-        Recency:    target.RecencyWeight,
-    }
-
-    rm.scorer.UpdateWeights(weights)
-
-    // Log rollback
-    return rm.historyRepo.SaveWithMetrics(ctx,
-        weights.Medication, weights.Dosage, weights.Quantity,
-        weights.Price, weights.Recency,
-        entity.WeightSourceRollback,
-        nil,
-        fmt.Sprintf("Rolled back to version %d", version),
-    )
-}
-```
-
-#### 7.4 Outlier Detection
-
-```go
-type OutlierDetector struct {
-    windowSize int
-    threshold  float64 // Z-score threshold (e.g., 2.5)
-}
-
-func (od *OutlierDetector) IsOutlier(score float64, recentScores []float64) bool {
-    if len(recentScores) < od.windowSize {
-        return false // Not enough data
-    }
-
-    // Calculate mean and std dev
-    var sum, sumSq float64
-    for _, s := range recentScores {
-        sum += s
-        sumSq += s * s
-    }
-    mean := sum / float64(len(recentScores))
-    variance := sumSq/float64(len(recentScores)) - mean*mean
-    stdDev := math.Sqrt(variance)
-
-    if stdDev == 0 {
-        return false
-    }
-
-    zScore := math.Abs(score-mean) / stdDev
-    return zScore > od.threshold
-}
-
-func (wl *WeightLearner) FilterOutliers(feedbacks []*entity.FeedbackRecord) []*entity.FeedbackRecord {
-    var scores []float64
-    for _, f := range feedbacks {
-        scores = append(scores, f.TotalScore)
-    }
-
-    var filtered []*entity.FeedbackRecord
-    for i, f := range feedbacks {
-        if !wl.outlierDetector.IsOutlier(f.TotalScore, scores[:i]) {
-            filtered = append(filtered, f)
-        }
-    }
-    return filtered
-}
-```
+| Issue                    | Severity   | Current Behavior                 | Impact                          | Status   |
+| ------------------------ | ---------- | -------------------------------- | ------------------------------- | -------- |
+| ~~No A/B Testing~~       | ~~High~~   | ~~All users get same weights~~   | ~~Can't validate improvements~~ | ✅ Fixed |
+| ~~Cold Start Problem~~   | ~~Medium~~ | ~~Needs 100 samples minimum~~    | ~~Slow initial learning~~       | ✅ Fixed |
+| No Seasonal Adjustment   | Low        | Static learning rate             | Slow adaptation to trends       | Open     |
+| ~~Single Rollback Only~~ | ~~Medium~~ | ~~Only 1 previous state~~        | ~~Limited recovery~~            | ✅ Fixed |
+| ~~No Anomaly Detection~~ | ~~Medium~~ | ~~Applies all feedback equally~~ | ~~Outliers skew weights~~       | ✅ Fixed |
 
 ---
 
@@ -1213,3 +905,14 @@ _Last updated: December 17, 2024_
 | 2024-12-17 | Implemented Same-Sender Exclusion (prevents self-matching)          | `parsing`            |
 | 2024-12-17 | Implemented Auto-Action Handler (auto-confirm, suggest, review)     | `parsing`            |
 | 2024-12-17 | Implemented Smooth Threshold Transitions (10% transition zones)     | `parsing`            |
+| 2024-12-17 | Implemented Confidence Calibration (ECE metric, binned calibration) | `parsing`            |
+| 2024-12-17 | Implemented Audit Trail (compliance logging for all auto-actions)   | `parsing`            |
+| 2024-12-17 | Implemented A/B Testing Framework (deterministic user assignment)   | `matching`           |
+| 2024-12-17 | Implemented Warm Start Manager (prior-based cold start solution)    | `matching`           |
+| 2024-12-17 | Implemented Outlier Detector (Z-score based feedback filtering)     | `matching`           |
+| 2024-12-17 | Implemented Multi-Level Rollback Manager (version-based rollback)   | `matching`           |
+| 2024-12-17 | Implemented Event Sequencing (sequence numbers, replay support)     | `api/sse`            |
+| 2024-12-17 | Implemented Event Persistence (ring buffer event log)               | `api/sse`            |
+| 2024-12-17 | Implemented Client Health Monitor (slow client detection/eviction)  | `api/sse`            |
+| 2024-12-17 | Implemented Subscription Manager (event/group filtering)            | `api/sse`            |
+| 2024-12-17 | Implemented SSE Authentication (HMAC tokens, API keys, scopes)      | `api/sse`            |
