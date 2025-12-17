@@ -33,17 +33,18 @@ func NewJanitor(repo repository.RawMessageRepository, cfg config.DatabaseConfig,
 	}
 }
 
-func (j *Janitor) Start() {
+func (j *Janitor) Start() error {
 	j.mu.Lock()
 	if j.running {
 		j.mu.Unlock()
-		return
+		return nil
 	}
 	j.running = true
 	j.mu.Unlock()
 
 	j.wg.Add(1)
 	go j.runLoop()
+	return nil
 }
 
 func (j *Janitor) Stop() {

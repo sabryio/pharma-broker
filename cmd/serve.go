@@ -55,8 +55,14 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	// Seed medications if needed
-	if err := container.SeedMedications(ctx); err != nil {
+	seedResult, err := container.SeedMedications(ctx)
+	if err != nil {
 		log.Warn().Err(err).Msg("Failed to seed medications")
+	} else if seedResult != nil && !seedResult.Skipped {
+		log.Info().
+			Int("seeded", seedResult.Seeded).
+			Int("failed", seedResult.Failed).
+			Msg("Medication seeding completed")
 	}
 
 	// Initialize WhatsApp
@@ -77,7 +83,9 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	// Initialize janitor for data archival
-	container.InitJanitor()
+	if err := container.InitJanitor(); err != nil {
+		log.Error().Err(err).Msg("Failed to initialize janitor")
+	}
 
 	// Initialize API handlers and router
 	if err := container.InitHandlers(); err != nil {

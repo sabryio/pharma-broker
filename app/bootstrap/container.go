@@ -3,6 +3,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -38,91 +39,123 @@ import (
 
 // Bootstrap constants
 const (
-	// Timeouts
 	shutdownTimeout      = 10 * time.Second
 	autoSyncTimeout      = 2 * time.Minute
 	autoSyncPollInterval = 500 * time.Millisecond
 
-	// Group sync configuration
-	connectionStabilizationDelay = 2 * time.Second  // Wait after connection before sync
-	maxSyncAttempts              = 3                // Retry attempts for initial sync
-	backgroundSyncInterval       = 5 * time.Minute  // Retry interval if initial sync fails
-	maxBackoff                   = 30 * time.Second // Maximum backoff between retries
-
-	// Default config values
-	defaultReportIntervalMins = 60
+	defaultConnectionStabilizationDelay = 2 * time.Second
+	defaultMaxSyncAttempts              = 3
+	defaultBackgroundSyncInterval       = 5 * time.Minute
+	defaultMaxBackoff                   = 30 * time.Second
+	defaultReportIntervalMins           = 60
+	defaultSyncRetryBackoff             = 1 * time.Second
+	backgroundSyncRetryAttempts         = 2
 )
 
-// Container holds all application dependencies
-type Container struct {
-	// Configuration
-	Config *config.Config
-	Logger zerolog.Logger
+// Pre-compiled regex for DSN masking (performance optimization)
+var dsnMaskRegex = regexp.MustCompile(`(postgres://[^:]+:)([^@]+)(@.+)`)
 
-	// Infrastructure
-	DB *storageGorm.DB
+// Closer interface for cleanup resources
+type Closer interface {
+	Close() error
+}
 
-	// Repositories
-	Repos *Repositories
+// Stoppable interface for services that can be stopped
+type Stoppable interface {
+	Stop()
+}
 
-	// Core Services
+// closerFunc wraps a function to implement Closer
+type closerFunc func() error
+
+func (f closerFunc) Close() error { return f() }
+
+// SeedResult contains the result of medication seeding operation
+type SeedResult struct {
+	Total   int
+	Seeded  int
+	Failed  int
+	Skipped bool
+	Errors  []error
+}
+
+// ContainerOptions provides optional configuration for Container creation
+type ContainerOptions struct {
+	DBFactory func(*storageGorm.Config) (*storageGorm.DB, error)
+}
+
+// ServiceRegistry holds core application services
+type ServiceRegistry struct {
 	AIProvider ai.Provider
 	Parser     *parsing.Parser
 	WAManager  *whatsapp.Manager
 	SSEHub     *sse.SSEHub
 	WarRoom    *monitor.WarRoom
+}
 
-	// HTTP
-	Handlers *api.Handlers
-	Router   http.Handler
-	Server   *http.Server
-
-	// Schedulers
-	LearningScheduler *matching.LearningScheduler
-	ReportScheduler   *reports.Scheduler
-	Janitor           *janitor.Janitor
-
-	// Cleanup functions
-	cleanups []func() error
+// SchedulerRegistry holds background schedulers
+type SchedulerRegistry struct {
+	Learning *matching.LearningScheduler
+	Report   *reports.Scheduler
+	Janitor  *janitor.Janitor
 }
 
 // Repositories bundles all repository implementations
 type Repositories struct {
-	// Core domain repositories
-	Offers   repository.OfferRepository
-	Requests repository.RequestRepository
-	Matches  repository.MatchRepository
-	Groups   repository.GroupRepository
-	Stats    repository.StatsRepository
-	Messages repository.RawMessageRepository
-
-	// Medication and mapping
-	Mappings repository.MedicationMappingRepository
-	Unmapped repository.UnmappedMedicationRepo
-
-	// Queue management
-	Queue  repository.MatchQueueRepository
-	Review repository.ReviewQueueRepository
-
-	// Configuration and system
+	Offers      repository.OfferRepository
+	Requests    repository.RequestRepository
+	Matches     repository.MatchRepository
+	Groups      repository.GroupRepository
+	Stats       repository.StatsRepository
+	Messages    repository.RawMessageRepository
+	Mappings    repository.MedicationMappingRepository
+	Unmapped    repository.UnmappedMedicationRepo
+	Queue       repository.MatchQueueRepository
+	Review      repository.ReviewQueueRepository
 	Config      repository.ConfigRepository
 	Audit       repository.AuditRepository
 	Feedback    repository.FeedbackRepository
 	Leaderboard repository.LeaderboardRepository
+	BotUsers    repository.BotUserRepository
+}
 
-	// Bot users
-	BotUsers repository.BotUserRepository
+// Container holds all application dependencies
+type Container struct {
+	Config *config.Config
+	Logger zerolog.Logger
+
+	DB         *storageGorm.DB
+	Repos      *Repositories
+	Services   *ServiceRegistry
+	Schedulers *SchedulerRegistry
+
+	Handlers *api.Handlers
+	Router   http.Handler
+	Server   *http.Server
+
+	closers []Closer
 }
 
 // New creates a new application container with database and repositories
 func New(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*Container, error) {
+	return NewWithOptions(ctx, cfg, log, nil)
+}
+
+// NewWithOptions creates a new application container with optional configuration
+func NewWithOptions(ctx context.Context, cfg *config.Config, log zerolog.Logger, opts *ContainerOptions) (*Container, error) {
 	c := &Container{
-		Config: cfg,
-		Logger: log,
+		Config:     cfg,
+		Logger:     log,
+		Services:   &ServiceRegistry{},
+		Schedulers: &SchedulerRegistry{},
 	}
 
-	// Initialize database
-	db, err := storageGorm.NewDB(&storageGorm.Config{
+	dbFactory := storageGorm.NewDB
+	if opts != nil && opts.DBFactory != nil {
+		dbFactory = opts.DBFactory
+	}
+
+	db, err := dbFactory(&storageGorm.Config{
 		DSN:             cfg.Database.DSN,
 		MaxOpenConns:    cfg.Database.MaxOpenConns,
 		MaxIdleConns:    cfg.Database.MaxIdleConns,
@@ -132,11 +165,10 @@ func New(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*Containe
 		return nil, fmt.Errorf("database init: %w", err)
 	}
 	c.DB = db
-	c.cleanups = append(c.cleanups, db.Close)
+	c.addCloser(closerFunc(db.Close))
 
 	log.Info().Str("dsn", maskDSN(cfg.Database.DSN)).Msg("Database initialized")
 
-	// Initialize all repositories
 	c.Repos = &Repositories{
 		Offers:      storageGorm.NewOfferRepo(db),
 		Requests:    storageGorm.NewRequestRepo(db),
@@ -156,8 +188,32 @@ func New(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*Containe
 	}
 
 	log.Info().Msg("Repositories initialized")
-
 	return c, nil
+}
+
+// addCloser registers a resource for cleanup
+func (c *Container) addCloser(closer Closer) {
+	c.closers = append(c.closers, closer)
+}
+
+// InitServices initializes all core services in the correct order
+func (c *Container) InitServices(ctx context.Context) error {
+	c.InitSSE()
+	c.InitWarRoom()
+
+	if err := c.InitAI(ctx); err != nil {
+		return fmt.Errorf("AI init: %w", err)
+	}
+
+	if err := c.InitWhatsApp(ctx); err != nil {
+		return fmt.Errorf("WhatsApp init: %w", err)
+	}
+
+	if err := c.InitParser(ctx); err != nil {
+		return fmt.Errorf("parser init: %w", err)
+	}
+
+	return nil
 }
 
 // InitAI initializes the AI provider
@@ -166,21 +222,17 @@ func (c *Container) InitAI(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("AI provider: %w", err)
 	}
-	c.AIProvider = provider
+	c.Services.AIProvider = provider
 	c.Logger.Info().Str("provider", c.Config.AI.Provider).Msg("AI provider initialized")
 
-	// Load and set medication mappings for hybrid RAG
 	mappings, err := c.Repos.Mappings.GetAll(ctx)
 	if err != nil {
-		c.Logger.Warn().Err(err).Msg("Failed to load medication mappings")
-	} else {
-		c.AIProvider.SetMappings(mappings)
-		c.Logger.Info().Int("count", len(mappings)).Msg("Configured hybrid RAG filtering")
+		return fmt.Errorf("loading medication mappings: %w", err)
 	}
+	c.Services.AIProvider.SetMappings(mappings)
+	c.Logger.Info().Int("count", len(mappings)).Msg("Configured hybrid RAG filtering")
 
-	// Set unmapped repo for active learning
-	c.AIProvider.SetUnmappedRepo(c.Repos.Unmapped)
-
+	c.Services.AIProvider.SetUnmappedRepo(c.Repos.Unmapped)
 	return nil
 }
 
@@ -190,52 +242,51 @@ func (c *Container) InitWhatsApp(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("WhatsApp manager: %w", err)
 	}
-	c.WAManager = manager
+	c.Services.WAManager = manager
 	c.Logger.Info().Msg("WhatsApp manager initialized")
 	return nil
 }
 
 // InitSSE initializes the SSE hub
 func (c *Container) InitSSE() {
-	c.SSEHub = sse.NewSSEHub()
+	c.Services.SSEHub = sse.NewSSEHub()
 	c.Logger.Info().Msg("SSE hub initialized")
 }
 
 // InitWarRoom initializes the monitoring/alerting system
 func (c *Container) InitWarRoom() {
-	c.WarRoom = monitor.NewWarRoom(c.WAManager, c.Repos.Config, c.Logger)
+	c.Services.WarRoom = monitor.NewWarRoom(c.Services.WAManager, c.Repos.Config, c.Logger)
 	c.Logger.Info().Msg("WarRoom monitor initialized")
 }
 
 // InitParser initializes the message parser
 func (c *Container) InitParser(ctx context.Context) error {
-	if c.AIProvider == nil {
-		return fmt.Errorf("AI provider must be initialized before parser")
+	if c.Services.AIProvider == nil {
+		return errors.New("AI provider must be initialized before parser")
 	}
-	if c.SSEHub == nil {
-		return fmt.Errorf("SSE hub must be initialized before parser")
+	if c.Services.SSEHub == nil {
+		return errors.New("SSE hub must be initialized before parser")
 	}
 
-	c.Parser = parsing.NewParser(
+	c.Services.Parser = parsing.NewParser(
 		c.Repos.Messages,
-		c.AIProvider,
+		c.Services.AIProvider,
 		c.Repos.Offers,
 		c.Repos.Requests,
 		c.Repos.Matches,
 		c.Repos.Mappings,
 		c.Repos.Queue,
 		c.Repos.Config,
-		c.WarRoom,
-		c.SSEHub,
+		c.Services.WarRoom,
+		c.Services.SSEHub,
 		c.Logger,
 	)
 
-	// Wire review queue for multi-pass parsing
-	c.Parser.SetReviewQueueRepo(c.Repos.Review)
+	c.Services.Parser.SetReviewQueueRepo(c.Repos.Review)
 
-	// Wire auto-parse checker
-	c.Parser.SetAutoParseChecker(func() bool {
-		cfg, err := c.Repos.Config.GetAll(ctx)
+	// Use background context to avoid capturing a potentially cancelled context
+	c.Services.Parser.SetAutoParseChecker(func() bool {
+		cfg, err := c.Repos.Config.GetAll(context.Background())
 		if err != nil {
 			return true
 		}
@@ -250,7 +301,7 @@ func (c *Container) InitParser(ctx context.Context) error {
 func (c *Container) InitHandlers() error {
 	offerHandler := apiHandlers.NewOfferHandler(c.Repos.Offers, c.Logger)
 	requestHandler := apiHandlers.NewRequestHandler(c.Repos.Requests, c.Logger)
-	matchHandler := apiHandlers.NewMatchHandler(c.Repos.Matches, c.Repos.Offers, c.Repos.Requests, c.Repos.Audit, c.SSEHub, c.Logger)
+	matchHandler := apiHandlers.NewMatchHandler(c.Repos.Matches, c.Repos.Offers, c.Repos.Requests, c.Repos.Audit, c.Services.SSEHub, c.Logger)
 	groupHandler := apiHandlers.NewGroupHandler(c.Repos.Groups, c.Logger)
 	statsHandler := apiHandlers.NewStatsHandler(c.Repos.Stats, c.Logger)
 	configHandler := apiHandlers.NewConfigHandler(c.Repos.Config, c.Logger)
@@ -259,9 +310,8 @@ func (c *Container) InitHandlers() error {
 	auditHandler := apiHandlers.NewAuditHandler(c.Repos.Audit, c.Logger)
 	healthChecker := apiHandlers.NewHealthChecker()
 
-	// Wire sync function to group handler
 	groupHandler.SetSyncFunc(func() error {
-		return c.WAManager.SyncGroups(context.Background(), func(jid, name, desc string) error {
+		return c.Services.WAManager.SyncGroups(context.Background(), func(jid, name, desc string) error {
 			return c.Repos.Groups.SaveFromSync(context.Background(), jid, name, desc)
 		})
 	})
@@ -276,7 +326,7 @@ func (c *Container) InitHandlers() error {
 		Feedback:    feedbackHandler,
 		Leaderboard: leaderboardHandler,
 		Audit:       auditHandler,
-		SSE:         c.SSEHub,
+		SSE:         c.Services.SSEHub,
 		Health:      healthChecker,
 	}
 
@@ -315,18 +365,17 @@ func (c *Container) InitLearningScheduler(ctx context.Context) error {
 		},
 	)
 
-	c.LearningScheduler = matching.NewLearningScheduler(
+	c.Schedulers.Learning = matching.NewLearningScheduler(
 		learner,
 		c.Config.AdaptiveLearning,
 		slogFromZerolog(c.Logger),
 	)
 
-	if err := c.LearningScheduler.Start(); err != nil {
+	if err := c.Schedulers.Learning.Start(); err != nil {
 		return fmt.Errorf("learning scheduler start: %w", err)
 	}
 
-	// Add learning handler to API
-	publicScheduler := ai.WrapLearningScheduler(c.LearningScheduler)
+	publicScheduler := ai.WrapLearningScheduler(c.Schedulers.Learning)
 	learningHandler := apiHandlers.NewLearningHandler(
 		publicScheduler,
 		feedbackRecordRepo,
@@ -335,8 +384,7 @@ func (c *Container) InitLearningScheduler(ctx context.Context) error {
 	)
 	c.Handlers.Learning = learningHandler
 
-	// Update Prometheus metrics
-	updateLearningMetrics(c.LearningScheduler)
+	updateLearningMetrics(c.Schedulers.Learning)
 
 	c.Logger.Info().
 		Str("schedule", c.Config.AdaptiveLearning.Schedule).
@@ -376,8 +424,8 @@ func (c *Container) InitReportScheduler(ctx context.Context) error {
 		PeriodHours:      schedulerConfig.IntervalMins / 60,
 	}
 
-	c.ReportScheduler = reports.NewScheduler(reportGenerator, notifier, schedulerConfig, reportConfig, c.Logger)
-	if err := c.ReportScheduler.Start(ctx); err != nil {
+	c.Schedulers.Report = reports.NewScheduler(reportGenerator, notifier, schedulerConfig, reportConfig, c.Logger)
+	if err := c.Schedulers.Report.Start(ctx); err != nil {
 		return fmt.Errorf("report scheduler start: %w", err)
 	}
 
@@ -386,10 +434,13 @@ func (c *Container) InitReportScheduler(ctx context.Context) error {
 }
 
 // InitJanitor starts the data archival service
-func (c *Container) InitJanitor() {
-	c.Janitor = janitor.NewJanitor(c.Repos.Messages, c.Config.Database, c.Logger)
-	c.Janitor.Start()
+func (c *Container) InitJanitor() error {
+	c.Schedulers.Janitor = janitor.NewJanitor(c.Repos.Messages, c.Config.Database, c.Logger)
+	if err := c.Schedulers.Janitor.Start(); err != nil {
+		return fmt.Errorf("janitor start: %w", err)
+	}
 	c.Logger.Info().Msg("Janitor service started")
+	return nil
 }
 
 // buildNotifierConfigs creates Telegram and Email notification configs from app config
@@ -412,88 +463,52 @@ func (c *Container) buildNotifierConfigs() (notify.TelegramConfig, notify.EmailC
 	return telegramConfig, emailConfig
 }
 
+// recoverAndLog handles panic recovery with logging
+func (c *Container) recoverAndLog(goroutineName string) {
+	if r := recover(); r != nil {
+		c.Logger.Error().
+			Interface("panic", r).
+			Str("goroutine", goroutineName).
+			Msg("Panic recovered")
+	}
+}
+
 // Run starts all services and blocks until shutdown signal
 func (c *Container) Run(ctx context.Context) error {
-	// Create listener for WhatsApp messages
 	listener := whatsapp.NewListener(c.Logger, c.Repos.Messages, c.Repos.Groups)
-	c.WAManager.RegisterHandler(listener)
+	c.Services.WAManager.RegisterHandler(listener)
 
-	// Wire skip own messages checker
 	listener.SetSkipOwnMessagesChecker(func() bool {
-		cfg, err := c.Repos.Config.GetAll(ctx)
+		cfg, err := c.Repos.Config.GetAll(context.Background())
 		if err != nil {
 			return true
 		}
 		return cfg.SkipOwnMessages
 	})
 
-	// Configure bot commands if enabled
 	if c.Config.WhatsApp.BotCommands.Enabled {
-		// Create WhatsApp bot with commands
-		bot := whatsappbot.NewBot(whatsappbot.Config{
-			AuthorizedPhones: c.Config.WhatsApp.BotCommands.AuthorizedPhones,
-		}, c.Logger)
-
-		// Build dependencies for commands
-		deps := core.Dependencies{
-			Stats:    c.Repos.Stats,
-			Matches:  c.Repos.Matches,
-			Offers:   c.Repos.Offers,
-			Requests: c.Repos.Requests,
-			Groups:   c.Repos.Groups,
-			Audit:    c.Repos.Audit,
-		}
-
-		// Register all commands from registry
-		for _, handler := range core.BuildCommands(deps) {
-			bot.RegisterCommand(handler)
-		}
-
-		c.WAManager.SetBotHandler(bot)
-		c.Logger.Info().
-			Int("authorized_phones", len(c.Config.WhatsApp.BotCommands.AuthorizedPhones)).
-			Msg("WhatsApp bot commands enabled")
+		c.setupBotCommands()
 	}
 
-	// Wire Telegram alerts for WhatsApp connection failures
-	if c.Config.Reports.Telegram.Enabled && c.Config.Reports.Telegram.BotToken != "" {
-		telegramNotifier := notify.NewTelegramNotifier(notify.TelegramConfig{
-			Enabled:  true,
-			BotToken: c.Config.Reports.Telegram.BotToken,
-			ChatIDs:  c.Config.Reports.Telegram.ChatIDs,
-		}, c.Logger)
-		alertAdapter := notify.NewTelegramAlertAdapter(telegramNotifier)
-		c.WAManager.SetAlerter(alertAdapter)
-		c.Logger.Info().Msg("WhatsApp admin alerts enabled via Telegram")
-	}
+	c.setupTelegramAlerts()
+	c.wireHealthEndpoint()
 
-	// Wire WhatsApp status to health endpoint
-	c.Handlers.Health.SetWAStatusFunc(func() (state string, reconnectCount int, lastConnected time.Time, uptimeSeconds int64) {
-		status := c.WAManager.GetConnectionStatus()
-		return status.State.String(), status.ReconnectCount, status.LastConnectedAt, status.UptimeSeconds
-	})
-
-	// Wire listener to parser via queue handler
 	listener.SetMessageHandler(func(ctx context.Context, msg *entity.RawMessage) error {
-		c.Parser.ProcessMessage(ctx, msg)
+		c.Services.Parser.ProcessMessage(ctx, msg)
 		return nil
 	})
 	listener.StartQueue()
 
-	// Start WhatsApp connection
 	go func() {
-		if err := c.WAManager.Connect(ctx); err != nil {
+		if err := c.Services.WAManager.Connect(ctx); err != nil {
 			c.Logger.Error().Err(err).Msg("WhatsApp connection error")
 		}
 	}()
 
-	// Auto-sync groups after connection
 	go c.autoSyncGroups(ctx)
 
-	// Start parser
-	c.Parser.Start(ctx)
+	c.Services.Parser.Start(ctx)
 
-	// Create and start HTTP server
 	c.Server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", c.Config.Server.Port),
 		Handler: c.Router,
@@ -506,7 +521,6 @@ func (c *Container) Run(ctx context.Context) error {
 		}
 	}()
 
-	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
@@ -517,89 +531,125 @@ func (c *Container) Run(ctx context.Context) error {
 	return nil
 }
 
+// setupBotCommands configures WhatsApp bot commands
+func (c *Container) setupBotCommands() {
+	bot := whatsappbot.NewBot(whatsappbot.Config{
+		AuthorizedPhones: c.Config.WhatsApp.BotCommands.AuthorizedPhones,
+	}, c.Logger)
+
+	deps := core.Dependencies{
+		Stats:    c.Repos.Stats,
+		Matches:  c.Repos.Matches,
+		Offers:   c.Repos.Offers,
+		Requests: c.Repos.Requests,
+		Groups:   c.Repos.Groups,
+		Audit:    c.Repos.Audit,
+	}
+
+	for _, handler := range core.BuildCommands(deps) {
+		bot.RegisterCommand(handler)
+	}
+
+	c.Services.WAManager.SetBotHandler(bot)
+	c.Logger.Info().
+		Int("authorized_phones", len(c.Config.WhatsApp.BotCommands.AuthorizedPhones)).
+		Msg("WhatsApp bot commands enabled")
+}
+
+// setupTelegramAlerts wires Telegram alerts for WhatsApp connection failures
+func (c *Container) setupTelegramAlerts() {
+	if !c.Config.Reports.Telegram.Enabled || c.Config.Reports.Telegram.BotToken == "" {
+		return
+	}
+
+	telegramNotifier := notify.NewTelegramNotifier(notify.TelegramConfig{
+		Enabled:  true,
+		BotToken: c.Config.Reports.Telegram.BotToken,
+		ChatIDs:  c.Config.Reports.Telegram.ChatIDs,
+	}, c.Logger)
+	alertAdapter := notify.NewTelegramAlertAdapter(telegramNotifier)
+	c.Services.WAManager.SetAlerter(alertAdapter)
+	c.Logger.Info().Msg("WhatsApp admin alerts enabled via Telegram")
+}
+
+// wireHealthEndpoint connects WhatsApp status to health endpoint
+func (c *Container) wireHealthEndpoint() {
+	c.Handlers.Health.SetWAStatusFunc(func() (state string, reconnectCount int, lastConnected time.Time, uptimeSeconds int64) {
+		status := c.Services.WAManager.GetConnectionStatus()
+		return status.State.String(), status.ReconnectCount, status.LastConnectedAt, status.UptimeSeconds
+	})
+}
+
 // Shutdown gracefully stops all services
 func (c *Container) Shutdown() {
 	c.Logger.Info().Msg("Shutting down services...")
 
-	// Stop background services
-	if c.Parser != nil {
-		c.Parser.Stop()
+	// Stop all stoppable services (check nil before passing to avoid nil interface issue)
+	if c.Services.Parser != nil {
+		c.stopService(c.Services.Parser)
 	}
-	if c.Janitor != nil {
-		c.Janitor.Stop()
+	if c.Schedulers.Janitor != nil {
+		c.stopService(c.Schedulers.Janitor)
 	}
-	if c.ReportScheduler != nil {
-		c.ReportScheduler.Stop()
+	if c.Schedulers.Report != nil {
+		c.stopService(c.Schedulers.Report)
 	}
-	if c.LearningScheduler != nil {
-		c.LearningScheduler.Stop()
-	}
-
-	// Shutdown SSE hub (prevents goroutine leaks)
-	if c.SSEHub != nil {
-		c.SSEHub.Shutdown()
+	if c.Schedulers.Learning != nil {
+		c.stopService(c.Schedulers.Learning)
 	}
 
-	// Disconnect WhatsApp
-	if c.WAManager != nil {
-		c.WAManager.Disconnect()
+	// SSEHub has Shutdown() instead of Stop()
+	if c.Services.SSEHub != nil {
+		c.Services.SSEHub.Shutdown()
 	}
 
-	// Graceful HTTP server shutdown with timeout
+	// WAManager has Disconnect() instead of Stop()
+	if c.Services.WAManager != nil {
+		c.Services.WAManager.Disconnect()
+	}
+
 	if c.Server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		if err := c.Server.Shutdown(ctx); err != nil {
 			c.Logger.Error().Err(err).Msg("HTTP server shutdown error")
-			c.Server.Close() // Force close if graceful shutdown fails
+			c.Server.Close()
 		}
 	}
 
 	c.Logger.Info().Msg("All services stopped")
 }
 
-// Close cleans up all resources
+// stopService stops a single Stoppable service
+func (c *Container) stopService(svc Stoppable) {
+	svc.Stop()
+}
+
+// Close cleans up all resources in reverse order
 func (c *Container) Close() error {
-	var lastErr error
-	for i := len(c.cleanups) - 1; i >= 0; i-- {
-		if err := c.cleanups[i](); err != nil {
-			lastErr = err
+	var errs []error
+	for i := len(c.closers) - 1; i >= 0; i-- {
+		if err := c.closers[i].Close(); err != nil {
+			errs = append(errs, err)
 			c.Logger.Error().Err(err).Msg("Cleanup error")
 		}
 	}
-	return lastErr
+	return errors.Join(errs...)
 }
 
 // autoSyncGroups syncs WhatsApp groups after connection with retry logic
 func (c *Container) autoSyncGroups(ctx context.Context) {
-	defer func() {
-		if r := recover(); r != nil {
-			c.Logger.Error().Interface("panic", r).Msg("Panic in auto-sync goroutine")
-		}
-	}()
+	defer c.recoverAndLog("auto-sync-groups")
 
-	// Wait for WhatsApp connection
-	timeout := time.After(autoSyncTimeout)
-	for !c.WAManager.IsConnected() {
-		select {
-		case <-ctx.Done():
-			metrics.WhatsAppGroupSyncFailure.WithLabelValues("cancelled").Inc()
-			return
-		case <-timeout:
-			c.Logger.Warn().Msg("Timeout waiting for WhatsApp connection - skipping auto-sync")
-			metrics.WhatsAppGroupSyncFailure.WithLabelValues("timeout").Inc()
-			return
-		case <-time.After(autoSyncPollInterval):
-		}
+	if !c.waitForConnection(ctx) {
+		return
 	}
 
-	// Wait for connection to stabilize before syncing
-	c.Logger.Debug().Dur("delay", connectionStabilizationDelay).Msg("Waiting for connection to stabilize...")
-	time.Sleep(connectionStabilizationDelay)
+	c.Logger.Debug().Dur("delay", defaultConnectionStabilizationDelay).Msg("Waiting for connection to stabilize...")
+	time.Sleep(defaultConnectionStabilizationDelay)
 
-	// Attempt sync with retries
 	c.Logger.Info().Msg("Auto-syncing groups from WhatsApp...")
-	groupCount, err := c.syncGroupsWithRetry(ctx, maxSyncAttempts)
+	groupCount, err := c.syncGroupsWithRetry(ctx, defaultMaxSyncAttempts)
 	if err != nil {
 		c.Logger.Error().Err(err).Msg("Initial group sync failed - scheduling background retry")
 		metrics.WhatsAppGroupSyncFailure.WithLabelValues("max_retries").Inc()
@@ -611,20 +661,37 @@ func (c *Container) autoSyncGroups(ctx context.Context) {
 	metrics.WhatsAppGroupSyncSuccess.Inc()
 	metrics.WhatsAppGroupsSynced.Set(float64(groupCount))
 
-	// Enable groups from config
 	c.enableConfiguredGroups(ctx)
+}
+
+// waitForConnection waits for WhatsApp connection with timeout
+func (c *Container) waitForConnection(ctx context.Context) bool {
+	timeout := time.After(autoSyncTimeout)
+	for !c.Services.WAManager.IsConnected() {
+		select {
+		case <-ctx.Done():
+			metrics.WhatsAppGroupSyncFailure.WithLabelValues("cancelled").Inc()
+			return false
+		case <-timeout:
+			c.Logger.Warn().Msg("Timeout waiting for WhatsApp connection - skipping auto-sync")
+			metrics.WhatsAppGroupSyncFailure.WithLabelValues("timeout").Inc()
+			return false
+		case <-time.After(autoSyncPollInterval):
+		}
+	}
+	return true
 }
 
 // syncGroupsWithRetry attempts to sync groups with exponential backoff
 func (c *Container) syncGroupsWithRetry(ctx context.Context, maxAttempts int) (int, error) {
 	var lastErr error
-	backoff := 1 * time.Second
+	backoff := defaultSyncRetryBackoff
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		start := time.Now()
 
 		var groupCount int
-		err := c.WAManager.SyncGroups(ctx, func(jid, name, desc string) error {
+		err := c.Services.WAManager.SyncGroups(ctx, func(jid, name, desc string) error {
 			groupCount++
 			return c.Repos.Groups.SaveFromSync(ctx, jid, name, desc)
 		})
@@ -645,15 +712,14 @@ func (c *Container) syncGroupsWithRetry(ctx context.Context, maxAttempts int) (i
 
 		metrics.WhatsAppGroupSyncFailure.WithLabelValues("transient").Inc()
 
-		// Wait before retry (unless last attempt)
 		if attempt < maxAttempts {
 			select {
 			case <-ctx.Done():
 				return 0, ctx.Err()
 			case <-time.After(backoff):
-				backoff *= 2 // Exponential backoff
-				if backoff > maxBackoff {
-					backoff = maxBackoff
+				backoff *= 2
+				if backoff > defaultMaxBackoff {
+					backoff = defaultMaxBackoff
 				}
 			}
 		}
@@ -664,15 +730,11 @@ func (c *Container) syncGroupsWithRetry(ctx context.Context, maxAttempts int) (i
 
 // scheduleBackgroundSync retries group sync periodically until success
 func (c *Container) scheduleBackgroundSync(ctx context.Context) {
-	defer func() {
-		if r := recover(); r != nil {
-			c.Logger.Error().Interface("panic", r).Msg("Panic in background sync goroutine")
-		}
-	}()
+	defer c.recoverAndLog("background-sync")
 
-	c.Logger.Info().Dur("interval", backgroundSyncInterval).Msg("Background group sync scheduled")
+	c.Logger.Info().Dur("interval", defaultBackgroundSyncInterval).Msg("Background group sync scheduled")
 
-	ticker := time.NewTicker(backgroundSyncInterval)
+	ticker := time.NewTicker(defaultBackgroundSyncInterval)
 	defer ticker.Stop()
 
 	for {
@@ -681,19 +743,19 @@ func (c *Container) scheduleBackgroundSync(ctx context.Context) {
 			c.Logger.Debug().Msg("Background sync cancelled")
 			return
 		case <-ticker.C:
-			if !c.WAManager.IsConnected() {
+			if !c.Services.WAManager.IsConnected() {
 				c.Logger.Debug().Msg("WhatsApp not connected - skipping background sync")
 				continue
 			}
 
 			c.Logger.Info().Msg("Attempting background group sync...")
-			groupCount, err := c.syncGroupsWithRetry(ctx, 2) // Fewer retries for background
+			groupCount, err := c.syncGroupsWithRetry(ctx, backgroundSyncRetryAttempts)
 			if err == nil {
 				c.Logger.Info().Int("groups", groupCount).Msg("Background group sync successful")
 				metrics.WhatsAppGroupSyncSuccess.Inc()
 				metrics.WhatsAppGroupsSynced.Set(float64(groupCount))
 				c.enableConfiguredGroups(ctx)
-				return // Success - stop background sync
+				return
 			}
 			c.Logger.Warn().Err(err).Msg("Background sync failed - will retry")
 		}
@@ -715,33 +777,38 @@ func (c *Container) enableConfiguredGroups(ctx context.Context) {
 }
 
 // SeedMedications loads and seeds medication mappings if empty
-func (c *Container) SeedMedications(ctx context.Context) error {
+func (c *Container) SeedMedications(ctx context.Context) (*SeedResult, error) {
+	result := &SeedResult{}
+
 	count, err := c.Repos.Mappings.Count(ctx)
 	if err != nil {
-		return fmt.Errorf("checking medication count: %w", err)
+		return nil, fmt.Errorf("checking medication count: %w", err)
 	}
 	if count > 0 {
 		c.Logger.Debug().Int("count", count).Msg("Medications already seeded")
-		return nil
+		result.Skipped = true
+		return result, nil
 	}
 
 	meds, err := entity.LoadRichMedicationMappings("medications.json")
 	if err != nil {
 		c.Logger.Warn().Err(err).Msg("Failed to load medications.json - seeding skipped")
-		return nil // Not a fatal error, file may not exist
+		result.Skipped = true
+		return result, nil
 	}
 
+	result.Total = len(meds)
 	c.Logger.Info().Int("count", len(meds)).Msg("Seeding medication mappings...")
 
-	// Collect for batch embedding
 	var arabics []string
 	for _, m := range meds {
 		arabics = append(arabics, m.ArabicName)
 	}
 
-	embeddings, err := c.AIProvider.EmbedBatch(ctx, arabics)
+	embeddings, err := c.Services.AIProvider.EmbedBatch(ctx, arabics)
 	if err != nil {
-		c.Logger.Warn().Err(err).Msg("Batch embedding failed")
+		c.Logger.Warn().Err(err).Msg("Batch embedding failed - continuing without embeddings")
+		result.Errors = append(result.Errors, fmt.Errorf("batch embedding: %w", err))
 	}
 
 	for i, m := range meds {
@@ -756,11 +823,19 @@ func (c *Container) SeedMedications(ctx context.Context) error {
 		}
 		if err := c.Repos.Mappings.Save(ctx, mapping); err != nil {
 			c.Logger.Warn().Err(err).Str("name", m.EnglishName).Msg("Failed to seed mapping")
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Errorf("save %s: %w", m.EnglishName, err))
+		} else {
+			result.Seeded++
 		}
 	}
 
-	c.Logger.Info().Msg("Medication seeding complete")
-	return nil
+	c.Logger.Info().
+		Int("seeded", result.Seeded).
+		Int("failed", result.Failed).
+		Msg("Medication seeding complete")
+
+	return result, nil
 }
 
 // SeedAdminPhone seeds admin phone from config if not set
@@ -778,11 +853,18 @@ func (c *Container) SeedAdminPhone(ctx context.Context) {
 // Helper functions
 
 func slogFromZerolog(zlog zerolog.Logger) *slog.Logger {
-	return slog.New(&zerologSlogHandler{zlog: zlog})
+	return slog.New(newZerologSlogHandler(zlog))
 }
 
+// zerologSlogHandler adapts zerolog to slog.Handler interface
 type zerologSlogHandler struct {
-	zlog zerolog.Logger
+	zlog  zerolog.Logger
+	attrs []slog.Attr
+	group string
+}
+
+func newZerologSlogHandler(zlog zerolog.Logger) *zerologSlogHandler {
+	return &zerologSlogHandler{zlog: zlog}
 }
 
 func (h *zerologSlogHandler) Enabled(_ context.Context, level slog.Level) bool {
@@ -799,16 +881,48 @@ func (h *zerologSlogHandler) Handle(_ context.Context, record slog.Record) error
 	case slog.LevelError:
 		event = h.zlog.Error()
 	}
-	record.Attrs(func(attr slog.Attr) bool {
+
+	// Add pre-configured attrs
+	for _, attr := range h.attrs {
 		event = event.Interface(attr.Key, attr.Value.Any())
+	}
+
+	// Add record attrs
+	record.Attrs(func(attr slog.Attr) bool {
+		key := attr.Key
+		if h.group != "" {
+			key = h.group + "." + key
+		}
+		event = event.Interface(key, attr.Value.Any())
 		return true
 	})
+
 	event.Msg(record.Message)
 	return nil
 }
 
-func (h *zerologSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
-func (h *zerologSlogHandler) WithGroup(name string) slog.Handler       { return h }
+func (h *zerologSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	newHandler := &zerologSlogHandler{
+		zlog:  h.zlog,
+		attrs: make([]slog.Attr, len(h.attrs)+len(attrs)),
+		group: h.group,
+	}
+	copy(newHandler.attrs, h.attrs)
+	copy(newHandler.attrs[len(h.attrs):], attrs)
+	return newHandler
+}
+
+func (h *zerologSlogHandler) WithGroup(name string) slog.Handler {
+	newGroup := name
+	if h.group != "" {
+		newGroup = h.group + "." + name
+	}
+	return &zerologSlogHandler{
+		zlog:  h.zlog,
+		attrs: h.attrs,
+		group: newGroup,
+	}
+}
 
 func updateLearningMetrics(scheduler *matching.LearningScheduler) {
 	if scheduler == nil {
@@ -836,10 +950,8 @@ func updateLearningMetrics(scheduler *matching.LearningScheduler) {
 }
 
 // maskDSN masks the password in a PostgreSQL DSN for safe logging
-// postgres://user:password@host:port/db -> postgres://user:***@host:port/db
 func maskDSN(dsn string) string {
-	re := regexp.MustCompile(`(postgres://[^:]+:)([^@]+)(@.+)`)
-	return re.ReplaceAllString(dsn, "${1}***${3}")
+	return dsnMaskRegex.ReplaceAllString(dsn, "${1}***${3}")
 }
 
 // Compile-time checks
