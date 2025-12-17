@@ -62,12 +62,13 @@ type Weights struct {
 }
 
 // DefaultWeights returns the default scoring weights
+// Medication is the dominant factor - a match is only valid if medications match
 func DefaultWeights() Weights {
 	return Weights{
-		Medication: 0.45, // Medication match is most important
-		Dosage:     0.10, // Correct dosage matters
-		Quantity:   0.20, // Quantity fulfillment
-		Price:      0.15, // Price within budget
+		Medication: 0.75, // Medication match is DOMINANT - must match correctly
+		Dosage:     0.05, // Dosage is secondary
+		Quantity:   0.05, // Quantity fulfillment
+		Price:      0.05, // Price within budget
 		Recency:    0.10, // Prefer fresh listings
 	}
 }

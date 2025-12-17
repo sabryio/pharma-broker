@@ -275,31 +275,54 @@ func (ms *MatchingService) processMatch(ctx context.Context, offer *entity.Offer
 }
 
 // calculateMedicationScore computes a hybrid lexical + semantic medication match score
+// This is the MOST IMPORTANT scoring function - medication name must match for a valid match
 func (ms *MatchingService) calculateMedicationScore(offerMed, requestMed string) float64 {
-	// Step 1: Check if medications are synonyms (instant 1.0 match)
+	// Normalize both medication names for better comparison
+	offerNorm := normalizeMedicationName(offerMed)
+	requestNorm := normalizeMedicationName(requestMed)
+
+	// Step 1: Exact match after normalization (instant 1.0)
+	if offerNorm == requestNorm {
+		return 1.0
+	}
+
+	// Step 2: Check if medications are synonyms (instant 1.0 match)
 	if ms.embeddings != nil && ms.embeddings.AreSynonyms(offerMed, requestMed) {
 		return 1.0 // Perfect match via synonym lookup
 	}
 
-	// Step 2: Lexical scoring using fuzzy match
-	lexicalScore := fuzzyMatch(offerMed, requestMed)
+	// Step 3: Check if one contains the other (strong indicator)
+	if strUtils.ContainsIgnoreCase(offerNorm, requestNorm) ||
+		strUtils.ContainsIgnoreCase(requestNorm, offerNorm) {
+		// Substring match - calculate how much overlap
+		shorter := len(requestNorm)
+		longer := len(offerNorm)
+		if shorter > longer {
+			shorter, longer = longer, shorter
+		}
+		overlapRatio := float64(shorter) / float64(longer)
+		// High overlap = better score (0.7 to 0.95)
+		return 0.7 + (overlapRatio * 0.25)
+	}
 
-	// Apply scaling to fuzzy match score to fit 0-1 range better
+	// Step 4: Lexical scoring using fuzzy match
+	lexicalScore := fuzzyMatch(offerNorm, requestNorm)
+
+	// Apply stricter scaling - medication must be similar
 	normalizedLexical := 0.0
 	if lexicalScore >= 1.0 {
 		normalizedLexical = 1.0 // Exact match
-	} else if lexicalScore >= 0.8 {
-		normalizedLexical = 0.85 // High similarity
+	} else if lexicalScore >= 0.85 {
+		normalizedLexical = 0.9 // Very high similarity
+	} else if lexicalScore >= 0.75 {
+		normalizedLexical = 0.75 // High similarity
 	} else if lexicalScore >= 0.6 {
-		normalizedLexical = 0.6 // Moderate similarity
-	} else if strUtils.ContainsIgnoreCase(offerMed, requestMed) ||
-		strUtils.ContainsIgnoreCase(requestMed, offerMed) {
-		normalizedLexical = 0.5 // Substring match fallback
+		normalizedLexical = 0.55 // Moderate similarity - borderline
 	} else {
-		normalizedLexical = lexicalScore * 0.5 // Low similarity
+		normalizedLexical = lexicalScore * 0.4 // Low similarity - likely different medications
 	}
 
-	// Step 3: Semantic scoring using embeddings
+	// Step 5: Semantic scoring using embeddings
 	var semanticScore float64
 	if ms.embeddings != nil {
 		vecA, okA := ms.embeddings.GetEmbedding(offerMed)
@@ -323,6 +346,53 @@ func (ms *MatchingService) calculateMedicationScore(offerMed, requestMed string)
 
 	// Semantic not available: use lexical only
 	return normalizedLexical
+}
+
+// normalizeMedicationName normalizes a medication name for comparison
+// Removes Arabic diacritics, extra spaces, and common variations
+func normalizeMedicationName(name string) string {
+	// Convert to lowercase
+	normalized := strings.ToLower(strings.TrimSpace(name))
+
+	// Remove Arabic diacritics (tashkeel)
+	arabicDiacritics := []string{
+		"\u064B", // Fathatan
+		"\u064C", // Dammatan
+		"\u064D", // Kasratan
+		"\u064E", // Fatha
+		"\u064F", // Damma
+		"\u0650", // Kasra
+		"\u0651", // Shadda
+		"\u0652", // Sukun
+		"\u0653", // Maddah
+		"\u0654", // Hamza above
+		"\u0655", // Hamza below
+		"\u0670", // Superscript Alef
+	}
+	for _, d := range arabicDiacritics {
+		normalized = strings.ReplaceAll(normalized, d, "")
+	}
+
+	// Normalize Arabic letters (alef variations)
+	normalized = strings.ReplaceAll(normalized, "أ", "ا")
+	normalized = strings.ReplaceAll(normalized, "إ", "ا")
+	normalized = strings.ReplaceAll(normalized, "آ", "ا")
+	normalized = strings.ReplaceAll(normalized, "ى", "ي")
+	normalized = strings.ReplaceAll(normalized, "ة", "ه")
+
+	// Remove common suffixes/prefixes that don't affect medication identity
+	// e.g., "mg", "مجم", dosage numbers
+	normalized = strings.TrimSuffix(normalized, " mg")
+	normalized = strings.TrimSuffix(normalized, "mg")
+	normalized = strings.TrimSuffix(normalized, " مجم")
+	normalized = strings.TrimSuffix(normalized, "مجم")
+
+	// Collapse multiple spaces
+	for strings.Contains(normalized, "  ") {
+		normalized = strings.ReplaceAll(normalized, "  ", " ")
+	}
+
+	return strings.TrimSpace(normalized)
 }
 
 // recordScoreMetrics records match scoring metrics for observability

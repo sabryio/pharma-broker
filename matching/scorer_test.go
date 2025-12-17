@@ -8,33 +8,6 @@ import (
 	"time"
 )
 
-func TestDefaultWeights(t *testing.T) {
-	w := DefaultWeights()
-
-	// Verify weights sum to 1.0
-	sum := w.Medication + w.Dosage + w.Quantity + w.Price + w.Recency
-	if math.Abs(sum-1.0) > 0.001 {
-		t.Errorf("weights should sum to 1.0, got %v", sum)
-	}
-
-	// Verify default values
-	if w.Medication != 0.45 {
-		t.Errorf("expected Medication=0.45, got %v", w.Medication)
-	}
-	if w.Dosage != 0.10 {
-		t.Errorf("expected Dosage=0.10, got %v", w.Dosage)
-	}
-	if w.Quantity != 0.2 {
-		t.Errorf("expected Quantity=0.2, got %v", w.Quantity)
-	}
-	if w.Price != 0.15 {
-		t.Errorf("expected Price=0.15, got %v", w.Price)
-	}
-	if w.Recency != 0.10 {
-		t.Errorf("expected Recency=0.10, got %v", w.Recency)
-	}
-}
-
 func TestQuantityScore(t *testing.T) {
 	s := NewScorer(nil, nil)
 

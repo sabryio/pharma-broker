@@ -70,13 +70,13 @@ This document provides a comprehensive analysis of each core functionality in Ph
 
 ### Weaknesses & Edge Cases ⚠️
 
-| Issue                           | Severity   | Current Behavior              | Impact                                  | Status   |
-| ------------------------------- | ---------- | ----------------------------- | --------------------------------------- | -------- |
-| ~~No Retry on Partial Failure~~ | ~~High~~   | ~~Single AI call per batch~~  | ~~Lost data on transient errors~~       | ✅ Fixed |
-| Arabic Diacritics               | Medium     | Basic removal in tokenizer    | Missed medication matches               | Open     |
-| ~~Context Window Limits~~       | ~~Medium~~ | ~~No token counting~~         | ~~Truncated prompts for large batches~~ | ✅ Fixed |
-| ~~Confidence Threshold Static~~ | ~~Low~~    | ~~Hardcoded thresholds~~      | ~~No adaptation to AI model changes~~   | ✅ Fixed |
-| ~~Reply Context Ignored~~       | ~~Medium~~ | ~~`ReplyToContent` not used~~ | ~~Missing context for replies~~         | ✅ Fixed |
+| Issue                           | Severity   | Current Behavior                                                                       | Impact                                             | Status   |
+| ------------------------------- | ---------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- | -------- |
+| ~~No Retry on Partial Failure~~ | ~~High~~   | ~~Single AI call per batch~~                                                           | ~~Lost data on transient errors~~                  | ✅ Fixed |
+| ~~Arabic Diacritics~~           | ~~Medium~~ | ~~Basic removal in tokenizer~~ **Fixed: normalizeMedicationName() removes diacritics** | ~~Missed medication matches~~ Proper normalization | ✅ Fixed |
+| ~~Context Window Limits~~       | ~~Medium~~ | ~~No token counting~~                                                                  | ~~Truncated prompts for large batches~~            | ✅ Fixed |
+| ~~Confidence Threshold Static~~ | ~~Low~~    | ~~Hardcoded thresholds~~                                                               | ~~No adaptation to AI model changes~~              | ✅ Fixed |
+| ~~Reply Context Ignored~~       | ~~Medium~~ | ~~`ReplyToContent` not used~~                                                          | ~~Missing context for replies~~                    | ✅ Fixed |
 
 ---
 
@@ -916,3 +916,5 @@ _Last updated: December 17, 2024_
 | 2024-12-17 | Implemented Client Health Monitor (slow client detection/eviction)  | `api/sse`            |
 | 2024-12-17 | Implemented Subscription Manager (event/group filtering)            | `api/sse`            |
 | 2024-12-17 | Implemented SSE Authentication (HMAC tokens, API keys, scopes)      | `api/sse`            |
+| 2024-12-17 | Medication Name Priority (80% weight, gate at 50% min score)        | `matching`           |
+| 2024-12-17 | Arabic Diacritics Normalization (removes tashkeel, normalizes alef) | `parsing`            |

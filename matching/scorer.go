@@ -25,12 +25,14 @@ type MatchScore struct {
 
 // Scorer provides multi-field scoring for offer-request matching
 type Scorer struct {
-	mu              sync.RWMutex
-	weights         Weights
-	thresholds      Thresholds
-	recencyHalfLife float64   // Hours until score decays to 50% (default: 24)
-	decayType       DecayType // Type of decay curve (default: Exponential)
-	semanticWeight  float64   // Alpha for semantic vs lexical balance (Phase 2)
+	mu                    sync.RWMutex
+	weights               Weights
+	thresholds            Thresholds
+	recencyHalfLife       float64   // Hours until score decays to 50% (default: 24)
+	decayType             DecayType // Type of decay curve (default: Exponential)
+	semanticWeight        float64   // Alpha for semantic vs lexical balance (Phase 2)
+	minMedicationScore    float64   // Minimum medication score to consider a match (default: 0.5)
+	medicationGateEnabled bool      // If true, reject matches below minMedicationScore
 }
 
 // NewScorer creates a new Scorer with the given configuration
@@ -46,11 +48,13 @@ func NewScorer(weights *Weights, thresholds *Thresholds) *Scorer {
 	}
 
 	return &Scorer{
-		weights:         w,
-		thresholds:      t,
-		recencyHalfLife: 24.0,             // Default 24 hours
-		decayType:       DecayExponential, // Default exponential
-		semanticWeight:  0.6,              // Default: 60% semantic, 40% lexical
+		weights:               w,
+		thresholds:            t,
+		recencyHalfLife:       24.0,             // Default 24 hours
+		decayType:             DecayExponential, // Default exponential
+		semanticWeight:        0.6,              // Default: 60% semantic, 40% lexical
+		minMedicationScore:    0.5,              // Default: require at least 50% medication match
+		medicationGateEnabled: true,             // Default: enabled - medication must match
 	}
 }
 
@@ -218,6 +222,21 @@ func (s *Scorer) GetConfidenceBand(score float64) ConfidenceBand {
 
 // ScoreMatch calculates the full multi-field match score between an offer and request
 func (s *Scorer) ScoreMatch(offer *entity.Offer, request *entity.Request, medicationScore float64) *MatchScore {
+	// MEDICATION GATE: If medication score is too low, reject the match entirely
+	// This ensures medication name is the dominant factor - no match without medication match
+	if s.medicationGateEnabled && medicationScore < s.minMedicationScore {
+		return &MatchScore{
+			MedicationScore: medicationScore,
+			DosageScore:     0,
+			QuantityScore:   0,
+			PriceScore:      0,
+			RecencyScore:    0,
+			Total:           0,
+			Confidence:      ConfidenceNone,
+			Breakdown:       fmt.Sprintf("Medication mismatch (%.0f%% < %.0f%% required)", medicationScore*100, s.minMedicationScore*100),
+		}
+	}
+
 	// Calculate individual scores
 	dosageScore := s.DosageScore(offer.Medication, request.Medication)
 	qtyScore := s.QuantityScore(offer.Quantity, request.Quantity)
@@ -369,4 +388,44 @@ func (s *Scorer) GetDecayType() DecayType {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.decayType
+}
+
+// =============================================================================
+// Medication Gate Configuration
+// =============================================================================
+
+// SetMinMedicationScore sets the minimum medication score required for a match.
+// Matches with medication scores below this threshold will be rejected.
+func (s *Scorer) SetMinMedicationScore(minScore float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if minScore < 0 {
+		minScore = 0
+	}
+	if minScore > 1 {
+		minScore = 1
+	}
+	s.minMedicationScore = minScore
+}
+
+// GetMinMedicationScore returns the current minimum medication score threshold.
+func (s *Scorer) GetMinMedicationScore() float64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.minMedicationScore
+}
+
+// EnableMedicationGate enables or disables the medication gate.
+// When enabled, matches with medication scores below minMedicationScore are rejected.
+func (s *Scorer) EnableMedicationGate(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.medicationGateEnabled = enabled
+}
+
+// IsMedicationGateEnabled returns whether the medication gate is enabled.
+func (s *Scorer) IsMedicationGateEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.medicationGateEnabled
 }
