@@ -220,8 +220,39 @@ type ParserConfig struct {
 	CircuitBreakerResetTimeout time.Duration `mapstructure:"circuit_breaker_reset_timeout"`
 }
 
+// JWTConfig configures JWT authentication
+type JWTConfig struct {
+	// Enabled controls whether JWT authentication is active.
+	// Default: false (for backward compatibility)
+	Enabled bool `mapstructure:"enabled"`
+
+	// Secret is the key used to sign and verify JWT tokens.
+	// REQUIRED when enabled - must be at least 32 characters.
+	// Can be set via JWT_SECRET environment variable.
+	Secret string `mapstructure:"secret"`
+
+	// Issuer is the expected "iss" claim in tokens.
+	// Default: "pharmabroker"
+	Issuer string `mapstructure:"issuer"`
+
+	// Audience is the expected "aud" claim in tokens.
+	// Default: "pharmabroker-api"
+	Audience string `mapstructure:"audience"`
+
+	// TokenExpiryHours is the duration in hours tokens are valid for.
+	// Default: 24
+	TokenExpiryHours int `mapstructure:"token_expiry_hours"`
+
+	// RefreshExpiryDays is the duration in days refresh tokens are valid for.
+	// Default: 7
+	RefreshExpiryDays int `mapstructure:"refresh_expiry_days"`
+}
+
 // APIConfig configures the HTTP API server and handlers
 type APIConfig struct {
+	// JWT authentication configuration
+	JWT JWTConfig `mapstructure:"jwt"`
+
 	// RequestTimeout is the context timeout for standard API requests.
 	// Keep short to avoid hanging connections.
 	// Default: 5s
@@ -270,9 +301,30 @@ type APIConfig struct {
 	MaxSSEClients int `mapstructure:"max_sse_clients"`
 
 	// CorsAllowedOrigins is a list of allowed origins for CORS.
-	// Use ["*"] to allow all origins (development only).
+	// Use ["*"] to allow all origins (development only - NOT recommended for production).
 	// Default: ["*"]
 	CorsAllowedOrigins []string `mapstructure:"cors_allowed_origins"`
+
+	// CorsAllowCredentials enables Access-Control-Allow-Credentials header.
+	// Required for cookies/auth headers with specific origins (not "*").
+	// Default: false
+	CorsAllowCredentials bool `mapstructure:"cors_allow_credentials"`
+
+	// CorsMaxAge is the max age (in seconds) for preflight cache.
+	// Default: 86400 (24 hours)
+	CorsMaxAge int `mapstructure:"cors_max_age"`
+
+	// CorsAllowedMethods specifies allowed HTTP methods.
+	// Default: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"]
+	CorsAllowedMethods []string `mapstructure:"cors_allowed_methods"`
+
+	// CorsAllowedHeaders specifies allowed request headers.
+	// Default: ["Origin", "Content-Type", "Authorization", "X-Trace-ID", "X-API-Key"]
+	CorsAllowedHeaders []string `mapstructure:"cors_allowed_headers"`
+
+	// CorsExposedHeaders specifies headers exposed to the browser.
+	// Default: ["X-Trace-ID"]
+	CorsExposedHeaders []string `mapstructure:"cors_exposed_headers"`
 }
 
 // DatabaseConfig configures PostgreSQL database settings
@@ -505,6 +557,9 @@ func Load() *Config {
 	if cfg.Gemini.APIKey == "" {
 		cfg.Gemini.APIKey = os.Getenv("GEMINI_API_KEY")
 	}
+	if cfg.API.JWT.Secret == "" {
+		cfg.API.JWT.Secret = os.Getenv("JWT_SECRET")
+	}
 	if cfg.DockerModel.BaseURL == "" {
 		if url := os.Getenv("LLM_URL"); url != "" {
 			cfg.DockerModel.BaseURL = url
@@ -566,6 +621,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("parser.message_buffer_size", 1000)
 
 	// API defaults
+	v.SetDefault("api.jwt.enabled", false)
+	v.SetDefault("api.jwt.issuer", "pharmabroker")
+	v.SetDefault("api.jwt.audience", "pharmabroker-api")
+	v.SetDefault("api.jwt.token_expiry_hours", 24)
+	v.SetDefault("api.jwt.refresh_expiry_days", 7)
 	v.SetDefault("api.request_timeout", "5s")
 	v.SetDefault("api.export_timeout", "30s")
 	v.SetDefault("api.sse_heartbeat", "30s")
@@ -577,6 +637,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("api.rate_limit_burst", 20)
 	v.SetDefault("api.max_sse_clients", 100)
 	v.SetDefault("api.cors_allowed_origins", []string{"*"})
+	v.SetDefault("api.cors_allow_credentials", false)
+	v.SetDefault("api.cors_max_age", 86400)
+	v.SetDefault("api.cors_allowed_methods", []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"})
+	v.SetDefault("api.cors_allowed_headers", []string{"Origin", "Content-Type", "Authorization", "X-Trace-ID", "X-API-Key"})
+	v.SetDefault("api.cors_exposed_headers", []string{"X-Trace-ID"})
 
 	// Database defaults
 	v.SetDefault("database.path", "./data/pharmabroker.db")
@@ -654,17 +719,29 @@ func loadFallback() *Config {
 			MessageBufferSize: 1000,
 		},
 		API: APIConfig{
-			RequestTimeout:     5 * time.Second,
-			ExportTimeout:      30 * time.Second,
-			SSEHeartbeat:       30 * time.Second,
-			ConfigCacheTTL:     30 * time.Second,
-			DefaultPageLimit:   50,
-			MaxExportRecords:   1000,
-			MaxPageSize:        100,
-			RateLimitRPS:       10.0,
-			RateLimitBurst:     20,
-			MaxSSEClients:      100,
-			CorsAllowedOrigins: []string{"*"},
+			JWT: JWTConfig{
+				Enabled:           false,
+				Issuer:            "pharmabroker",
+				Audience:          "pharmabroker-api",
+				TokenExpiryHours:  24,
+				RefreshExpiryDays: 7,
+			},
+			RequestTimeout:       5 * time.Second,
+			ExportTimeout:        30 * time.Second,
+			SSEHeartbeat:         30 * time.Second,
+			ConfigCacheTTL:       30 * time.Second,
+			DefaultPageLimit:     50,
+			MaxExportRecords:     1000,
+			MaxPageSize:          100,
+			RateLimitRPS:         10.0,
+			RateLimitBurst:       20,
+			MaxSSEClients:        100,
+			CorsAllowedOrigins:   []string{"*"},
+			CorsAllowCredentials: false,
+			CorsMaxAge:           86400,
+			CorsAllowedMethods:   []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
+			CorsAllowedHeaders:   []string{"Origin", "Content-Type", "Authorization", "X-Trace-ID", "X-API-Key"},
+			CorsExposedHeaders:   []string{"X-Trace-ID"},
 		},
 		Database: DatabaseConfig{
 			DSN:                 "postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable",

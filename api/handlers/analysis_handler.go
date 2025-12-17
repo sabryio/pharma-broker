@@ -32,17 +32,8 @@ func (h *AnalysisHandler) AnalyzeGin(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		Text       string `json:"text"`
-		SourceName string `json:"source_name,omitempty"`
-		GroupName  string `json:"group_name,omitempty"`
-	}
-	if !BindJSONGin(c, &req) {
-		return
-	}
-
-	if req.Text == "" {
-		BadRequestGin(c, "Text is required")
+	var req AnalyzeRequest
+	if !BindAndValidate(c, &req) {
 		return
 	}
 

@@ -34,22 +34,13 @@ func (h *FeedbackHandler) RecordFeedbackGin(c *gin.Context) {
 		return
 	}
 
-	matchID, ok := GetPathIDGin(c, "id")
+	matchID, ok := ValidateID(c, "id")
 	if !ok {
 		return
 	}
 
-	var req struct {
-		Decision   string `json:"decision"`
-		Reason     string `json:"reason,omitempty"`
-		OperatorID string `json:"operator_id,omitempty"`
-	}
-	if !BindJSONGin(c, &req) {
-		return
-	}
-
-	if req.Decision != "CONFIRMED" && req.Decision != "REJECTED" {
-		BadRequestGin(c, "Decision must be CONFIRMED or REJECTED")
+	var req FeedbackRequest
+	if !BindAndValidate(c, &req) {
 		return
 	}
 

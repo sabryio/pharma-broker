@@ -7,6 +7,8 @@ import (
 	"pharmabroker/api/middleware"
 	"pharmabroker/api/sse"
 	"pharmabroker/pkg/config"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,6 +37,7 @@ type Handlers struct {
 // ServerResources holds resources that need lifecycle management
 type ServerResources struct {
 	RateLimiter *middleware.RateLimiter
+	JWTAuth     *middleware.JWTAuth
 }
 
 // Stop cleans up server resources
@@ -68,9 +71,46 @@ func NewGinRouter(ctx context.Context, h *Handlers, cfg *config.APIConfig, log z
 	}))
 	r.Use(corsMiddleware(cfg))
 
+	// JWT Authentication middleware (if enabled)
+	var jwtAuth *middleware.JWTAuth
+	if cfg.JWT.Enabled && cfg.JWT.Secret != "" {
+		var err error
+		jwtAuth, err = middleware.NewJWTAuth(middleware.JWTConfig{
+			Secret:        cfg.JWT.Secret,
+			Issuer:        cfg.JWT.Issuer,
+			Audience:      cfg.JWT.Audience,
+			TokenExpiry:   time.Duration(cfg.JWT.TokenExpiryHours) * time.Hour,
+			RefreshExpiry: time.Duration(cfg.JWT.RefreshExpiryDays) * 24 * time.Hour,
+			SkipPaths: []string{
+				"/health",
+				"/health/live",
+				"/health/ready",
+				"/metrics",
+				"/api/auth/login",
+				"/api/auth/refresh",
+			},
+		})
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to initialize JWT auth, running without authentication")
+		} else {
+			log.Info().Msg("JWT authentication enabled")
+			resources.JWTAuth = jwtAuth
+		}
+	} else {
+		log.Warn().Msg("JWT authentication disabled - API endpoints are unprotected")
+	}
+
 	// Register route groups
 	api := r.Group("/api")
 	{
+		// Auth routes (always public)
+		registerAuthRoutes(api, resources)
+
+		// Apply JWT middleware to protected routes if enabled
+		if jwtAuth != nil {
+			api.Use(jwtAuth.GinJWT())
+		}
+
 		registerOfferRoutes(api, h)
 		registerRequestRoutes(api, h)
 		registerMatchRoutes(api, h)
@@ -84,8 +124,11 @@ func NewGinRouter(ctx context.Context, h *Handlers, cfg *config.APIConfig, log z
 		registerAnalysisRoutes(api, h)
 		registerSSERoutes(api, h)
 
-		// Admin routes
+		// Admin routes (require admin role if JWT enabled)
 		admin := api.Group("/admin")
+		if jwtAuth != nil {
+			admin.Use(jwtAuth.RequireRole("admin"))
+		}
 		{
 			registerLearningRoutes(admin, h)
 		}
@@ -100,37 +143,75 @@ func NewGinRouter(ctx context.Context, h *Handlers, cfg *config.APIConfig, log z
 	return r, resources
 }
 
-// corsMiddleware returns a CORS configuration middleware
+// corsMiddleware returns a CORS configuration middleware with security best practices
 func corsMiddleware(cfg *config.APIConfig) gin.HandlerFunc {
-	// Use allowed origins from config, default to "*" for development
+	// Build origin lookup set for O(1) checks
 	allowedOrigins := cfg.CorsAllowedOrigins
 	if len(allowedOrigins) == 0 {
 		allowedOrigins = []string{"*"}
 	}
+	allowAll := len(allowedOrigins) == 1 && allowedOrigins[0] == "*"
+	originSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		originSet[o] = struct{}{}
+	}
+
+	// Build method and header strings
+	methods := strings.Join(cfg.CorsAllowedMethods, ", ")
+	if methods == "" {
+		methods = "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+	}
+	headers := strings.Join(cfg.CorsAllowedHeaders, ", ")
+	if headers == "" {
+		headers = "Origin, Content-Type, Authorization, X-Trace-ID, X-API-Key"
+	}
+	exposedHeaders := strings.Join(cfg.CorsExposedHeaders, ", ")
+	if exposedHeaders == "" {
+		exposedHeaders = "X-Trace-ID"
+	}
+	maxAge := cfg.CorsMaxAge
+	if maxAge <= 0 {
+		maxAge = 86400
+	}
+	maxAgeStr := strconv.Itoa(maxAge)
 
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
-		allowAll := len(allowedOrigins) == 1 && allowedOrigins[0] == "*"
 
+		// Determine if origin is allowed
+		originAllowed := false
 		if allowAll {
+			// WARNING: Allow-all should only be used in development
 			c.Header("Access-Control-Allow-Origin", "*")
+			originAllowed = true
 		} else if origin != "" {
-			for _, allowed := range allowedOrigins {
-				if origin == allowed {
-					c.Header("Access-Control-Allow-Origin", origin)
-					c.Header("Vary", "Origin")
-					break
-				}
+			if _, ok := originSet[origin]; ok {
+				c.Header("Access-Control-Allow-Origin", origin)
+				c.Header("Vary", "Origin")
+				originAllowed = true
 			}
 		}
 
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization, X-Trace-ID")
-		c.Header("Access-Control-Expose-Headers", "X-Trace-ID")
-		c.Header("Access-Control-Max-Age", "86400")
+		// Only set CORS headers if origin is allowed
+		if originAllowed {
+			c.Header("Access-Control-Allow-Methods", methods)
+			c.Header("Access-Control-Allow-Headers", headers)
+			c.Header("Access-Control-Expose-Headers", exposedHeaders)
+			c.Header("Access-Control-Max-Age", maxAgeStr)
 
+			// Allow credentials only with specific origins (not "*")
+			if cfg.CorsAllowCredentials && !allowAll {
+				c.Header("Access-Control-Allow-Credentials", "true")
+			}
+		}
+
+		// Handle preflight requests
 		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
+			if originAllowed {
+				c.AbortWithStatus(http.StatusNoContent)
+			} else {
+				c.AbortWithStatus(http.StatusForbidden)
+			}
 			return
 		}
 
@@ -287,6 +368,100 @@ func registerHealthRoutes(r *gin.Engine, h *Handlers) {
 	r.GET("/health", h.Health.FullHealthGin)
 	r.GET("/health/live", h.Health.LiveGin)
 	r.GET("/health/ready", h.Health.ReadyGin)
+}
+
+func registerAuthRoutes(rg *gin.RouterGroup, resources *ServerResources) {
+	if resources.JWTAuth == nil {
+		return
+	}
+	auth := rg.Group("/auth")
+	{
+		auth.POST("/login", authLoginHandler(resources.JWTAuth))
+		auth.POST("/refresh", authRefreshHandler(resources.JWTAuth))
+	}
+}
+
+// authLoginHandler handles user login and returns JWT tokens
+// This is a placeholder - integrate with your user authentication system
+func authLoginHandler(jwtAuth *middleware.JWTAuth) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Username string `json:"username" binding:"required"`
+			Password string `json:"password" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, handlers.Response{
+				Success: false,
+				Error:   handlers.ErrBadRequest("invalid request body"),
+			})
+			return
+		}
+
+		// TODO: Implement actual user authentication against your user store
+		// This is a placeholder that should be replaced with real authentication
+		// For now, reject all logins with a helpful message
+		//
+		// Example implementation:
+		// user, err := userRepo.FindByUsername(req.Username)
+		// if err != nil || !user.CheckPassword(req.Password) {
+		//     c.JSON(401, handlers.Response{...})
+		//     return
+		// }
+		// token, _ := jwtAuth.GenerateToken(user.ID, user.Username, user.Role, user.Scopes)
+
+		c.JSON(501, handlers.Response{
+			Success: false,
+			Error:   handlers.NewAPIError("NOT_IMPLEMENTED", "User authentication not configured. Implement user store integration."),
+		})
+	}
+}
+
+// authRefreshHandler handles token refresh
+func authRefreshHandler(jwtAuth *middleware.JWTAuth) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			RefreshToken string `json:"refresh_token" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, handlers.Response{
+				Success: false,
+				Error:   handlers.ErrBadRequest("invalid request body"),
+			})
+			return
+		}
+
+		// Validate refresh token
+		claims, err := jwtAuth.ValidateToken(req.RefreshToken)
+		if err != nil {
+			c.JSON(401, handlers.Response{
+				Success: false,
+				Error:   handlers.ErrUnauthorized("invalid or expired refresh token"),
+			})
+			return
+		}
+
+		// Generate new access token
+		// Note: In production, you should also verify the refresh token hasn't been revoked
+		token, err := jwtAuth.GenerateToken(claims.UserID, claims.Username, claims.Role, claims.Scopes)
+		if err != nil {
+			c.JSON(500, handlers.Response{
+				Success: false,
+				Error:   handlers.ErrInternal("failed to generate token"),
+			})
+			return
+		}
+
+		c.JSON(200, handlers.Response{
+			Success: true,
+			Data: gin.H{
+				"access_token": token,
+				"token_type":   "Bearer",
+				"expires_in":   86400, // 24 hours in seconds
+			},
+		})
+	}
 }
 
 // GinHandlerAdapter wraps an http.Handler to work with Gin

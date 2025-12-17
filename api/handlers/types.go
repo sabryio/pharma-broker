@@ -30,6 +30,7 @@ const (
 	ErrCodeMethodNotAllowed = "ERR_METHOD_NOT_ALLOWED"
 	ErrCodeValidation       = "ERR_VALIDATION"
 	ErrCodeUnauthorized     = "ERR_UNAUTHORIZED"
+	ErrCodeForbidden        = "ERR_FORBIDDEN"
 	ErrCodeRateLimited      = "ERR_RATE_LIMITED"
 
 	// Resource-specific errors (2xxx)

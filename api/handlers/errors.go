@@ -69,3 +69,11 @@ func ErrConfig(message string) *APIError {
 func ErrRateLimited(message string) *APIError {
 	return NewAPIError(ErrCodeRateLimited, message)
 }
+
+func ErrUnauthorized(message string) *APIError {
+	return NewAPIError(ErrCodeUnauthorized, message)
+}
+
+func ErrForbidden(message string) *APIError {
+	return NewAPIError(ErrCodeForbidden, message)
+}

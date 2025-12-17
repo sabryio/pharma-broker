@@ -114,6 +114,30 @@ parser:
 # HTTP API Configuration
 # ---------------------------------
 api:
+  # JWT Authentication (RECOMMENDED for production)
+  jwt:
+    # Enable JWT authentication for API endpoints
+    # When disabled, all endpoints are publicly accessible
+    enabled: false
+
+    # Secret key for signing tokens (REQUIRED when enabled)
+    # Must be at least 32 characters. Use a strong random string.
+    # Can be set via JWT_SECRET environment variable
+    # Generate with: openssl rand -base64 32
+    secret: ""
+
+    # Token issuer claim
+    issuer: "pharmabroker"
+
+    # Token audience claim
+    audience: "pharmabroker-api"
+
+    # Access token validity in hours
+    token_expiry_hours: 24
+
+    # Refresh token validity in days
+    refresh_expiry_days: 7
+
   # Timeout for standard API requests (listings, updates)
   request_timeout: 5s
 
@@ -133,6 +157,43 @@ api:
 
   # Maximum records in export files
   max_export_records: 1000
+
+  # CORS Configuration (Cross-Origin Resource Sharing)
+  # IMPORTANT: Configure properly for production security
+
+  # Allowed origins - specify exact origins for production
+  # Use ["*"] only for development (insecure)
+  # Examples: ["https://dashboard.example.com", "https://admin.example.com"]
+  cors_allowed_origins:
+    - "*" # CHANGE THIS for production!
+
+  # Allow credentials (cookies, authorization headers)
+  # Only works with specific origins, not "*"
+  cors_allow_credentials: false
+
+  # Preflight cache duration in seconds (24 hours)
+  cors_max_age: 86400
+
+  # Allowed HTTP methods
+  cors_allowed_methods:
+    - GET
+    - POST
+    - PATCH
+    - PUT
+    - DELETE
+    - OPTIONS
+
+  # Allowed request headers
+  cors_allowed_headers:
+    - Origin
+    - Content-Type
+    - Authorization
+    - X-Trace-ID
+    - X-API-Key
+
+  # Headers exposed to browser JavaScript
+  cors_exposed_headers:
+    - X-Trace-ID
 
 # ---------------------------------
 # PostgreSQL Database Settings
