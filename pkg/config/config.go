@@ -218,6 +218,12 @@ type ParserConfig struct {
 	// test requests after the circuit opens.
 	// Default: 30s
 	CircuitBreakerResetTimeout time.Duration `mapstructure:"circuit_breaker_reset_timeout"`
+
+	// DedupWindow is the time window for cross-post deduplication.
+	// Offers from the same sender with the same medication within this
+	// window are considered duplicates and skipped.
+	// Default: 10m
+	DedupWindow time.Duration `mapstructure:"dedup_window"`
 }
 
 // JWTConfig configures JWT authentication
@@ -619,6 +625,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("parser.batch_interval", "5s")
 	v.SetDefault("parser.match_threshold", 0.5)
 	v.SetDefault("parser.message_buffer_size", 1000)
+	v.SetDefault("parser.dedup_window", "10m")
 
 	// API defaults
 	v.SetDefault("api.jwt.enabled", false)

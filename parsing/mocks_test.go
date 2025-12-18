@@ -3,6 +3,7 @@ package parsing
 import (
 	"context"
 	"pharmabroker/domain/entity"
+	"pharmabroker/domain/repository"
 	"time"
 )
 
@@ -91,6 +92,10 @@ func (m *MockOfferRepo) GetActive(ctx context.Context, limit, offset int) ([]*en
 func (m *MockOfferRepo) UpdateStatus(ctx context.Context, id string, status entity.ItemStatus) error {
 	return nil
 }
+func (m *MockOfferRepo) FindRecentDuplicate(ctx context.Context, senderPhone, medication string, within time.Duration) (*entity.Offer, error) {
+	return nil, nil
+}
+var _ repository.OfferRepository = (*MockOfferRepo)(nil)
 
 // MockRequestRepo
 type MockRequestRepo struct {

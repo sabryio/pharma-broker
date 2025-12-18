@@ -219,3 +219,195 @@ func TestOfferRepo_GetActive_OrderByCreatedAtDesc(t *testing.T) {
 	assertEqual(t, active[0].ID, offer3.ID, "First should be newest")
 	assertEqual(t, active[2].ID, offer1.ID, "Last should be oldest")
 }
+
+// =============================================================================
+// FindRecentDuplicate Tests (Deduplication Feature)
+// =============================================================================
+
+func TestOfferRepo_FindRecentDuplicate_Found(t *testing.T) {
+	db := SetupTestDB(t)
+	defer db.Close()
+
+	repo := NewOfferRepo(db.DB)
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	// Create an offer
+	offer := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.SourcePhone = "201234567890"
+		o.Medication = "Aspirin"
+		o.Status = entity.StatusActive
+	})
+	assertNoError(t, repo.Save(ctx, offer), "Save should succeed")
+
+	// Search for duplicate within 10 minutes - should find it
+	found, err := repo.FindRecentDuplicate(ctx, "201234567890", "Aspirin", 10*time.Minute)
+	assertNoError(t, err, "FindRecentDuplicate should succeed")
+	assertNotNil(t, found, "Should find the duplicate")
+	assertEqual(t, found.ID, offer.ID, "Should return the existing offer")
+}
+
+func TestOfferRepo_FindRecentDuplicate_NotFound_DifferentSender(t *testing.T) {
+	db := SetupTestDB(t)
+	defer db.Close()
+
+	repo := NewOfferRepo(db.DB)
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	// Create an offer from one sender
+	offer := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.SourcePhone = "201234567890"
+		o.Medication = "Aspirin"
+	})
+	assertNoError(t, repo.Save(ctx, offer), "Save should succeed")
+
+	// Search for duplicate from different sender - should NOT find it
+	found, err := repo.FindRecentDuplicate(ctx, "209999999999", "Aspirin", 10*time.Minute)
+	assertNoError(t, err, "FindRecentDuplicate should succeed")
+	assertNil(t, found, "Should NOT find duplicate from different sender")
+}
+
+func TestOfferRepo_FindRecentDuplicate_NotFound_DifferentMedication(t *testing.T) {
+	db := SetupTestDB(t)
+	defer db.Close()
+
+	repo := NewOfferRepo(db.DB)
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	// Create an offer for Aspirin
+	offer := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.SourcePhone = "201234567890"
+		o.Medication = "Aspirin"
+	})
+	assertNoError(t, repo.Save(ctx, offer), "Save should succeed")
+
+	// Search for different medication - should NOT find it
+	found, err := repo.FindRecentDuplicate(ctx, "201234567890", "Paracetamol", 10*time.Minute)
+	assertNoError(t, err, "FindRecentDuplicate should succeed")
+	assertNil(t, found, "Should NOT find duplicate for different medication")
+}
+
+func TestOfferRepo_FindRecentDuplicate_CaseInsensitive(t *testing.T) {
+	db := SetupTestDB(t)
+	defer db.Close()
+
+	repo := NewOfferRepo(db.DB)
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	// Create an offer with lowercase medication
+	offer := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.SourcePhone = "201234567890"
+		o.Medication = "aspirin"
+	})
+	assertNoError(t, repo.Save(ctx, offer), "Save should succeed")
+
+	// Search with uppercase - should still find it (case-insensitive)
+	found, err := repo.FindRecentDuplicate(ctx, "201234567890", "ASPIRIN", 10*time.Minute)
+	assertNoError(t, err, "FindRecentDuplicate should succeed")
+	assertNotNil(t, found, "Should find duplicate with different case")
+	assertEqual(t, found.ID, offer.ID, "Should be the same offer")
+}
+
+func TestOfferRepo_FindRecentDuplicate_NotFound_ExpiredWindow(t *testing.T) {
+	db := SetupTestDB(t)
+	defer db.Close()
+
+	repo := NewOfferRepo(db.DB)
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	// Create an old offer (15 minutes ago)
+	oldTime := time.Now().Add(-15 * time.Minute)
+	offer := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.SourcePhone = "201234567890"
+		o.Medication = "Aspirin"
+		o.CreatedAt = oldTime
+	})
+	assertNoError(t, repo.Save(ctx, offer), "Save should succeed")
+
+	// Update the created_at directly in DB
+	db.DB.Conn.Exec("UPDATE offers SET created_at = ? WHERE id = ?", oldTime, offer.ID)
+
+	// Search within 10 minutes - should NOT find it (too old)
+	found, err := repo.FindRecentDuplicate(ctx, "201234567890", "Aspirin", 10*time.Minute)
+	assertNoError(t, err, "FindRecentDuplicate should succeed")
+	assertNil(t, found, "Should NOT find duplicate outside time window")
+}
+
+func TestOfferRepo_FindRecentDuplicate_NotFound_InactiveStatus(t *testing.T) {
+	db := SetupTestDB(t)
+	defer db.Close()
+
+	repo := NewOfferRepo(db.DB)
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	// Create an EXPIRED offer
+	offer := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.SourcePhone = "201234567890"
+		o.Medication = "Aspirin"
+		o.Status = entity.StatusExpired
+	})
+	assertNoError(t, repo.Save(ctx, offer), "Save should succeed")
+
+	// Search - should NOT find it (not ACTIVE)
+	found, err := repo.FindRecentDuplicate(ctx, "201234567890", "Aspirin", 10*time.Minute)
+	assertNoError(t, err, "FindRecentDuplicate should succeed")
+	assertNil(t, found, "Should NOT find expired duplicate")
+}
+
+func TestOfferRepo_FindRecentDuplicate_ReturnsNewest(t *testing.T) {
+	db := SetupTestDB(t)
+	defer db.Close()
+
+	repo := NewOfferRepo(db.DB)
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	// Create two offers from same sender, same medication
+	offer1 := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.SourcePhone = "201234567890"
+		o.Medication = "Aspirin"
+		o.CreatedAt = time.Now().Add(-5 * time.Minute)
+	})
+	assertNoError(t, repo.Save(ctx, offer1), "Save offer1 should succeed")
+	db.DB.Conn.Exec("UPDATE offers SET created_at = ? WHERE id = ?", time.Now().Add(-5*time.Minute), offer1.ID)
+
+	offer2 := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.SourcePhone = "201234567890"
+		o.Medication = "Aspirin"
+		o.CreatedAt = time.Now().Add(-1 * time.Minute)
+	})
+	assertNoError(t, repo.Save(ctx, offer2), "Save offer2 should succeed")
+	db.DB.Conn.Exec("UPDATE offers SET created_at = ? WHERE id = ?", time.Now().Add(-1*time.Minute), offer2.ID)
+
+	// Search - should return the NEWEST one
+	found, err := repo.FindRecentDuplicate(ctx, "201234567890", "Aspirin", 10*time.Minute)
+	assertNoError(t, err, "FindRecentDuplicate should succeed")
+	assertNotNil(t, found, "Should find duplicate")
+	assertEqual(t, found.ID, offer2.ID, "Should return the newest offer")
+}
+
+func TestOfferRepo_FindRecentDuplicate_ZeroWindow_ReturnsNil(t *testing.T) {
+	db := SetupTestDB(t)
+	defer db.Close()
+
+	repo := NewOfferRepo(db.DB)
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	// Create an offer
+	offer := CreateTestOfferWithRawMessage(t, db, func(o *entity.Offer) {
+		o.SourcePhone = "201234567890"
+		o.Medication = "Aspirin"
+	})
+	assertNoError(t, repo.Save(ctx, offer), "Save should succeed")
+
+	// Search with zero window - should NOT find anything (dedup disabled)
+	found, err := repo.FindRecentDuplicate(ctx, "201234567890", "Aspirin", 0)
+	assertNoError(t, err, "FindRecentDuplicate with zero window should succeed")
+	assertNil(t, found, "Zero window should return nil (dedup disabled)")
+}

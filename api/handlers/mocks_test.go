@@ -35,6 +35,9 @@ func (m *mockOfferRepo) CountActive(ctx context.Context) (int64, error) {
 func (m *mockOfferRepo) UpdateStatus(ctx context.Context, id string, status entity.ItemStatus) error {
 	return nil
 }
+func (m *mockOfferRepo) FindRecentDuplicate(ctx context.Context, senderPhone, medication string, within time.Duration) (*entity.Offer, error) {
+	return nil, nil
+}
 
 // Verify mockOfferRepo implements repository.OfferRepository
 var _ repository.OfferRepository = (*mockOfferRepo)(nil)

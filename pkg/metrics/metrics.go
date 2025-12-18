@@ -312,4 +312,10 @@ var (
 		Name: "pharma_deduplicator_misses_total",
 		Help: "Total number of unique messages (not duplicates)",
 	})
+
+	// Cross-post deduplication (offer-level)
+	DuplicatesSkipped = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pharma_duplicates_skipped_total",
+		Help: "Total number of duplicate offers skipped (cross-post detection)",
+	})
 )

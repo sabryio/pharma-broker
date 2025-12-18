@@ -15,6 +15,8 @@ type OfferReader interface {
 	GetActive(ctx context.Context, limit, offset int) ([]*entity.Offer, error)
 	Search(ctx context.Context, query string, limit, offset int) ([]*entity.Offer, error)
 	CountActive(ctx context.Context) (int64, error)
+	// FindRecentDuplicate checks if a similar offer exists (same sender, medication, within time window)
+	FindRecentDuplicate(ctx context.Context, senderPhone, medication string, within time.Duration) (*entity.Offer, error)
 }
 
 // OfferWriter provides write operations for offers

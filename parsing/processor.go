@@ -418,6 +418,24 @@ func (p *Parser) processSingleResult(ctx context.Context, msg *entity.RawMessage
 		switch item.Type {
 		case entity.MessageTypeOffer, entity.MessageTypeBoth:
 			offer := p.createOffer(msg, &item)
+
+			// Check for cross-post duplicate (skip if dedup_window is 0 = disabled)
+			dedupWindow := p.parserCfg.DedupWindow
+			if dedupWindow > 0 {
+				existing, _ := p.offerRepo.FindRecentDuplicate(ctx, offer.SourcePhone, offer.Medication, dedupWindow)
+				if existing != nil {
+					p.log.Info().
+						Str("step", "9_DEDUP_SKIP").
+						Str("medication", offer.Medication).
+						Str("sender", offer.SourcePhone).
+						Str("existing_id", existing.ID).
+						Dur("window", dedupWindow).
+						Msg("⏭️ Skipping duplicate offer (cross-post detected)")
+					metrics.DuplicatesSkipped.Inc()
+					continue
+				}
+			}
+
 			if err := p.offerRepo.Save(ctx, offer); err != nil {
 				p.log.Error().Err(err).Str("offer_id", offer.ID).Msg("Failed to save offer")
 			} else {

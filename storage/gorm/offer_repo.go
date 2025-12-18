@@ -119,3 +119,31 @@ func (r *OfferRepo) CountActive(ctx context.Context) (int64, error) {
 		Count(&count).Error
 	return count, err
 }
+
+// FindRecentDuplicate checks if a similar offer exists from the same sender
+// with the same medication within the specified time window.
+// Returns nil if within is 0 (deduplication disabled).
+// Used for cross-post deduplication.
+func (r *OfferRepo) FindRecentDuplicate(ctx context.Context, senderPhone, medication string, within time.Duration) (*entity.Offer, error) {
+	// Zero window means dedup is disabled
+	if within <= 0 {
+		return nil, nil
+	}
+
+	cutoff := time.Now().Add(-within)
+	var offer Offer
+	err := r.db.Conn.WithContext(ctx).
+		Where("source_phone = ?", senderPhone).
+		Where("LOWER(medication) = LOWER(?)", medication).
+		Where("created_at > ?", cutoff).
+		Where("status = ?", "ACTIVE").
+		Order("created_at DESC").
+		First(&offer).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return ToOfferEntity(&offer), nil
+}
