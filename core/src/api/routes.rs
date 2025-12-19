@@ -2,17 +2,20 @@
 //!
 //! Defines the axum router with all REST endpoints
 
+use std::sync::Arc;
+
 use axum::{
     Router,
     response::IntoResponse,
     routing::{delete, get, post, put},
 };
 use metrics_exporter_prometheus::PrometheusHandle;
-use std::sync::Arc;
+use tokio::sync::broadcast;
 
 use super::{groups, handlers};
 use crate::matching::Scorer;
 use crate::repository::{GroupRepository, MatchRepository, OfferRepository, RequestRepository};
+use crate::ws::{self, WsEvent};
 
 /// Application state shared across handlers
 pub struct AppState<O, R, M, G>
@@ -27,6 +30,7 @@ where
     pub match_repo: Arc<M>,
     pub group_repo: Arc<G>,
     pub scorer: Arc<Scorer>,
+    pub ws_tx: broadcast::Sender<WsEvent>,
     pub metrics_handle: Option<PrometheusHandle>,
 }
 
@@ -44,6 +48,7 @@ where
             match_repo: self.match_repo.clone(),
             group_repo: self.group_repo.clone(),
             scorer: self.scorer.clone(),
+            ws_tx: self.ws_tx.clone(),
             metrics_handle: self.metrics_handle.clone(),
         }
     }
@@ -64,6 +69,7 @@ where
 /// - DELETE /api/groups/:jid  - Delete a group
 /// - GET  /health             - Health check
 /// - GET  /metrics            - Prometheus metrics
+/// - GET  /ws                 - WebSocket real-time updates
 pub fn create_router<O, R, M, G>(state: AppState<O, R, M, G>) -> Router
 where
     O: OfferRepository + 'static,
@@ -103,6 +109,8 @@ where
             "/api/groups/{jid}",
             delete(groups::delete_group::<O, R, M, G>),
         )
+        // WebSocket
+        .route("/ws", get(ws::ws_handler::<O, R, M, G>))
         .with_state(state)
 }
 

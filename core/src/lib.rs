@@ -13,5 +13,6 @@ pub mod metrics;
 pub mod queue;
 pub mod repository;
 pub mod retry;
+pub mod ws;
 
 pub use error::{Error, Result};

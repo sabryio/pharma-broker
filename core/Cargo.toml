@@ -10,7 +10,7 @@ authors = ["Sabry Awad <dr.sabry97@gmail.com>"]
 tokio = { version = "1.48.0", features = ["full"] }
 
 # Web framework
-axum = "0.8.7"
+axum = { version = "0.8.7", features = ["ws"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.8", features = ["cors", "trace"] }
 
@@ -53,6 +53,9 @@ metrics-exporter-prometheus = "0.18.1"
 
 # Random (for retry jitter)
 rand = "0.9"
+
+# Futures utilities (for WS streams)
+futures-util = "0.3.31"
 
 [dev-dependencies]
 tokio-test = "0.4.4"

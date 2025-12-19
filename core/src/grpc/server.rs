@@ -6,8 +6,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use tokio::sync::broadcast;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
+
+use crate::ws::WsEvent;
 
 use super::pharma::{
     HealthRequest, HealthResponse, ProcessResponse, RawMessage as ProtoRawMessage, StatsRequest,
@@ -33,6 +36,7 @@ where
     pub raw_message_repo: Arc<M>,
     pub group_repo: Arc<G>,
     pub ai_client: Arc<AiClient>,
+    pub ws_tx: broadcast::Sender<WsEvent>,
     start_time: std::time::Instant,
 }
 
@@ -49,6 +53,7 @@ where
         raw_message_repo: Arc<M>,
         group_repo: Arc<G>,
         ai_client: Arc<AiClient>,
+        ws_tx: broadcast::Sender<WsEvent>,
     ) -> Self {
         Self {
             offer_repo,
@@ -56,6 +61,7 @@ where
             raw_message_repo,
             group_repo,
             ai_client,
+            ws_tx,
             start_time: std::time::Instant::now(),
         }
     }
@@ -180,6 +186,7 @@ where
         let group_name = raw_message.group_name.clone();
         let sender_phone = raw_message.sender_phone.clone();
         let reply_to = raw_message.reply_to_content.clone();
+        let ws_tx = self.ws_tx.clone();
 
         tokio::spawn(async move {
             tracing::info!(id = %msg_id, "🤖 Starting AI parsing (background)");
@@ -247,6 +254,7 @@ where
                             "💊 Offer created"
                         );
                         offers_created += 1;
+                        let _ = ws_tx.send(WsEvent::NewOffer(offer));
                     }
                 } else if item.item_type == "REQUEST" {
                     let request = RequestEntity {
@@ -279,6 +287,7 @@ where
                             "🔍 Request created"
                         );
                         requests_created += 1;
+                        let _ = ws_tx.send(WsEvent::NewRequest(request));
                     }
                 }
             }

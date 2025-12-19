@@ -64,13 +64,17 @@ async fn main() -> anyhow::Result<()> {
     // Create scorer
     let scorer = Arc::new(Scorer::default());
 
+    // Create broadcast channel for real-time events
+    let (ws_tx, _) = tokio::sync::broadcast::channel(100);
+
     // Create application state for HTTP
     let state = AppState {
         offer_repo: offer_repo.clone(),
         request_repo: request_repo.clone(),
-        match_repo,
+        match_repo: match_repo.clone(),
         group_repo: group_repo.clone(),
         scorer,
+        ws_tx: ws_tx.clone(),
         metrics_handle: Some(metrics_handle),
     };
 
@@ -101,6 +105,7 @@ async fn main() -> anyhow::Result<()> {
         raw_message_repo,
         group_repo,
         ai_client,
+        ws_tx,
     );
 
     // Start both servers concurrently
