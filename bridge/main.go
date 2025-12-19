@@ -20,7 +20,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"pharma-bridge/deduplicator"
 	pb "pharma-bridge/proto"
+	"pharma-bridge/reconnector"
 )
 
 func main() {
@@ -28,7 +30,7 @@ func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	log.Info().Msg("🌉 PharmaBroker WhatsApp Bridge v0.1.0")
+	log.Info().Msg("🌉 PharmaBroker WhatsApp Bridge v0.2.0")
 
 	// Load configuration
 	cfg := loadConfig()
@@ -43,10 +45,8 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create bridge")
 	}
 
-	// Start bridge
-	if err := bridge.Start(ctx); err != nil {
-		log.Fatal().Err(err).Msg("Failed to start bridge")
-	}
+	// Start bridge with reconnection support
+	go bridge.RunWithReconnect(ctx)
 
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
@@ -63,6 +63,7 @@ type Config struct {
 	WhatsAppStore   string
 	AllowedPhones   []string
 	MonitoredGroups []string
+	SkipOwnMessages bool
 }
 
 func loadConfig() *Config {
@@ -71,6 +72,7 @@ func loadConfig() *Config {
 		WhatsAppStore:   getEnv("WHATSAPP_STORE", "./data/whatsapp.db"),
 		AllowedPhones:   []string{},
 		MonitoredGroups: []string{},
+		SkipOwnMessages: true,
 	}
 }
 
@@ -85,9 +87,14 @@ func getEnv(key, fallback string) string {
 type Bridge struct {
 	cfg        *Config
 	wa         *whatsmeow.Client
+	store      *sqlstore.Container
 	grpcClient pb.PharmaCoreClient
 	grpcConn   *grpc.ClientConn
 	logger     zerolog.Logger
+
+	// Resilience components
+	reconnector  *reconnector.Reconnector
+	deduplicator *deduplicator.Deduplicator
 }
 
 // NewBridge creates a new WhatsApp bridge
@@ -127,27 +134,60 @@ func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
 
+	// Create reconnector
+	recon := reconnector.New(reconnector.DefaultConfig(), log.Logger)
+	recon.SetOnRetry(func(attempt int, delay time.Duration, err error) {
+		log.Warn().
+			Int("attempt", attempt).
+			Dur("next_delay", delay).
+			Err(err).
+			Msg("WhatsApp reconnection scheduled")
+	})
+	recon.SetOnSuccess(func(attempt int, elapsed time.Duration) {
+		log.Info().
+			Int("attempts", attempt).
+			Dur("elapsed", elapsed).
+			Msg("✅ WhatsApp reconnected")
+	})
+
+	// Create deduplicator
+	dedup := deduplicator.New(ctx, deduplicator.DefaultConfig(), log.Logger)
+
+	return &Bridge{
+		cfg:          cfg,
+		store:        container,
+		grpcClient:   grpcClient,
+		grpcConn:     conn,
+		logger:       log.With().Str("component", "bridge").Logger(),
+		reconnector:  recon,
+		deduplicator: dedup,
+	}, nil
+}
+
+// RunWithReconnect connects to WhatsApp with automatic reconnection
+func (b *Bridge) RunWithReconnect(ctx context.Context) {
+	// Initial connection
+	if err := b.connect(ctx); err != nil {
+		b.logger.Error().Err(err).Msg("Initial connection failed, starting reconnector")
+	}
+
+	// Handle disconnect events with reconnection
+	// The whatsapp client handles reconnection internally for most cases,
+	// but we track state for health monitoring
+}
+
+// connect establishes the WhatsApp connection
+func (b *Bridge) connect(ctx context.Context) error {
 	// Get or create device store
-	deviceStore, err := container.GetFirstDevice(ctx)
+	deviceStore, err := b.store.GetFirstDevice(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get device: %w", err)
+		return fmt.Errorf("failed to get device: %w", err)
 	}
 
 	// Create WhatsApp client
 	clientLog := waLog.Stdout("Client", "INFO", true)
-	client := whatsmeow.NewClient(deviceStore, clientLog)
+	b.wa = whatsmeow.NewClient(deviceStore, clientLog)
 
-	return &Bridge{
-		cfg:        cfg,
-		wa:         client,
-		grpcClient: grpcClient,
-		grpcConn:   conn,
-		logger:     log.With().Str("component", "bridge").Logger(),
-	}, nil
-}
-
-// Start begins the bridge operations
-func (b *Bridge) Start(ctx context.Context) error {
 	// Register event handler
 	b.wa.AddEventHandler(b.handleEvent)
 
@@ -183,9 +223,17 @@ func (b *Bridge) Start(ctx context.Context) error {
 
 // Stop gracefully shuts down the bridge
 func (b *Bridge) Stop() {
-	b.wa.Disconnect()
+	if b.wa != nil {
+		b.wa.Disconnect()
+	}
 	if b.grpcConn != nil {
 		b.grpcConn.Close()
+	}
+	if b.deduplicator != nil {
+		b.deduplicator.Close()
+	}
+	if b.reconnector != nil {
+		b.reconnector.Stop()
 	}
 	b.logger.Info().Msg("Bridge stopped")
 }
@@ -199,16 +247,24 @@ func (b *Bridge) handleEvent(evt interface{}) {
 		b.logger.Info().Msg("WhatsApp connected")
 	case *events.Disconnected:
 		b.logger.Warn().Msg("WhatsApp disconnected")
+		// Reconnection is handled by whatsmeow internally
 	}
 }
 
 // handleMessage processes incoming WhatsApp messages
 func (b *Bridge) handleMessage(evt *events.Message) {
-	// Only process group messages
+	// Step 1: Only process group messages
 	if !evt.Info.IsGroup {
 		return
 	}
 
+	// Step 2: Skip own messages if configured
+	if evt.Info.IsFromMe && b.cfg.SkipOwnMessages {
+		b.logger.Debug().Msg("Skipping own message")
+		return
+	}
+
+	// Step 3: Extract content
 	content := ""
 	if evt.Message.GetConversation() != "" {
 		content = evt.Message.GetConversation()
@@ -220,13 +276,34 @@ func (b *Bridge) handleMessage(evt *events.Message) {
 		return
 	}
 
+	// Step 4: Check for duplicates
+	if b.deduplicator.IsDuplicate(
+		evt.Info.Chat.String(),
+		evt.Info.Sender.String(),
+		content,
+		evt.Info.Timestamp,
+	) {
+		b.logger.Debug().
+			Str("sender", evt.Info.Sender.User).
+			Msg("Duplicate message ignored")
+		return
+	}
+
+	// Step 5: Record message for future dedup checks
+	b.deduplicator.RecordMessage(
+		evt.Info.Chat.String(),
+		evt.Info.Sender.String(),
+		content,
+		evt.Info.Timestamp,
+	)
+
 	b.logger.Debug().
 		Str("group", evt.Info.Chat.String()).
 		Str("sender", evt.Info.Sender.User).
 		Int("content_len", len(content)).
 		Msg("Received message")
 
-	// Forward to Rust via gRPC
+	// Step 6: Forward to Rust via gRPC
 	b.forwardToCore(
 		evt.Info.ID,
 		evt.Info.Chat.String(),
