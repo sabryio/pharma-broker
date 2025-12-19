@@ -101,3 +101,12 @@ func (r *AuditRepo) Count(ctx context.Context) (int, error) {
 		Count(&count).Error
 	return int(count), err
 }
+
+// DeleteOlderThan removes audit logs older than the cutoff date.
+// Returns the number of deleted records.
+func (r *AuditRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	result := r.db.Conn.WithContext(ctx).
+		Where("created_at < ?", cutoff).
+		Delete(&AuditLog{})
+	return result.RowsAffected, result.Error
+}

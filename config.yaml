@@ -211,6 +211,9 @@ database:
   # Days to retain raw messages before cleanup
   raw_retention_days: 30
 
+  # Days to retain audit logs before cleanup (0 = never delete)
+  audit_retention_days: 90
+
 # ---------------------------------
 # Network/Server Settings
 # ---------------------------------

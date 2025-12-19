@@ -509,11 +509,13 @@ func (c *Container) InitReportScheduler(ctx context.Context) error {
 
 // InitJanitor starts the data archival service
 func (c *Container) InitJanitor() error {
-	c.Schedulers.Janitor = janitor.NewJanitor(c.Repos.Messages, c.Config.Database, c.Logger)
+	c.Schedulers.Janitor = janitor.NewJanitor(c.Repos.Messages, c.Repos.Audit, c.Config.Database, c.Logger)
 	if err := c.Schedulers.Janitor.Start(); err != nil {
 		return fmt.Errorf("janitor start: %w", err)
 	}
-	c.Logger.Info().Msg("Janitor service started")
+	c.Logger.Info().
+		Int("audit_retention_days", c.Config.Database.AuditRetentionDays).
+		Msg("Janitor service started (with audit cleanup)")
 	return nil
 }
 

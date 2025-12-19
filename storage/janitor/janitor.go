@@ -11,25 +11,27 @@ import (
 	"pharmabroker/pkg/config"
 )
 
-// Janitor handles cleanup of old messages.
+// Janitor handles cleanup of old messages and audit logs.
 // With PostgreSQL, archival is done via pg_dump or DELETE queries
 // rather than copying to a separate SQLite file.
 type Janitor struct {
-	repo    repository.RawMessageRepository
-	cfg     config.DatabaseConfig
-	logger  zerolog.Logger
-	wg      sync.WaitGroup
-	stop    chan struct{}
-	running bool
-	mu      sync.Mutex
+	repo      repository.RawMessageRepository
+	auditRepo repository.AuditRepository
+	cfg       config.DatabaseConfig
+	logger    zerolog.Logger
+	wg        sync.WaitGroup
+	stop      chan struct{}
+	running   bool
+	mu        sync.Mutex
 }
 
-func NewJanitor(repo repository.RawMessageRepository, cfg config.DatabaseConfig, logger zerolog.Logger) *Janitor {
+func NewJanitor(repo repository.RawMessageRepository, auditRepo repository.AuditRepository, cfg config.DatabaseConfig, logger zerolog.Logger) *Janitor {
 	return &Janitor{
-		repo:   repo,
-		cfg:    cfg,
-		logger: logger.With().Str("component", "Janitor").Logger(),
-		stop:   make(chan struct{}),
+		repo:      repo,
+		auditRepo: auditRepo,
+		cfg:       cfg,
+		logger:    logger.With().Str("component", "Janitor").Logger(),
+		stop:      make(chan struct{}),
 	}
 }
 
@@ -61,7 +63,8 @@ func (j *Janitor) Stop() {
 func (j *Janitor) runLoop() {
 	defer j.wg.Done()
 	j.logger.Info().
-		Int("retention_days", j.cfg.RawRetentionDays).
+		Int("raw_retention_days", j.cfg.RawRetentionDays).
+		Int("audit_retention_days", j.cfg.AuditRetentionDays).
 		Msg("🧹 Janitor started (PostgreSQL mode)")
 
 	// Run immediately on startup
@@ -85,21 +88,25 @@ func (j *Janitor) performCleanup() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	cutoff := time.Now().AddDate(0, 0, -j.cfg.RawRetentionDays)
+	// Clean raw messages
+	msgCutoff := time.Now().AddDate(0, 0, -j.cfg.RawRetentionDays)
+	j.logger.Debug().Time("msg_cutoff", msgCutoff).Msg("Starting daily cleanup...")
 
-	j.logger.Debug().Time("cutoff", cutoff).Msg("Starting daily cleanup...")
-
-	// With PostgreSQL, we delete old messages directly instead of archiving to a file
-	// For actual archival, use pg_dump or a separate archival process
-	count, err := j.repo.DeleteOldMessages(ctx, cutoff)
+	count, err := j.repo.DeleteOldMessages(ctx, msgCutoff)
 	if err != nil {
 		j.logger.Error().Err(err).Msg("Failed to delete old messages")
-		return
+	} else if count > 0 {
+		j.logger.Info().Int64("deleted_count", count).Msg("✅ Deleted old messages successfully")
 	}
 
-	if count > 0 {
-		j.logger.Info().Int64("deleted_count", count).Msg("✅ Deleted old messages successfully")
-	} else {
-		j.logger.Debug().Msg("No messages to delete today")
+	// Clean audit logs (if repo available and retention > 0)
+	if j.auditRepo != nil && j.cfg.AuditRetentionDays > 0 {
+		auditCutoff := time.Now().AddDate(0, 0, -j.cfg.AuditRetentionDays)
+		auditCount, err := j.auditRepo.DeleteOlderThan(ctx, auditCutoff)
+		if err != nil {
+			j.logger.Error().Err(err).Msg("Failed to delete old audit logs")
+		} else if auditCount > 0 {
+			j.logger.Info().Int64("deleted_count", auditCount).Msg("✅ Deleted old audit logs successfully")
+		}
 	}
 }

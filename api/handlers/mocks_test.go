@@ -199,6 +199,9 @@ func (m *mockAuditRepo) GetRecent(ctx context.Context, limit int) ([]*entity.Aud
 func (m *mockAuditRepo) GetByAction(ctx context.Context, action entity.AuditAction, limit int) ([]*entity.AuditLog, error) {
 	return m.logs, nil
 }
+func (m *mockAuditRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	return 0, nil
+}
 
 var _ repository.AuditRepository = (*mockAuditRepo)(nil)
 

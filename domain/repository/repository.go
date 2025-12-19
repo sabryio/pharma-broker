@@ -139,6 +139,7 @@ type AuditRepository interface {
 	LogWithValues(ctx context.Context, action entity.AuditAction, entityID, oldVal, newVal, details string) error
 	GetByAction(ctx context.Context, action entity.AuditAction, limit int) ([]*entity.AuditLog, error)
 	GetRecent(ctx context.Context, limit int) ([]*entity.AuditLog, error)
+	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 // ConfigRepository interface for config storage

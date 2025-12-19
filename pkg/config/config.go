@@ -355,6 +355,10 @@ type DatabaseConfig struct {
 	// RawRetentionDays is the number of days to keep raw messages before archiving.
 	// Default: 30
 	RawRetentionDays int `mapstructure:"raw_retention_days"`
+
+	// AuditRetentionDays is the number of days to keep audit logs before deletion.
+	// Default: 90
+	AuditRetentionDays int `mapstructure:"audit_retention_days"`
 }
 
 // MonitorConfig configures system monitoring and alerting
@@ -756,6 +760,7 @@ func loadFallback() *Config {
 			MaxIdleConns:        5,
 			ConnMaxLifetimeMins: 5,
 			RawRetentionDays:    30,
+			AuditRetentionDays:  90,
 		},
 		Server: ServerConfig{
 			Port:       8080,
