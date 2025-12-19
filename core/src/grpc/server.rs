@@ -15,32 +15,43 @@ use super::pharma::{
     pharma_core_server::{PharmaCore, PharmaCoreServer},
 };
 use crate::domain::RawMessage;
-use crate::repository::{OfferRepository, RawMessageRepository, RequestRepository};
+use crate::repository::{
+    GroupRepository, OfferRepository, RawMessageRepository, RequestRepository,
+};
 
 /// The gRPC service implementation
-pub struct PharmaCoreService<O, R, M>
+pub struct PharmaCoreService<O, R, M, G>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
+    G: GroupRepository + 'static,
 {
     pub offer_repo: Arc<O>,
     pub request_repo: Arc<R>,
     pub raw_message_repo: Arc<M>,
+    pub group_repo: Arc<G>,
     start_time: std::time::Instant,
 }
 
-impl<O, R, M> PharmaCoreService<O, R, M>
+impl<O, R, M, G> PharmaCoreService<O, R, M, G>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
+    G: GroupRepository + 'static,
 {
-    pub fn new(offer_repo: Arc<O>, request_repo: Arc<R>, raw_message_repo: Arc<M>) -> Self {
+    pub fn new(
+        offer_repo: Arc<O>,
+        request_repo: Arc<R>,
+        raw_message_repo: Arc<M>,
+        group_repo: Arc<G>,
+    ) -> Self {
         Self {
             offer_repo,
             request_repo,
             raw_message_repo,
+            group_repo,
             start_time: std::time::Instant::now(),
         }
     }
@@ -74,11 +85,12 @@ fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
 }
 
 #[tonic::async_trait]
-impl<O, R, M> PharmaCore for PharmaCoreService<O, R, M>
+impl<O, R, M, G> PharmaCore for PharmaCoreService<O, R, M, G>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
+    G: GroupRepository + 'static,
 {
     /// Process an incoming WhatsApp message
     async fn process_message(
@@ -95,11 +107,33 @@ where
             "📨 Received message from Go bridge"
         );
 
-        // Convert proto to domain entity
+        // Step 1: Check if group is monitored
+        let is_monitored = match self.group_repo.is_monitored(&proto_msg.group_jid).await {
+            Ok(monitored) => monitored,
+            Err(e) => {
+                tracing::warn!(error = %e, group = %proto_msg.group_jid, "Failed to check group monitoring, allowing by default");
+                true // Allow if DB check fails (fail-open)
+            }
+        };
+
+        if !is_monitored {
+            tracing::info!(
+                group = %proto_msg.group_jid,
+                "⏭️ Group not monitored, skipping message"
+            );
+            return Ok(Response::new(ProcessResponse {
+                success: true,
+                message_id: proto_msg.id.clone(),
+                error: Some("Group not monitored".to_string()),
+            }));
+        }
+
+        // Step 2: Convert proto to domain entity
         let raw_message = proto_to_domain(&proto_msg);
         let message_id = raw_message.id.clone();
+        let group_jid = raw_message.group_jid.clone();
 
-        // Save to database
+        // Step 3: Save to database
         if let Err(e) = self.raw_message_repo.save(&raw_message).await {
             tracing::error!(error = %e, id = %message_id, "Failed to save raw message");
             return Ok(Response::new(ProcessResponse {
@@ -110,6 +144,17 @@ where
         }
 
         tracing::info!(id = %message_id, "✅ Message saved to database");
+
+        // Step 4: Update group stats asynchronously
+        let group_repo = self.group_repo.clone();
+        tokio::spawn(async move {
+            if let Err(e) = group_repo.update_last_message(&group_jid).await {
+                tracing::debug!(error = %e, group = %group_jid, "Failed to update last message");
+            }
+            if let Err(e) = group_repo.increment_message_count(&group_jid).await {
+                tracing::debug!(error = %e, group = %group_jid, "Failed to increment message count");
+            }
+        });
 
         // TODO: Integrate with AI parsing pipeline
         // TODO: Create offers/requests based on parsed content
@@ -154,14 +199,15 @@ where
 }
 
 /// Start the gRPC server on the specified address
-pub async fn start_grpc_server<O, R, M>(
+pub async fn start_grpc_server<O, R, M, G>(
     addr: SocketAddr,
-    service: PharmaCoreService<O, R, M>,
+    service: PharmaCoreService<O, R, M, G>,
 ) -> Result<(), tonic::transport::Error>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
+    G: GroupRepository + 'static,
 {
     tracing::info!("🔌 gRPC server starting on {}", addr);
 

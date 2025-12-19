@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use chrono::Duration;
 
 use crate::Result;
-use crate::domain::{ItemStatus, Match, MatchStatus, Offer, RawMessage, Request, Stats};
+use crate::domain::{Group, ItemStatus, Match, MatchStatus, Offer, RawMessage, Request, Stats};
 
 /// Offer repository trait
 /// Ported from Go: OfferReader + OfferWriter (repository.go:13-32)
@@ -63,6 +63,22 @@ pub trait RawMessageRepository: Send + Sync {
     async fn save(&self, message: &RawMessage) -> Result<()>;
     async fn get_unprocessed(&self, limit: i64) -> Result<Vec<RawMessage>>;
     async fn mark_processed(&self, id: &str, error: Option<&str>) -> Result<()>;
+}
+
+/// Group repository trait
+/// Ported from Go: GroupRepository (repository.go:98-110)
+#[async_trait]
+pub trait GroupRepository: Send + Sync {
+    /// Check if a group is monitored
+    async fn is_monitored(&self, jid: &str) -> Result<bool>;
+    /// Get all monitored groups
+    async fn get_monitored(&self) -> Result<Vec<Group>>;
+    /// Save or update a group
+    async fn save(&self, group: &Group) -> Result<()>;
+    /// Update last message timestamp
+    async fn update_last_message(&self, jid: &str) -> Result<()>;
+    /// Increment message count
+    async fn increment_message_count(&self, jid: &str) -> Result<()>;
 }
 
 /// Stats repository trait

@@ -2,11 +2,13 @@
 //!
 //! Uses sqlx for async database operations
 
+mod group;
 mod match_repo;
 mod offer;
 mod raw_message;
 mod request;
 
+pub use group::PostgresGroupRepo;
 pub use match_repo::PostgresMatchRepo;
 pub use offer::PostgresOfferRepo;
 pub use raw_message::PostgresRawMessageRepo;
