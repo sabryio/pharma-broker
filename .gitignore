@@ -61,3 +61,6 @@ results*.json
 
 # Reports
 /reports/
+
+# Build output
+target/
