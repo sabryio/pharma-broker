@@ -1,12 +1,8 @@
-//! API module - REST endpoints
+//! API module - REST endpoints using axum
 //!
-//! TODO: Port from legacy/api/handlers/*.go
+//! Ported from legacy/api/handlers/*.go
 
-// pub mod routes;
-// pub mod handlers;
-// pub mod middleware;
+pub mod handlers;
+pub mod routes;
 
-/// Placeholder - will be implemented with axum
-pub fn placeholder() {
-    // TODO: Implement REST API with axum
-}
+pub use routes::create_router;

@@ -1,11 +1,9 @@
 //! Repository module - Data access layer
 //!
-//! TODO: Port from legacy/domain/repository/repository.go
-//! TODO: Implement PostgreSQL repositories
+//! Ported from legacy/domain/repository/repository.go
 
+pub mod postgres;
 mod traits;
 
+pub use postgres::{PostgresMatchRepo, PostgresOfferRepo, PostgresRequestRepo, create_pool};
 pub use traits::*;
-
-// TODO: Add postgres implementations
-// pub mod postgres;

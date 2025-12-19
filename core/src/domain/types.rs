@@ -6,51 +6,57 @@ use serde::{Deserialize, Serialize};
 
 /// Categorizes incoming WhatsApp messages
 /// Ported from Go: MessageType (entity.go:8)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "VARCHAR", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MessageType {
     Offer,
     Request,
     Both,
+    #[default]
     Unknown,
-}
-
-impl Default for MessageType {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 /// Tracks lifecycle of offers/requests
 /// Ported from Go: ItemStatus (entity.go:18)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "VARCHAR", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ItemStatus {
+    #[default]
     Active,
     Matched,
     Expired,
     Archived,
 }
 
-impl Default for ItemStatus {
-    fn default() -> Self {
-        Self::Active
+impl std::fmt::Display for ItemStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Active => write!(f, "ACTIVE"),
+            Self::Matched => write!(f, "MATCHED"),
+            Self::Expired => write!(f, "EXPIRED"),
+            Self::Archived => write!(f, "ARCHIVED"),
+        }
     }
 }
 
 /// Tracks lifecycle of matches
 /// Ported from Go: MatchStatus (entity.go:28)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "VARCHAR", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MatchStatus {
+    #[default]
     Pending,
     Confirmed,
     Rejected,
 }
 
-impl Default for MatchStatus {
-    fn default() -> Self {
-        Self::Pending
+impl std::fmt::Display for MatchStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pending => write!(f, "PENDING"),
+            Self::Confirmed => write!(f, "CONFIRMED"),
+            Self::Rejected => write!(f, "REJECTED"),
+        }
     }
 }
 

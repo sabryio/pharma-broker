@@ -1,0 +1,22 @@
+//! PostgreSQL repository implementations
+//!
+//! Uses sqlx for async database operations
+
+mod match_repo;
+mod offer;
+mod request;
+
+pub use match_repo::PostgresMatchRepo;
+pub use offer::PostgresOfferRepo;
+pub use request::PostgresRequestRepo;
+
+use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
+
+/// Create a PostgreSQL connection pool
+pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
+    PgPoolOptions::new()
+        .max_connections(10)
+        .connect(database_url)
+        .await
+}

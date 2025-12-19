@@ -5,8 +5,8 @@
 use async_trait::async_trait;
 use chrono::Duration;
 
-use crate::domain::{ItemStatus, Match, MatchStatus, Offer, RawMessage, Request, Stats};
 use crate::Result;
+use crate::domain::{ItemStatus, Match, MatchStatus, Offer, RawMessage, Request, Stats};
 
 /// Offer repository trait
 /// Ported from Go: OfferReader + OfferWriter (repository.go:13-32)
