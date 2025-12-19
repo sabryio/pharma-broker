@@ -94,9 +94,32 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🚀 HTTP server listening on http://{}", http_addr);
     tracing::info!("🔌 gRPC server listening on grpc://{}", grpc_addr);
 
-    // Create matching engine with default config
-    let matching_engine = create_matching_engine(MatchingEngineConfig::default());
+    // Create matching engine with scheduler config from environment
+    let scheduler_enabled = std::env::var("LEARNING_SCHEDULER_ENABLED")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+    let scheduler_schedule =
+        std::env::var("LEARNING_SCHEDULER_CRON").unwrap_or_else(|_| "0 0 3 * * *".to_string()); // Daily at 3 AM
+
+    let mut engine_config = MatchingEngineConfig::default();
+    engine_config.scheduler.enabled = scheduler_enabled;
+    engine_config.scheduler.schedule = scheduler_schedule.clone();
+
+    let matching_engine = create_matching_engine(engine_config);
     tracing::info!("⚖️ Matching engine initialized");
+
+    // Start the learning scheduler if enabled
+    if scheduler_enabled {
+        if let Err(e) = matching_engine.start_scheduler().await {
+            tracing::error!(error = %e, "Failed to start learning scheduler");
+        } else {
+            tracing::info!(schedule = %scheduler_schedule, "📅 Learning scheduler started");
+        }
+    } else {
+        tracing::info!(
+            "📅 Learning scheduler disabled (set LEARNING_SCHEDULER_ENABLED=true to enable)"
+        );
+    }
 
     // Create gRPC service with all repositories and AI client
     let grpc_service = PharmaCoreService::new(
