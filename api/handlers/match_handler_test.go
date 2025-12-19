@@ -17,7 +17,7 @@ func TestMatchHandler_GetMatches(t *testing.T) {
 		{Match: entity.Match{ID: "match-1", OfferID: "offer-1", RequestID: "req-1", Score: 0.9, Status: entity.MatchStatusPending}},
 	}}
 	sseHub := sse.NewSSEHub()
-	h := NewMatchHandler(matchRepo, &mockOfferRepo{}, &mockRequestRepo{}, nil, sseHub, log)
+	h := NewMatchHandler(matchRepo, &mockOfferRepo{}, &mockRequestRepo{}, nil, nil, sseHub, log)
 
 	c, w := th.CreateContext("GET", "/api/matches", nil)
 
@@ -30,7 +30,7 @@ func TestMatchHandler_ConfirmMatch_MissingID(t *testing.T) {
 	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	sseHub := sse.NewSSEHub()
-	h := NewMatchHandler(&mockMatchRepo{}, &mockOfferRepo{}, &mockRequestRepo{}, nil, sseHub, log)
+	h := NewMatchHandler(&mockMatchRepo{}, &mockOfferRepo{}, &mockRequestRepo{}, nil, nil, sseHub, log)
 
 	c, w := th.CreateContext("POST", "/api/matches//confirm", map[string]interface{}{})
 	// No params set - ID will be empty
@@ -44,7 +44,7 @@ func TestMatchHandler_RejectMatch_MissingID(t *testing.T) {
 	th := NewTestHelper(t)
 	log := zerolog.Nop()
 	sseHub := sse.NewSSEHub()
-	h := NewMatchHandler(&mockMatchRepo{}, &mockOfferRepo{}, &mockRequestRepo{}, nil, sseHub, log)
+	h := NewMatchHandler(&mockMatchRepo{}, &mockOfferRepo{}, &mockRequestRepo{}, nil, nil, sseHub, log)
 
 	c, w := th.CreateContext("POST", "/api/matches//reject", map[string]interface{}{})
 	// No params set - ID will be empty

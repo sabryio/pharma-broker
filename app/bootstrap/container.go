@@ -348,7 +348,7 @@ func (c *Container) InitParser(ctx context.Context) error {
 func (c *Container) InitHandlers() error {
 	offerHandler := apiHandlers.NewOfferHandler(c.Repos.Offers, c.Logger)
 	requestHandler := apiHandlers.NewRequestHandler(c.Repos.Requests, c.Logger)
-	matchHandler := apiHandlers.NewMatchHandler(c.Repos.Matches, c.Repos.Offers, c.Repos.Requests, c.Repos.Audit, c.Services.SSEHub, c.Logger)
+	matchHandler := apiHandlers.NewMatchHandler(c.Repos.Matches, c.Repos.Offers, c.Repos.Requests, c.Repos.Audit, c.Repos.Feedback, c.Services.SSEHub, c.Logger)
 	groupHandler := apiHandlers.NewGroupHandler(c.Repos.Groups, c.Logger)
 	statsHandler := apiHandlers.NewStatsHandler(c.Repos.Stats, c.Logger)
 	configHandler := apiHandlers.NewConfigHandler(c.Repos.Config, c.Logger)

@@ -15,12 +15,13 @@ import (
 
 // MatchHandler handles match-related operations
 type MatchHandler struct {
-	matchRepo   repository.MatchRepository
-	offerRepo   repository.OfferRepository
-	requestRepo repository.RequestRepository
-	auditRepo   repository.AuditRepository
-	sseHub      *sse.SSEHub
-	log         zerolog.Logger
+	matchRepo    repository.MatchRepository
+	offerRepo    repository.OfferRepository
+	requestRepo  repository.RequestRepository
+	auditRepo    repository.AuditRepository
+	feedbackRepo repository.FeedbackRepository
+	sseHub       *sse.SSEHub
+	log          zerolog.Logger
 }
 
 // NewMatchHandler creates a new MatchHandler
@@ -29,16 +30,18 @@ func NewMatchHandler(
 	offerRepo repository.OfferRepository,
 	requestRepo repository.RequestRepository,
 	auditRepo repository.AuditRepository,
+	feedbackRepo repository.FeedbackRepository,
 	sseHub *sse.SSEHub,
 	log zerolog.Logger,
 ) *MatchHandler {
 	return &MatchHandler{
-		matchRepo:   matchRepo,
-		offerRepo:   offerRepo,
-		requestRepo: requestRepo,
-		auditRepo:   auditRepo,
-		sseHub:      sseHub,
-		log:         log.With().Str("component", "MatchHandler").Logger(),
+		matchRepo:    matchRepo,
+		offerRepo:    offerRepo,
+		requestRepo:  requestRepo,
+		auditRepo:    auditRepo,
+		feedbackRepo: feedbackRepo,
+		sseHub:       sseHub,
+		log:          log.With().Str("component", "MatchHandler").Logger(),
 	}
 }
 
@@ -47,6 +50,39 @@ func (h *MatchHandler) logAudit(ctx context.Context, action entity.AuditAction, 
 		if err := h.auditRepo.Log(ctx, action, entityID, details); err != nil {
 			h.log.Warn().Err(err).Str("action", string(action)).Msg("Failed to log audit event")
 		}
+	}
+}
+
+// recordFeedback automatically records feedback for a match decision
+func (h *MatchHandler) recordFeedback(ctx context.Context, match *entity.Match, decision entity.FeedbackDecision, operatorID, reason string) {
+	if h.feedbackRepo == nil {
+		return
+	}
+
+	// Compute confidence band from score
+	var confidenceBand string
+	switch {
+	case match.Score >= 0.85:
+		confidenceBand = "AUTO"
+	case match.Score >= 0.70:
+		confidenceBand = "SUGGEST"
+	case match.Score >= 0.50:
+		confidenceBand = "REVIEW"
+	default:
+		confidenceBand = "LOW"
+	}
+
+	fb := &entity.MatchFeedback{
+		MatchID:            match.ID,
+		OperatorID:         operatorID,
+		Decision:           decision,
+		Reason:             reason,
+		OriginalScore:      match.Score,
+		OriginalConfidence: confidenceBand,
+	}
+
+	if err := h.feedbackRepo.RecordFeedback(ctx, fb); err != nil {
+		h.log.Warn().Err(err).Str("match_id", match.ID).Msg("Failed to record feedback")
 	}
 }
 
@@ -106,6 +142,7 @@ func (h *MatchHandler) ConfirmMatchGin(c *gin.Context) {
 	}
 
 	h.logAudit(ctx, entity.AuditMatchConfirmed, id, "Offer: "+match.OfferID+", Request: "+match.RequestID)
+	h.recordFeedback(ctx, match, entity.FeedbackConfirmed, req.MatchedBy, req.Notes)
 
 	SuccessGin(c, map[string]string{"status": "confirmed"})
 }
@@ -144,6 +181,11 @@ func (h *MatchHandler) RejectMatchGin(c *gin.Context) {
 	}
 
 	h.logAudit(ctx, entity.AuditMatchRejected, id, req.Reason)
+
+	// Get match for feedback recording
+	if match, err := h.matchRepo.GetByID(ctx, id); err == nil && match != nil {
+		h.recordFeedback(ctx, match, entity.FeedbackRejected, req.MatchedBy, req.Reason)
+	}
 
 	SuccessGin(c, map[string]string{"status": "rejected"})
 }
