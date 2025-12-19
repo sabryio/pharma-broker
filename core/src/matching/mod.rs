@@ -2,11 +2,28 @@
 //!
 //! Ported from legacy/matching/*.go
 
+mod dosage;
 mod scorer;
+mod service;
 mod weights;
 
+pub use dosage::*;
 pub use scorer::*;
+pub use service::*;
 pub use weights::*;
+
+/// Type of recency decay curve
+/// Ported from Go: DecayType (interface.go:93-99)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DecayType {
+    /// Exponential decay: e^(-λt) - Natural decay (default)
+    #[default]
+    Exponential,
+    /// Linear decay: 1 - t/max - Constant rate
+    Linear,
+    /// Logarithmic decay: sqrt(1 - age/maxAge) - Slower decay
+    Logarithmic,
+}
 
 /// Compute cosine similarity between two embedding vectors
 /// Ported from legacy/pkg/matcher/similarity/cosine.go

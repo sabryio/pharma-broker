@@ -5,7 +5,7 @@
 use chrono::{DateTime, Utc};
 use std::sync::RwLock;
 
-use super::{Thresholds, Weights};
+use super::{DecayType, Thresholds, Weights, compare_dosages, parse_dosage};
 use crate::domain::{ConfidenceBand, Offer, Request};
 
 /// Match score breakdown
@@ -28,6 +28,7 @@ pub struct Scorer {
     weights: RwLock<Weights>,
     thresholds: RwLock<Thresholds>,
     recency_half_life: RwLock<f64>,
+    decay_type: RwLock<DecayType>,
     min_medication_score: RwLock<f64>,
     medication_gate_enabled: RwLock<bool>,
 }
@@ -45,6 +46,7 @@ impl Scorer {
             weights: RwLock::new(weights.unwrap_or_default()),
             thresholds: RwLock::new(thresholds.unwrap_or_default()),
             recency_half_life: RwLock::new(24.0), // 24 hours default
+            decay_type: RwLock::new(DecayType::Exponential),
             min_medication_score: RwLock::new(0.5),
             medication_gate_enabled: RwLock::new(true),
         }
@@ -108,6 +110,7 @@ impl Scorer {
     }
 
     /// Calculate recency score with custom half-life
+    /// Ported from Go: Scorer.RecencyScoreWithParams (scorer.go:154-187)
     pub fn recency_score_with_half_life(
         &self,
         created_at: DateTime<Utc>,
@@ -120,8 +123,43 @@ impl Scorer {
             return 1.0;
         }
 
-        // Exponential decay: score = 0.5^(age/half_life)
-        0.5_f64.powf(age_hours / half_life_hours)
+        let decay_type = *self.decay_type.read().unwrap();
+
+        match decay_type {
+            DecayType::Linear => {
+                // Linear decay: 1 - (age / maxAge), reaches 0 at 2x halfLife
+                let max_age = half_life_hours * 2.0;
+                if age_hours >= max_age {
+                    0.0
+                } else {
+                    1.0 - (age_hours / max_age)
+                }
+            }
+            DecayType::Logarithmic => {
+                // Logarithmic decay: slower decay over time
+                let max_age = half_life_hours * 4.0;
+                if age_hours >= max_age {
+                    0.1
+                } else {
+                    let ratio = age_hours / max_age;
+                    (1.0 - ratio).sqrt().max(0.1)
+                }
+            }
+            DecayType::Exponential => {
+                // Exponential decay: score = 0.5^(age/half_life)
+                0.5_f64.powf(age_hours / half_life_hours)
+            }
+        }
+    }
+
+    /// Set decay type
+    pub fn set_decay_type(&self, decay_type: DecayType) {
+        *self.decay_type.write().unwrap() = decay_type;
+    }
+
+    /// Get current decay type
+    pub fn get_decay_type(&self) -> DecayType {
+        *self.decay_type.read().unwrap()
     }
 
     /// Get confidence band for a score
@@ -173,7 +211,15 @@ impl Scorer {
         let qty_score = self.quantity_score(offer.quantity, request.quantity);
         let price_score = self.price_score(offer.price, request.max_price);
         let recency_score = self.recency_score(offer.created_at);
-        let dosage_score = 0.9; // TODO: Implement dosage comparison
+
+        // Real dosage comparison - ported from Go: Scorer.DosageScore (scorer.go:189-207)
+        let offer_dosage = parse_dosage(&offer.medication);
+        let request_dosage = parse_dosage(&request.medication);
+        let dosage_score = match (&offer_dosage, &request_dosage) {
+            (None, None) => 0.9,                      // Both missing - slight penalty
+            (None, Some(_)) | (Some(_), None) => 0.7, // One missing - partial penalty
+            _ => compare_dosages(&offer_dosage, &request_dosage),
+        };
 
         let total = medication_score * weights.medication
             + dosage_score * weights.dosage

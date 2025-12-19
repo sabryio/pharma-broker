@@ -56,6 +56,8 @@ rand = "0.9"
 
 # Futures utilities (for WS streams)
 futures-util = "0.3.31"
+lazy_static = "1.5.0"
+regex = "1.12.2"
 
 [dev-dependencies]
 tokio-test = "0.4.4"
