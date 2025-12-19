@@ -22,7 +22,7 @@ use crate::domain::{
     ConfidenceBand, ItemStatus, Match as MatchEntity, MatchStatus, Offer, RawMessage,
     Request as RequestEntity,
 };
-use crate::matching::{Scorer, cosine_similarity};
+use crate::matching::{MatchingEngineHandle, cosine_similarity};
 use crate::repository::{
     GroupRepository, MatchRepository, OfferRepository, RawMessageRepository, RequestRepository,
 };
@@ -42,6 +42,7 @@ where
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
     pub ai_client: Arc<AiClient>,
     pub ws_tx: broadcast::Sender<WsEvent>,
+    pub matching_engine: MatchingEngineHandle,
     start_time: std::time::Instant,
 }
 
@@ -60,6 +61,7 @@ where
         match_repo: Arc<dyn MatchRepository + Send + Sync>,
         ai_client: Arc<AiClient>,
         ws_tx: broadcast::Sender<WsEvent>,
+        matching_engine: MatchingEngineHandle,
     ) -> Self {
         Self {
             offer_repo,
@@ -69,6 +71,7 @@ where
             match_repo,
             ai_client,
             ws_tx,
+            matching_engine,
             start_time: std::time::Instant::now(),
         }
     }
@@ -195,6 +198,7 @@ where
         let reply_to = raw_message.reply_to_content.clone();
         let ws_tx = self.ws_tx.clone();
         let match_repo = self.match_repo.clone();
+        let matching_engine = self.matching_engine.clone();
 
         tokio::spawn(async move {
             tracing::info!(id = %msg_id, "🤖 Starting AI parsing (background)");
@@ -321,13 +325,9 @@ where
                     }
                 };
 
-                // Use the scorer with default config
-                let scorer = Scorer::default();
                 let mut matches_created = 0u32;
 
                 // For each request we just created, try to find matches
-                // Note: In a production system, we'd track which requests were created
-                // For now, we'll search for recent requests from this message
                 if let Ok(recent_requests) = request_repo.get_active(10, 0).await {
                     for request in recent_requests.iter() {
                         for offer in active_offers.iter() {
@@ -374,8 +374,11 @@ where
                                 }
                             };
 
-                            // Score the match
-                            let score = scorer.score_match(offer, request, med_score);
+                            // Score using the unified matching engine
+                            // This integrates: Scorer + WarmStart + ABTest
+                            let score = matching_engine
+                                .score_match(offer, request, med_score, Some(&sender_phone))
+                                .await;
 
                             // Only create match if confidence is not NONE
                             if score.confidence != ConfidenceBand::None {

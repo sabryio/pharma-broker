@@ -1,0 +1,519 @@
+//! Unified Matching Engine
+//!
+//! Integrates all matching components:
+//! - Scorer (multi-field scoring)
+//! - WeightLearner (adaptive learning)
+//! - LearningScheduler (automated jobs)
+//! - WarmStartManager (cold start handling)
+//! - ABTestManager (A/B testing)
+//! - OutlierDetector (anomaly filtering)
+
+use chrono::{DateTime, Duration, Utc};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tokio_cron_scheduler::{Job, JobScheduler};
+
+use super::{
+    ABTestConfig, ABTestManager, ABTestResult, FeedbackStats, LearnerError, LearningConfig,
+    MatchScore, OutlierDetector, OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig,
+    SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
+};
+use crate::domain::{Offer, Request};
+
+/// Matching engine configuration
+#[derive(Debug, Clone)]
+pub struct MatchingEngineConfig {
+    /// Initial weights
+    pub weights: Weights,
+    /// Scheduler settings
+    pub scheduler: SchedulerConfig,
+    /// Warm start settings
+    pub warm_start: WarmStartConfig,
+    /// Outlier detection settings
+    pub outlier_detector: OutlierDetectorConfig,
+}
+
+impl Default for MatchingEngineConfig {
+    fn default() -> Self {
+        Self {
+            weights: Weights::default(),
+            scheduler: SchedulerConfig::default(),
+            warm_start: WarmStartConfig::default(),
+            outlier_detector: OutlierDetectorConfig::default(),
+        }
+    }
+}
+
+/// Unified matching engine orchestrating all components
+pub struct MatchingEngine {
+    /// Core scorer
+    scorer: Scorer,
+    /// Adaptive weight learner
+    learner: WeightLearner,
+    /// Cold start handler
+    warm_start: WarmStartManager,
+    /// A/B test manager
+    ab_test: ABTestManager,
+    /// Outlier detector
+    outlier_detector: OutlierDetector,
+    /// Configuration
+    config: RwLock<MatchingEngineConfig>,
+    /// Current sample count for warm start
+    sample_count: RwLock<usize>,
+    /// Cron scheduler handle
+    scheduler_handle: RwLock<Option<JobScheduler>>,
+}
+
+impl Default for MatchingEngine {
+    fn default() -> Self {
+        Self::new(MatchingEngineConfig::default())
+    }
+}
+
+impl MatchingEngine {
+    /// Create a new matching engine
+    pub fn new(config: MatchingEngineConfig) -> Self {
+        let scorer = Scorer::new(Some(config.weights.clone()), None);
+        let learner = WeightLearner::with_config(config.scheduler.algorithm.clone());
+        let warm_start = WarmStartManager::new(config.warm_start.clone());
+        let ab_test = ABTestManager::new(config.weights.clone());
+        let outlier_detector = OutlierDetector::new(config.outlier_detector.clone());
+
+        Self {
+            scorer,
+            learner,
+            warm_start,
+            ab_test,
+            outlier_detector,
+            config: RwLock::new(config),
+            sample_count: RwLock::new(0),
+            scheduler_handle: RwLock::new(None),
+        }
+    }
+
+    // =========================================================================
+    // Scoring
+    // =========================================================================
+
+    /// Score a match between offer and request
+    /// Uses: Scorer + WarmStart + ABTest
+    pub async fn score_match(
+        &self,
+        offer: &Offer,
+        request: &Request,
+        medication_score: f64,
+        user_id: Option<&str>,
+    ) -> MatchScore {
+        // Get weights (consider A/B test if user_id provided)
+        let weights = self.get_weights_for_scoring(user_id).await;
+
+        // Apply warm start blending
+        let sample_count = *self.sample_count.read().await;
+        let effective_weights = self
+            .warm_start
+            .get_effective_weights(&weights, sample_count);
+
+        // Update scorer with effective weights
+        self.scorer.update_weights(effective_weights);
+
+        // Score the match
+        self.scorer.score_match(offer, request, medication_score)
+    }
+
+    /// Get weights for scoring (considering A/B tests)
+    async fn get_weights_for_scoring(&self, user_id: Option<&str>) -> Weights {
+        if let Some(uid) = user_id {
+            let (weights, _group) = self.ab_test.get_weights_for_user(uid);
+            weights
+        } else {
+            self.scorer.get_weights()
+        }
+    }
+
+    // =========================================================================
+    // Feedback & Learning
+    // =========================================================================
+
+    /// Record operator feedback (confirm/reject)
+    /// Uses: OutlierDetector + ABTest + SampleCount
+    pub async fn record_feedback(
+        &self,
+        user_id: &str,
+        confirmed: bool,
+        total_score: f64,
+    ) -> Result<(), String> {
+        // Check for outliers
+        if self.outlier_detector.is_outlier(total_score) {
+            tracing::warn!(
+                user_id = user_id,
+                score = total_score,
+                "Feedback rejected as outlier"
+            );
+            return Ok(()); // Silently ignore outliers
+        }
+
+        // Add to outlier detector window
+        self.outlier_detector.add_score(total_score);
+
+        // Record for A/B testing
+        self.ab_test
+            .record_feedback(user_id, confirmed, total_score);
+
+        // Increment sample count
+        {
+            let mut count = self.sample_count.write().await;
+            *count += 1;
+        }
+
+        tracing::debug!(
+            user_id = user_id,
+            confirmed = confirmed,
+            score = total_score,
+            "Feedback recorded"
+        );
+
+        Ok(())
+    }
+
+    /// Trigger learning calculation
+    /// Uses: WeightLearner + WarmStart
+    pub async fn calculate_new_weights(
+        &self,
+        stats: &FeedbackStats,
+    ) -> Result<(Weights, PerformanceMetrics), LearnerError> {
+        let sample_count = *self.sample_count.read().await;
+
+        // Get current weights with warm start blending
+        let current = self.scorer.get_weights();
+        let effective = self
+            .warm_start
+            .get_effective_weights(&current, sample_count);
+
+        // Calculate optimal weights
+        let (new_weights, metrics) = self.learner.calculate_optimal_weights(stats, &effective)?;
+
+        tracing::info!(
+            sample_size = stats.total_feedbacks,
+            confirmation_rate = format!("{:.1}%", metrics.confirmation_rate * 100.0),
+            "Calculated new weights"
+        );
+
+        Ok((new_weights, metrics))
+    }
+
+    /// Apply new weights
+    pub async fn apply_weights(&self, weights: Weights, reason: &str) {
+        self.scorer.update_weights(weights.clone());
+        self.ab_test.set_base_weights(weights.clone());
+
+        tracing::info!(
+            medication = format!("{:.2}", weights.medication),
+            dosage = format!("{:.2}", weights.dosage),
+            quantity = format!("{:.2}", weights.quantity),
+            price = format!("{:.2}", weights.price),
+            recency = format!("{:.2}", weights.recency),
+            reason = reason,
+            "Applied new weights"
+        );
+    }
+
+    // =========================================================================
+    // Scheduler
+    // =========================================================================
+
+    /// Start the learning scheduler
+    pub async fn start_scheduler(&self) -> Result<(), String> {
+        let config = self.config.read().await;
+
+        if !config.scheduler.enabled {
+            tracing::info!("Learning scheduler disabled");
+            return Ok(());
+        }
+
+        let schedule = config.scheduler.schedule.clone();
+        drop(config);
+
+        // Create scheduler
+        let scheduler = JobScheduler::new().await.map_err(|e| e.to_string())?;
+
+        // Add the learning job
+        let job = Job::new_async(schedule.as_str(), |_uuid, _lock| {
+            Box::pin(async move {
+                tracing::info!("Learning job triggered by scheduler");
+                // Note: Job execution would call engine.run_learning_job()
+                // This requires Arc<Self> pattern for production use
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+        scheduler.add(job).await.map_err(|e| e.to_string())?;
+        scheduler.start().await.map_err(|e| e.to_string())?;
+
+        *self.scheduler_handle.write().await = Some(scheduler);
+
+        tracing::info!(schedule = schedule, "Learning scheduler started");
+        Ok(())
+    }
+
+    /// Stop the scheduler
+    pub async fn stop_scheduler(&self) {
+        if let Some(mut scheduler) = self.scheduler_handle.write().await.take() {
+            scheduler.shutdown().await.ok();
+            tracing::info!("Learning scheduler stopped");
+        }
+    }
+
+    /// Get scheduler status
+    pub async fn scheduler_status(&self) -> SchedulerStatus {
+        let config = self.config.read().await;
+        SchedulerStatus {
+            enabled: config.scheduler.enabled,
+            schedule: config.scheduler.schedule.clone(),
+            last_run: None, // Would be tracked in production
+            last_status: super::JobStatus::Pending,
+            last_error: None,
+            last_metrics: None,
+            pending_apply: None,
+            pending_reason: None,
+        }
+    }
+
+    // =========================================================================
+    // A/B Testing
+    // =========================================================================
+
+    /// Create a new A/B test
+    pub fn create_ab_test(&self, config: ABTestConfig) -> Result<(), String> {
+        self.ab_test.create_test(config)
+    }
+
+    /// Get A/B test results
+    pub fn get_ab_test_result(&self, test_id: &str) -> Option<ABTestResult> {
+        self.ab_test.get_test_result(test_id)
+    }
+
+    /// End an A/B test
+    pub fn end_ab_test(&self, test_id: &str) -> Option<ABTestResult> {
+        self.ab_test.end_test(test_id)
+    }
+
+    /// Get all active A/B tests
+    pub fn get_active_ab_tests(&self) -> Vec<ABTestConfig> {
+        self.ab_test.get_active_tests()
+    }
+
+    // =========================================================================
+    // Warm Start
+    // =========================================================================
+
+    /// Get current prior influence percentage
+    pub async fn get_prior_influence(&self) -> f64 {
+        let sample_count = *self.sample_count.read().await;
+        self.warm_start.get_prior_influence(sample_count)
+    }
+
+    /// Reset warm start timer
+    pub fn reset_warm_start(&self) {
+        self.warm_start.reset();
+    }
+
+    // =========================================================================
+    // Outlier Detection
+    // =========================================================================
+
+    /// Get outlier detector statistics
+    pub fn get_outlier_stats(&self) -> (f64, f64, usize) {
+        self.outlier_detector.get_stats()
+    }
+
+    /// Reset outlier detector
+    pub fn reset_outlier_detector(&self) {
+        self.outlier_detector.reset();
+    }
+
+    // =========================================================================
+    // Configuration
+    // =========================================================================
+
+    /// Get current weights
+    pub fn get_weights(&self) -> Weights {
+        self.scorer.get_weights()
+    }
+
+    /// Update configuration
+    pub async fn update_config(&self, config: MatchingEngineConfig) {
+        // Update scorer
+        self.scorer.update_weights(config.weights.clone());
+
+        // Update learner
+        self.learner.set_config(config.scheduler.algorithm.clone());
+
+        // Update warm start
+        self.warm_start.set_config(config.warm_start.clone());
+
+        // Update outlier detector
+        self.outlier_detector
+            .set_config(config.outlier_detector.clone());
+
+        // Update A/B test base weights
+        self.ab_test.set_base_weights(config.weights.clone());
+
+        // Store config
+        *self.config.write().await = config;
+
+        tracing::info!("Matching engine configuration updated");
+    }
+
+    /// Get current sample count
+    pub async fn get_sample_count(&self) -> usize {
+        *self.sample_count.read().await
+    }
+
+    /// Access scorer directly
+    pub fn scorer(&self) -> &Scorer {
+        &self.scorer
+    }
+
+    /// Access learner directly
+    pub fn learner(&self) -> &WeightLearner {
+        &self.learner
+    }
+}
+
+// =============================================================================
+// Thread-safe wrapper for use in async contexts
+// =============================================================================
+
+/// Thread-safe matching engine handle
+pub type MatchingEngineHandle = Arc<MatchingEngine>;
+
+/// Create a new matching engine handle
+pub fn create_matching_engine(config: MatchingEngineConfig) -> MatchingEngineHandle {
+    Arc::new(MatchingEngine::new(config))
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_create_matching_engine() {
+        let engine = MatchingEngine::default();
+
+        let weights = engine.get_weights();
+        assert!(weights.medication > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_score_match_basic() {
+        let engine = MatchingEngine::default();
+
+        let offer = Offer {
+            medication: "Aspirin 100mg".to_string(),
+            quantity: 100.0,
+            price: 50.0,
+            created_at: Utc::now(),
+            ..Default::default()
+        };
+
+        let request = Request {
+            medication: "Aspirin 100mg".to_string(),
+            quantity: 100.0,
+            max_price: 60.0,
+            ..Default::default()
+        };
+
+        let score = engine.score_match(&offer, &request, 0.95, None).await;
+
+        assert!(score.total > 0.0);
+        assert!(score.medication_score == 0.95);
+    }
+
+    #[tokio::test]
+    async fn test_record_feedback() {
+        let engine = MatchingEngine::default();
+
+        let result = engine.record_feedback("user-1", true, 0.85).await;
+        assert!(result.is_ok());
+
+        let count = engine.get_sample_count().await;
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_ab_test_integration() {
+        let engine = MatchingEngine::default();
+
+        let test_config = ABTestConfig {
+            test_id: "test-1".to_string(),
+            name: "Weight Test".to_string(),
+            description: "Testing new weights".to_string(),
+            control_pct: 0.5,
+            test_weights: Weights {
+                medication: 0.50,
+                dosage: 0.20,
+                quantity: 0.10,
+                price: 0.10,
+                recency: 0.10,
+            },
+            start_time: Utc::now() - Duration::hours(1),
+            end_time: Utc::now() + Duration::hours(1),
+            min_samples: 10,
+            active: true,
+        };
+
+        let result = engine.create_ab_test(test_config);
+        assert!(result.is_ok());
+
+        let active = engine.get_active_ab_tests();
+        assert_eq!(active.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_warm_start_integration() {
+        let engine = MatchingEngine::default();
+
+        // With 0 samples, prior influence should be 100%
+        let influence = engine.get_prior_influence().await;
+        assert!((influence - 100.0).abs() < 0.001);
+    }
+
+    #[tokio::test]
+    async fn test_outlier_detection_integration() {
+        let engine = MatchingEngine::default();
+
+        // Add some normal scores
+        for _ in 0..30 {
+            engine.record_feedback("user", true, 0.75).await.ok();
+        }
+
+        let (mean, _std_dev, count) = engine.get_outlier_stats();
+        assert_eq!(count, 30);
+        assert!(mean > 0.7);
+    }
+
+    #[tokio::test]
+    async fn test_config_update() {
+        let engine = MatchingEngine::default();
+
+        let new_config = MatchingEngineConfig {
+            weights: Weights {
+                medication: 0.50,
+                dosage: 0.20,
+                quantity: 0.10,
+                price: 0.10,
+                recency: 0.10,
+            },
+            ..Default::default()
+        };
+
+        engine.update_config(new_config).await;
+
+        let weights = engine.get_weights();
+        assert!((weights.medication - 0.50).abs() < 0.001);
+    }
+}

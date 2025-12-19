@@ -13,7 +13,6 @@ use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::broadcast;
 
 use super::{groups, handlers};
-use crate::matching::Scorer;
 use crate::repository::{GroupRepository, MatchRepository, OfferRepository, RequestRepository};
 use crate::ws::{self, WsEvent};
 
@@ -29,7 +28,7 @@ where
     pub request_repo: Arc<R>,
     pub match_repo: Arc<M>,
     pub group_repo: Arc<G>,
-    pub scorer: Arc<Scorer>,
+    // pub scorer: Arc<Scorer>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub metrics_handle: Option<PrometheusHandle>,
 }
@@ -47,7 +46,6 @@ where
             request_repo: self.request_repo.clone(),
             match_repo: self.match_repo.clone(),
             group_repo: self.group_repo.clone(),
-            scorer: self.scorer.clone(),
             ws_tx: self.ws_tx.clone(),
             metrics_handle: self.metrics_handle.clone(),
         }

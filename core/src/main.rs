@@ -9,7 +9,7 @@ use pharma_core::ai::AiClient;
 use pharma_core::api::handlers::init_start_time;
 use pharma_core::api::{create_router, routes::AppState};
 use pharma_core::grpc::{PharmaCoreService, start_grpc_server};
-use pharma_core::matching::Scorer;
+use pharma_core::matching::{MatchingEngineConfig, create_matching_engine};
 use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
     PostgresGroupRepo, PostgresMatchRepo, PostgresOfferRepo, PostgresRawMessageRepo,
@@ -61,9 +61,6 @@ async fn main() -> anyhow::Result<()> {
         std::env::var("AI_GATEWAY_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     tracing::info!("🤖 AI Gateway: {}", gateway_url);
 
-    // Create scorer
-    let scorer = Arc::new(Scorer::default());
-
     // Create broadcast channel for real-time events
     let (ws_tx, _) = tokio::sync::broadcast::channel(100);
 
@@ -73,7 +70,6 @@ async fn main() -> anyhow::Result<()> {
         request_repo: request_repo.clone(),
         match_repo: match_repo.clone(),
         group_repo: group_repo.clone(),
-        scorer,
         ws_tx: ws_tx.clone(),
         metrics_handle: Some(metrics_handle),
     };
@@ -98,6 +94,10 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🚀 HTTP server listening on http://{}", http_addr);
     tracing::info!("🔌 gRPC server listening on grpc://{}", grpc_addr);
 
+    // Create matching engine with default config
+    let matching_engine = create_matching_engine(MatchingEngineConfig::default());
+    tracing::info!("⚖️ Matching engine initialized");
+
     // Create gRPC service with all repositories and AI client
     let grpc_service = PharmaCoreService::new(
         offer_repo,
@@ -107,6 +107,7 @@ async fn main() -> anyhow::Result<()> {
         match_repo.clone(),
         ai_client,
         ws_tx,
+        matching_engine,
     );
 
     // Start both servers concurrently

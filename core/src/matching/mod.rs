@@ -2,14 +2,24 @@
 //!
 //! Ported from legacy/matching/*.go
 
+mod abtest;
 mod dosage;
+mod engine;
+mod learner;
+mod scheduler;
 mod scorer;
 mod service;
+mod warm_start;
 mod weights;
 
+pub use abtest::*;
 pub use dosage::*;
+pub use engine::*;
+pub use learner::*;
+pub use scheduler::*;
 pub use scorer::*;
 pub use service::*;
+pub use warm_start::*;
 pub use weights::*;
 
 /// Type of recency decay curve
