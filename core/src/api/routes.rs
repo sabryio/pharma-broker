@@ -5,40 +5,44 @@
 use axum::{
     Router,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post, put},
 };
 use metrics_exporter_prometheus::PrometheusHandle;
 use std::sync::Arc;
 
-use super::handlers;
+use super::{groups, handlers};
 use crate::matching::Scorer;
-use crate::repository::{MatchRepository, OfferRepository, RequestRepository};
+use crate::repository::{GroupRepository, MatchRepository, OfferRepository, RequestRepository};
 
 /// Application state shared across handlers
-pub struct AppState<O, R, M>
+pub struct AppState<O, R, M, G>
 where
     O: OfferRepository,
     R: RequestRepository,
     M: MatchRepository,
+    G: GroupRepository,
 {
     pub offer_repo: Arc<O>,
     pub request_repo: Arc<R>,
     pub match_repo: Arc<M>,
+    pub group_repo: Arc<G>,
     pub scorer: Arc<Scorer>,
     pub metrics_handle: Option<PrometheusHandle>,
 }
 
-impl<O, R, M> Clone for AppState<O, R, M>
+impl<O, R, M, G> Clone for AppState<O, R, M, G>
 where
     O: OfferRepository,
     R: RequestRepository,
     M: MatchRepository,
+    G: GroupRepository,
 {
     fn clone(&self) -> Self {
         Self {
             offer_repo: self.offer_repo.clone(),
             request_repo: self.request_repo.clone(),
             match_repo: self.match_repo.clone(),
+            group_repo: self.group_repo.clone(),
             scorer: self.scorer.clone(),
             metrics_handle: self.metrics_handle.clone(),
         }
@@ -54,48 +58,63 @@ where
 /// - POST /api/matches/:id/confirm - Confirm a match
 /// - POST /api/matches/:id/reject  - Reject a match
 /// - GET  /api/stats          - Get dashboard stats
+/// - GET  /api/groups         - List all groups
+/// - POST /api/groups         - Create a group
+/// - PUT  /api/groups/:jid    - Update a group
+/// - DELETE /api/groups/:jid  - Delete a group
 /// - GET  /health             - Health check
 /// - GET  /metrics            - Prometheus metrics
-pub fn create_router<O, R, M>(state: AppState<O, R, M>) -> Router
+pub fn create_router<O, R, M, G>(state: AppState<O, R, M, G>) -> Router
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: MatchRepository + 'static,
+    G: GroupRepository + 'static,
 {
     Router::new()
         // Health checks (Kubernetes probes)
         .route("/health", get(handlers::health_check))
-        .route("/health/ready", get(handlers::health_ready::<O, R, M>))
+        .route("/health/ready", get(handlers::health_ready::<O, R, M, G>))
         .route("/health/live", get(handlers::health_live))
         // Prometheus metrics
-        .route("/metrics", get(metrics_handler::<O, R, M>))
+        .route("/metrics", get(metrics_handler::<O, R, M, G>))
         // Offers
-        .route("/api/offers", get(handlers::get_offers::<O, R, M>))
+        .route("/api/offers", get(handlers::get_offers::<O, R, M, G>))
         // Requests
-        .route("/api/requests", get(handlers::get_requests::<O, R, M>))
+        .route("/api/requests", get(handlers::get_requests::<O, R, M, G>))
         // Matches
-        .route("/api/matches", get(handlers::get_matches::<O, R, M>))
+        .route("/api/matches", get(handlers::get_matches::<O, R, M, G>))
         .route(
             "/api/matches/{id}/confirm",
-            post(handlers::confirm_match::<O, R, M>),
+            post(handlers::confirm_match::<O, R, M, G>),
         )
         .route(
             "/api/matches/{id}/reject",
-            post(handlers::reject_match::<O, R, M>),
+            post(handlers::reject_match::<O, R, M, G>),
         )
         // Stats
-        .route("/api/stats", get(handlers::get_stats::<O, R, M>))
+        .route("/api/stats", get(handlers::get_stats::<O, R, M, G>))
+        // Groups (new CRUD endpoints)
+        .route("/api/groups", get(groups::get_groups::<O, R, M, G>))
+        .route("/api/groups", post(groups::create_group::<O, R, M, G>))
+        .route("/api/groups/{jid}", get(groups::get_group::<O, R, M, G>))
+        .route("/api/groups/{jid}", put(groups::update_group::<O, R, M, G>))
+        .route(
+            "/api/groups/{jid}",
+            delete(groups::delete_group::<O, R, M, G>),
+        )
         .with_state(state)
 }
 
 /// Handler for /metrics endpoint - returns Prometheus format
-async fn metrics_handler<O, R, M>(
-    axum::extract::State(state): axum::extract::State<AppState<O, R, M>>,
+async fn metrics_handler<O, R, M, G>(
+    axum::extract::State(state): axum::extract::State<AppState<O, R, M, G>>,
 ) -> impl IntoResponse
 where
     O: OfferRepository,
     R: RequestRepository,
     M: MatchRepository,
+    G: GroupRepository,
 {
     if let Some(handle) = &state.metrics_handle {
         handle.render()

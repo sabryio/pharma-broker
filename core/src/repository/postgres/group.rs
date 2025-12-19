@@ -22,6 +22,37 @@ impl PostgresGroupRepo {
 
 #[async_trait]
 impl GroupRepository for PostgresGroupRepo {
+    /// Get all groups
+    async fn get_all(&self) -> Result<Vec<Group>> {
+        let groups = sqlx::query_as::<_, Group>(
+            r#"
+            SELECT jid, name, description, monitored, added_at, last_message, message_count
+            FROM groups
+            ORDER BY name ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(groups)
+    }
+
+    /// Get group by JID
+    async fn get_by_jid(&self, jid: &str) -> Result<Option<Group>> {
+        let group = sqlx::query_as::<_, Group>(
+            r#"
+            SELECT jid, name, description, monitored, added_at, last_message, message_count
+            FROM groups
+            WHERE jid = $1
+            "#,
+        )
+        .bind(jid)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(group)
+    }
+
     /// Check if a group is monitored
     async fn is_monitored(&self, jid: &str) -> Result<bool> {
         let result = sqlx::query_scalar::<_, bool>(
@@ -77,6 +108,35 @@ impl GroupRepository for PostgresGroupRepo {
         .await?;
 
         Ok(())
+    }
+
+    /// Update monitoring status
+    async fn update_monitored(&self, jid: &str, monitored: bool) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE groups SET monitored = $2 WHERE jid = $1
+            "#,
+        )
+        .bind(jid)
+        .bind(monitored)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Delete a group
+    async fn delete(&self, jid: &str) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM groups WHERE jid = $1
+            "#,
+        )
+        .bind(jid)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Update last message timestamp

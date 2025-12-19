@@ -69,12 +69,20 @@ pub trait RawMessageRepository: Send + Sync {
 /// Ported from Go: GroupRepository (repository.go:98-110)
 #[async_trait]
 pub trait GroupRepository: Send + Sync {
+    /// Get all groups
+    async fn get_all(&self) -> Result<Vec<Group>>;
+    /// Get group by JID
+    async fn get_by_jid(&self, jid: &str) -> Result<Option<Group>>;
     /// Check if a group is monitored
     async fn is_monitored(&self, jid: &str) -> Result<bool>;
     /// Get all monitored groups
     async fn get_monitored(&self) -> Result<Vec<Group>>;
     /// Save or update a group
     async fn save(&self, group: &Group) -> Result<()>;
+    /// Update monitoring status
+    async fn update_monitored(&self, jid: &str, monitored: bool) -> Result<()>;
+    /// Delete a group
+    async fn delete(&self, jid: &str) -> Result<bool>;
     /// Update last message timestamp
     async fn update_last_message(&self, jid: &str) -> Result<()>;
     /// Increment message count

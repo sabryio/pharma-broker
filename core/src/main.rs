@@ -69,6 +69,7 @@ async fn main() -> anyhow::Result<()> {
         offer_repo: offer_repo.clone(),
         request_repo: request_repo.clone(),
         match_repo,
+        group_repo: group_repo.clone(),
         scorer,
         metrics_handle: Some(metrics_handle),
     };
