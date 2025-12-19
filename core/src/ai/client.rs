@@ -6,6 +6,8 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing;
 
+use crate::retry::{RetryConfig, RetryResult, with_retry};
+
 /// Configuration for the AI client
 #[derive(Clone, Debug)]
 pub struct AiConfig {
@@ -67,12 +69,13 @@ pub struct ParseResult {
 pub struct GatewayResponse {
     pub success: bool,
     pub parsed: Option<ParseResult>,
+    #[allow(dead_code)]
     pub raw_response: Option<String>,
     pub error: Option<String>,
 }
 
 /// Request body for /ai/parse
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct ParseRequest {
     content: String,
     sender_name: Option<String>,
@@ -102,7 +105,7 @@ impl AiClient {
         Self::new(AiConfig::from_env())
     }
 
-    /// Parse a message using the AI gateway
+    /// Parse a message using the AI gateway (without retry)
     pub async fn parse(
         &self,
         content: &str,
@@ -158,15 +161,131 @@ impl AiClient {
 
         Ok(items)
     }
+
+    /// Parse a message with automatic retry for transient failures
+    pub async fn parse_with_retry(
+        &self,
+        content: &str,
+        sender_name: Option<&str>,
+        group_name: Option<&str>,
+        reply_to: Option<&str>,
+    ) -> RetryResult<Vec<ParsedItem>, AiError> {
+        let content = content.to_string();
+        let sender_name = sender_name.map(|s| s.to_string());
+        let group_name = group_name.map(|s| s.to_string());
+        let reply_to = reply_to.map(|s| s.to_string());
+
+        with_retry(
+            RetryConfig::for_ai_gateway(),
+            || {
+                let c = content.clone();
+                let sn = sender_name.clone();
+                let gn = group_name.clone();
+                let rt = reply_to.clone();
+                async move {
+                    self.parse(&c, sn.as_deref(), gn.as_deref(), rt.as_deref())
+                        .await
+                }
+            },
+            |e| e.is_retryable(),
+        )
+        .await
+    }
 }
 
 /// AI client error types
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum AiError {
+    /// Network errors (connection failed, timeout) - retryable
     #[error("Network error: {0}")]
     Network(String),
+
+    /// Gateway errors (5xx status, service unavailable) - retryable
     #[error("Gateway error: {0}")]
     Gateway(String),
+
+    /// Parse errors (invalid JSON, schema mismatch) - NOT retryable
     #[error("Parse error: {0}")]
     Parse(String),
+}
+
+impl AiError {
+    /// Check if this error is retryable (transient)
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            // Network errors are always retryable (timeout, connection refused)
+            AiError::Network(_) => true,
+            // Gateway errors are retryable if they indicate server-side issues
+            AiError::Gateway(msg) => {
+                msg.contains("500")
+                    || msg.contains("502")
+                    || msg.contains("503")
+                    || msg.contains("504")
+                    || msg.contains("timeout")
+                    || msg.contains("unavailable")
+            }
+            // Parse errors are never retryable (bad data won't fix itself)
+            AiError::Parse(_) => false,
+        }
+    }
+
+    /// Check if this is a network error
+    pub fn is_network(&self) -> bool {
+        matches!(self, AiError::Network(_))
+    }
+
+    /// Check if this is a parse error
+    pub fn is_parse(&self) -> bool {
+        matches!(self, AiError::Parse(_))
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_network_error_is_retryable() {
+        let err = AiError::Network("connection refused".to_string());
+        assert!(err.is_retryable());
+        assert!(err.is_network());
+        assert!(!err.is_parse());
+    }
+
+    #[test]
+    fn test_gateway_5xx_is_retryable() {
+        let err = AiError::Gateway("Status 503: Service Unavailable".to_string());
+        assert!(err.is_retryable());
+
+        let err = AiError::Gateway("Status 500: Internal Server Error".to_string());
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn test_gateway_4xx_is_not_retryable() {
+        let err = AiError::Gateway("Status 400: Bad Request".to_string());
+        assert!(!err.is_retryable());
+
+        let err = AiError::Gateway("Status 404: Not Found".to_string());
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn test_parse_error_is_not_retryable() {
+        let err = AiError::Parse("Invalid JSON".to_string());
+        assert!(!err.is_retryable());
+        assert!(err.is_parse());
+        assert!(!err.is_network());
+    }
+
+    #[test]
+    fn test_ai_config_default() {
+        let config = AiConfig::default();
+        assert_eq!(config.gateway_url, "http://localhost:3000");
+        assert_eq!(config.timeout_secs, 30);
+    }
 }

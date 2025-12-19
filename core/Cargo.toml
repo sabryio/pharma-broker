@@ -51,6 +51,9 @@ reqwest = { version = "0.12.26", features = ["json"] }
 metrics = "0.24.3"
 metrics-exporter-prometheus = "0.18.1"
 
+# Random (for retry jitter)
+rand = "0.9"
+
 [dev-dependencies]
 tokio-test = "0.4.4"
 rstest = "0.26.1"
