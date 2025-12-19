@@ -24,9 +24,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
+	"pharma-bridge/cache"
 	"pharma-bridge/deduplicator"
 	pb "pharma-bridge/proto"
 	"pharma-bridge/reconnector"
+	"pharma-bridge/resilience"
 )
 
 func main() {
@@ -102,6 +104,9 @@ type Bridge struct {
 	// Resilience components
 	reconnector  *reconnector.Reconnector
 	deduplicator *deduplicator.Deduplicator
+	groupCache   *cache.GroupCache
+	retryBuffer  *resilience.RetryBuffer
+	circuit      *resilience.CircuitBreaker
 }
 
 // NewBridge creates a new WhatsApp bridge
@@ -160,7 +165,16 @@ func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
 	// Create deduplicator
 	dedup := deduplicator.New(ctx, deduplicator.DefaultConfig(), log.Logger)
 
-	return &Bridge{
+	// Create group cache (5 minute TTL)
+	groupCache := cache.NewGroupCache(5 * time.Minute)
+
+	// Create circuit breaker
+	circuit := resilience.NewCircuitBreaker(3, 30*time.Second)
+	circuit.SetOnStateChange(func(s resilience.State) {
+		log.Warn().Int("state", int(s)).Msg("Circuit breaker state changed")
+	})
+
+	b := &Bridge{
 		cfg:          cfg,
 		store:        container,
 		grpcClient:   grpcClient,
@@ -168,7 +182,24 @@ func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
 		logger:       log.With().Str("component", "bridge").Logger(),
 		reconnector:  recon,
 		deduplicator: dedup,
-	}, nil
+		groupCache:   groupCache,
+		circuit:      circuit,
+	}
+
+	// Create retry buffer (1000 messages)
+	b.retryBuffer = resilience.NewRetryBuffer(1000, func(ctx context.Context, msg *pb.RawMessage) error {
+		_, err := b.forwardRaw(ctx, msg)
+		return err
+	})
+	b.retryBuffer.Start(ctx)
+
+	// Initial group sync
+	b.syncGroups(ctx)
+
+	// Start periodic group sync
+	go b.syncGroupsWorker(ctx)
+
+	return b, nil
 }
 
 // RunWithReconnect connects to WhatsApp with automatic reconnection
@@ -283,7 +314,12 @@ func (b *Bridge) handleMessage(evt *events.Message) {
 		return
 	}
 
-	// Step 4: Check for duplicates
+	// Step 4: Check local GroupCache (Optimization)
+	if !b.groupCache.IsMonitored(evt.Info.Chat.String()) {
+		return
+	}
+
+	// Step 5: Check for duplicates (Reliability)
 	if b.deduplicator.IsDuplicate(
 		evt.Info.Chat.String(),
 		evt.Info.Sender.String(),
@@ -296,7 +332,7 @@ func (b *Bridge) handleMessage(evt *events.Message) {
 		return
 	}
 
-	// Step 5: Record message for future dedup checks
+	// Step 6: Record message for future dedup checks
 	b.deduplicator.RecordMessage(
 		evt.Info.Chat.String(),
 		evt.Info.Sender.String(),
@@ -306,11 +342,10 @@ func (b *Bridge) handleMessage(evt *events.Message) {
 
 	b.logger.Debug().
 		Str("group", evt.Info.Chat.String()).
-		Str("sender", evt.Info.Sender.User).
 		Int("content_len", len(content)).
-		Msg("Received message")
+		Msg("Processing monitored message")
 
-	// Step 6: Forward to Rust via gRPC
+	// Step 7: Forward to Rust via gRPC
 	b.forwardToCore(
 		evt.Info.ID,
 		evt.Info.Chat.String(),
@@ -355,13 +390,15 @@ func (b *Bridge) forwardToCore(
 		Str("id", id).
 		Msg("📤 Forwarding message to Rust core")
 
-	resp, err := b.grpcClient.ProcessMessage(ctx, msg)
+	resp, err := b.forwardRaw(ctx, msg)
 	if err != nil {
-		b.logger.Error().
+		b.logger.Warn().
 			Err(err).
 			Str("trace_id", traceID).
-			Str("id", id).
-			Msg("Failed to forward message to Rust core")
+			Msg("Core unreachable or failed, move to retry buffer")
+
+		// Add to retry buffer if circuit is open or network error
+		b.retryBuffer.Add(msg)
 		return
 	}
 
@@ -373,6 +410,54 @@ func (b *Bridge) forwardToCore(
 
 	// Increment counter for health stats
 	atomic.AddInt64(&messagesForwarded, 1)
+}
+
+// forwardRaw is the low-level gRPC call with circuit breaker integration
+func (b *Bridge) forwardRaw(ctx context.Context, msg *pb.RawMessage) (*pb.ProcessResponse, error) {
+	if !b.circuit.Allow() {
+		return nil, fmt.Errorf("circuit breaker is open")
+	}
+
+	resp, err := b.grpcClient.ProcessMessage(ctx, msg)
+	if err != nil {
+		b.circuit.RecordFailure()
+		return nil, err
+	}
+
+	b.circuit.RecordSuccess()
+	return resp, nil
+}
+
+// syncGroups fetches the list of monitored groups from the Rust core
+func (b *Bridge) syncGroups(ctx context.Context) {
+	b.logger.Debug().Msg("Syncing monitored groups from core...")
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	resp, err := b.grpcClient.GetMonitoredGroups(ctx, &pb.MonitoredGroupsRequest{})
+	if err != nil {
+		b.logger.Warn().Err(err).Msg("Failed to sync monitored groups")
+		return
+	}
+
+	b.groupCache.Update(resp.Jids)
+	b.logger.Info().Int("count", len(resp.Jids)).Msg("✅ Monitored groups synced")
+}
+
+// syncGroupsWorker periodically triggers a group sync
+func (b *Bridge) syncGroupsWorker(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			b.syncGroups(ctx)
+		}
+	}
 }
 
 // messagesForwarded tracks total messages forwarded for health reporting

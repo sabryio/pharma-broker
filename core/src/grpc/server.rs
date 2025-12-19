@@ -13,8 +13,8 @@ use uuid::Uuid;
 use crate::ws::WsEvent;
 
 use super::pharma::{
-    HealthRequest, HealthResponse, ProcessResponse, RawMessage as ProtoRawMessage, StatsRequest,
-    StatsResponse,
+    HealthRequest, HealthResponse, MonitoredGroupsRequest, MonitoredGroupsResponse,
+    ProcessResponse, RawMessage as ProtoRawMessage, StatsRequest, StatsResponse,
     pharma_core_server::{PharmaCore, PharmaCoreServer},
 };
 use crate::ai::AiClient;
@@ -340,6 +340,21 @@ where
             version: "0.1.0".to_string(),
             uptime_seconds: self.start_time.elapsed().as_secs() as i64,
         }))
+    }
+
+    /// Get list of monitored group JIDs
+    async fn get_monitored_groups(
+        &self,
+        _request: Request<MonitoredGroupsRequest>,
+    ) -> Result<Response<MonitoredGroupsResponse>, Status> {
+        let groups =
+            self.group_repo.get_monitored().await.map_err(|e| {
+                Status::internal(format!("Failed to fetch monitored groups: {}", e))
+            })?;
+
+        let jids = groups.into_iter().map(|g| g.jid).collect();
+
+        Ok(Response::new(MonitoredGroupsResponse { jids }))
     }
 }
 

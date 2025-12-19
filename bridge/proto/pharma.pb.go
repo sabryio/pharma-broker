@@ -436,6 +436,88 @@ func (x *HealthResponse) GetUptimeSeconds() int64 {
 	return 0
 }
 
+// MonitoredGroupsRequest for getting monitored group JIDs
+type MonitoredGroupsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MonitoredGroupsRequest) Reset() {
+	*x = MonitoredGroupsRequest{}
+	mi := &file_pharma_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MonitoredGroupsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MonitoredGroupsRequest) ProtoMessage() {}
+
+func (x *MonitoredGroupsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pharma_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MonitoredGroupsRequest.ProtoReflect.Descriptor instead.
+func (*MonitoredGroupsRequest) Descriptor() ([]byte, []int) {
+	return file_pharma_proto_rawDescGZIP(), []int{6}
+}
+
+// MonitoredGroupsResponse with list of JIDs
+type MonitoredGroupsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Jids          []string               `protobuf:"bytes,1,rep,name=jids,proto3" json:"jids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MonitoredGroupsResponse) Reset() {
+	*x = MonitoredGroupsResponse{}
+	mi := &file_pharma_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MonitoredGroupsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MonitoredGroupsResponse) ProtoMessage() {}
+
+func (x *MonitoredGroupsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pharma_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MonitoredGroupsResponse.ProtoReflect.Descriptor instead.
+func (*MonitoredGroupsResponse) Descriptor() ([]byte, []int) {
+	return file_pharma_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *MonitoredGroupsResponse) GetJids() []string {
+	if x != nil {
+		return x.Jids
+	}
+	return nil
+}
+
 var File_pharma_proto protoreflect.FileDescriptor
 
 const file_pharma_proto_rawDesc = "" +
@@ -481,12 +563,16 @@ const file_pharma_proto_rawDesc = "" +
 	"\x0eHealthResponse\x12\x18\n" +
 	"\ahealthy\x18\x01 \x01(\bR\ahealthy\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12%\n" +
-	"\x0euptime_seconds\x18\x03 \x01(\x03R\ruptimeSeconds2\xc2\x01\n" +
+	"\x0euptime_seconds\x18\x03 \x01(\x03R\ruptimeSeconds\"\x18\n" +
+	"\x16MonitoredGroupsRequest\"-\n" +
+	"\x17MonitoredGroupsResponse\x12\x12\n" +
+	"\x04jids\x18\x01 \x03(\tR\x04jids2\x99\x02\n" +
 	"\n" +
 	"PharmaCore\x12=\n" +
 	"\x0eProcessMessage\x12\x12.pharma.RawMessage\x1a\x17.pharma.ProcessResponse\x127\n" +
 	"\bGetStats\x12\x14.pharma.StatsRequest\x1a\x15.pharma.StatsResponse\x12<\n" +
-	"\vHealthCheck\x12\x15.pharma.HealthRequest\x1a\x16.pharma.HealthResponseB\x15Z\x13pharma-bridge/protob\x06proto3"
+	"\vHealthCheck\x12\x15.pharma.HealthRequest\x1a\x16.pharma.HealthResponse\x12U\n" +
+	"\x12GetMonitoredGroups\x12\x1e.pharma.MonitoredGroupsRequest\x1a\x1f.pharma.MonitoredGroupsResponseB\x15Z\x13pharma-bridge/protob\x06proto3"
 
 var (
 	file_pharma_proto_rawDescOnce sync.Once
@@ -500,24 +586,28 @@ func file_pharma_proto_rawDescGZIP() []byte {
 	return file_pharma_proto_rawDescData
 }
 
-var file_pharma_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_pharma_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_pharma_proto_goTypes = []any{
-	(*RawMessage)(nil),      // 0: pharma.RawMessage
-	(*ProcessResponse)(nil), // 1: pharma.ProcessResponse
-	(*StatsRequest)(nil),    // 2: pharma.StatsRequest
-	(*StatsResponse)(nil),   // 3: pharma.StatsResponse
-	(*HealthRequest)(nil),   // 4: pharma.HealthRequest
-	(*HealthResponse)(nil),  // 5: pharma.HealthResponse
+	(*RawMessage)(nil),              // 0: pharma.RawMessage
+	(*ProcessResponse)(nil),         // 1: pharma.ProcessResponse
+	(*StatsRequest)(nil),            // 2: pharma.StatsRequest
+	(*StatsResponse)(nil),           // 3: pharma.StatsResponse
+	(*HealthRequest)(nil),           // 4: pharma.HealthRequest
+	(*HealthResponse)(nil),          // 5: pharma.HealthResponse
+	(*MonitoredGroupsRequest)(nil),  // 6: pharma.MonitoredGroupsRequest
+	(*MonitoredGroupsResponse)(nil), // 7: pharma.MonitoredGroupsResponse
 }
 var file_pharma_proto_depIdxs = []int32{
 	0, // 0: pharma.PharmaCore.ProcessMessage:input_type -> pharma.RawMessage
 	2, // 1: pharma.PharmaCore.GetStats:input_type -> pharma.StatsRequest
 	4, // 2: pharma.PharmaCore.HealthCheck:input_type -> pharma.HealthRequest
-	1, // 3: pharma.PharmaCore.ProcessMessage:output_type -> pharma.ProcessResponse
-	3, // 4: pharma.PharmaCore.GetStats:output_type -> pharma.StatsResponse
-	5, // 5: pharma.PharmaCore.HealthCheck:output_type -> pharma.HealthResponse
-	3, // [3:6] is the sub-list for method output_type
-	0, // [0:3] is the sub-list for method input_type
+	6, // 3: pharma.PharmaCore.GetMonitoredGroups:input_type -> pharma.MonitoredGroupsRequest
+	1, // 4: pharma.PharmaCore.ProcessMessage:output_type -> pharma.ProcessResponse
+	3, // 5: pharma.PharmaCore.GetStats:output_type -> pharma.StatsResponse
+	5, // 6: pharma.PharmaCore.HealthCheck:output_type -> pharma.HealthResponse
+	7, // 7: pharma.PharmaCore.GetMonitoredGroups:output_type -> pharma.MonitoredGroupsResponse
+	4, // [4:8] is the sub-list for method output_type
+	0, // [0:4] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -536,7 +626,7 @@ func file_pharma_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pharma_proto_rawDesc), len(file_pharma_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

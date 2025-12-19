@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	PharmaCore_ProcessMessage_FullMethodName = "/pharma.PharmaCore/ProcessMessage"
-	PharmaCore_GetStats_FullMethodName       = "/pharma.PharmaCore/GetStats"
-	PharmaCore_HealthCheck_FullMethodName    = "/pharma.PharmaCore/HealthCheck"
+	PharmaCore_ProcessMessage_FullMethodName     = "/pharma.PharmaCore/ProcessMessage"
+	PharmaCore_GetStats_FullMethodName           = "/pharma.PharmaCore/GetStats"
+	PharmaCore_HealthCheck_FullMethodName        = "/pharma.PharmaCore/HealthCheck"
+	PharmaCore_GetMonitoredGroups_FullMethodName = "/pharma.PharmaCore/GetMonitoredGroups"
 )
 
 // PharmaCoreClient is the client API for PharmaCore service.
@@ -36,6 +37,8 @@ type PharmaCoreClient interface {
 	GetStats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsResponse, error)
 	// HealthCheck verifies the service is running
 	HealthCheck(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
+	// GetMonitoredGroups returns a list of JIDs that should be monitored
+	GetMonitoredGroups(ctx context.Context, in *MonitoredGroupsRequest, opts ...grpc.CallOption) (*MonitoredGroupsResponse, error)
 }
 
 type pharmaCoreClient struct {
@@ -76,6 +79,16 @@ func (c *pharmaCoreClient) HealthCheck(ctx context.Context, in *HealthRequest, o
 	return out, nil
 }
 
+func (c *pharmaCoreClient) GetMonitoredGroups(ctx context.Context, in *MonitoredGroupsRequest, opts ...grpc.CallOption) (*MonitoredGroupsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MonitoredGroupsResponse)
+	err := c.cc.Invoke(ctx, PharmaCore_GetMonitoredGroups_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PharmaCoreServer is the server API for PharmaCore service.
 // All implementations must embed UnimplementedPharmaCoreServer
 // for forward compatibility.
@@ -88,6 +101,8 @@ type PharmaCoreServer interface {
 	GetStats(context.Context, *StatsRequest) (*StatsResponse, error)
 	// HealthCheck verifies the service is running
 	HealthCheck(context.Context, *HealthRequest) (*HealthResponse, error)
+	// GetMonitoredGroups returns a list of JIDs that should be monitored
+	GetMonitoredGroups(context.Context, *MonitoredGroupsRequest) (*MonitoredGroupsResponse, error)
 	mustEmbedUnimplementedPharmaCoreServer()
 }
 
@@ -106,6 +121,9 @@ func (UnimplementedPharmaCoreServer) GetStats(context.Context, *StatsRequest) (*
 }
 func (UnimplementedPharmaCoreServer) HealthCheck(context.Context, *HealthRequest) (*HealthResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
+}
+func (UnimplementedPharmaCoreServer) GetMonitoredGroups(context.Context, *MonitoredGroupsRequest) (*MonitoredGroupsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetMonitoredGroups not implemented")
 }
 func (UnimplementedPharmaCoreServer) mustEmbedUnimplementedPharmaCoreServer() {}
 func (UnimplementedPharmaCoreServer) testEmbeddedByValue()                    {}
@@ -182,6 +200,24 @@ func _PharmaCore_HealthCheck_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PharmaCore_GetMonitoredGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MonitoredGroupsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PharmaCoreServer).GetMonitoredGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PharmaCore_GetMonitoredGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PharmaCoreServer).GetMonitoredGroups(ctx, req.(*MonitoredGroupsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PharmaCore_ServiceDesc is the grpc.ServiceDesc for PharmaCore service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -200,6 +236,10 @@ var PharmaCore_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HealthCheck",
 			Handler:    _PharmaCore_HealthCheck_Handler,
+		},
+		{
+			MethodName: "GetMonitoredGroups",
+			Handler:    _PharmaCore_GetMonitoredGroups_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

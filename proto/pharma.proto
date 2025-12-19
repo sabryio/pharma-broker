@@ -14,6 +14,9 @@ service PharmaCore {
     
     // HealthCheck verifies the service is running
     rpc HealthCheck(HealthRequest) returns (HealthResponse);
+
+    // GetMonitoredGroups returns a list of JIDs that should be monitored
+    rpc GetMonitoredGroups(MonitoredGroupsRequest) returns (MonitoredGroupsResponse);
 }
 
 // RawMessage represents an incoming WhatsApp message
@@ -62,4 +65,12 @@ message HealthResponse {
     bool healthy = 1;
     string version = 2;
     int64 uptime_seconds = 3;
+}
+
+// MonitoredGroupsRequest for getting monitored group JIDs
+message MonitoredGroupsRequest {}
+
+// MonitoredGroupsResponse with list of JIDs
+message MonitoredGroupsResponse {
+    repeated string jids = 1;
 }
