@@ -67,11 +67,11 @@ where
         // Matches
         .route("/api/matches", get(handlers::get_matches::<O, R, M>))
         .route(
-            "/api/matches/:id/confirm",
+            "/api/matches/{id}/confirm",
             post(handlers::confirm_match::<O, R, M>),
         )
         .route(
-            "/api/matches/:id/reject",
+            "/api/matches/{id}/reject",
             post(handlers::reject_match::<O, R, M>),
         )
         // Stats

@@ -17,9 +17,15 @@ tower-http = { version = "0.6.8", features = ["cors", "trace"] }
 # gRPC
 tonic = "0.14.2"
 prost = "0.14.1"
+tonic-prost = "0.14.2"
 
 # Database
-sqlx = { version = "0.8.6", features = ["runtime-tokio", "postgres", "chrono", "uuid"] }
+sqlx = { version = "0.8.6", features = [
+    "runtime-tokio",
+    "postgres",
+    "chrono",
+    "uuid",
+] }
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
@@ -43,4 +49,4 @@ tokio-test = "0.4.4"
 rstest = "0.26.1"
 
 [build-dependencies]
-tonic-build = "0.14.2"
+tonic-prost-build = "0.14.2"

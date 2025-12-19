@@ -4,4 +4,9 @@
 
 mod server;
 
-pub use server::start_grpc_server;
+// Include generated proto types
+pub mod pharma {
+    tonic::include_proto!("pharma");
+}
+
+pub use server::{PharmaCoreService, start_grpc_server};

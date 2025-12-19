@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog"
@@ -16,6 +17,10 @@ import (
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
+	pb "pharma-bridge/proto"
 )
 
 func main() {
@@ -78,13 +83,43 @@ func getEnv(key, fallback string) string {
 
 // Bridge connects WhatsApp to the Rust core engine
 type Bridge struct {
-	cfg    *Config
-	wa     *whatsmeow.Client
-	logger zerolog.Logger
+	cfg        *Config
+	wa         *whatsmeow.Client
+	grpcClient pb.PharmaCoreClient
+	grpcConn   *grpc.ClientConn
+	logger     zerolog.Logger
 }
 
 // NewBridge creates a new WhatsApp bridge
 func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
+	// Connect to Rust gRPC server
+	log.Info().Str("addr", cfg.CoreGRPCAddr).Msg("Connecting to Rust core...")
+
+	conn, err := grpc.NewClient(
+		cfg.CoreGRPCAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to gRPC: %w", err)
+	}
+
+	grpcClient := pb.NewPharmaCoreClient(conn)
+
+	// Test connection with health check
+	healthCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	resp, err := grpcClient.HealthCheck(healthCtx, &pb.HealthRequest{})
+	if err != nil {
+		log.Warn().Err(err).Msg("Could not reach Rust core (will retry on messages)")
+	} else {
+		log.Info().
+			Bool("healthy", resp.Healthy).
+			Str("version", resp.Version).
+			Int64("uptime", resp.UptimeSeconds).
+			Msg("✅ Connected to Rust core")
+	}
+
 	// Create WhatsApp store
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
 	container, err := sqlstore.New(ctx, "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", cfg.WhatsAppStore), dbLog)
@@ -103,9 +138,11 @@ func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 
 	return &Bridge{
-		cfg:    cfg,
-		wa:     client,
-		logger: log.With().Str("component", "bridge").Logger(),
+		cfg:        cfg,
+		wa:         client,
+		grpcClient: grpcClient,
+		grpcConn:   conn,
+		logger:     log.With().Str("component", "bridge").Logger(),
 	}, nil
 }
 
@@ -147,6 +184,9 @@ func (b *Bridge) Start(ctx context.Context) error {
 // Stop gracefully shuts down the bridge
 func (b *Bridge) Stop() {
 	b.wa.Disconnect()
+	if b.grpcConn != nil {
+		b.grpcConn.Close()
+	}
 	b.logger.Info().Msg("Bridge stopped")
 }
 
@@ -186,8 +226,7 @@ func (b *Bridge) handleMessage(evt *events.Message) {
 		Int("content_len", len(content)).
 		Msg("Received message")
 
-	// TODO: Forward to Rust via gRPC
-	// For now, just log
+	// Forward to Rust via gRPC
 	b.forwardToCore(
 		evt.Info.ID,
 		evt.Info.Chat.String(),
@@ -205,12 +244,29 @@ func (b *Bridge) forwardToCore(
 	id, groupJID, groupName, senderJID, senderPhone, senderName, content string,
 	timestamp int64,
 ) {
-	b.logger.Info().
-		Str("id", id).
-		Str("group", groupJID).
-		Str("sender", senderPhone).
-		Msg("Would forward to Rust core (gRPC client not yet implemented)")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	// TODO: Implement gRPC client
-	// client.ProcessMessage(ctx, &proto.RawMessage{...})
+	msg := &pb.RawMessage{
+		Id:          id,
+		ExternalId:  id,
+		GroupJid:    groupJID,
+		GroupName:   groupName,
+		SenderJid:   senderJID,
+		SenderPhone: senderPhone,
+		SenderName:  senderName,
+		Content:     content,
+		Timestamp:   timestamp,
+	}
+
+	resp, err := b.grpcClient.ProcessMessage(ctx, msg)
+	if err != nil {
+		b.logger.Error().Err(err).Str("id", id).Msg("Failed to forward message to Rust core")
+		return
+	}
+
+	b.logger.Info().
+		Bool("success", resp.Success).
+		Str("message_id", resp.MessageId).
+		Msg("📤 Message forwarded to Rust core")
 }
