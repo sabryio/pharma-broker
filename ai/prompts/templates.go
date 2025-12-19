@@ -118,8 +118,17 @@ Before generating valid JSON, strictly follow this internal process:
 - List of items without clear intent verb in English -> CHECK FOR QUESTION MARKS or request patterns
 
 ## 3. Quantity & Numbers
-- Detect Arabic words: "نص" (0.5), "ربع" (0.25), "تلاتة" (3).
-- Units: "علبة" (box), "شريط" (strip), "امبول" (ampoule).
+- Detect Arabic words: "نص" (0.5), "ربع" (0.25), "تلاتة" (3), "علبتين" (2).
+- Number words: "واحد" (1), "اتنين" (2), "تلات" (3), "اربع" (4), "خمس" (5).
+- Units: "علبة" (box), "شريط" (strip), "امبول" (ampoule), "ق" (piece).
+- CRITICAL: If quantity is NOT explicitly stated, set quantity: 0 (DO NOT guess).
+
+## 3a. Price Extraction (VERY IMPORTANT)
+- Arabic price patterns: "ب 300", "بـ٣٠٠", "ب٣٠٠", "300 جنيه", "300 ج", "السعر 300"
+- English price patterns: "300 EGP", "for 300", "price: 300", "@ 300"
+- CRITICAL: If price is NOT explicitly stated, set price: 0 (DO NOT guess).
+- For REQUESTs: max_price = 0 unless explicitly stated with "أقصى", "max", "حد أقصى".
+- Common price keywords: "ب", "بسعر", "السعر", "الواحدة ب", "للعلبة"
 
 ## 4. Confidence Scoring (Confidence-Weighted)
 - 1.0: Exact map match + clear price/qty.
