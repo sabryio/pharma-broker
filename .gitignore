@@ -60,4 +60,4 @@ test_*.json
 results*.json
 
 # Reports
-reports/
+/reports/
