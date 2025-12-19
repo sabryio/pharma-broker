@@ -6,9 +6,11 @@ use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use pharma_core::ai::AiClient;
+use pharma_core::api::handlers::init_start_time;
 use pharma_core::api::{create_router, routes::AppState};
 use pharma_core::grpc::{PharmaCoreService, start_grpc_server};
 use pharma_core::matching::Scorer;
+use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
     PostgresGroupRepo, PostgresMatchRepo, PostgresOfferRepo, PostgresRawMessageRepo,
     PostgresRequestRepo, create_pool,
@@ -25,6 +27,13 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     tracing::info!("🦀 PharmaBroker Core Engine v0.1.0 starting...");
+
+    // Initialize Prometheus metrics
+    let metrics_handle = init_metrics();
+    tracing::info!("📊 Prometheus metrics initialized");
+
+    // Initialize uptime tracking for health checks
+    init_start_time();
 
     // Load environment variables
     dotenvy::dotenv().ok();
@@ -61,6 +70,7 @@ async fn main() -> anyhow::Result<()> {
         request_repo: request_repo.clone(),
         match_repo,
         scorer,
+        metrics_handle: Some(metrics_handle),
     };
 
     // Create HTTP router

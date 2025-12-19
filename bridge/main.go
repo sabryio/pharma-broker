@@ -4,9 +4,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 
 	"pharma-bridge/deduplicator"
 	pb "pharma-bridge/proto"
@@ -47,6 +51,9 @@ func main() {
 
 	// Start bridge with reconnection support
 	go bridge.RunWithReconnect(ctx)
+
+	// Start health HTTP server
+	go startHealthServer(bridge)
 
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
@@ -321,8 +328,15 @@ func (b *Bridge) forwardToCore(
 	id, groupJID, groupName, senderJID, senderPhone, senderName, content string,
 	timestamp int64,
 ) {
+	// Generate trace ID for request correlation
+	traceID := fmt.Sprintf("%s-%d", id[:8], time.Now().UnixNano()%1000000)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	// Add trace ID to gRPC metadata
+	md := metadata.Pairs("x-request-id", traceID)
+	ctx = metadata.NewOutgoingContext(ctx, md)
 
 	msg := &pb.RawMessage{
 		Id:          id,
@@ -336,14 +350,68 @@ func (b *Bridge) forwardToCore(
 		Timestamp:   timestamp,
 	}
 
+	b.logger.Info().
+		Str("trace_id", traceID).
+		Str("id", id).
+		Msg("📤 Forwarding message to Rust core")
+
 	resp, err := b.grpcClient.ProcessMessage(ctx, msg)
 	if err != nil {
-		b.logger.Error().Err(err).Str("id", id).Msg("Failed to forward message to Rust core")
+		b.logger.Error().
+			Err(err).
+			Str("trace_id", traceID).
+			Str("id", id).
+			Msg("Failed to forward message to Rust core")
 		return
 	}
 
 	b.logger.Info().
+		Str("trace_id", traceID).
 		Bool("success", resp.Success).
 		Str("message_id", resp.MessageId).
 		Msg("📤 Message forwarded to Rust core")
+
+	// Increment counter for health stats
+	atomic.AddInt64(&messagesForwarded, 1)
+}
+
+// messagesForwarded tracks total messages forwarded for health reporting
+var messagesForwarded int64
+
+// startHealthServer starts a simple HTTP health server on port 5050
+func startHealthServer(bridge *Bridge) {
+	port := getEnv("HEALTH_PORT", "5050")
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		whatsappConnected := bridge.wa != nil && bridge.wa.IsConnected()
+		coreConnected := bridge.grpcConn != nil
+
+		status := "healthy"
+		if !whatsappConnected {
+			status = "whatsapp_disconnected"
+		} else if !coreConnected {
+			status = "core_disconnected"
+		}
+
+		response := map[string]interface{}{
+			"status":             status,
+			"service":            "pharma-bridge",
+			"version":            "0.2.0",
+			"whatsapp_connected": whatsappConnected,
+			"core_connected":     coreConnected,
+			"messages_forwarded": atomic.LoadInt64(&messagesForwarded),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if status != "healthy" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+		json.NewEncoder(w).Encode(response)
+	})
+
+	log.Info().Str("port", port).Msg("🏥 Health server starting")
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
+		log.Error().Err(err).Msg("Health server failed")
+	}
 }

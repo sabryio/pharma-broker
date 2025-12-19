@@ -9,6 +9,7 @@ pub mod domain;
 pub mod error;
 pub mod grpc;
 pub mod matching;
+pub mod metrics;
 pub mod repository;
 
 pub use error::{Error, Result};

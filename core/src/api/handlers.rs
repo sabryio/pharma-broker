@@ -62,12 +62,95 @@ impl<T: Serialize> ApiResponse<T> {
     }
 }
 
-/// Health check endpoint
+/// Health check response
+#[derive(Debug, Serialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub service: String,
+    pub version: String,
+    pub uptime_seconds: u64,
+    pub checks: HealthChecks,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HealthChecks {
+    pub database: String,
+    pub ai_gateway: String,
+}
+
+/// Start time for uptime calculation (set once at startup)
+static START_TIME: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+pub fn init_start_time() {
+    START_TIME.get_or_init(std::time::Instant::now);
+}
+
+fn get_uptime() -> u64 {
+    START_TIME.get().map(|t| t.elapsed().as_secs()).unwrap_or(0)
+}
+
+/// Health check endpoint - basic liveness
 pub async fn health_check() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "healthy",
         "service": "pharma-core",
-        "version": "0.1.0"
+        "version": "0.1.0",
+        "uptime_seconds": get_uptime()
+    }))
+}
+
+/// Readiness probe - checks if service can handle requests (DB connected)
+pub async fn health_ready<O, R, M>(
+    State(state): State<AppState<O, R, M>>,
+) -> Result<Json<HealthResponse>, (StatusCode, Json<serde_json::Value>)>
+where
+    O: OfferRepository,
+    R: RequestRepository,
+    M: MatchRepository,
+{
+    // Check database by counting offers (simple query)
+    let db_status = match state.offer_repo.count_active().await {
+        Ok(_) => "ok",
+        Err(_) => "error",
+    };
+
+    let ai_status = "ok"; // TODO: ping AI gateway
+
+    let healthy = db_status == "ok";
+
+    let response = HealthResponse {
+        status: if healthy {
+            "ready".to_string()
+        } else {
+            "not_ready".to_string()
+        },
+        service: "pharma-core".to_string(),
+        version: "0.1.0".to_string(),
+        uptime_seconds: get_uptime(),
+        checks: HealthChecks {
+            database: db_status.to_string(),
+            ai_gateway: ai_status.to_string(),
+        },
+    };
+
+    if healthy {
+        Ok(Json(response))
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "status": "not_ready",
+                "checks": { "database": db_status }
+            })),
+        ))
+    }
+}
+
+/// Liveness probe - checks if process is alive (always returns ok)
+pub async fn health_live() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "status": "alive",
+        "uptime_seconds": get_uptime()
     }))
 }
 

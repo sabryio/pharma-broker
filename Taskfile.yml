@@ -1,130 +1,187 @@
 version: "3"
 
 vars:
-  CLIENT_DIR: internal/api/static/client
-  DIST_DIR: internal/api/static/dist
+  CORE_DIR: core
+  BRIDGE_DIR: bridge
+  GATEWAY_DIR: gateway
 
 tasks:
   default:
-    desc: Build everything
+    desc: Build all services
     cmds:
-      - task: client
-      - task: server
+      - task: core:build
+      - task: bridge:build
+      - task: gateway:build
 
-  client:
-    desc: Build the React client
-    dir: "{{.CLIENT_DIR}}"
+  # ============================================================================
+  # Core (Rust)
+  # ============================================================================
+
+  core:build:
+    desc: Build the Rust core engine
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo build --release
+    sources:
+      - "{{.CORE_DIR}}/src/**/*.rs"
+      - "{{.CORE_DIR}}/Cargo.toml"
+    generates:
+      - "{{.CORE_DIR}}/target/release/pharma-core.exe"
+
+  core:dev:
+    desc: Run Rust core in dev mode
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run
+
+  core:check:
+    desc: Check Rust code compiles
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo check
+
+  core:test:
+    desc: Run Rust tests
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo test
+
+  # ============================================================================
+  # Bridge (Go)
+  # ============================================================================
+
+  bridge:build:
+    desc: Build the Go WhatsApp bridge
+    dir: "{{.BRIDGE_DIR}}"
+    cmds:
+      - go build -o pharma-bridge.exe .
+    sources:
+      - "{{.BRIDGE_DIR}}/**/*.go"
+    generates:
+      - "{{.BRIDGE_DIR}}/pharma-bridge.exe"
+
+  bridge:dev:
+    desc: Run Go bridge
+    dir: "{{.BRIDGE_DIR}}"
+    cmds:
+      - go run .
+
+  bridge:test:
+    desc: Run Go tests
+    dir: "{{.BRIDGE_DIR}}"
+    cmds:
+      - go test ./...
+
+  # ============================================================================
+  # Gateway (TypeScript)
+  # ============================================================================
+
+  gateway:build:
+    desc: Build the TypeScript gateway
+    dir: "{{.GATEWAY_DIR}}"
     cmds:
       - bun install
-      - bun run build
     sources:
-      - "{{.CLIENT_DIR}}/src/**/*"
-      - "{{.CLIENT_DIR}}/package.json"
-      - "{{.CLIENT_DIR}}/vite.config.ts"
-    generates:
-      - "{{.DIST_DIR}}/**/*"
+      - "{{.GATEWAY_DIR}}/src/**/*.ts"
+      - "{{.GATEWAY_DIR}}/package.json"
 
-  server:
-    desc: Build the Go server
-    deps: [client]
+  gateway:dev:
+    desc: Run TypeScript gateway
+    dir: "{{.GATEWAY_DIR}}"
     cmds:
-      - go build -o pharmabroker.exe ./cmd/app
-    sources:
-      - "**/*.go"
-      - "{{.DIST_DIR}}/**/*"
-    generates:
-      - pharmabroker.exe
+      - bun run src/index.ts
 
-  dev:client:
-    desc: Run React dev server
-    dir: "{{.CLIENT_DIR}}"
-    cmds:
-      - bun --bun run dev
+  # ============================================================================
+  # Docker Compose
+  # ============================================================================
 
-  dev:server:
-    desc: Run Go server
+  up:
+    desc: Start all services with Docker Compose
     cmds:
-      - go run ./cmd/app serve
+      - docker compose up -d
+
+  down:
+    desc: Stop all services
+    cmds:
+      - docker compose down
+
+  logs:
+    desc: View logs from all services
+    cmds:
+      - docker compose logs -f core bridge gateway
+
+  # ============================================================================
+  # Development
+  # ============================================================================
+
+  dev:
+    desc: Run all services locally (requires 3 terminals)
+    cmds:
+      - echo "Run in separate terminals:"
+      - echo "  Terminal 1: task core:dev"
+      - echo "  Terminal 2: task bridge:dev"
+      - echo "  Terminal 3: task gateway:dev"
+
+  # ============================================================================
+  # Database
+  # ============================================================================
+
+  db:up:
+    desc: Start PostgreSQL
+    cmds:
+      - docker compose up -d postgres
+
+  db:migrate:
+    desc: Run database migrations
+    cmds:
+      - docker compose exec postgres psql -U postgres -d pharmabroker -f /docker-entrypoint-initdb.d/001_initial_schema.sql
+
+  # ============================================================================
+  # Health Checks
+  # ============================================================================
+
+  health:
+    desc: Check health of all services
+    cmds:
+      - cmd: powershell -Command "Invoke-RestMethod http://localhost:8080/health | ConvertTo-Json"
+        platforms: [windows]
+      - cmd: powershell -Command "Invoke-RestMethod http://localhost:5050/health | ConvertTo-Json"
+        platforms: [windows]
+      - cmd: powershell -Command "Invoke-RestMethod http://localhost:3000/health | ConvertTo-Json"
+        platforms: [windows]
+      - cmd: curl -s http://localhost:8080/health | jq
+        platforms: [linux, darwin]
+      - cmd: curl -s http://localhost:5050/health | jq
+        platforms: [linux, darwin]
+      - cmd: curl -s http://localhost:3000/health | jq
+        platforms: [linux, darwin]
+
+  # ============================================================================
+  # Cleanup
+  # ============================================================================
 
   clean:
-    desc: Clean build artifacts
+    desc: Clean all build artifacts
     cmds:
-      - cmd: powershell -Command "if (Test-Path 'pharmabroker.exe') { Remove-Item -Force 'pharmabroker.exe' }"
+      - cmd: powershell -Command "if (Test-Path 'core/target') { Remove-Item -Recurse -Force 'core/target' }"
         platforms: [windows]
-      - cmd: powershell -Command "if (Test-Path '{{.DIST_DIR}}') { Remove-Item -Recurse -Force '{{.DIST_DIR}}' }"
+      - cmd: powershell -Command "if (Test-Path 'bridge/pharma-bridge.exe') { Remove-Item -Force 'bridge/pharma-bridge.exe' }"
         platforms: [windows]
-      - cmd: rm -f pharmabroker pharmabroker.exe
-        platforms: [linux, darwin]
-      - cmd: rm -rf {{.DIST_DIR}}
+      - cmd: rm -rf core/target bridge/pharma-bridge
         platforms: [linux, darwin]
 
-  embeddings:refresh:
-    desc: Refresh medication embeddings from database
-    cmds:
-      - go run ./cmd/tools/refresh_embeddings
+  # ============================================================================
+  # Legacy (for reference)
+  # ============================================================================
 
-  start:telegram:
-    desc: Start Telegram bot
+  legacy:build:
+    desc: Build legacy Go monolith
+    dir: legacy
     cmds:
-      - go run ./cmd/playground/telegram/main.go
+      - go build -o pharmabroker.exe ./cmd/app
 
-  workflow:test:
-    desc: Run comprehensive workflow test
+  legacy:test:
+    desc: Run legacy Go tests
+    dir: legacy
     cmds:
-      - go run ./cmd/playground/workflow/main.go
-
-  workflow:test:skip-notify:
-    desc: Run comprehensive workflow test (skip notifications)
-    cmds:
-      - go run ./cmd/playground/workflow/main.go -skip-notify
-
-  playground:normalization:
-    desc: Test Arabic normalization
-    cmds:
-      - go run ./cmd/playground/normalization
-
-  playground:fuzzy:
-    desc: Test fuzzy matching with Levenshtein distance
-    cmds:
-      - go run ./cmd/playground/fuzzy_match
-
-  playground:mapping:
-    desc: Test full medication mapping pipeline
-    cmds:
-      - go run ./cmd/playground/mapping_check
-
-  playground:benchmark:
-    desc: Benchmark hybrid RAG filtering performance
-    cmds:
-      - go run ./cmd/playground/benchmark
-
-  monitor:
-    desc: Run the application in monitor mode
-    cmds:
-      - go run ./cmd/app/main.go monitor
-
-  db:reset:
-    desc: Reset the database (delete and reseed)
-    cmds:
-      - go run ./cmd/app/main.go reset-db -f
-
-  db:seed:
-    desc: Seed the database with medications from JSON
-    cmds:
-      - go run ./cmd/playground/mapping_check
-
-  test:integration:
-    desc: Run integration tests (requires AI service)
-    cmds:
-      - go test -tags=integration ./ai/... -v -timeout 5m
-
-  test:unit:
-    desc: Run unit tests across all workspace modules
-    cmds:
-      - go test ./... ./ai/... ./api/... ./app/... ./bot/... ./domain/... ./matching/... ./messaging/... ./notify/... ./parsing/... ./pkg/... ./reports/... ./storage/... -v
-
-  test:coverage:
-    desc: Run tests with coverage report
-    cmds:
-      - go test ./... ./ai/... ./api/... ./app/... ./bot/... ./domain/... ./matching/... ./messaging/... ./notify/... ./parsing/... ./pkg/... ./reports/... ./storage/... -coverprofile=coverage.out
-      - go tool cover -html=coverage.out -o coverage.html
+      - go test ./...

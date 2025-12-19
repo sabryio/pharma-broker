@@ -100,9 +100,18 @@ where
         &self,
         request: Request<ProtoRawMessage>,
     ) -> Result<Response<ProcessResponse>, Status> {
+        // Extract trace ID from metadata or generate new one
+        let trace_id = request
+            .metadata()
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+
         let proto_msg = request.into_inner();
 
         tracing::info!(
+            trace_id = %trace_id,
             id = %proto_msg.id,
             group = %proto_msg.group_jid,
             sender = %proto_msg.sender_phone,

@@ -4,8 +4,10 @@
 
 use axum::{
     Router,
+    response::IntoResponse,
     routing::{get, post},
 };
+use metrics_exporter_prometheus::PrometheusHandle;
 use std::sync::Arc;
 
 use super::handlers;
@@ -23,6 +25,7 @@ where
     pub request_repo: Arc<R>,
     pub match_repo: Arc<M>,
     pub scorer: Arc<Scorer>,
+    pub metrics_handle: Option<PrometheusHandle>,
 }
 
 impl<O, R, M> Clone for AppState<O, R, M>
@@ -37,6 +40,7 @@ where
             request_repo: self.request_repo.clone(),
             match_repo: self.match_repo.clone(),
             scorer: self.scorer.clone(),
+            metrics_handle: self.metrics_handle.clone(),
         }
     }
 }
@@ -51,6 +55,7 @@ where
 /// - POST /api/matches/:id/reject  - Reject a match
 /// - GET  /api/stats          - Get dashboard stats
 /// - GET  /health             - Health check
+/// - GET  /metrics            - Prometheus metrics
 pub fn create_router<O, R, M>(state: AppState<O, R, M>) -> Router
 where
     O: OfferRepository + 'static,
@@ -58,8 +63,12 @@ where
     M: MatchRepository + 'static,
 {
     Router::new()
-        // Health check
+        // Health checks (Kubernetes probes)
         .route("/health", get(handlers::health_check))
+        .route("/health/ready", get(handlers::health_ready::<O, R, M>))
+        .route("/health/live", get(handlers::health_live))
+        // Prometheus metrics
+        .route("/metrics", get(metrics_handler::<O, R, M>))
         // Offers
         .route("/api/offers", get(handlers::get_offers::<O, R, M>))
         // Requests
@@ -77,4 +86,20 @@ where
         // Stats
         .route("/api/stats", get(handlers::get_stats::<O, R, M>))
         .with_state(state)
+}
+
+/// Handler for /metrics endpoint - returns Prometheus format
+async fn metrics_handler<O, R, M>(
+    axum::extract::State(state): axum::extract::State<AppState<O, R, M>>,
+) -> impl IntoResponse
+where
+    O: OfferRepository,
+    R: RequestRepository,
+    M: MatchRepository,
+{
+    if let Some(handle) = &state.metrics_handle {
+        handle.render()
+    } else {
+        "# Metrics not initialized\n".to_string()
+    }
 }
