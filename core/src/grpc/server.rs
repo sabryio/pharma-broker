@@ -18,9 +18,13 @@ use super::pharma::{
     pharma_core_server::{PharmaCore, PharmaCoreServer},
 };
 use crate::ai::AiClient;
-use crate::domain::{ItemStatus, Offer, RawMessage, Request as RequestEntity};
+use crate::domain::{
+    ConfidenceBand, ItemStatus, Match as MatchEntity, MatchStatus, Offer, RawMessage,
+    Request as RequestEntity,
+};
+use crate::matching::Scorer;
 use crate::repository::{
-    GroupRepository, OfferRepository, RawMessageRepository, RequestRepository,
+    GroupRepository, MatchRepository, OfferRepository, RawMessageRepository, RequestRepository,
 };
 
 /// The gRPC service implementation
@@ -35,6 +39,7 @@ where
     pub request_repo: Arc<R>,
     pub raw_message_repo: Arc<M>,
     pub group_repo: Arc<G>,
+    pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
     pub ai_client: Arc<AiClient>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     start_time: std::time::Instant,
@@ -52,6 +57,7 @@ where
         request_repo: Arc<R>,
         raw_message_repo: Arc<M>,
         group_repo: Arc<G>,
+        match_repo: Arc<dyn MatchRepository + Send + Sync>,
         ai_client: Arc<AiClient>,
         ws_tx: broadcast::Sender<WsEvent>,
     ) -> Self {
@@ -60,6 +66,7 @@ where
             request_repo,
             raw_message_repo,
             group_repo,
+            match_repo,
             ai_client,
             ws_tx,
             start_time: std::time::Instant::now(),
@@ -187,6 +194,7 @@ where
         let sender_phone = raw_message.sender_phone.clone();
         let reply_to = raw_message.reply_to_content.clone();
         let ws_tx = self.ws_tx.clone();
+        let match_repo = self.match_repo.clone();
 
         tokio::spawn(async move {
             tracing::info!(id = %msg_id, "🤖 Starting AI parsing (background)");
@@ -302,7 +310,95 @@ where
                 "✅ Message processing complete"
             );
 
-            // TODO: Trigger matching engine for new requests
+            // Trigger matching engine for new requests
+            if requests_created > 0 {
+                // Fetch active offers to match against
+                let active_offers = match offer_repo.get_active(100, 0).await {
+                    Ok(offers) => offers,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to fetch offers for matching");
+                        return;
+                    }
+                };
+
+                // Use the scorer with default config
+                let scorer = Scorer::default();
+                let mut matches_created = 0u32;
+
+                // For each request we just created, try to find matches
+                // Note: In a production system, we'd track which requests were created
+                // For now, we'll search for recent requests from this message
+                if let Ok(recent_requests) = request_repo.get_active(10, 0).await {
+                    for request in recent_requests.iter() {
+                        for offer in active_offers.iter() {
+                            // Skip if already matched
+                            if let Ok(exists) = match_repo.exists(&offer.id, &request.id).await
+                                && exists
+                            {
+                                continue;
+                            }
+
+                            // Calculate medication similarity (simplified: use string match for now)
+                            // TODO: Use embedding-based similarity when embeddings are available
+                            let med_score = if offer.medication.to_lowercase()
+                                == request.medication.to_lowercase()
+                            {
+                                1.0
+                            } else if offer
+                                .medication
+                                .to_lowercase()
+                                .contains(&request.medication.to_lowercase())
+                                || request
+                                    .medication
+                                    .to_lowercase()
+                                    .contains(&offer.medication.to_lowercase())
+                            {
+                                0.7
+                            } else {
+                                0.0
+                            };
+
+                            // Score the match
+                            let score = scorer.score_match(offer, request, med_score);
+
+                            // Only create match if confidence is not NONE
+                            if score.confidence != ConfidenceBand::None {
+                                let match_entity = MatchEntity {
+                                    id: Uuid::new_v4().to_string(),
+                                    offer_id: offer.id.clone(),
+                                    request_id: request.id.clone(),
+                                    score: score.total,
+                                    reasoning: score.breakdown.clone(),
+                                    matched_by: None,
+                                    status: MatchStatus::Pending,
+                                    created_at: Utc::now(),
+                                    confirmed_at: None,
+                                    notes: None,
+                                };
+
+                                if let Err(e) = match_repo.save(&match_entity).await {
+                                    tracing::error!(error = %e, "Failed to save match");
+                                } else {
+                                    tracing::info!(
+                                        match_id = %match_entity.id,
+                                        offer_id = %offer.id,
+                                        request_id = %request.id,
+                                        score = %score.total,
+                                        confidence = ?score.confidence,
+                                        "🎯 Match created"
+                                    );
+                                    matches_created += 1;
+                                    let _ = ws_tx.send(WsEvent::NewMatch(match_entity));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if matches_created > 0 {
+                    tracing::info!(matches = matches_created, "🎯 Matching complete");
+                }
+            }
         });
 
         Ok(Response::new(ProcessResponse {

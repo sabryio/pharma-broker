@@ -104,6 +104,7 @@ async fn main() -> anyhow::Result<()> {
         request_repo,
         raw_message_repo,
         group_repo,
+        match_repo.clone(),
         ai_client,
         ws_tx,
     );

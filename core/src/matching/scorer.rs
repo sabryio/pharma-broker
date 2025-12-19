@@ -28,6 +28,8 @@ pub struct Scorer {
     weights: RwLock<Weights>,
     thresholds: RwLock<Thresholds>,
     recency_half_life: RwLock<f64>,
+    min_medication_score: RwLock<f64>,
+    medication_gate_enabled: RwLock<bool>,
 }
 
 impl Default for Scorer {
@@ -43,6 +45,8 @@ impl Scorer {
             weights: RwLock::new(weights.unwrap_or_default()),
             thresholds: RwLock::new(thresholds.unwrap_or_default()),
             recency_half_life: RwLock::new(24.0), // 24 hours default
+            min_medication_score: RwLock::new(0.5),
+            medication_gate_enabled: RwLock::new(true),
         }
     }
 
@@ -143,6 +147,27 @@ impl Scorer {
         request: &Request,
         medication_score: f64,
     ) -> MatchScore {
+        // Medication gate check
+        let gate_enabled = *self.medication_gate_enabled.read().unwrap();
+        let min_med = *self.min_medication_score.read().unwrap();
+
+        if gate_enabled && medication_score < min_med {
+            return MatchScore {
+                medication_score,
+                dosage_score: 0.0,
+                quantity_score: 0.0,
+                price_score: 0.0,
+                recency_score: 0.0,
+                total: 0.0,
+                confidence: ConfidenceBand::None,
+                breakdown: format!(
+                    "Medication mismatch ({:.0}% < {:.0}% required)",
+                    medication_score * 100.0,
+                    min_med * 100.0
+                ),
+            };
+        }
+
         let weights = self.weights.read().unwrap();
 
         let qty_score = self.quantity_score(offer.quantity, request.quantity);
@@ -156,6 +181,7 @@ impl Scorer {
             + price_score * weights.price
             + recency_score * weights.recency;
 
+        let total = total.clamp(0.0, 1.0);
         let confidence = self.get_confidence_band(total);
 
         let breakdown = format!(

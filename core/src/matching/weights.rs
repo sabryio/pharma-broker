@@ -17,11 +17,12 @@ pub struct Weights {
 
 impl Default for Weights {
     fn default() -> Self {
+        // Legacy values from Go interface.go:66-74
         Self {
-            medication: 0.45,
-            dosage: 0.10,
-            quantity: 0.20,
-            price: 0.15,
+            medication: 0.75, // Medication is DOMINANT
+            dosage: 0.05,
+            quantity: 0.05,
+            price: 0.05,
             recency: 0.10,
         }
     }
