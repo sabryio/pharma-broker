@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package pharma;
+
+option go_package = "pharma-bridge/proto";
+
+// PharmaCoreService is the main service interface for the Rust core engine
+service PharmaCore {
+    // ProcessMessage handles incoming WhatsApp messages
+    rpc ProcessMessage(RawMessage) returns (ProcessResponse);
+    
+    // GetStats returns current system statistics
+    rpc GetStats(StatsRequest) returns (StatsResponse);
+    
+    // HealthCheck verifies the service is running
+    rpc HealthCheck(HealthRequest) returns (HealthResponse);
+}
+
+// RawMessage represents an incoming WhatsApp message
+message RawMessage {
+    string id = 1;
+    string external_id = 2;
+    string group_jid = 3;
+    string group_name = 4;
+    string sender_jid = 5;
+    string sender_phone = 6;
+    string sender_name = 7;
+    string content = 8;
+    int64 timestamp = 9;
+    
+    // Reply context
+    optional string reply_to_id = 10;
+    optional string reply_to_content = 11;
+    optional string reply_to_sender = 12;
+}
+
+// ProcessResponse indicates the result of message processing
+message ProcessResponse {
+    bool success = 1;
+    string message_id = 2;
+    optional string error = 3;
+}
+
+// StatsRequest for getting system statistics
+message StatsRequest {}
+
+// StatsResponse with current system statistics
+message StatsResponse {
+    int64 active_offers = 1;
+    int64 active_requests = 2;
+    int64 pending_matches = 3;
+    int64 confirmed_today = 4;
+    int64 processed_today = 5;
+    double avg_match_score = 6;
+}
+
+// HealthRequest for health check
+message HealthRequest {}
+
+// HealthResponse indicating service health
+message HealthResponse {
+    bool healthy = 1;
+    string version = 2;
+    int64 uptime_seconds = 3;
+}
