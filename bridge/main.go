@@ -9,8 +9,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types/events"
+	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
 func main() {
@@ -18,21 +23,22 @@ func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	log.Info().Msg("🌉 PharmaBroker WhatsApp Bridge starting...")
+	log.Info().Msg("🌉 PharmaBroker WhatsApp Bridge v0.1.0")
 
 	// Load configuration
 	cfg := loadConfig()
 
+	// Create context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Create bridge
-	bridge, err := NewBridge(cfg)
+	bridge, err := NewBridge(ctx, cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create bridge")
 	}
 
 	// Start bridge
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	if err := bridge.Start(ctx); err != nil {
 		log.Fatal().Err(err).Msg("Failed to start bridge")
 	}
@@ -57,9 +63,9 @@ type Config struct {
 func loadConfig() *Config {
 	return &Config{
 		CoreGRPCAddr:    getEnv("CORE_GRPC_ADDR", "localhost:50051"),
-		WhatsAppStore:   getEnv("WHATSAPP_STORE", "./data/whatsapp"),
-		AllowedPhones:   []string{}, // TODO: Load from env
-		MonitoredGroups: []string{}, // TODO: Load from env
+		WhatsAppStore:   getEnv("WHATSAPP_STORE", "./data/whatsapp.db"),
+		AllowedPhones:   []string{},
+		MonitoredGroups: []string{},
 	}
 }
 
@@ -72,59 +78,139 @@ func getEnv(key, fallback string) string {
 
 // Bridge connects WhatsApp to the Rust core engine
 type Bridge struct {
-	cfg *Config
-	// wa     *whatsmeow.Client // TODO: Uncomment when whatsmeow is added
-	// grpc   pb.PharmaCoreClient // TODO: Add gRPC client
+	cfg    *Config
+	wa     *whatsmeow.Client
 	logger zerolog.Logger
 }
 
 // NewBridge creates a new WhatsApp bridge
-func NewBridge(cfg *Config) (*Bridge, error) {
+func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
+	// Create WhatsApp store
+	dbLog := waLog.Stdout("Database", "DEBUG", true)
+	container, err := sqlstore.New(ctx, "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", cfg.WhatsAppStore), dbLog)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create store: %w", err)
+	}
+
+	// Get or create device store
+	deviceStore, err := container.GetFirstDevice(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get device: %w", err)
+	}
+
+	// Create WhatsApp client
+	clientLog := waLog.Stdout("Client", "INFO", true)
+	client := whatsmeow.NewClient(deviceStore, clientLog)
+
 	return &Bridge{
 		cfg:    cfg,
+		wa:     client,
 		logger: log.With().Str("component", "bridge").Logger(),
 	}, nil
 }
 
 // Start begins the bridge operations
 func (b *Bridge) Start(ctx context.Context) error {
+	// Register event handler
+	b.wa.AddEventHandler(b.handleEvent)
+
+	// Connect to WhatsApp
+	if b.wa.Store.ID == nil {
+		// Need to pair
+		qrChan, _ := b.wa.GetQRChannel(ctx)
+		if err := b.wa.Connect(); err != nil {
+			return fmt.Errorf("failed to connect: %w", err)
+		}
+
+		for evt := range qrChan {
+			if evt.Event == "code" {
+				b.logger.Info().Str("qr", evt.Code).Msg("Scan this QR code to link")
+				fmt.Println("QR Code:", evt.Code)
+			} else {
+				b.logger.Info().Str("event", evt.Event).Msg("QR event")
+			}
+		}
+	} else {
+		// Already paired
+		if err := b.wa.Connect(); err != nil {
+			return fmt.Errorf("failed to connect: %w", err)
+		}
+	}
+
 	b.logger.Info().
 		Str("grpc_addr", b.cfg.CoreGRPCAddr).
-		Str("store", b.cfg.WhatsAppStore).
-		Msg("Bridge started")
-
-	// TODO: Connect to Rust gRPC server
-	// TODO: Initialize WhatsApp client
-	// TODO: Register message handler
-
-	fmt.Println("WhatsApp Bridge is running...")
-	fmt.Println("Press Ctrl+C to stop")
+		Msg("Bridge connected to WhatsApp")
 
 	return nil
 }
 
 // Stop gracefully shuts down the bridge
 func (b *Bridge) Stop() {
+	b.wa.Disconnect()
 	b.logger.Info().Msg("Bridge stopped")
-	// TODO: Disconnect WhatsApp
-	// TODO: Close gRPC connection
+}
+
+// handleEvent processes WhatsApp events
+func (b *Bridge) handleEvent(evt interface{}) {
+	switch v := evt.(type) {
+	case *events.Message:
+		b.handleMessage(v)
+	case *events.Connected:
+		b.logger.Info().Msg("WhatsApp connected")
+	case *events.Disconnected:
+		b.logger.Warn().Msg("WhatsApp disconnected")
+	}
 }
 
 // handleMessage processes incoming WhatsApp messages
-// This is the core function that forwards messages to Rust
-func (b *Bridge) handleMessage(groupJID, senderPhone, senderName, content string) {
+func (b *Bridge) handleMessage(evt *events.Message) {
+	// Only process group messages
+	if !evt.Info.IsGroup {
+		return
+	}
+
+	content := ""
+	if evt.Message.GetConversation() != "" {
+		content = evt.Message.GetConversation()
+	} else if evt.Message.GetExtendedTextMessage() != nil {
+		content = evt.Message.GetExtendedTextMessage().GetText()
+	}
+
+	if content == "" {
+		return
+	}
+
 	b.logger.Debug().
-		Str("group", groupJID).
-		Str("sender", senderPhone).
-		Str("content", content[:min(50, len(content))]).
+		Str("group", evt.Info.Chat.String()).
+		Str("sender", evt.Info.Sender.User).
+		Int("content_len", len(content)).
 		Msg("Received message")
 
 	// TODO: Forward to Rust via gRPC
-	// b.grpc.ProcessMessage(ctx, &pb.RawMessage{
-	// 	GroupJid:    groupJID,
-	// 	SenderPhone: senderPhone,
-	// 	SenderName:  senderName,
-	// 	Content:     content,
-	// 	Timestamp:   time.Now().Unix(),
-	// })
+	// For now, just log
+	b.forwardToCore(
+		evt.Info.ID,
+		evt.Info.Chat.String(),
+		evt.Info.Chat.String(), // Group name not available directly
+		evt.Info.Sender.String(),
+		evt.Info.Sender.User,
+		evt.Info.PushName,
+		content,
+		evt.Info.Timestamp.Unix(),
+	)
+}
+
+// forwardToCore sends the message to the Rust core via gRPC
+func (b *Bridge) forwardToCore(
+	id, groupJID, groupName, senderJID, senderPhone, senderName, content string,
+	timestamp int64,
+) {
+	b.logger.Info().
+		Str("id", id).
+		Str("group", groupJID).
+		Str("sender", senderPhone).
+		Msg("Would forward to Rust core (gRPC client not yet implemented)")
+
+	// TODO: Implement gRPC client
+	// client.ProcessMessage(ctx, &proto.RawMessage{...})
 }
