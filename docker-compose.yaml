@@ -121,9 +121,47 @@ models:
 
 volumes:
   bridge_data:
+  prometheus_data:
+  grafana_data:
 
 
 networks:
   pharmabroker-network:
     name: pharmabroker-network
     driver: bridge
+
+# Add monitoring services to the services section above gateway
+# To use, add these to the 'services' section:
+#
+#   prometheus:
+#     image: prom/prometheus:latest
+#     container_name: pharma-prometheus
+#     command:
+#       - '--config.file=/etc/prometheus/prometheus.yml'
+#       - '--storage.tsdb.path=/prometheus'
+#     volumes:
+#       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+#       - prometheus_data:/prometheus
+#     ports:
+#       - "9090:9090"
+#     networks:
+#       - pharmabroker-network
+#     restart: unless-stopped
+#
+#   grafana:
+#     image: grafana/grafana:latest
+#     container_name: pharma-grafana
+#     environment:
+#       GF_SECURITY_ADMIN_PASSWORD: admin
+#       GF_USERS_ALLOW_SIGN_UP: "false"
+#     volumes:
+#       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+#       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+#       - grafana_data:/var/lib/grafana
+#     ports:
+#       - "3001:3000"
+#     depends_on:
+#       - prometheus
+#     networks:
+#       - pharmabroker-network
+#     restart: unless-stopped

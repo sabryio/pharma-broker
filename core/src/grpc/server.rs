@@ -22,7 +22,7 @@ use crate::domain::{
     ConfidenceBand, ItemStatus, Match as MatchEntity, MatchStatus, Offer, RawMessage,
     Request as RequestEntity,
 };
-use crate::matching::Scorer;
+use crate::matching::{Scorer, cosine_similarity};
 use crate::repository::{
     GroupRepository, MatchRepository, OfferRepository, RawMessageRepository, RequestRepository,
 };
@@ -338,24 +338,40 @@ where
                                 continue;
                             }
 
-                            // Calculate medication similarity (simplified: use string match for now)
-                            // TODO: Use embedding-based similarity when embeddings are available
-                            let med_score = if offer.medication.to_lowercase()
-                                == request.medication.to_lowercase()
-                            {
-                                1.0
-                            } else if offer
-                                .medication
-                                .to_lowercase()
-                                .contains(&request.medication.to_lowercase())
-                                || request
-                                    .medication
-                                    .to_lowercase()
-                                    .contains(&offer.medication.to_lowercase())
-                            {
-                                0.7
-                            } else {
-                                0.0
+                            // Calculate medication similarity using embeddings
+                            let med_score = match (
+                                ai_client.embed(&offer.medication).await,
+                                ai_client.embed(&request.medication).await,
+                            ) {
+                                (Ok(offer_emb), Ok(request_emb)) => {
+                                    // Use cosine similarity on embeddings
+                                    cosine_similarity(&offer_emb, &request_emb).unwrap_or(0.0)
+                                }
+                                _ => {
+                                    // Fallback to string matching if embedding fails
+                                    tracing::warn!(
+                                        offer = %offer.medication,
+                                        request = %request.medication,
+                                        "Embedding failed, using string matching fallback"
+                                    );
+                                    if offer.medication.to_lowercase()
+                                        == request.medication.to_lowercase()
+                                    {
+                                        1.0
+                                    } else if offer
+                                        .medication
+                                        .to_lowercase()
+                                        .contains(&request.medication.to_lowercase())
+                                        || request
+                                            .medication
+                                            .to_lowercase()
+                                            .contains(&offer.medication.to_lowercase())
+                                    {
+                                        0.7
+                                    } else {
+                                        0.0
+                                    }
+                                }
                             };
 
                             // Score the match

@@ -241,6 +241,87 @@ impl AiError {
 }
 
 // ============================================================================
+// Embedding Response Types
+// ============================================================================
+
+/// Response from /ai/embed endpoint
+#[derive(Debug, Clone, Deserialize)]
+pub struct EmbedResponse {
+    pub success: bool,
+    pub embeddings: Vec<Vec<f32>>,
+    pub model: Option<String>,
+    pub dimensions: Option<usize>,
+    pub error: Option<String>,
+}
+
+/// Request body for /ai/embed
+#[derive(Debug, Serialize)]
+struct EmbedRequest {
+    texts: Vec<String>,
+}
+
+impl AiClient {
+    /// Generate embedding for a single text
+    pub async fn embed(&self, text: &str) -> Result<Vec<f32>, AiError> {
+        let embeddings = self.embed_batch(&[text.to_string()]).await?;
+        embeddings
+            .into_iter()
+            .next()
+            .ok_or_else(|| AiError::Parse("No embedding returned".to_string()))
+    }
+
+    /// Generate embeddings for multiple texts in a batch
+    pub async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, AiError> {
+        let url = format!("{}/ai/embed", self.config.gateway_url);
+
+        let request = EmbedRequest {
+            texts: texts.to_vec(),
+        };
+
+        tracing::debug!(
+            url = %url,
+            texts_count = texts.len(),
+            "Calling AI gateway for embeddings"
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AiError::Network(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AiError::Gateway(format!("Status {}: {}", status, body)));
+        }
+
+        let embed_response: EmbedResponse = response
+            .json()
+            .await
+            .map_err(|e| AiError::Parse(e.to_string()))?;
+
+        if !embed_response.success {
+            return Err(AiError::Gateway(
+                embed_response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
+            ));
+        }
+
+        tracing::info!(
+            embeddings_count = embed_response.embeddings.len(),
+            dimensions = embed_response.dimensions,
+            "Embedding generation complete"
+        );
+
+        Ok(embed_response.embeddings)
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

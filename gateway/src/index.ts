@@ -402,6 +402,73 @@ app.post("/ai/test", async (c) => {
   }
 });
 
+// ============================================================================
+// EMBEDDING ENDPOINT
+// ============================================================================
+
+// Embedding model configuration
+const EMBEDDING_BASE_URL = process.env.EMBEDDING_BASE_URL || AI_BASE_URL;
+const EMBEDDING_MODEL_ID =
+  process.env.EMBEDDING_MODEL_ID || "ai/embeddinggemma:latest";
+
+// Embedding endpoint - generates vector embeddings for medication names
+app.post("/ai/embed", async (c) => {
+  const body = await c.req.json();
+  const { text, texts } = body;
+
+  // Support single text or batch
+  const inputTexts: string[] = texts || (text ? [text] : []);
+
+  if (inputTexts.length === 0) {
+    return c.json({ error: "text or texts array is required" }, 400);
+  }
+
+  try {
+    // Call OpenAI-compatible embedding API
+    const response = await fetch(`${EMBEDDING_BASE_URL}/embeddings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.AI_API_KEY || "not-needed"}`,
+      },
+      body: JSON.stringify({
+        model: EMBEDDING_MODEL_ID,
+        input: inputTexts,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Embedding API error:", response.status, errorText);
+      return c.json(
+        { error: "Embedding API failed", status: response.status },
+        500
+      );
+    }
+
+    const result = await response.json();
+
+    // Extract embeddings from response
+    const embeddings = result.data?.map((item: any) => item.embedding) || [];
+
+    return c.json({
+      success: true,
+      embeddings,
+      model: EMBEDDING_MODEL_ID,
+      dimensions: embeddings[0]?.length || 0,
+    });
+  } catch (error) {
+    console.error("Embedding error:", error);
+    return c.json(
+      {
+        error: "Embedding generation failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      500
+    );
+  }
+});
+
 // Start server
 const port = parseInt(process.env.PORT || "3000");
 console.log(`🌐 PharmaBroker AI Gateway starting on port ${port}...`);
