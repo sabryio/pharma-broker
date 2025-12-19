@@ -5,5 +5,7 @@
 pub mod postgres;
 mod traits;
 
-pub use postgres::{PostgresMatchRepo, PostgresOfferRepo, PostgresRequestRepo, create_pool};
+pub use postgres::{
+    PostgresMatchRepo, PostgresOfferRepo, PostgresRawMessageRepo, PostgresRequestRepo, create_pool,
+};
 pub use traits::*;

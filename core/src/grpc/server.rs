@@ -5,59 +5,111 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use tonic::{Request, Response, Status};
+use uuid::Uuid;
 
 use super::pharma::{
-    HealthRequest, HealthResponse, ProcessResponse, RawMessage, StatsRequest, StatsResponse,
+    HealthRequest, HealthResponse, ProcessResponse, RawMessage as ProtoRawMessage, StatsRequest,
+    StatsResponse,
     pharma_core_server::{PharmaCore, PharmaCoreServer},
 };
-use crate::repository::{OfferRepository, RequestRepository};
+use crate::domain::RawMessage;
+use crate::repository::{OfferRepository, RawMessageRepository, RequestRepository};
 
 /// The gRPC service implementation
-pub struct PharmaCoreService<O, R>
+pub struct PharmaCoreService<O, R, M>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
+    M: RawMessageRepository + 'static,
 {
     pub offer_repo: Arc<O>,
     pub request_repo: Arc<R>,
+    pub raw_message_repo: Arc<M>,
     start_time: std::time::Instant,
 }
 
-impl<O, R> PharmaCoreService<O, R>
+impl<O, R, M> PharmaCoreService<O, R, M>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
+    M: RawMessageRepository + 'static,
 {
-    pub fn new(offer_repo: Arc<O>, request_repo: Arc<R>) -> Self {
+    pub fn new(offer_repo: Arc<O>, request_repo: Arc<R>, raw_message_repo: Arc<M>) -> Self {
         Self {
             offer_repo,
             request_repo,
+            raw_message_repo,
             start_time: std::time::Instant::now(),
         }
     }
 }
 
+/// Convert proto RawMessage to domain RawMessage
+fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
+    // Convert timestamp from Unix seconds to DateTime
+    let timestamp = DateTime::from_timestamp(proto.timestamp, 0).unwrap_or_else(Utc::now);
+
+    RawMessage {
+        id: if proto.id.is_empty() {
+            Uuid::new_v4().to_string()
+        } else {
+            proto.id.clone()
+        },
+        external_id: proto.external_id.clone(),
+        group_jid: proto.group_jid.clone(),
+        group_name: proto.group_name.clone(),
+        sender_jid: proto.sender_jid.clone(),
+        sender_phone: proto.sender_phone.clone(),
+        sender_name: proto.sender_name.clone(),
+        content: proto.content.clone(),
+        timestamp,
+        processed_at: None,
+        error: None,
+        reply_to_id: proto.reply_to_id.clone(),
+        reply_to_content: proto.reply_to_content.clone(),
+        reply_to_sender: proto.reply_to_sender.clone(),
+    }
+}
+
 #[tonic::async_trait]
-impl<O, R> PharmaCore for PharmaCoreService<O, R>
+impl<O, R, M> PharmaCore for PharmaCoreService<O, R, M>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
+    M: RawMessageRepository + 'static,
 {
     /// Process an incoming WhatsApp message
     async fn process_message(
         &self,
-        request: Request<RawMessage>,
+        request: Request<ProtoRawMessage>,
     ) -> Result<Response<ProcessResponse>, Status> {
-        let msg = request.into_inner();
+        let proto_msg = request.into_inner();
 
         tracing::info!(
-            id = %msg.id,
-            group = %msg.group_jid,
-            sender = %msg.sender_phone,
-            content_len = msg.content.len(),
+            id = %proto_msg.id,
+            group = %proto_msg.group_jid,
+            sender = %proto_msg.sender_phone,
+            content_len = proto_msg.content.len(),
             "📨 Received message from Go bridge"
         );
+
+        // Convert proto to domain entity
+        let raw_message = proto_to_domain(&proto_msg);
+        let message_id = raw_message.id.clone();
+
+        // Save to database
+        if let Err(e) = self.raw_message_repo.save(&raw_message).await {
+            tracing::error!(error = %e, id = %message_id, "Failed to save raw message");
+            return Ok(Response::new(ProcessResponse {
+                success: false,
+                message_id,
+                error: Some(format!("Database error: {}", e)),
+            }));
+        }
+
+        tracing::info!(id = %message_id, "✅ Message saved to database");
 
         // TODO: Integrate with AI parsing pipeline
         // TODO: Create offers/requests based on parsed content
@@ -65,7 +117,7 @@ where
 
         Ok(Response::new(ProcessResponse {
             success: true,
-            message_id: msg.id,
+            message_id,
             error: None,
         }))
     }
@@ -102,13 +154,14 @@ where
 }
 
 /// Start the gRPC server on the specified address
-pub async fn start_grpc_server<O, R>(
+pub async fn start_grpc_server<O, R, M>(
     addr: SocketAddr,
-    service: PharmaCoreService<O, R>,
+    service: PharmaCoreService<O, R, M>,
 ) -> Result<(), tonic::transport::Error>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
+    M: RawMessageRepository + 'static,
 {
     tracing::info!("🔌 gRPC server starting on {}", addr);
 

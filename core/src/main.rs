@@ -9,7 +9,7 @@ use pharma_core::api::{create_router, routes::AppState};
 use pharma_core::grpc::{PharmaCoreService, start_grpc_server};
 use pharma_core::matching::Scorer;
 use pharma_core::repository::{
-    PostgresMatchRepo, PostgresOfferRepo, PostgresRequestRepo, create_pool,
+    PostgresMatchRepo, PostgresOfferRepo, PostgresRawMessageRepo, PostgresRequestRepo, create_pool,
 };
 
 #[tokio::main]
@@ -41,6 +41,7 @@ async fn main() -> anyhow::Result<()> {
     let offer_repo = Arc::new(PostgresOfferRepo::new(pool.clone()));
     let request_repo = Arc::new(PostgresRequestRepo::new(pool.clone()));
     let match_repo = Arc::new(PostgresMatchRepo::new(pool.clone()));
+    let raw_message_repo = Arc::new(PostgresRawMessageRepo::new(pool.clone()));
 
     // Create scorer
     let scorer = Arc::new(Scorer::default());
@@ -73,8 +74,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🚀 HTTP server listening on http://{}", http_addr);
     tracing::info!("🔌 gRPC server listening on grpc://{}", grpc_addr);
 
-    // Create gRPC service
-    let grpc_service = PharmaCoreService::new(offer_repo, request_repo);
+    // Create gRPC service with all repositories
+    let grpc_service = PharmaCoreService::new(offer_repo, request_repo, raw_message_repo);
 
     // Start both servers concurrently
     tokio::select! {

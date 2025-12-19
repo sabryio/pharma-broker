@@ -4,10 +4,12 @@
 
 mod match_repo;
 mod offer;
+mod raw_message;
 mod request;
 
 pub use match_repo::PostgresMatchRepo;
 pub use offer::PostgresOfferRepo;
+pub use raw_message::PostgresRawMessageRepo;
 pub use request::PostgresRequestRepo;
 
 use sqlx::PgPool;
