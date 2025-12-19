@@ -4,7 +4,7 @@ services:
   # PostgreSQL with pgvector for semantic search
   postgres:
     image: pgvector/pgvector:pg18-trixie
-    container_name: postgres
+    container_name: pharma-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-pharmabroker}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -12,10 +12,10 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./data/postgres:/var/lib/postgresql
-      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d pharmabroker" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,59 +23,104 @@ services:
     networks:
       - pharmabroker-network
 
-  # Main application
-  app:
-    build: .
+  # Redis (for future caching/pubsub)
+  redis:
+    image: redis:7-alpine
+    container_name: pharma-redis
     ports:
-      - "8080:8080" # Main HTTP API + Dashboard
-      - "5051:5050" # Health check endpoint
-    container_name: pharmabroker-app
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pharmabroker-network
+
+  # Rust Core Engine (gRPC + REST API)
+  core:
+    build:
+      context: ./core
+      dockerfile: Dockerfile
+    container_name: pharma-core
+    environment:
+      DATABASE_URL: postgres://postgres:password@postgres:5432/pharmabroker
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: info
+      API_PORT: "8080"
+      GRPC_PORT: "50051"
+      AI_GATEWAY_URL: http://gateway:3000
+    ports:
+      - "8080:8080" # REST API
+      - "50051:50051" # gRPC
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      # AI Provider - uses Docker Model Runner
-      - PB_AI_PROVIDER=docker
-      # Main application database
-      - PB_DATABASE_DSN=postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable
-      # WhatsApp session database (separate for isolation)
-      - PB_WHATSAPP_SESSION_DB_DSN=postgres://postgres:password@postgres:5432/whatsapp_sessions?sslmode=disable
-      # WhatsApp session files
-      - PB_WHATSAPP_SESSION_DIR=/app/data/whatsapp
-    volumes:
-      - ./data:/app/data
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     networks:
       - pharmabroker-network
 
-    healthcheck:
-      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5050/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    # Bind to AI models using long syntax with custom env var names
+  # Go WhatsApp Bridge
+  bridge:
+    build:
+      context: ./bridge
+      dockerfile: Dockerfile
+    container_name: pharma-bridge
+    environment:
+      CORE_GRPC_ADDR: core:50051
+      WHATSAPP_STORE: /app/data/whatsapp.db
+    volumes:
+      - bridge_data:/app/data
+    depends_on:
+      - core
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    networks:
+      - pharmabroker-network
+
+  # TypeScript AI Gateway (uses Docker Model Runner)
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: pharma-gateway
+    environment:
+      PORT: "3000"
+      CORE_API_URL: http://core:8080
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - core
+    restart: unless-stopped
+    networks:
+      - pharmabroker-network
+    # Bind models using long syntax with custom env var names
     models:
       llm:
-        endpoint_var: LLM_URL
-        model_var: LLM_MODEL
-      embedding-model:
-        endpoint_var: EMBEDDING_MODEL_URL
-        model_var: EMBEDDING_MODEL_MODEL
+        endpoint_var: AI_BASE_URL
+        model_var: AI_MODEL_ID
+      embedding:
+        endpoint_var: EMBEDDING_BASE_URL
+        model_var: EMBEDDING_MODEL_ID
 
 # Local AI models via Docker Model Runner
 models:
   llm:
     model: ai/qwen3-vl:latest
     context_size: 16384
+    runtime_flags:
+      - "--temp"
+      - "0.3"
 
-  embedding-model:
+  embedding:
     model: ai/embeddinggemma:latest
     context_size: 8192
 
 volumes:
-  pharmabroker-data:
+  bridge_data:
 
 
 networks:

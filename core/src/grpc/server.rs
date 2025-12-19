@@ -14,7 +14,8 @@ use super::pharma::{
     StatsResponse,
     pharma_core_server::{PharmaCore, PharmaCoreServer},
 };
-use crate::domain::RawMessage;
+use crate::ai::AiClient;
+use crate::domain::{ItemStatus, Offer, RawMessage, Request as RequestEntity};
 use crate::repository::{
     GroupRepository, OfferRepository, RawMessageRepository, RequestRepository,
 };
@@ -31,6 +32,7 @@ where
     pub request_repo: Arc<R>,
     pub raw_message_repo: Arc<M>,
     pub group_repo: Arc<G>,
+    pub ai_client: Arc<AiClient>,
     start_time: std::time::Instant,
 }
 
@@ -46,12 +48,14 @@ where
         request_repo: Arc<R>,
         raw_message_repo: Arc<M>,
         group_repo: Arc<G>,
+        ai_client: Arc<AiClient>,
     ) -> Self {
         Self {
             offer_repo,
             request_repo,
             raw_message_repo,
             group_repo,
+            ai_client,
             start_time: std::time::Instant::now(),
         }
     }
@@ -59,7 +63,6 @@ where
 
 /// Convert proto RawMessage to domain RawMessage
 fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
-    // Convert timestamp from Unix seconds to DateTime
     let timestamp = DateTime::from_timestamp(proto.timestamp, 0).unwrap_or_else(Utc::now);
 
     RawMessage {
@@ -112,7 +115,7 @@ where
             Ok(monitored) => monitored,
             Err(e) => {
                 tracing::warn!(error = %e, group = %proto_msg.group_jid, "Failed to check group monitoring, allowing by default");
-                true // Allow if DB check fails (fail-open)
+                true
             }
         };
 
@@ -147,18 +150,142 @@ where
 
         // Step 4: Update group stats asynchronously
         let group_repo = self.group_repo.clone();
+        let group_jid_clone = group_jid.clone();
         tokio::spawn(async move {
-            if let Err(e) = group_repo.update_last_message(&group_jid).await {
-                tracing::debug!(error = %e, group = %group_jid, "Failed to update last message");
+            if let Err(e) = group_repo.update_last_message(&group_jid_clone).await {
+                tracing::debug!(error = %e, group = %group_jid_clone, "Failed to update last message");
             }
-            if let Err(e) = group_repo.increment_message_count(&group_jid).await {
-                tracing::debug!(error = %e, group = %group_jid, "Failed to increment message count");
+            if let Err(e) = group_repo.increment_message_count(&group_jid_clone).await {
+                tracing::debug!(error = %e, group = %group_jid_clone, "Failed to increment message count");
             }
         });
 
-        // TODO: Integrate with AI parsing pipeline
-        // TODO: Create offers/requests based on parsed content
-        // TODO: Trigger matching engine
+        // Step 5: Spawn background AI parsing task
+        let ai_client = self.ai_client.clone();
+        let offer_repo = self.offer_repo.clone();
+        let request_repo = self.request_repo.clone();
+        let raw_message_repo = self.raw_message_repo.clone();
+        let msg_id = message_id.clone();
+        let content = raw_message.content.clone();
+        let sender_name = raw_message.sender_name.clone();
+        let group_name = raw_message.group_name.clone();
+        let sender_phone = raw_message.sender_phone.clone();
+        let reply_to = raw_message.reply_to_content.clone();
+
+        tokio::spawn(async move {
+            tracing::info!(id = %msg_id, "🤖 Starting AI parsing (background)");
+
+            // Call AI gateway
+            let parsed_items = match ai_client
+                .parse(
+                    &content,
+                    Some(&sender_name),
+                    Some(&group_name),
+                    reply_to.as_deref(),
+                )
+                .await
+            {
+                Ok(items) => items,
+                Err(e) => {
+                    tracing::error!(error = %e, id = %msg_id, "AI parsing failed");
+                    let _ = raw_message_repo
+                        .mark_processed(&msg_id, Some(&e.to_string()))
+                        .await;
+                    return;
+                }
+            };
+
+            tracing::info!(
+                id = %msg_id,
+                items_count = parsed_items.len(),
+                "🎯 AI parsing complete"
+            );
+
+            // Create Offer/Request entities from parsed items
+            let mut offers_created = 0;
+            let mut requests_created = 0;
+
+            for item in parsed_items {
+                if item.item_type == "OFFER" {
+                    let offer = Offer {
+                        id: Uuid::new_v4().to_string(),
+                        raw_message_id: msg_id.clone(),
+                        source_phone: sender_phone.clone(),
+                        source_name: sender_name.clone(),
+                        source_group: group_jid.clone(),
+                        group_name: group_name.clone(),
+                        medication: item.medication.clone(),
+                        medication_raw: item.medication_raw.clone(),
+                        quantity: item.quantity,
+                        unit: item.unit.clone(),
+                        price: item.price,
+                        currency: Some("EGP".to_string()),
+                        expiry_date: None,
+                        batch_number: None,
+                        notes: item.notes.clone(),
+                        raw_message: content.clone(),
+                        status: ItemStatus::Active,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    };
+
+                    if let Err(e) = offer_repo.save(&offer).await {
+                        tracing::error!(error = %e, offer_id = %offer.id, "Failed to save offer");
+                    } else {
+                        tracing::info!(
+                            offer_id = %offer.id,
+                            medication = %offer.medication,
+                            "💊 Offer created"
+                        );
+                        offers_created += 1;
+                    }
+                } else if item.item_type == "REQUEST" {
+                    let request = RequestEntity {
+                        id: Uuid::new_v4().to_string(),
+                        raw_message_id: msg_id.clone(),
+                        source_phone: sender_phone.clone(),
+                        source_name: sender_name.clone(),
+                        source_group: group_jid.clone(),
+                        group_name: group_name.clone(),
+                        medication: item.medication.clone(),
+                        medication_raw: item.medication_raw.clone(),
+                        quantity: item.quantity,
+                        unit: item.unit.clone(),
+                        max_price: item.max_price,
+                        currency: Some("EGP".to_string()),
+                        urgent: item.urgent,
+                        notes: item.notes.clone(),
+                        raw_message: content.clone(),
+                        status: ItemStatus::Active,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    };
+
+                    if let Err(e) = request_repo.save(&request).await {
+                        tracing::error!(error = %e, request_id = %request.id, "Failed to save request");
+                    } else {
+                        tracing::info!(
+                            request_id = %request.id,
+                            medication = %request.medication,
+                            "🔍 Request created"
+                        );
+                        requests_created += 1;
+                    }
+                }
+            }
+
+            // Mark message as processed
+            let _ = raw_message_repo.mark_processed(&msg_id, None).await;
+
+            tracing::info!(
+                id = %msg_id,
+                offers = offers_created,
+                requests = requests_created,
+                "✅ Message processing complete"
+            );
+
+            // TODO: Trigger matching engine for new requests
+        });
 
         Ok(Response::new(ProcessResponse {
             success: true,

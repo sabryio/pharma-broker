@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use pharma_core::ai::AiClient;
 use pharma_core::api::{create_router, routes::AppState};
 use pharma_core::grpc::{PharmaCoreService, start_grpc_server};
 use pharma_core::matching::Scorer;
@@ -45,6 +46,12 @@ async fn main() -> anyhow::Result<()> {
     let raw_message_repo = Arc::new(PostgresRawMessageRepo::new(pool.clone()));
     let group_repo = Arc::new(PostgresGroupRepo::new(pool.clone()));
 
+    // Create AI client (reads AI_GATEWAY_URL from env)
+    let ai_client = Arc::new(AiClient::from_env());
+    let gateway_url =
+        std::env::var("AI_GATEWAY_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    tracing::info!("🤖 AI Gateway: {}", gateway_url);
+
     // Create scorer
     let scorer = Arc::new(Scorer::default());
 
@@ -76,9 +83,14 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🚀 HTTP server listening on http://{}", http_addr);
     tracing::info!("🔌 gRPC server listening on grpc://{}", grpc_addr);
 
-    // Create gRPC service with all repositories
-    let grpc_service =
-        PharmaCoreService::new(offer_repo, request_repo, raw_message_repo, group_repo);
+    // Create gRPC service with all repositories and AI client
+    let grpc_service = PharmaCoreService::new(
+        offer_repo,
+        request_repo,
+        raw_message_repo,
+        group_repo,
+        ai_client,
+    );
 
     // Start both servers concurrently
     tokio::select! {

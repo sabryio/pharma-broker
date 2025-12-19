@@ -2,6 +2,7 @@
 //!
 //! A high-performance medication matching engine written in Rust.
 
+pub mod ai;
 pub mod api;
 pub mod config;
 pub mod domain;
