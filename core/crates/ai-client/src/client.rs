@@ -36,7 +36,7 @@ impl Default for ClientConfig {
             base_url: "http://localhost:12434/engines/llama.cpp/v1".to_string(),
             api_key: None,
             model: "ai/qwen3-vl:latest".to_string(),
-            timeout: Duration::from_secs(60),
+            timeout: Duration::from_secs(120),
             retry: RetryConfig::default(),
             temperature: 0.1,
             max_tokens: 1000,

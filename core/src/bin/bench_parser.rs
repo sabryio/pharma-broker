@@ -1,24 +1,19 @@
 //! # AI Parser Benchmark CLI
 //!
-//! Benchmarks AI parsing performance with concurrent requests.
-//! Loads messages from database and measures parsing latency per message.
+//! Interactive benchmark tool for AI parsing performance.
+//! Uses colored output and dialoguer prompts for beautiful UX.
 //!
 //! ## Usage
 //! ```bash
-//! cargo run --bin bench-parser -- --limit 5 --concurrency 3
-//! cargo run --bin bench-parser -- -l 10 -c 5
+//! cargo run --bin bench-parser
 //! ```
-//!
-//! ## Environment Variables
-//! - `AI_BASE_URL` / `AI_MODEL` - AI model configuration
-//! - `DATABASE_URL` - PostgreSQL connection string
-//! - `RUST_LOG` - Logging level (default: warn)
 
 use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
-use clap::Parser;
+use colored::Colorize;
+use dialoguer::{Input, theme::ColorfulTheme};
 use pharma_core::ai::{
     BatchMessage, ItemType, PharmaParser, PharmaParserConfig, TokenBatchConfig, TokenBatcher,
 };
@@ -27,27 +22,82 @@ use tokio::sync::Semaphore;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 // ============================================================================
-// CLI Arguments
+// Interactive Config
 // ============================================================================
 
-/// Benchmark AI parsing performance with concurrent requests
-#[derive(Parser, Debug)]
-#[command(name = "bench-parser")]
-#[command(author = "PharmaBroker Team")]
-#[command(version = "0.1.0")]
-#[command(about = "Benchmark AI parsing with concurrency control", long_about = None)]
-struct Args {
-    /// Number of messages to process from database
-    #[arg(short, long, default_value_t = 5)]
+struct Config {
     limit: i64,
-
-    /// Maximum concurrent parsing requests
-    #[arg(short, long, default_value_t = 3)]
     concurrency: usize,
+    database_url: String,
+}
 
-    /// Database URL (defaults to DATABASE_URL env var)
-    #[arg(long)]
-    database_url: Option<String>,
+fn get_config_interactive() -> Config {
+    println!();
+    println!(
+        "{}",
+        "╔══════════════════════════════════════════════════════════════════════════════╗".green()
+    );
+    println!(
+        "{}",
+        "║              🚀 AI PARSER BENCHMARK                                          ║"
+            .green()
+            .bold()
+    );
+    println!(
+        "{}",
+        "║              Concurrent parsing performance test                             ║".green()
+    );
+    println!(
+        "{}",
+        "╚══════════════════════════════════════════════════════════════════════════════╝".green()
+    );
+    println!();
+
+    let theme = ColorfulTheme::default();
+
+    let limit: i64 = Input::with_theme(&theme)
+        .with_prompt("📝 Number of messages to benchmark")
+        .default(5)
+        .interact_text()
+        .unwrap_or(5);
+
+    let concurrency: usize = Input::with_theme(&theme)
+        .with_prompt("⚡ Concurrent parsing threads")
+        .default(3)
+        .interact_text()
+        .unwrap_or(3);
+
+    let default_db = env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
+
+    let database_url: String = Input::with_theme(&theme)
+        .with_prompt("🗄️  Database URL")
+        .default(default_db)
+        .interact_text()
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
+
+    println!();
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
+    );
+    println!(
+        "  {} {} messages, {} workers",
+        "Config:".green().bold(),
+        limit.to_string().yellow(),
+        concurrency.to_string().yellow()
+    );
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
+    );
+    println!();
+
+    Config {
+        limit,
+        concurrency,
+        database_url,
+    }
 }
 
 // ============================================================================
@@ -69,9 +119,6 @@ struct LegacyMessage {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Parse CLI arguments
-    let args = Args::parse();
-
     // Initialize tracing (suppress by default for clean output)
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
@@ -80,19 +127,11 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let limit = args.limit;
-    let concurrency = args.concurrency;
-
-    println!("🚀 AI Parser Benchmark CLI");
-    println!("   --limit: {}", limit);
-    println!("   --concurrency: {}", concurrency);
-
-    // Connect to database
-    let database_url = args.database_url.unwrap_or_else(|| {
-        env::var("DATABASE_URL").unwrap_or_else(|_| {
-            "postgres://postgres:password@localhost:5432/pharmabroker".to_string()
-        })
-    });
+    // Get config via interactive prompts
+    let config = get_config_interactive();
+    let limit = config.limit;
+    let concurrency = config.concurrency;
+    let database_url = config.database_url;
 
     let pool = PgPoolOptions::new()
         .max_connections(5)

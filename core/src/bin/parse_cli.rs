@@ -1,21 +1,12 @@
 //! # Parse CLI - AI Parser Testing Tool
 //!
 //! Interactive CLI for testing AI parsing with messages from database or JSON files.
-//! Supports custom medication mappings and result export.
+//! Uses colored output and dialoguer prompts for beautiful UX.
 //!
 //! ## Usage
 //! ```bash
-//! cargo run --bin parse-cli                           # Load from database (default 10)
-//! cargo run --bin parse-cli -- --limit 20             # Load 20 messages from database
-//! cargo run --bin parse-cli -- --input messages.json  # Load from file
-//! cargo run --bin parse-cli -- --output results.json  # Save results to file
-//! cargo run --bin parse-cli -- --help
+//! cargo run --bin parse-cli
 //! ```
-//!
-//! ## Environment Variables
-//! - `AI_BASE_URL` / `AI_MODEL` - AI model configuration
-//! - `DATABASE_URL` - PostgreSQL connection string
-//! - `RUST_LOG` - Logging level (default: info)
 
 use std::env;
 use std::fs;
@@ -23,7 +14,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
-use clap::Parser;
+use colored::Colorize;
+use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use tracing::{error, info, warn};
@@ -32,35 +24,146 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use pharma_core::ai::{ParsedItem, PharmaParser, PharmaParserConfig};
 
 // ============================================================================
-// CLI Arguments
+// Interactive Config
 // ============================================================================
 
-/// Test AI parsing with messages from database or JSON files
-#[derive(Parser, Debug)]
-#[command(name = "parse-cli")]
-#[command(author = "PharmaBroker Team")]
-#[command(version = "0.1.0")]
-#[command(about = "Interactive AI parser testing tool", long_about = None)]
-struct Args {
-    /// JSON file with test messages (loads from DB if not provided)
-    #[arg(short, long)]
+struct Config {
     input: Option<PathBuf>,
-
-    /// JSON file to save results
-    #[arg(short, long)]
     output: Option<PathBuf>,
-
-    /// JSON file with medication mappings (arabic -> english)
-    #[arg(short, long)]
     mappings: Option<PathBuf>,
-
-    /// Number of messages to load from database
-    #[arg(short, long, default_value_t = 10)]
     limit: i64,
+}
 
-    /// Database URL (defaults to DATABASE_URL env var)
-    #[arg(long)]
-    database_url: Option<String>,
+fn get_config_interactive() -> Config {
+    println!();
+    println!(
+        "{}",
+        "╔══════════════════════════════════════════════════════════════════════════════╗".yellow()
+    );
+    println!(
+        "{}",
+        "║              📝 PARSE CLI - AI Parser Testing                                ║"
+            .yellow()
+            .bold()
+    );
+    println!(
+        "{}",
+        "║              Test AI parsing with messages                                   ║".yellow()
+    );
+    println!(
+        "{}",
+        "╚══════════════════════════════════════════════════════════════════════════════╝".yellow()
+    );
+    println!();
+
+    let theme = ColorfulTheme::default();
+
+    let use_file: bool = Confirm::with_theme(&theme)
+        .with_prompt("📁 Load messages from a JSON file?")
+        .default(false)
+        .interact()
+        .unwrap_or(false);
+
+    let input: Option<PathBuf> = if use_file {
+        let path: String = Input::with_theme(&theme)
+            .with_prompt("📄 Input file path")
+            .interact_text()
+            .unwrap_or_default();
+        if path.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(path))
+        }
+    } else {
+        None
+    };
+
+    let limit: i64 = if !use_file {
+        Input::with_theme(&theme)
+            .with_prompt("📝 Number of messages to load from database")
+            .default(10)
+            .interact_text()
+            .unwrap_or(10)
+    } else {
+        10
+    };
+
+    let save_output: bool = Confirm::with_theme(&theme)
+        .with_prompt("💾 Save results to JSON file?")
+        .default(false)
+        .interact()
+        .unwrap_or(false);
+
+    let output: Option<PathBuf> = if save_output {
+        let path: String = Input::with_theme(&theme)
+            .with_prompt("📄 Output file path")
+            .default("results.json".to_string())
+            .interact_text()
+            .unwrap_or_default();
+        if path.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(path))
+        }
+    } else {
+        None
+    };
+
+    let use_mappings: bool = Confirm::with_theme(&theme)
+        .with_prompt("💊 Use medication mappings file?")
+        .default(false)
+        .interact()
+        .unwrap_or(false);
+
+    let mappings: Option<PathBuf> = if use_mappings {
+        let path: String = Input::with_theme(&theme)
+            .with_prompt("📄 Mappings file path")
+            .interact_text()
+            .unwrap_or_default();
+        if path.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(path))
+        }
+    } else {
+        None
+    };
+
+    let default_db = env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
+
+    let _database_url: String = Input::with_theme(&theme)
+        .with_prompt("🗄️  Database URL")
+        .default(default_db)
+        .interact_text()
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
+
+    println!();
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
+    );
+    if use_file {
+        println!("  {} loading from file", "Config:".yellow().bold());
+    } else {
+        println!(
+            "  {} {} messages from database",
+            "Config:".yellow().bold(),
+            limit.to_string().yellow()
+        );
+    }
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
+    );
+    println!();
+
+    Config {
+        input,
+        output,
+        mappings,
+        limit,
+    }
 }
 
 // ============================================================================
@@ -204,8 +307,8 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Parse CLI arguments
-    let args = Args::parse();
+    // Get config via interactive prompts
+    let config = get_config_interactive();
 
     // Create AI client
     let parser_config = PharmaParserConfig::from_env();
@@ -214,7 +317,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Testing Direct AI Client (no gateway)");
 
     // Load test messages from file or database
-    let test_messages = if let Some(ref input_file) = args.input {
+    let test_messages = if let Some(ref input_file) = config.input {
         match load_messages_from_file(input_file) {
             Ok(msgs) => {
                 info!(
@@ -230,8 +333,8 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     } else {
-        info!(limit = args.limit, "Loading messages from database...");
-        match load_messages_from_database(args.limit).await {
+        info!(limit = config.limit, "Loading messages from database...");
+        match load_messages_from_database(config.limit).await {
             Ok(msgs) => {
                 if msgs.is_empty() {
                     error!("No messages found in database");
@@ -248,7 +351,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Load medication mappings if provided
-    let mappings: Option<Vec<String>> = if let Some(ref mappings_file) = args.mappings {
+    let mappings: Option<Vec<String>> = if let Some(ref mappings_file) = config.mappings {
         match load_mappings_from_file(mappings_file) {
             Ok(m) => {
                 info!(count = m.len(), file = ?mappings_file, "Loaded medication mappings");
@@ -362,7 +465,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Save results if output file specified
-    if let Some(ref output_file) = args.output {
+    if let Some(ref output_file) = config.output {
         let summary = TestSummary {
             gateway_url: "Direct AI (no gateway)".to_string(),
             total_time: format!("{:?}", total_elapsed),

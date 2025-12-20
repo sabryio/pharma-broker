@@ -27,7 +27,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use clap::Parser;
+use colored::Colorize;
+use dialoguer::{Input, theme::ColorfulTheme};
 use tokio::sync::{broadcast, watch};
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -46,23 +47,76 @@ use pharma_core::repository::{
 use pharma_core::ws::WsEvent;
 
 // ============================================================================
-// CLI Arguments
+// Interactive Config
 // ============================================================================
 
-/// Simulate full PharmaBroker pipeline with mock WhatsApp messages
-#[derive(Parser, Debug)]
-#[command(name = "pipeline-sim")]
-#[command(author = "PharmaBroker Team")]
-#[command(version = "0.1.0")]
-#[command(about = "Full pipeline simulation from message ingestion to AI parsing", long_about = None)]
-struct Args {
-    /// Number of mock messages to process
-    #[arg(short, long, default_value_t = 8)]
+struct Config {
     limit: usize,
+    database_url: String,
+}
 
-    /// Database URL (defaults to DATABASE_URL env var)
-    #[arg(long)]
-    database_url: Option<String>,
+fn get_config_interactive() -> Config {
+    println!();
+    println!(
+        "{}",
+        "╔══════════════════════════════════════════════════════════════════════════════╗"
+            .magenta()
+    );
+    println!(
+        "{}",
+        "║              🔬 PIPELINE SIMULATION                                          ║"
+            .magenta()
+            .bold()
+    );
+    println!(
+        "{}",
+        "║              Full message flow: Ingestion → AI Parsing → Entities            ║"
+            .magenta()
+    );
+    println!(
+        "{}",
+        "╚══════════════════════════════════════════════════════════════════════════════╝"
+            .magenta()
+    );
+    println!();
+
+    let theme = ColorfulTheme::default();
+
+    let limit: usize = Input::with_theme(&theme)
+        .with_prompt("📝 Number of mock messages to process")
+        .default(8)
+        .interact_text()
+        .unwrap_or(8);
+
+    let default_db = env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
+
+    let database_url: String = Input::with_theme(&theme)
+        .with_prompt("🗄️  Database URL")
+        .default(default_db)
+        .interact_text()
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
+
+    println!();
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
+    );
+    println!(
+        "  {} {} messages",
+        "Config:".magenta().bold(),
+        limit.to_string().yellow()
+    );
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
+    );
+    println!();
+
+    Config {
+        limit,
+        database_url,
+    }
 }
 
 // ============================================================================
@@ -304,9 +358,6 @@ fn truncate(s: &str, max_len: usize) -> String {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Parse CLI arguments
-    let args = Args::parse();
-
     // Initialize tracing
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
@@ -315,18 +366,10 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let limit = args.limit;
-
-    println!("\n{}", "=".repeat(70));
-    println!("🔬 PHARMABROKER PIPELINE SIMULATION");
-    println!("   Full message flow: Ingestion → AI Parsing → Entity Creation");
-    println!("{}", "=".repeat(70));
-    println!(
-        "Time: {} | --limit: {}",
-        Utc::now().format("%H:%M:%S"),
-        limit
-    );
-    println!("{}", "=".repeat(70));
+    // Get config via interactive prompts
+    let config = get_config_interactive();
+    let limit = config.limit;
+    let database_url = config.database_url;
 
     let mut workflow = Workflow::new();
 
@@ -334,12 +377,6 @@ async fn main() -> anyhow::Result<()> {
     // PHASE 1: Initialize Database & Repositories
     // ============================================================
     workflow.start_phase("Database Init");
-
-    let database_url = args.database_url.unwrap_or_else(|| {
-        env::var("DATABASE_URL").unwrap_or_else(|_| {
-            "postgres://postgres:password@localhost:5432/pharmabroker".to_string()
-        })
-    });
 
     let pool = match create_pool(&database_url).await {
         Ok(p) => p,

@@ -1,25 +1,19 @@
 //! # Model Comparison CLI
 //!
-//! Compares AI parsing performance across multiple LLM models (Qwen3-VL, Ministral3, Gemma3)
-//! running concurrently and displays results in beautiful tables.
+//! Interactive tool for comparing AI parsing across multiple LLM models.
+//! Uses colored output and dialoguer prompts for beautiful UX.
 //!
 //! ## Usage
 //! ```bash
-//! cargo run --bin compare-models -- --limit 3 --timeout 60
-//! cargo run --bin compare-models -- -l 5 -t 120
+//! cargo run --bin compare-models
 //! ```
-//!
-//! ## Environment Variables
-//! - `AI_BASE_URL` / `AI_MODEL` - Primary model (Qwen) configuration
-//! - `MINISTRAL_BASE_URL` / `MINISTRAL_MODEL` - Ministral model configuration
-//! - `GEMMA_BASE_URL` / `GEMMA_MODEL` - Gemma model configuration
-//! - `DATABASE_URL` - PostgreSQL connection string
 
 use std::env;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use clap::Parser;
+use colored::Colorize;
+use dialoguer::{Input, theme::ColorfulTheme};
 use prettytable::format::consts::FORMAT_BOX_CHARS;
 use prettytable::{Table, row};
 use sqlx::postgres::PgPoolOptions;
@@ -29,27 +23,83 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use pharma_core::ai::{ParsedItem, PharmaParser, PharmaParserConfig};
 
 // ============================================================================
-// CLI Arguments
+// Interactive Config
 // ============================================================================
 
-/// Compare AI parsing across multiple LLM models (Qwen3-VL, Ministral3, Gemma3)
-#[derive(Parser, Debug)]
-#[command(name = "compare-models")]
-#[command(author = "PharmaBroker Team")]
-#[command(version = "0.1.0")]
-#[command(about = "Compare AI parsing performance across multiple LLM models", long_about = None)]
-struct Args {
-    /// Number of messages to test from database
-    #[arg(short, long, default_value_t = 3)]
+struct Config {
     limit: i64,
+    timeout_secs: u64,
+    database_url: String,
+}
 
-    /// Timeout in seconds for each model request
-    #[arg(short, long, default_value_t = 60)]
-    timeout: u64,
+fn get_config_interactive() -> Config {
+    println!();
+    println!(
+        "{}",
+        "╔══════════════════════════════════════════════════════════════════════════════╗".cyan()
+    );
+    println!(
+        "{}",
+        "║              🔬 LLM MODEL COMPARISON TOOL                                    ║"
+            .cyan()
+            .bold()
+    );
+    println!(
+        "{}",
+        "║              Comparing: Qwen3-VL, Ministral3, Gemma3                         ║".cyan()
+    );
+    println!(
+        "{}",
+        "╚══════════════════════════════════════════════════════════════════════════════╝".cyan()
+    );
+    println!();
 
-    /// Database URL (defaults to DATABASE_URL env var or localhost)
-    #[arg(long)]
-    database_url: Option<String>,
+    let theme = ColorfulTheme::default();
+
+    let limit: i64 = Input::with_theme(&theme)
+        .with_prompt("📝 Number of messages to test")
+        .default(3)
+        .interact_text()
+        .unwrap_or(3);
+
+    let timeout_secs: u64 = Input::with_theme(&theme)
+        .with_prompt("⏱️  Timeout per model (seconds)")
+        .default(60)
+        .interact_text()
+        .unwrap_or(60);
+
+    let default_db = env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
+
+    let database_url: String = Input::with_theme(&theme)
+        .with_prompt("🗄️  Database URL")
+        .default(default_db)
+        .interact_text()
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
+
+    println!();
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
+    );
+    println!(
+        "  {} {} messages, {} {}s timeout",
+        "Config:".green().bold(),
+        limit.to_string().yellow(),
+        "⏱️".dimmed(),
+        timeout_secs.to_string().yellow()
+    );
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
+    );
+    println!();
+
+    Config {
+        limit,
+        timeout_secs,
+        database_url,
+    }
 }
 
 // ============================================================================
@@ -128,10 +178,7 @@ fn get_model_configs() -> Vec<ModelConfig> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Parse CLI arguments
-    let args = Args::parse();
-
-    // Initialize tracing
+    // Initialize tracing (before interactive prompts)
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
             env::var("RUST_LOG").unwrap_or_else(|_| "warn".to_string()),
@@ -139,14 +186,10 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let limit = args.limit;
-    let timeout_secs = args.timeout;
-
-    println!("\n╔══════════════════════════════════════════════════════════════════════════════╗");
-    println!("║              🔬 LLM MODEL COMPARISON TOOL                                    ║");
-    println!("║              Comparing: Qwen3-VL, Ministral3, Gemma3                         ║");
-    println!("╚══════════════════════════════════════════════════════════════════════════════╝\n");
-    println!("📋 Settings: limit={}, timeout={}s", limit, timeout_secs);
+    // Get config via interactive prompts
+    let config = get_config_interactive();
+    let limit = config.limit;
+    let timeout_secs = config.timeout_secs;
 
     // Get model configurations
     let models = get_model_configs();
@@ -162,11 +205,7 @@ async fn main() -> anyhow::Result<()> {
     config_table.printstd();
 
     // Connect to database
-    let database_url = args.database_url.unwrap_or_else(|| {
-        env::var("DATABASE_URL").unwrap_or_else(|_| {
-            "postgres://postgres:password@localhost:5432/pharmabroker".to_string()
-        })
-    });
+    let database_url = config.database_url;
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
