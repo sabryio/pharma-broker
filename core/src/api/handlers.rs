@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::routes::AppState;
 use crate::domain::{FeedbackRecord, ItemStatus, MatchStatus};
+use crate::metrics;
 use crate::repository::{
     FeedbackRecordRepository, GroupRepository, MatchRepository, OfferRepository, RequestRepository,
 };
@@ -326,6 +327,9 @@ where
     if let Err(e) = state.ws_tx.send(ws_event) {
         tracing::warn!(error = %e, "Failed to broadcast match confirmation event");
     }
+    // Record metrics
+    metrics::record_match_confirmation(true);
+    metrics::record_match_score(match_entity.score, "confirmed");
 
     Ok(Json(serde_json::json!({
         "status": "confirmed",
@@ -406,6 +410,10 @@ where
     if let Err(e) = state.ws_tx.send(ws_event) {
         tracing::warn!(error = %e, "Failed to broadcast match rejection event");
     }
+
+    // Record metrics
+    metrics::record_match_confirmation(false);
+    metrics::record_match_score(match_entity.score, "rejected");
 
     Ok(Json(serde_json::json!({
         "status": "rejected",

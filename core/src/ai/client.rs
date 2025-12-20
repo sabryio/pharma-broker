@@ -191,6 +191,78 @@ impl AiClient {
         )
         .await
     }
+
+    /// Parse multiple messages with token-aware batching
+    ///
+    /// This method:
+    /// 1. Splits messages into token-aware batches using the provided batcher
+    /// 2. Processes each batch sequentially to avoid overloading the AI gateway
+    /// 3. Returns results for each message in the same order
+    ///
+    /// Each batch is processed with retry logic for transient failures.
+    pub async fn parse_batch(
+        &self,
+        messages: Vec<super::token_batcher::BatchMessage>,
+        batcher: &super::token_batcher::TokenBatcher,
+    ) -> Vec<BatchParseResult> {
+        if messages.is_empty() {
+            return Vec::new();
+        }
+
+        // Split messages into token-aware batches
+        let batches = batcher.split_into_batches(messages.clone());
+
+        tracing::info!(
+            total_messages = messages.len(),
+            batch_count = batches.len(),
+            "📦 Processing messages in token-aware batches"
+        );
+
+        let mut results: Vec<BatchParseResult> = Vec::with_capacity(messages.len());
+
+        for (batch_idx, batch) in batches.into_iter().enumerate() {
+            tracing::debug!(
+                batch_idx = batch_idx,
+                batch_size = batch.len(),
+                "Processing batch"
+            );
+
+            // Process each message in the batch
+            for msg in batch {
+                let result = self
+                    .parse(
+                        &msg.content,
+                        msg.sender_name.as_deref(),
+                        msg.group_name.as_deref(),
+                        msg.reply_to.as_deref(),
+                    )
+                    .await;
+
+                results.push(BatchParseResult {
+                    message_id: msg.id.clone(),
+                    result,
+                });
+            }
+        }
+
+        tracing::info!(
+            total_messages = results.len(),
+            successful = results.iter().filter(|r| r.result.is_ok()).count(),
+            failed = results.iter().filter(|r| r.result.is_err()).count(),
+            "✅ Batch parsing complete"
+        );
+
+        results
+    }
+}
+
+/// Result of parsing a single message in a batch
+#[derive(Debug)]
+pub struct BatchParseResult {
+    /// ID of the message that was parsed
+    pub message_id: String,
+    /// Parse result (success with items, or error)
+    pub result: Result<Vec<ParsedItem>, AiError>,
 }
 
 /// AI client error types

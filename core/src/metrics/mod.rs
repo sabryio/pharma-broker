@@ -48,6 +48,11 @@ pub fn record_db_operation(operation: &str, status: &str) {
     counter!("pharma_db_operations_total", "operation" => operation.to_string(), "status" => status.to_string()).increment(1);
 }
 
+/// Record a rate-limited request
+pub fn record_rate_limited(client_ip: &str) {
+    counter!("pharma_rate_limited_total", "client_ip" => client_ip.to_string()).increment(1);
+}
+
 // ============================================================================
 // Histogram Metrics
 // ============================================================================
@@ -86,6 +91,59 @@ pub fn set_monitored_groups(count: i64) {
     gauge!("pharma_monitored_groups").set(count as f64);
 }
 
+/// Set the number of pending AI batch jobs
+pub fn set_ai_batch_pending(count: i64) {
+    gauge!("pharma_ai_batch_pending").set(count as f64);
+}
+
+// ============================================================================
+// AI Metrics (Task 3.4)
+// ============================================================================
+
+/// Increment AI batch pending counter
+pub fn increment_ai_batch_pending() {
+    gauge!("pharma_ai_batch_pending").increment(1.0);
+}
+
+/// Decrement AI batch pending counter
+pub fn decrement_ai_batch_pending() {
+    gauge!("pharma_ai_batch_pending").decrement(1.0);
+}
+
+/// Record AI parse with detailed status
+pub fn record_ai_parse_detailed(status: &str, batch_size: usize) {
+    counter!("pharma_ai_parse_total", "status" => status.to_string()).increment(1);
+    if batch_size > 1 {
+        histogram!("pharma_ai_batch_size").record(batch_size as f64);
+    }
+}
+
+/// Record token usage for AI batch
+pub fn record_ai_tokens_used(tokens: usize) {
+    counter!("pharma_ai_tokens_used_total").increment(tokens as u64);
+    histogram!("pharma_ai_batch_tokens").record(tokens as f64);
+}
+
+// ============================================================================
+// Match Quality Metrics (Task 4.4)
+// ============================================================================
+
+/// Record match confirmation or rejection
+pub fn record_match_confirmation(confirmed: bool) {
+    let status = if confirmed { "confirmed" } else { "rejected" };
+    counter!("pharma_match_confirmations_total", "status" => status.to_string()).increment(1);
+}
+
+/// Record match score distribution
+pub fn record_match_score(score: f64, band: &str) {
+    histogram!("pharma_match_score_distribution").record(score);
+    counter!("pharma_match_confidence_band_total", "band" => band.to_string()).increment(1);
+}
+
+/// Set current confirmation rate (0.0 - 1.0)
+pub fn set_confirmation_rate(rate: f64) {
+    gauge!("pharma_match_confirmation_rate").set(rate);
+}
 // ============================================================================
 // Timer Helper
 // ============================================================================

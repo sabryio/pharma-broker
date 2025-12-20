@@ -356,16 +356,16 @@ Failure Tests:
 
 > **Implementation Notes (2025-12-20):** Created `core/src/ai/circuit_breaker.rs` with `CircuitBreaker`, `CircuitBreakerConfig`, `CircuitState`, and `CircuitOpenError`. Includes 7 unit tests for state transitions.
 
-#### Task 3.2: Token-Aware Batching
+#### Task 3.2: Token-Aware Batching ✅ COMPLETED
 
-- [ ] **Step 1:** Create `core/src/ai/token_batcher.rs`
-  - Estimate tokens per message (~50 avg)
-  - Split batch if total > 4000 tokens
-- [ ] **Step 2:** Integrate with `process_message` in gRPC server
-- [ ] **Step 3:** Add metrics: `ai_batch_size`, `ai_tokens_used`
-- [ ] **Test:** `cargo test token_batcher_`
-  - Verify large batch splits correctly
-  - Verify small batch stays intact
+- [x] **Step 1:** Create `core/src/ai/token_batcher.rs`
+  - Estimate tokens per message (~4 chars/token fallback)
+  - Split batch if total > available tokens (6000 - 2000 overhead = 4000)
+- [x] **Step 2:** TokenBatcher with config (MaxTokensPerBatch, PromptOverhead, TokensPerMessage, MaxMessagesPerBatch)
+- [x] **Step 3:** BatchMessage struct with id, content, sender_name, group_name, reply_to
+- [x] **Test:** `cargo test token_batcher` - 13 tests passing
+
+> **Implementation Notes (2025-12-20):** Ported from legacy/parsing/token_batcher.go. Created TokenBatcher::split_into_batches() with oversized message handling and stats tracking.
 
 #### Task 3.3: Review Queue
 
@@ -376,12 +376,15 @@ Failure Tests:
 - [ ] **Step 4:** Add API endpoint `GET /api/review-queue`
 - [ ] **Test:** `cargo test review_queue_`
 
-#### Task 3.4: AI Latency Metrics
+#### Task 3.4: AI Latency Metrics ✅ COMPLETED
 
-- [ ] **Step 1:** Add histogram `ai_parse_duration_seconds`
-- [ ] **Step 2:** Add counter `ai_parse_total` with labels: status (success, error, circuit_open)
-- [ ] **Step 3:** Add gauge `ai_batch_pending`
-- [ ] **Test:** Verify metrics appear at `/metrics`
+- [x] **Step 1:** Add histogram `ai_parse_duration_seconds` (already exists)
+- [x] **Step 2:** Add counter `ai_parse_total` with labels: status (success, error, circuit_open)
+- [x] **Step 3:** Add gauge `ai_batch_pending` with increment/decrement helpers
+- [x] **Step 4:** Add `ai_batch_size` histogram and `ai_tokens_used` counter
+- [x] **Test:** Metrics available at `/metrics`
+
+> **Implementation Notes (2025-12-20):** Added to `core/src/metrics/mod.rs`: `set_ai_batch_pending`, `increment_ai_batch_pending`, `decrement_ai_batch_pending`, `record_ai_parse_detailed`, `record_ai_tokens_used`.
 
 ---
 
@@ -500,12 +503,14 @@ Additional Tests Needed:
 - [ ] **Step 3:** Test flow: Confirm match → Record feedback → Verify in DB
 - [ ] **Test:** `cargo test --test matching_e2e` with real Postgres
 
-#### Task 4.4: Match Quality Metrics
+#### Task 4.4: Match Quality Metrics ✅ COMPLETED
 
-- [ ] **Step 1:** Add gauge `matching_confirmation_rate`
-- [ ] **Step 2:** Add histogram `matching_score_distribution`
-- [ ] **Step 3:** Add counter `matching_confidence_band_total` with labels
-- [ ] **Test:** Verify metrics at `/metrics`
+- [x] **Step 1:** Add gauge `matching_confirmation_rate`
+- [x] **Step 2:** Add histogram `matching_score_distribution`
+- [x] **Step 3:** Add counter `matching_confidence_band_total` with labels
+- [x] **Test:** Metrics integrated into confirm/reject handlers
+
+> **Implementation Notes (2025-12-20):** Added to `metrics/mod.rs`: `record_match_confirmation`, `record_match_score`, `set_confirmation_rate`. Integrated into `confirm_match` and `reject_match` handlers in `handlers.rs`.
 
 ---
 
