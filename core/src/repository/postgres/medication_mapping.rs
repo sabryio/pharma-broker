@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use pgvector::Vector;
 use sqlx::{PgPool, Row};
 
 use crate::Result;
@@ -59,6 +60,31 @@ impl MedicationMappingRepository for PostgresMedicationMappingRepo {
             "#,
         )
         .bind(query)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(mappings)
+    }
+
+    async fn find_similar(&self, embedding: &[f32], limit: i64) -> Result<Vec<MedicationMapping>> {
+        if embedding.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let vec = Vector::from(embedding.to_vec());
+
+        // Use pgvector's <=> operator for cosine distance (smaller = more similar)
+        let mappings = sqlx::query_as::<_, MedicationMapping>(
+            r#"
+            SELECT id, arabic_name, english_name, synonyms, embedding, created_at, updated_at
+            FROM medication_mappings
+            WHERE embedding IS NOT NULL
+            ORDER BY embedding <=> $1
+            LIMIT $2
+            "#,
+        )
+        .bind(vec)
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;

@@ -26,6 +26,7 @@ sqlx = { version = "0.8.6", features = [
     "chrono",
     "uuid",
 ] }
+pgvector = { version = "0.4", features = ["sqlx"] }
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
@@ -52,7 +53,7 @@ metrics = "0.24.3"
 metrics-exporter-prometheus = "0.18.1"
 
 # Random (for retry jitter)
-rand = "0.9"
+rand = "0.9.2"
 
 # Futures utilities (for WS streams)
 futures-util = "0.3.31"
@@ -68,6 +69,8 @@ strum_macros = "0.27.2"
 [dev-dependencies]
 tokio-test = "0.4.4"
 rstest = "0.26.1"
+testcontainers = { version = "0.26.2", features = ["reusable-containers"] }
+testcontainers-modules = { version = "0.14.0", features = ["postgres"] }
 
 [build-dependencies]
 tonic-prost-build = "0.14.2"

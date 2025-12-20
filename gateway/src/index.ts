@@ -431,20 +431,16 @@ const EMBEDDING_BASE_URL = process.env.EMBEDDING_BASE_URL || AI_BASE_URL;
 const EMBEDDING_MODEL_ID =
   process.env.EMBEDDING_MODEL_ID || "ai/embeddinggemma:latest";
 
-// Embedding endpoint - generates vector embeddings for medication names
+// Single embedding endpoint - for one text
 app.post("/ai/embed", async (c) => {
   const body = await c.req.json();
-  const { text, texts } = body;
+  const { text } = body;
 
-  // Support single text or batch
-  const inputTexts: string[] = texts || (text ? [text] : []);
-
-  if (inputTexts.length === 0) {
-    return c.json({ error: "text or texts array is required" }, 400);
+  if (!text || typeof text !== "string") {
+    return c.json({ error: "text (string) is required" }, 400);
   }
 
   try {
-    // Call OpenAI-compatible embedding API
     const response = await fetch(`${EMBEDDING_BASE_URL}/embeddings`, {
       method: "POST",
       headers: {
@@ -453,7 +449,7 @@ app.post("/ai/embed", async (c) => {
       },
       body: JSON.stringify({
         model: EMBEDDING_MODEL_ID,
-        input: inputTexts,
+        input: [text],
       }),
     });
 
@@ -467,8 +463,58 @@ app.post("/ai/embed", async (c) => {
     }
 
     const result = await response.json();
+    const embedding = result.data?.[0]?.embedding || [];
 
-    // Extract embeddings from response
+    return c.json({
+      success: true,
+      embeddings: [embedding],
+      model: EMBEDDING_MODEL_ID,
+      dimensions: embedding.length,
+    });
+  } catch (error) {
+    console.error("Embedding error:", error);
+    return c.json(
+      {
+        error: "Embedding generation failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      500
+    );
+  }
+});
+
+// Batch embedding endpoint - for multiple texts in one call
+app.post("/ai/embed/batch", async (c) => {
+  const body = await c.req.json();
+  const { texts } = body;
+
+  if (!Array.isArray(texts) || texts.length === 0) {
+    return c.json({ error: "texts (string[]) is required" }, 400);
+  }
+
+  try {
+    const response = await fetch(`${EMBEDDING_BASE_URL}/embeddings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.AI_API_KEY || "not-needed"}`,
+      },
+      body: JSON.stringify({
+        model: EMBEDDING_MODEL_ID,
+        input: texts,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Embedding API error:", response.status, errorText);
+      return c.json(
+        { error: "Embedding API failed", status: response.status },
+        500
+      );
+    }
+
+    const result = await response.json();
     const embeddings = result.data?.map((item: any) => item.embedding) || [];
 
     return c.json({
@@ -478,10 +524,10 @@ app.post("/ai/embed", async (c) => {
       dimensions: embeddings[0]?.length || 0,
     });
   } catch (error) {
-    console.error("Embedding error:", error);
+    console.error("Batch embedding error:", error);
     return c.json(
       {
-        error: "Embedding generation failed",
+        error: "Batch embedding generation failed",
         message: error instanceof Error ? error.message : "Unknown error",
       },
       500

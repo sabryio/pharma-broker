@@ -7,7 +7,9 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::Result;
 use crate::domain::{
-    AuditLog, FeedbackRecord, FeedbackStats, Group, ItemStatus, Match, MatchQueueItem, MatchStatus, MedicationMapping, Offer, RawMessage, Request, ReviewQueueItem, ReviewQueueStats, ReviewStatus, Stats, WeightHistory
+    AuditLog, FeedbackRecord, FeedbackStats, Group, ItemStatus, Match, MatchQueueItem, MatchStatus,
+    MedicationMapping, Offer, RawMessage, Request, ReviewQueueItem, ReviewQueueStats, ReviewStatus,
+    Stats, WeightHistory,
 };
 
 /// Offer repository trait
@@ -211,6 +213,9 @@ pub trait MedicationMappingRepository: Send + Sync {
 
     /// Find relevant mappings based on raw text (fuzzy/trigram search)
     async fn find_relevant(&self, query: &str, limit: i64) -> Result<Vec<MedicationMapping>>;
+
+    /// Find mappings by embedding similarity (pgvector cosine distance)
+    async fn find_similar(&self, embedding: &[f32], limit: i64) -> Result<Vec<MedicationMapping>>;
 
     /// Get all mappings (for maintenance)
     async fn get_all(&self, limit: i64, offset: i64) -> Result<Vec<MedicationMapping>>;

@@ -447,9 +447,9 @@ impl AiClient {
         Ok(results.into_iter().map(|o| o.unwrap()).collect())
     }
 
-    /// Actual gateway call for embeddings
+    /// Actual gateway call for embeddings (batch)
     async fn call_embed_gateway(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>, AiError> {
-        let url = format!("{}/ai/embed", self.config.gateway_url);
+        let url = format!("{}/ai/embed/batch", self.config.gateway_url);
         let request = EmbedRequest {
             texts: texts.clone(),
             model: None,

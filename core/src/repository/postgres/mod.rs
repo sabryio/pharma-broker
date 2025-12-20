@@ -15,6 +15,12 @@ mod review_queue;
 mod stats;
 mod weight_history;
 
+#[cfg(test)]
+pub mod testing;
+
+#[cfg(test)]
+mod medication_mapping_test;
+
 pub use audit_log::PostgresAuditLogRepo;
 pub use feedback::PostgresFeedbackRepo;
 pub use group::PostgresGroupRepo;
