@@ -14,6 +14,7 @@ pub mod notify;
 pub mod queue;
 pub mod repository;
 pub mod retry;
+pub mod worker;
 pub mod ws;
 
 pub use error::{Error, Result};

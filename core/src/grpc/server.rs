@@ -19,19 +19,19 @@ use super::pharma::{
 };
 use crate::ai::AiClient;
 use crate::domain::{
-    AuditAction, AuditLog, ConfidenceBand, EntityType, ItemStatus, Match as MatchEntity,
-    MatchStatus, Offer, RawMessage, Request as RequestEntity, ReviewQueueItem,
+    AuditAction, AuditLog, EntityType, ItemStatus, Offer, RawMessage, Request as RequestEntity,
+    ReviewQueueItem,
 };
+use crate::matching::AutoActionHandler;
 use crate::matching::MatchingEngine;
-use crate::matching::{AutoActionHandler, MatchAction, cosine_similarity};
 use crate::repository::{
-    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
-    MedicationMappingRepository, OfferRepository, RawMessageRepository, RequestRepository,
-    ReviewQueueRepository,
+    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchQueueRepository,
+    MatchRepository, MedicationMappingRepository, OfferRepository, RawMessageRepository,
+    RequestRepository, ReviewQueueRepository,
 };
 
 /// The gRPC service implementation
-pub struct PharmaCoreService<O, R, M, G, F, RQ, A>
+pub struct PharmaCoreService<O, R, M, G, F, RQ, A, MQ>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -40,6 +40,7 @@ where
     F: FeedbackRecordRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
+    MQ: MatchQueueRepository + 'static,
 {
     pub offer_repo: Arc<O>,
     pub request_repo: Arc<R>,
@@ -48,6 +49,7 @@ where
     pub feedback_repo: Arc<F>,
     pub review_queue_repo: Arc<RQ>,
     pub audit_log_repo: Arc<A>,
+    pub match_queue_repo: Arc<MQ>,
     pub medication_mapping_repo: Arc<dyn MedicationMappingRepository + Send + Sync>,
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
     pub ai_client: Arc<AiClient>,
@@ -57,7 +59,7 @@ where
     start_time: std::time::Instant,
 }
 
-impl<O, R, M, G, F, RQ, A> PharmaCoreService<O, R, M, G, F, RQ, A>
+impl<O, R, M, G, F, RQ, A, MQ> PharmaCoreService<O, R, M, G, F, RQ, A, MQ>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -66,6 +68,7 @@ where
     F: FeedbackRecordRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
+    MQ: MatchQueueRepository + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -76,6 +79,7 @@ where
         feedback_repo: Arc<F>,
         review_queue_repo: Arc<RQ>,
         audit_log_repo: Arc<A>,
+        match_queue_repo: Arc<MQ>,
         medication_mapping_repo: Arc<dyn MedicationMappingRepository + Send + Sync>,
         match_repo: Arc<dyn MatchRepository + Send + Sync>,
         ai_client: Arc<AiClient>,
@@ -90,6 +94,7 @@ where
             feedback_repo,
             review_queue_repo,
             audit_log_repo,
+            match_queue_repo,
             medication_mapping_repo,
             match_repo,
             ai_client,
@@ -128,7 +133,8 @@ fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
 }
 
 #[tonic::async_trait]
-impl<O, R, M, G, F, RQ, A> PharmaCore for PharmaCoreService<O, R, M, G, F, RQ, A>
+#[tonic::async_trait]
+impl<O, R, M, G, F, RQ, A, MQ> PharmaCore for PharmaCoreService<O, R, M, G, F, RQ, A, MQ>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -137,6 +143,7 @@ where
     F: FeedbackRecordRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
+    MQ: MatchQueueRepository + 'static,
 {
     /// Process an incoming WhatsApp message
     async fn process_message(
@@ -224,11 +231,12 @@ where
         let sender_phone = raw_message.sender_phone.clone();
         let reply_to = raw_message.reply_to_content.clone();
         let ws_tx = self.ws_tx.clone();
-        let match_repo = self.match_repo.clone();
-        let matching_engine = self.matching_engine.clone();
+        let _match_repo = self.match_repo.clone();
+        let _matching_engine = self.matching_engine.clone();
         let review_queue_repo = self.review_queue_repo.clone();
         let audit_log_repo = self.audit_log_repo.clone();
         let auto_action = self.auto_action.clone();
+        let match_queue_repo = self.match_queue_repo.clone();
         let medication_mapping_repo = self.medication_mapping_repo.clone();
 
         tokio::spawn(async move {
@@ -281,6 +289,15 @@ where
 
                 match parse_action {
                     crate::matching::ParseAction::Accept => {
+                        // Generate embedding for the medication name
+                        let content_embedding = match ai_client.embed(&item.medication).await {
+                            Ok(emb) => Some(emb),
+                            Err(e) => {
+                                tracing::warn!(error = %e, medication = %item.medication, "Failed to generate embedding");
+                                None
+                            }
+                        };
+
                         if item.item_type == "OFFER" {
                             let offer = Offer {
                                 id: Uuid::new_v4().to_string(),
@@ -300,12 +317,16 @@ where
                                 notes: item.notes.clone(),
                                 raw_message: content.clone(),
                                 status: ItemStatus::Active,
+                                content_embedding: content_embedding.clone(),
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };
 
-                            // Check for content-based duplicates
+                            // Check for duplicates (Exact then Semantic)
                             let mut offer = offer;
+                            let mut is_duplicate = false;
+
+                            // 1. Exact match check
                             if let Ok(Some(existing)) = offer_repo
                                 .find_recent_duplicate(
                                     &offer.source_phone,
@@ -314,11 +335,30 @@ where
                                 )
                                 .await
                             {
-                                tracing::info!(
-                                    offer_id = %offer.id,
-                                    existing_id = %existing.id,
-                                    "Duplicate offer detected"
-                                );
+                                tracing::info!(id = %offer.id, existing = %existing.id, "Duplicate offer detected (exact)");
+                                is_duplicate = true;
+                            }
+                            // 2. Semantic match check
+                            else if let Some(emb) = &offer.content_embedding
+                                && let Ok(semantic_dups) = offer_repo
+                                    .find_semantic_duplicates(
+                                        emb,
+                                        0.95,
+                                        chrono::Duration::minutes(10),
+                                    )
+                                    .await
+                            {
+                                // Filter by same sender
+                                if let Some(existing) = semantic_dups
+                                    .iter()
+                                    .find(|o| o.source_phone == offer.source_phone)
+                                {
+                                    tracing::info!(id = %offer.id, existing = %existing.id, "Duplicate offer detected (semantic)");
+                                    is_duplicate = true;
+                                }
+                            }
+
+                            if is_duplicate {
                                 offer.status = ItemStatus::Duplicate;
                             }
 
@@ -360,12 +400,16 @@ where
                                 notes: item.notes.clone(),
                                 raw_message: content.clone(),
                                 status: ItemStatus::Active,
+                                content_embedding: content_embedding.clone(),
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };
 
-                            // Check for content-based duplicates
+                            // Check for duplicates (Exact then Semantic)
                             let mut request = request;
+                            let mut is_duplicate = false;
+
+                            // 1. Exact match check
                             if let Ok(Some(existing)) = request_repo
                                 .find_recent_duplicate(
                                     &request.source_phone,
@@ -374,11 +418,30 @@ where
                                 )
                                 .await
                             {
-                                tracing::info!(
-                                    request_id = %request.id,
-                                    existing_id = %existing.id,
-                                    "Duplicate request detected"
-                                );
+                                tracing::info!(id = %request.id, existing = %existing.id, "Duplicate request detected (exact)");
+                                is_duplicate = true;
+                            }
+                            // 2. Semantic match check
+                            else if let Some(emb) = &request.content_embedding
+                                && let Ok(semantic_dups) = request_repo
+                                    .find_semantic_duplicates(
+                                        emb,
+                                        0.95,
+                                        chrono::Duration::minutes(10),
+                                    )
+                                    .await
+                            {
+                                // Filter by same sender
+                                if let Some(existing) = semantic_dups
+                                    .iter()
+                                    .find(|r| r.source_phone == request.source_phone)
+                                {
+                                    tracing::info!(id = %request.id, existing = %existing.id, "Duplicate request detected (semantic)");
+                                    is_duplicate = true;
+                                }
+                            }
+
+                            if is_duplicate {
                                 request.status = ItemStatus::Duplicate;
                             }
 
@@ -460,114 +523,17 @@ where
             );
 
             // Trigger matching engine for new requests
-            if requests_created > 0 {
-                // Fetch active offers to match against
-                let active_offers = match offer_repo.get_active(100, 0).await {
-                    Ok(offers) => offers,
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Failed to fetch offers for matching");
-                        return;
+            // Trigger matching engine via queue for new requests
+            if requests_created > 0
+                && let Ok(recent_requests) = request_repo.get_active(10, 0).await
+            {
+                for request in recent_requests {
+                    // Enqueue for matching (Priority 0 default)
+                    if let Err(e) = match_queue_repo.enqueue(&request.id, 0).await {
+                        tracing::error!(error = %e, request_id = %request.id, "Failed to enqueue request for matching");
+                    } else {
+                        tracing::info!(request_id = %request.id, "Queued request for matching");
                     }
-                };
-
-                let mut matches_created = 0u32;
-
-                // For each request we just created, try to find matches
-                if let Ok(recent_requests) = request_repo.get_active(10, 0).await {
-                    for request in recent_requests.iter() {
-                        for offer in active_offers.iter() {
-                            // Skip if already matched
-                            if let Ok(exists) = match_repo.exists(&offer.id, &request.id).await
-                                && exists
-                            {
-                                continue;
-                            }
-
-                            // Calculate medication similarity using embeddings
-                            let med_score = match (
-                                ai_client.embed(&offer.medication).await,
-                                ai_client.embed(&request.medication).await,
-                            ) {
-                                (Ok(offer_emb), Ok(request_emb)) => {
-                                    // Use cosine similarity on embeddings
-                                    cosine_similarity(&offer_emb, &request_emb).unwrap_or(0.0)
-                                }
-                                _ => {
-                                    // Fallback to string matching if embedding fails
-                                    tracing::warn!(
-                                        offer = %offer.medication,
-                                        request = %request.medication,
-                                        "Embedding failed, using string matching fallback"
-                                    );
-                                    if offer.medication.to_lowercase()
-                                        == request.medication.to_lowercase()
-                                    {
-                                        1.0
-                                    } else if offer
-                                        .medication
-                                        .to_lowercase()
-                                        .contains(&request.medication.to_lowercase())
-                                        || request
-                                            .medication
-                                            .to_lowercase()
-                                            .contains(&offer.medication.to_lowercase())
-                                    {
-                                        0.7
-                                    } else {
-                                        0.0
-                                    }
-                                }
-                            };
-
-                            // Score using the unified matching engine
-                            // This integrates: Scorer + WarmStart + ABTest + AutoAction
-                            let (score, action) = matching_engine
-                                .score_match(offer, request, med_score, Some(&sender_phone))
-                                .await;
-
-                            // Only create match if confidence is not NONE and not ignored
-                            if score.confidence != ConfidenceBand::None
-                                && action != MatchAction::Ignore
-                            {
-                                let match_entity = MatchEntity {
-                                    id: Uuid::new_v4().to_string(),
-                                    offer_id: offer.id.clone(),
-                                    request_id: request.id.clone(),
-                                    score: score.total,
-                                    reasoning: score.breakdown.clone(),
-                                    matched_by: None,
-                                    status: MatchStatus::Pending,
-                                    created_at: Utc::now(),
-                                    confirmed_at: None,
-                                    notes: None,
-                                };
-
-                                if let Err(e) = match_repo.save(&match_entity).await {
-                                    tracing::error!(error = %e, "Failed to save match");
-                                } else {
-                                    tracing::info!(
-                                        match_id = %match_entity.id,
-                                        offer_id = %offer.id,
-                                        request_id = %request.id,
-                                        score = %score.total,
-                                        confidence = ?score.confidence,
-                                        "🎯 Match created"
-                                    );
-                                    matches_created += 1;
-                                    let _ = ws_tx.send(WsEvent::NewMatch(match_entity.clone()));
-
-                                    // Task 5.1/5.2: Process actions and notifications
-                                    let _ = matching_engine
-                                        .process_match_action(&match_entity, action)
-                                        .await;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if matches_created > 0 {
-                    tracing::info!(matches = matches_created, "🎯 Matching complete");
                 }
             }
         });
@@ -626,9 +592,9 @@ where
 }
 
 /// Start the gRPC server on the specified address
-pub async fn start_grpc_server<O, R, M, G, F, RQ, A, S>(
+pub async fn start_grpc_server<O, R, M, G, F, RQ, A, MQ, S>(
     addr: SocketAddr,
-    service: PharmaCoreService<O, R, M, G, F, RQ, A>,
+    service: PharmaCoreService<O, R, M, G, F, RQ, A, MQ>,
     shutdown: S,
 ) -> std::result::Result<(), tonic::transport::Error>
 where
@@ -639,6 +605,7 @@ where
     F: FeedbackRecordRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
+    MQ: MatchQueueRepository + 'static,
     S: std::future::Future<Output = ()> + Send + 'static,
 {
     tracing::info!("🔌 gRPC server starting on {}", addr);

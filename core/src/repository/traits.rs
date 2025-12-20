@@ -7,9 +7,7 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::Result;
 use crate::domain::{
-    AuditLog, FeedbackRecord, FeedbackStats, Group, ItemStatus, Match, MatchStatus,
-    MedicationMapping, Offer, RawMessage, Request, ReviewQueueItem, ReviewQueueStats, ReviewStatus,
-    Stats, WeightHistory,
+    AuditLog, FeedbackRecord, FeedbackStats, Group, ItemStatus, Match, MatchQueueItem, MatchStatus, MedicationMapping, Offer, RawMessage, Request, ReviewQueueItem, ReviewQueueStats, ReviewStatus, Stats, WeightHistory
 };
 
 /// Offer repository trait
@@ -28,6 +26,12 @@ pub trait OfferRepository: Send + Sync {
     ) -> Result<Option<Offer>>;
     async fn save(&self, offer: &Offer) -> Result<()>;
     async fn update_status(&self, id: &str, status: ItemStatus) -> Result<()>;
+    async fn find_semantic_duplicates(
+        &self,
+        embedding: &[f32],
+        similarity_threshold: f64,
+        within: Duration,
+    ) -> Result<Vec<Offer>>;
 }
 
 /// Request repository trait
@@ -46,6 +50,12 @@ pub trait RequestRepository: Send + Sync {
     ) -> Result<Option<Request>>;
     async fn save(&self, request: &Request) -> Result<()>;
     async fn update_status(&self, id: &str, status: ItemStatus) -> Result<()>;
+    async fn find_semantic_duplicates(
+        &self,
+        embedding: &[f32],
+        similarity_threshold: f64,
+        within: Duration,
+    ) -> Result<Vec<Request>>;
 }
 
 /// Match repository trait
@@ -243,4 +253,25 @@ pub trait AuditLogRepository: Send + Sync {
 
     /// Count total audit logs
     async fn count(&self) -> Result<i64>;
+}
+
+/// Match queue repository trait
+/// Manages persistent match queue items for improved resilience
+#[async_trait]
+pub trait MatchQueueRepository: Send + Sync {
+    /// Enqueue a request for matching
+    async fn enqueue(&self, request_id: &str, priority: i32) -> Result<()>;
+
+    /// Fetch next batch of pending items
+    /// Should use SKIP LOCKED to allow concurrent workers
+    async fn fetch_batch(&self, limit: i64) -> Result<Vec<MatchQueueItem>>;
+
+    /// Mark item as completed
+    async fn complete(&self, id: &uuid::Uuid) -> Result<()>;
+
+    /// Mark item as failed
+    async fn fail(&self, id: &uuid::Uuid, error: &str) -> Result<()>;
+
+    /// Count pending items
+    async fn count_pending(&self) -> Result<i64>;
 }

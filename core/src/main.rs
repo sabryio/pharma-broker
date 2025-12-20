@@ -13,10 +13,11 @@ use pharma_core::grpc::{PharmaCoreService, start_grpc_server};
 use pharma_core::matching::{MatchingEngine, MatchingEngineConfig};
 use pharma_core::metrics::init_metrics;
 use pharma_core::repository::postgres::{
-    PostgresAuditLogRepo, PostgresFeedbackRepo, PostgresGroupRepo, PostgresMatchRepo,
-    PostgresMedicationMappingRepo, PostgresOfferRepo, PostgresRawMessageRepo, PostgresRequestRepo,
-    PostgresReviewQueueRepo, create_pool,
+    PostgresAuditLogRepo, PostgresFeedbackRepo, PostgresGroupRepo, PostgresMatchQueueRepo,
+    PostgresMatchRepo, PostgresMedicationMappingRepo, PostgresOfferRepo, PostgresRawMessageRepo,
+    PostgresRequestRepo, PostgresReviewQueueRepo, create_pool,
 };
+use pharma_core::worker::match_processor::MatchProcessor;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -58,7 +59,9 @@ async fn main() -> anyhow::Result<()> {
     let group_repo = Arc::new(PostgresGroupRepo::new(pool.clone()));
     let feedback_repo = Arc::new(PostgresFeedbackRepo::new(pool.clone()));
     let review_queue_repo = Arc::new(PostgresReviewQueueRepo::new(pool.clone()));
+
     let audit_log_repo = Arc::new(PostgresAuditLogRepo::new(pool.clone()));
+    let match_queue_repo = Arc::new(PostgresMatchQueueRepo::new(pool.clone()));
 
     // Create AI client (reads AI_GATEWAY_URL from env)
     let ai_client = Arc::new(AiClient::from_env());
@@ -99,6 +102,21 @@ async fn main() -> anyhow::Result<()> {
             "📅 Learning scheduler disabled (set LEARNING_SCHEDULER_ENABLED=true to enable)"
         );
     }
+
+    // Initialize and start MatchProcessor (background worker)
+    let processor = MatchProcessor::new(
+        match_queue_repo.clone(),
+        offer_repo.clone(),
+        request_repo.clone(),
+        match_repo.clone(),
+        audit_log_repo.clone(),
+        matching_engine.clone(),
+        ai_client.clone(),
+        ws_tx.clone(),
+    );
+    tokio::spawn(async move {
+        processor.run().await;
+    });
 
     // Create application state for HTTP (with matching engine)
     let state = AppState {
@@ -145,6 +163,7 @@ async fn main() -> anyhow::Result<()> {
         feedback_repo,
         review_queue_repo,
         audit_log_repo,
+        match_queue_repo.clone(),
         medication_mapping_repo,
         match_repo.clone(),
         ai_client,

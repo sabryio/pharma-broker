@@ -27,6 +27,7 @@ pub struct Request {
     pub notes: Option<String>,
     pub raw_message: String,
     pub status: ItemStatus,
+    pub content_embedding: Option<Vec<f32>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -51,6 +52,7 @@ impl Default for Request {
             notes: None,
             raw_message: String::new(),
             status: ItemStatus::Active,
+            content_embedding: None,
             created_at: now,
             updated_at: now,
         }

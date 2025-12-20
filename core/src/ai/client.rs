@@ -4,7 +4,9 @@
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing;
 
 use crate::ai::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitOpenError};
@@ -91,6 +93,7 @@ pub struct AiClient {
     client: Client,
     config: AiConfig,
     circuit_breaker: Arc<CircuitBreaker>,
+    embedding_cache: Arc<RwLock<HashMap<String, Vec<f32>>>>,
 }
 
 impl AiClient {
@@ -107,6 +110,7 @@ impl AiClient {
             client,
             config,
             circuit_breaker,
+            embedding_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -341,6 +345,12 @@ impl AiError {
     }
 }
 
+impl From<AiError> for crate::Error {
+    fn from(err: AiError) -> Self {
+        crate::Error::Internal(err.to_string())
+    }
+}
+
 // ============================================================================
 // Embedding Response Types
 // ============================================================================
@@ -359,24 +369,90 @@ pub struct EmbedResponse {
 #[derive(Debug, Serialize)]
 struct EmbedRequest {
     texts: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 impl AiClient {
     /// Generate embedding for a single text
-    pub async fn embed(&self, text: &str) -> Result<Vec<f32>, AiError> {
+    pub async fn embed(&self, text: &str) -> crate::Result<Vec<f32>> {
+        // Check cache first
+        {
+            let cache = self.embedding_cache.read().await;
+            if let Some(embedding) = cache.get(text) {
+                tracing::debug!(text = %text, "Embedding cache hit");
+                return Ok(embedding.clone());
+            }
+        }
+
         let embeddings = self.embed_batch(&[text.to_string()]).await?;
         embeddings
             .into_iter()
             .next()
-            .ok_or_else(|| AiError::Parse("No embedding returned".to_string()))
+            .ok_or_else(|| crate::Error::Internal("No embedding returned".to_string()))
     }
 
-    /// Generate embeddings for multiple texts in a batch
-    pub async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, AiError> {
-        let url = format!("{}/ai/embed", self.config.gateway_url);
+    /// Generate embeddings for multiple texts in a single batch
+    pub async fn embed_batch(&self, texts: &[String]) -> crate::Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
 
+        // 1. Separate cached from non-cached
+        let mut results = vec![None; texts.len()];
+        let mut missing_texts = Vec::new();
+        let mut missing_indices = Vec::new();
+
+        {
+            let cache = self.embedding_cache.read().await;
+            for (i, text) in texts.iter().enumerate() {
+                if let Some(embedding) = cache.get(text) {
+                    results[i] = Some(embedding.clone());
+                } else {
+                    missing_texts.push(text.clone());
+                    missing_indices.push(i);
+                }
+            }
+        }
+
+        if missing_texts.is_empty() {
+            return Ok(results.into_iter().map(|o| o.unwrap()).collect());
+        }
+
+        // 2. Fetch missing embeddings
+        let retry_result = with_retry(
+            RetryConfig::for_ai_gateway(),
+            || {
+                let texts_clone = missing_texts.clone();
+                async move { self.call_embed_gateway(texts_clone).await }
+            },
+            |e| e.is_retryable(),
+        )
+        .await;
+
+        let fetched_embeddings = retry_result.result?;
+
+        // 3. Update cache and merge results
+        {
+            let mut cache = self.embedding_cache.write().await;
+            for (i, embedding) in fetched_embeddings.into_iter().enumerate() {
+                let original_idx = missing_indices[i];
+                let text = &missing_texts[i];
+
+                cache.insert(text.clone(), embedding.clone());
+                results[original_idx] = Some(embedding);
+            }
+        }
+
+        Ok(results.into_iter().map(|o| o.unwrap()).collect())
+    }
+
+    /// Actual gateway call for embeddings
+    async fn call_embed_gateway(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>, AiError> {
+        let url = format!("{}/ai/embed", self.config.gateway_url);
         let request = EmbedRequest {
-            texts: texts.to_vec(),
+            texts: texts.clone(),
+            model: None,
         };
 
         tracing::debug!(

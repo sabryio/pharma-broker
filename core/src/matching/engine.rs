@@ -23,7 +23,7 @@ use crate::notify::MatchNotifier;
 use crate::repository::{AuditLogRepository, FeedbackRecordRepository};
 
 /// Matching engine configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct MatchingEngineConfig {
     /// Initial weights
     pub weights: Weights,
@@ -33,17 +33,6 @@ pub struct MatchingEngineConfig {
     pub warm_start: WarmStartConfig,
     /// Outlier detection settings
     pub outlier_detector: OutlierDetectorConfig,
-}
-
-impl Default for MatchingEngineConfig {
-    fn default() -> Self {
-        Self {
-            weights: Weights::default(),
-            scheduler: SchedulerConfig::default(),
-            warm_start: WarmStartConfig::default(),
-            outlier_detector: OutlierDetectorConfig::default(),
-        }
-    }
 }
 
 /// Unified matching engine orchestrating all components
