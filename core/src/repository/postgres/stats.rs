@@ -49,7 +49,7 @@ impl StatsRepository for PostgresStatsRepo {
         let monitored_groups = sqlx::query("SELECT COUNT(*) FROM groups WHERE monitored = true")
             .fetch_one(&self.pool)
             .await?
-            .get::<i32, _>(0);
+            .get::<i64, _>(0) as i32;
 
         Ok(Stats {
             active_offers,

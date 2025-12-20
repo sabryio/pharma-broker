@@ -18,8 +18,29 @@ mod weight_history;
 #[cfg(test)]
 pub mod testing;
 
+// Integration tests - mirrors legacy/storage/gorm/*_test.go
+#[cfg(test)]
+mod audit_log_test;
+#[cfg(test)]
+mod feedback_test;
+#[cfg(test)]
+mod group_test;
+#[cfg(test)]
+mod match_repo_test;
 #[cfg(test)]
 mod medication_mapping_test;
+#[cfg(test)]
+mod offer_test;
+#[cfg(test)]
+mod raw_message_test;
+#[cfg(test)]
+mod request_test;
+#[cfg(test)]
+mod review_queue_test;
+#[cfg(test)]
+mod stats_test;
+#[cfg(test)]
+mod weight_history_test;
 
 pub use audit_log::PostgresAuditLogRepo;
 pub use feedback::PostgresFeedbackRepo;
