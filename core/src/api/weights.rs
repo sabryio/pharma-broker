@@ -20,10 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::AuditLog;
 use crate::matching::{ABTestConfig, Weights};
-use crate::repository::{
-    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
-    OfferRepository, RequestRepository, ReviewQueueRepository,
-};
+use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
 
 use super::routes::AppState;
 
@@ -98,17 +95,13 @@ pub struct InfluenceResponse {
 // =============================================================================
 
 /// GET /api/weights - Get current weights and influence
-pub async fn get_weights<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_weights<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -132,18 +125,14 @@ where
 }
 
 /// PUT /api/weights - Update weights manually
-pub async fn update_weights<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn update_weights<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Json(req): Json<UpdateWeightsRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -225,17 +214,13 @@ where
 }
 
 /// GET /api/weights/scheduler - Get scheduler status
-pub async fn get_scheduler_status<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_scheduler_status<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -261,17 +246,13 @@ where
 }
 
 /// GET /api/weights/influence - Get warm start influence
-pub async fn get_influence<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_influence<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -295,17 +276,13 @@ where
 }
 
 /// GET /api/weights/abtest - List all A/B tests
-pub async fn list_ab_tests<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn list_ab_tests<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -334,18 +311,14 @@ where
 }
 
 /// POST /api/weights/abtest - Create a new A/B test
-pub async fn create_ab_test<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn create_ab_test<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Json(req): Json<CreateABTestRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -394,18 +367,14 @@ where
 }
 
 /// GET /api/weights/abtest/:id - Get A/B test result
-pub async fn get_ab_test_result<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_ab_test_result<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Path(test_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -440,18 +409,14 @@ where
 }
 
 /// DELETE /api/weights/abtest/:id - End an A/B test
-pub async fn end_ab_test<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn end_ab_test<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Path(test_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,

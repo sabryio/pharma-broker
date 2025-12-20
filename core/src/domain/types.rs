@@ -26,6 +26,7 @@ pub enum ItemStatus {
     Matched,
     Expired,
     Archived,
+    Duplicate,
 }
 
 impl std::fmt::Display for ItemStatus {
@@ -35,6 +36,7 @@ impl std::fmt::Display for ItemStatus {
             Self::Matched => write!(f, "MATCHED"),
             Self::Expired => write!(f, "EXPIRED"),
             Self::Archived => write!(f, "ARCHIVED"),
+            Self::Duplicate => write!(f, "DUPLICATE"),
         }
     }
 }

@@ -54,17 +54,37 @@ impl FeedbackRecord {
     }
 }
 
-/// Statistics for feedback-based weight learning
-/// Aggregated by confirmation status
+/// Feedback statistics from operator confirmations/rejections
+/// Ported from Go: entity.FeedbackStats
 #[derive(Debug, Clone, Default)]
 pub struct FeedbackStats {
-    pub sample_count: i64,
-    pub confirmed_count: i64,
-    pub rejected_count: i64,
-    /// Average scores for confirmed matches
-    pub confirmed_avg: FeedbackAverage,
-    /// Average scores for rejected matches
-    pub rejected_avg: FeedbackAverage,
+    pub total_feedbacks: usize,
+    pub confirmed_count: usize,
+    pub rejected_count: usize,
+    pub confirmation_rate: f64,
+
+    pub confirmed_avg_medication: f64,
+    pub rejected_avg_medication: f64,
+    pub medication_diff: f64,
+
+    pub confirmed_avg_dosage: f64,
+    pub rejected_avg_dosage: f64,
+    pub dosage_diff: f64,
+
+    pub confirmed_avg_quantity: f64,
+    pub rejected_avg_quantity: f64,
+    pub quantity_diff: f64,
+
+    pub confirmed_avg_price: f64,
+    pub rejected_avg_price: f64,
+    pub price_diff: f64,
+
+    pub confirmed_avg_recency: f64,
+    pub rejected_avg_recency: f64,
+    pub recency_diff: f64,
+
+    pub confirmed_avg_total: f64,
+    pub rejected_avg_total: f64,
 }
 
 #[derive(Debug, Clone, Default)]

@@ -10,6 +10,7 @@
 //! - IGNORE (<0.5): Low confidence, ignore
 
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::domain::ConfidenceBand;
 
@@ -177,16 +178,28 @@ impl AutoActionConfig {
 // Action Handler
 // ============================================================================
 
+use super::thresholds::{SmoothThresholdCalculator, SmoothThresholdConfig};
+
 /// Handler for determining and executing confidence-based actions
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AutoActionHandler {
     config: AutoActionConfig,
+    calculator: Arc<SmoothThresholdCalculator>,
 }
 
 impl AutoActionHandler {
     /// Create a new handler with the given config
     pub fn new(config: AutoActionConfig) -> Self {
-        Self { config }
+        let smooth_config = SmoothThresholdConfig {
+            auto_threshold: config.auto_confirm_threshold,
+            suggest_threshold: config.suggest_threshold,
+            review_threshold: config.review_threshold,
+            ..Default::default()
+        };
+        Self {
+            config,
+            calculator: Arc::new(SmoothThresholdCalculator::new(smooth_config)),
+        }
     }
 
     /// Create with default configuration
@@ -205,15 +218,14 @@ impl AutoActionHandler {
     }
 
     /// Determine the action to take for a match based on its score
-    pub fn determine_action(&self, score: f64) -> MatchAction {
-        if score >= self.config.auto_confirm_threshold && self.config.auto_confirm_enabled {
-            MatchAction::AutoConfirm
-        } else if score >= self.config.suggest_threshold {
-            MatchAction::SuggestToOperator
-        } else if score >= self.config.review_threshold {
-            MatchAction::QueueForReview
-        } else {
-            MatchAction::Ignore
+    pub async fn determine_action(&self, score: f64) -> MatchAction {
+        let result = self.calculator.calculate(score).await;
+
+        match result.primary_band {
+            ConfidenceBand::Auto if self.config.auto_confirm_enabled => MatchAction::AutoConfirm,
+            ConfidenceBand::Auto | ConfidenceBand::Suggest => MatchAction::SuggestToOperator,
+            ConfidenceBand::Review => MatchAction::QueueForReview,
+            ConfidenceBand::None => MatchAction::Ignore,
         }
     }
 
@@ -242,6 +254,11 @@ impl AutoActionHandler {
         self.config.queue_low_confidence
             && avg_confidence < self.config.accept_threshold
             && avg_confidence >= self.config.review_threshold
+    }
+
+    /// Get the internal calculator for adjustment
+    pub fn calculator(&self) -> Arc<SmoothThresholdCalculator> {
+        self.calculator.clone()
     }
 }
 
@@ -308,53 +325,68 @@ mod tests {
         assert!(!config.auto_confirm_enabled);
     }
 
-    #[test]
-    fn test_determine_action_with_auto_confirm_disabled() {
+    #[tokio::test]
+    async fn test_determine_action_with_auto_confirm_disabled() {
         let handler = AutoActionHandler::with_defaults();
 
         // Even high scores don't auto-confirm when disabled
         assert_eq!(
-            handler.determine_action(0.95),
+            handler.determine_action(0.95).await,
             MatchAction::SuggestToOperator
         );
         assert_eq!(
-            handler.determine_action(0.75),
+            handler.determine_action(0.75).await,
             MatchAction::SuggestToOperator
         );
-        assert_eq!(handler.determine_action(0.55), MatchAction::QueueForReview);
-        assert_eq!(handler.determine_action(0.35), MatchAction::Ignore);
+        assert_eq!(
+            handler.determine_action(0.55).await,
+            MatchAction::QueueForReview
+        );
+        assert_eq!(handler.determine_action(0.35).await, MatchAction::Ignore);
     }
 
-    #[test]
-    fn test_determine_action_with_auto_confirm_enabled() {
+    #[tokio::test]
+    async fn test_determine_action_with_auto_confirm_enabled() {
         let config = AutoActionConfig {
             auto_confirm_enabled: true,
             ..Default::default()
         };
         let handler = AutoActionHandler::new(config);
 
-        assert_eq!(handler.determine_action(0.95), MatchAction::AutoConfirm);
-        assert_eq!(handler.determine_action(0.90), MatchAction::AutoConfirm);
         assert_eq!(
-            handler.determine_action(0.89),
+            handler.determine_action(0.95).await,
+            MatchAction::AutoConfirm
+        );
+        assert_eq!(
+            handler.determine_action(0.90).await,
+            MatchAction::AutoConfirm
+        );
+        assert_eq!(
+            handler.determine_action(0.89).await,
             MatchAction::SuggestToOperator
         );
     }
 
-    #[test]
-    fn test_boundary_cases() {
+    #[tokio::test]
+    async fn test_boundary_cases() {
         let handler = AutoActionHandler::with_defaults();
 
         // Test boundary at 0.70
         assert_eq!(
-            handler.determine_action(0.70),
+            handler.determine_action(0.70).await,
             MatchAction::SuggestToOperator
         );
-        assert_eq!(handler.determine_action(0.699), MatchAction::QueueForReview);
+        assert_eq!(
+            handler.determine_action(0.699).await,
+            MatchAction::QueueForReview
+        );
 
         // Test boundary at 0.50
-        assert_eq!(handler.determine_action(0.50), MatchAction::QueueForReview);
-        assert_eq!(handler.determine_action(0.499), MatchAction::Ignore);
+        assert_eq!(
+            handler.determine_action(0.50).await,
+            MatchAction::QueueForReview
+        );
+        assert_eq!(handler.determine_action(0.499).await, MatchAction::Ignore);
     }
 
     #[test]

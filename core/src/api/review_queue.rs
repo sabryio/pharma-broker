@@ -11,13 +11,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use super::routes::AppState;
-use crate::domain::{
+use crate::{domain::{
     AuditAction, AuditLog, EntityType, ReviewQueueItem, ReviewQueueStats, ReviewStatus,
-};
-use crate::repository::{
-    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
-    OfferRepository, RequestRepository, ReviewQueueRepository,
-};
+}, repository::MedicationMappingRepository};
+use crate::repository::{AuditLogRepository, ReviewQueueRepository};
 
 // ============================================================================
 // Request/Response Types
@@ -77,18 +74,14 @@ pub struct UpdateReviewResponse {
 /// - limit: Max items to return (default 20)
 /// - offset: Number of items to skip (default 0)
 /// - status: Filter by status (optional: pending, approved, rejected, skipped)
-pub async fn get_review_queue<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn list_review_items<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Query(pagination): Query<ReviewPagination>,
 ) -> Result<Json<ReviewQueueListResponse>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let items = match pagination.status.as_deref() {
         Some("pending") => {
@@ -130,18 +123,14 @@ where
 
 /// Get a single review queue item by ID
 /// GET /api/review-queue/:id
-pub async fn get_review_item<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_review_item<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Path(id): Path<String>,
 ) -> Result<Json<ReviewQueueItem>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let item = state
         .review_queue_repo
@@ -160,19 +149,15 @@ where
 
 /// Update review item status (approve, reject, or skip)
 /// POST /api/review-queue/:id/review
-pub async fn update_review_status<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn update_review_status<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Path(id): Path<String>,
     Json(req): Json<UpdateReviewRequest>,
 ) -> Result<Json<UpdateReviewResponse>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     // Parse status
     let status = parse_status(&req.status)?;
@@ -180,7 +165,7 @@ where
     // Update the status
     state
         .review_queue_repo
-        .update_status(&id, status.clone(), &req.reviewed_by, req.notes.as_deref())
+        .update_status(&id, status, &req.reviewed_by, req.notes.as_deref())
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -218,17 +203,13 @@ where
 
 /// Get review queue statistics
 /// GET /api/review-queue/stats
-pub async fn get_review_stats<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_review_stats<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
 ) -> Result<Json<ReviewQueueStats>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let stats = state
         .review_queue_repo

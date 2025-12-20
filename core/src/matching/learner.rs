@@ -9,6 +9,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use thiserror::Error;
 
+use crate::domain::FeedbackStats;
+
 use super::{Scorer, Weights};
 
 /// Learning algorithm configuration
@@ -42,39 +44,6 @@ impl Default for LearningConfig {
             analysis_window: 30, // Last 30 days
         }
     }
-}
-
-/// Feedback statistics from operator confirmations/rejections
-/// Ported from Go: entity.FeedbackStats
-#[derive(Debug, Clone, Default)]
-pub struct FeedbackStats {
-    pub total_feedbacks: usize,
-    pub confirmed_count: usize,
-    pub rejected_count: usize,
-    pub confirmation_rate: f64,
-
-    pub confirmed_avg_medication: f64,
-    pub rejected_avg_medication: f64,
-    pub medication_diff: f64,
-
-    pub confirmed_avg_dosage: f64,
-    pub rejected_avg_dosage: f64,
-    pub dosage_diff: f64,
-
-    pub confirmed_avg_quantity: f64,
-    pub rejected_avg_quantity: f64,
-    pub quantity_diff: f64,
-
-    pub confirmed_avg_price: f64,
-    pub rejected_avg_price: f64,
-    pub price_diff: f64,
-
-    pub confirmed_avg_recency: f64,
-    pub rejected_avg_recency: f64,
-    pub recency_diff: f64,
-
-    pub confirmed_avg_total: f64,
-    pub rejected_avg_total: f64,
 }
 
 /// Performance metrics for weight evaluation

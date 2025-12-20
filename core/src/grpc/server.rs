@@ -22,10 +22,12 @@ use crate::domain::{
     AuditAction, AuditLog, ConfidenceBand, EntityType, ItemStatus, Match as MatchEntity,
     MatchStatus, Offer, RawMessage, Request as RequestEntity, ReviewQueueItem,
 };
-use crate::matching::{AutoActionHandler, MatchAction, MatchingEngineHandle, cosine_similarity};
+use crate::matching::MatchingEngine;
+use crate::matching::{AutoActionHandler, MatchAction, cosine_similarity};
 use crate::repository::{
     AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
-    OfferRepository, RawMessageRepository, RequestRepository, ReviewQueueRepository,
+    MedicationMappingRepository, OfferRepository, RawMessageRepository, RequestRepository,
+    ReviewQueueRepository,
 };
 
 /// The gRPC service implementation
@@ -46,10 +48,11 @@ where
     pub feedback_repo: Arc<F>,
     pub review_queue_repo: Arc<RQ>,
     pub audit_log_repo: Arc<A>,
+    pub medication_mapping_repo: Arc<dyn MedicationMappingRepository + Send + Sync>,
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
     pub ai_client: Arc<AiClient>,
     pub ws_tx: broadcast::Sender<WsEvent>,
-    pub matching_engine: MatchingEngineHandle,
+    pub matching_engine: Arc<MatchingEngine>,
     pub auto_action: AutoActionHandler,
     start_time: std::time::Instant,
 }
@@ -73,10 +76,11 @@ where
         feedback_repo: Arc<F>,
         review_queue_repo: Arc<RQ>,
         audit_log_repo: Arc<A>,
+        medication_mapping_repo: Arc<dyn MedicationMappingRepository + Send + Sync>,
         match_repo: Arc<dyn MatchRepository + Send + Sync>,
         ai_client: Arc<AiClient>,
         ws_tx: broadcast::Sender<WsEvent>,
-        matching_engine: MatchingEngineHandle,
+        matching_engine: Arc<MatchingEngine>,
     ) -> Self {
         Self {
             offer_repo,
@@ -86,6 +90,7 @@ where
             feedback_repo,
             review_queue_repo,
             audit_log_repo,
+            medication_mapping_repo,
             match_repo,
             ai_client,
             ws_tx,
@@ -224,9 +229,19 @@ where
         let review_queue_repo = self.review_queue_repo.clone();
         let audit_log_repo = self.audit_log_repo.clone();
         let auto_action = self.auto_action.clone();
+        let medication_mapping_repo = self.medication_mapping_repo.clone();
 
         tokio::spawn(async move {
             tracing::info!(id = %msg_id, "🤖 Starting AI parsing (background)");
+
+            // Step 5a: Fetch medication mappings (RAG-Lite)
+            let mappings = match medication_mapping_repo.find_relevant(&content, 5).await {
+                Ok(m) => Some(m.into_iter().map(|map| map.to_prompt_context()).collect()),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to fetch medication mappings");
+                    None
+                }
+            };
 
             // Call AI gateway
             let parsed_items = match ai_client
@@ -235,6 +250,7 @@ where
                     Some(&sender_name),
                     Some(&group_name),
                     reply_to.as_deref(),
+                    mappings,
                 )
                 .await
             {
@@ -288,6 +304,24 @@ where
                                 updated_at: Utc::now(),
                             };
 
+                            // Check for content-based duplicates
+                            let mut offer = offer;
+                            if let Ok(Some(existing)) = offer_repo
+                                .find_recent_duplicate(
+                                    &offer.source_phone,
+                                    &offer.medication,
+                                    chrono::Duration::minutes(10),
+                                )
+                                .await
+                            {
+                                tracing::info!(
+                                    offer_id = %offer.id,
+                                    existing_id = %existing.id,
+                                    "Duplicate offer detected"
+                                );
+                                offer.status = ItemStatus::Duplicate;
+                            }
+
                             if let Err(e) = offer_repo.save(&offer).await {
                                 tracing::error!(error = %e, offer_id = %offer.id, "Failed to save offer");
                             } else {
@@ -329,6 +363,24 @@ where
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };
+
+                            // Check for content-based duplicates
+                            let mut request = request;
+                            if let Ok(Some(existing)) = request_repo
+                                .find_recent_duplicate(
+                                    &request.source_phone,
+                                    &request.medication,
+                                    chrono::Duration::minutes(10),
+                                )
+                                .await
+                            {
+                                tracing::info!(
+                                    request_id = %request.id,
+                                    existing_id = %existing.id,
+                                    "Duplicate request detected"
+                                );
+                                request.status = ItemStatus::Duplicate;
+                            }
 
                             if let Err(e) = request_repo.save(&request).await {
                                 tracing::error!(error = %e, request_id = %request.id, "Failed to save request");

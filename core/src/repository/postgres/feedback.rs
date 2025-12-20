@@ -5,7 +5,7 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::Result;
-use crate::domain::{FeedbackAverage, FeedbackRecord, FeedbackStats};
+use crate::domain::{FeedbackRecord, FeedbackStats};
 use crate::repository::FeedbackRecordRepository;
 
 pub struct PostgresFeedbackRepo {
@@ -82,12 +82,29 @@ impl FeedbackRecordRepository for PostgresFeedbackRepo {
         .fetch_one(&self.pool)
         .await?;
 
-        let sample_count: i64 = count_row.try_get("total").unwrap_or(0);
+        let total_feedbacks: i64 = count_row.try_get("total").unwrap_or(0);
         let confirmed_count: i64 = count_row.try_get("confirmed").unwrap_or(0);
         let rejected_count: i64 = count_row.try_get("rejected").unwrap_or(0);
 
+        let total_feedbacks = total_feedbacks as usize;
+        let confirmed_count = confirmed_count as usize;
+        let rejected_count = rejected_count as usize;
+
+        let confirmation_rate = if total_feedbacks > 0 {
+            confirmed_count as f64 / total_feedbacks as f64
+        } else {
+            0.0
+        };
+
         // Get averages for confirmed matches
-        let confirmed_avg = if confirmed_count > 0 {
+        let (
+            confirmed_avg_medication,
+            confirmed_avg_dosage,
+            confirmed_avg_quantity,
+            confirmed_avg_price,
+            confirmed_avg_recency,
+            confirmed_avg_total,
+        ) = if confirmed_count > 0 {
             let row = sqlx::query(
                 r#"SELECT 
                      AVG(medication_score) as medication,
@@ -104,20 +121,27 @@ impl FeedbackRecordRepository for PostgresFeedbackRepo {
             .fetch_one(&self.pool)
             .await?;
 
-            FeedbackAverage {
-                medication: row.try_get::<f64, _>("medication").unwrap_or(0.0),
-                dosage: row.try_get::<f64, _>("dosage").unwrap_or(0.0),
-                quantity: row.try_get::<f64, _>("quantity").unwrap_or(0.0),
-                price: row.try_get::<f64, _>("price").unwrap_or(0.0),
-                recency: row.try_get::<f64, _>("recency").unwrap_or(0.0),
-                total: row.try_get::<f64, _>("total").unwrap_or(0.0),
-            }
+            (
+                row.try_get::<f64, _>("medication").unwrap_or(0.0),
+                row.try_get::<f64, _>("dosage").unwrap_or(0.0),
+                row.try_get::<f64, _>("quantity").unwrap_or(0.0),
+                row.try_get::<f64, _>("price").unwrap_or(0.0),
+                row.try_get::<f64, _>("recency").unwrap_or(0.0),
+                row.try_get::<f64, _>("total").unwrap_or(0.0),
+            )
         } else {
-            FeedbackAverage::default()
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         };
 
         // Get averages for rejected matches
-        let rejected_avg = if rejected_count > 0 {
+        let (
+            rejected_avg_medication,
+            rejected_avg_dosage,
+            rejected_avg_quantity,
+            rejected_avg_price,
+            rejected_avg_recency,
+            rejected_avg_total,
+        ) = if rejected_count > 0 {
             let row = sqlx::query(
                 r#"SELECT 
                      AVG(medication_score) as medication,
@@ -134,24 +158,40 @@ impl FeedbackRecordRepository for PostgresFeedbackRepo {
             .fetch_one(&self.pool)
             .await?;
 
-            FeedbackAverage {
-                medication: row.try_get::<f64, _>("medication").unwrap_or(0.0),
-                dosage: row.try_get::<f64, _>("dosage").unwrap_or(0.0),
-                quantity: row.try_get::<f64, _>("quantity").unwrap_or(0.0),
-                price: row.try_get::<f64, _>("price").unwrap_or(0.0),
-                recency: row.try_get::<f64, _>("recency").unwrap_or(0.0),
-                total: row.try_get::<f64, _>("total").unwrap_or(0.0),
-            }
+            (
+                row.try_get::<f64, _>("medication").unwrap_or(0.0),
+                row.try_get::<f64, _>("dosage").unwrap_or(0.0),
+                row.try_get::<f64, _>("quantity").unwrap_or(0.0),
+                row.try_get::<f64, _>("price").unwrap_or(0.0),
+                row.try_get::<f64, _>("recency").unwrap_or(0.0),
+                row.try_get::<f64, _>("total").unwrap_or(0.0),
+            )
         } else {
-            FeedbackAverage::default()
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         };
 
         Ok(FeedbackStats {
-            sample_count,
+            total_feedbacks,
             confirmed_count,
             rejected_count,
-            confirmed_avg,
-            rejected_avg,
+            confirmation_rate,
+            confirmed_avg_medication,
+            rejected_avg_medication,
+            medication_diff: confirmed_avg_medication - rejected_avg_medication,
+            confirmed_avg_dosage,
+            rejected_avg_dosage,
+            dosage_diff: confirmed_avg_dosage - rejected_avg_dosage,
+            confirmed_avg_quantity,
+            rejected_avg_quantity,
+            quantity_diff: confirmed_avg_quantity - rejected_avg_quantity,
+            confirmed_avg_price,
+            rejected_avg_price,
+            price_diff: confirmed_avg_price - rejected_avg_price,
+            confirmed_avg_recency,
+            rejected_avg_recency,
+            recency_diff: confirmed_avg_recency - rejected_avg_recency,
+            confirmed_avg_total,
+            rejected_avg_total,
         })
     }
 
@@ -184,7 +224,7 @@ mod tests {
     #[test]
     fn test_feedback_stats_default() {
         let stats = FeedbackStats::default();
-        assert_eq!(stats.sample_count, 0);
+        assert_eq!(stats.total_feedbacks, 0);
         assert_eq!(stats.confirmed_count, 0);
         assert_eq!(stats.rejected_count, 0);
     }

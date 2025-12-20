@@ -13,13 +13,14 @@ use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use super::{
-    ABTestConfig, ABTestManager, ABTestResult, AutoActionHandler, FeedbackStats, LearnerError,
-    MatchAction, MatchScore, OutlierDetector, OutlierDetectorConfig, PerformanceMetrics,
-    SchedulerConfig, SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner,
-    Weights,
+    ABTestConfig, ABTestManager, ABTestResult, AutoActionHandler, LearnerError, MatchAction,
+    MatchScore, OutlierDetector, OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig,
+    SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
 };
+use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackStats};
 use crate::domain::{Match as MatchEntity, Offer, Request};
 use crate::notify::MatchNotifier;
+use crate::repository::{AuditLogRepository, FeedbackRecordRepository};
 
 /// Matching engine configuration
 #[derive(Debug, Clone)]
@@ -67,6 +68,10 @@ pub struct MatchingEngine {
     pub auto_action: AutoActionHandler,
     /// Notification sender
     pub notifier: Arc<dyn MatchNotifier>,
+    /// Repository for fetching feedback
+    feedback_repo: Option<Arc<dyn FeedbackRecordRepository>>,
+    /// Repository for audit logging
+    audit_log_repo: Option<Arc<dyn AuditLogRepository>>,
 }
 
 impl Default for MatchingEngine {
@@ -95,7 +100,19 @@ impl MatchingEngine {
             scheduler_handle: RwLock::new(None),
             auto_action: AutoActionHandler::from_env(),
             notifier: Arc::new(crate::notify::NullNotifier), // Default to null, can be replaced
+            feedback_repo: None,
+            audit_log_repo: None,
         }
+    }
+
+    /// Set repositories for the learning job
+    pub fn set_repositories(
+        &mut self,
+        feedback_repo: Arc<dyn FeedbackRecordRepository>,
+        audit_log_repo: Arc<dyn AuditLogRepository>,
+    ) {
+        self.feedback_repo = Some(feedback_repo);
+        self.audit_log_repo = Some(audit_log_repo);
     }
 
     /// Update the notifier
@@ -132,7 +149,7 @@ impl MatchingEngine {
         let score = self.scorer.score_match(offer, request, medication_score);
 
         // Determine action based on score
-        let action = self.auto_action.determine_action(score.total);
+        let action = self.auto_action.determine_action(score.total).await;
 
         (score, action)
     }
@@ -273,7 +290,7 @@ impl MatchingEngine {
     // =========================================================================
 
     /// Start the learning scheduler
-    pub async fn start_scheduler(&self) -> std::result::Result<(), String> {
+    pub async fn start_scheduler(self: Arc<Self>) -> std::result::Result<(), String> {
         let config = self.config.read().await;
 
         if !config.scheduler.enabled {
@@ -288,11 +305,14 @@ impl MatchingEngine {
         let scheduler = JobScheduler::new().await.map_err(|e| e.to_string())?;
 
         // Add the learning job
-        let job = Job::new_async(schedule.as_str(), |_uuid, _lock| {
+        let engine = self.clone();
+        let job = Job::new_async(schedule.as_str(), move |_uuid, _lock| {
+            let engine = engine.clone();
             Box::pin(async move {
                 tracing::info!("Learning job triggered by scheduler");
-                // Note: Job execution would call engine.run_learning_job()
-                // This requires Arc<Self> pattern for production use
+                if let Err(e) = engine.run_learning_job().await {
+                    tracing::error!(error = %e, "Learning job failed");
+                }
             })
         })
         .map_err(|e| e.to_string())?;
@@ -303,6 +323,67 @@ impl MatchingEngine {
         *self.scheduler_handle.write().await = Some(scheduler);
 
         tracing::info!(schedule = schedule, "Learning scheduler started");
+        Ok(())
+    }
+
+    /// Primary learning job: updates weights and thresholds
+    pub async fn run_learning_job(&self) -> crate::Result<()> {
+        let feedback_repo = self.feedback_repo.as_ref().ok_or_else(|| {
+            crate::Error::Internal("Feedback repository not set in matching engine".to_owned())
+        })?;
+
+        // 1. Get stats for the last 30 days
+        let end = chrono::Utc::now();
+        let start = end - chrono::Duration::days(30);
+        let stats = feedback_repo.get_stats(start, end).await?;
+
+        if stats.total_feedbacks < 50 {
+            tracing::info!(
+                count = stats.total_feedbacks,
+                "Not enough feedback for learning (minimum 50)"
+            );
+            return Ok(());
+        }
+
+        // 2. Calculate new weights
+        let (new_weights, metrics) = self
+            .calculate_new_weights(&stats)
+            .await
+            .map_err(|e| crate::Error::Internal(format!("Weight calculation failed: {}", e)))?;
+
+        // 3. Adjust thresholds based on confirmation rate
+        // If confirmation rate is high, we can be more aggressive with auto-actions
+        let calculator = self.auto_action.calculator();
+        let mut threshold_config = calculator.config().read().await.clone();
+
+        // Simple heuristic: adjust auto threshold based on metrics
+        if metrics.confirmation_rate > 0.95 {
+            threshold_config.auto_threshold = (threshold_config.auto_threshold - 0.01).max(0.85);
+        } else if metrics.confirmation_rate < 0.85 {
+            threshold_config.auto_threshold = (threshold_config.auto_threshold + 0.01).min(0.95);
+        }
+
+        // 4. Update the engine
+        self.apply_weights(new_weights.clone(), "Automated periodic learning")
+            .await;
+        calculator.update_config(threshold_config).await;
+
+        // 5. Audit log the change
+        if let Some(audit_repo) = &self.audit_log_repo {
+            let audit_log = AuditLog::system(
+                AuditAction::WeightsUpdated,
+                EntityType::Weights,
+                "current".to_string(),
+            )
+            .with_details(serde_json::json!({
+                "weights": new_weights,
+                "confirmation_rate": metrics.confirmation_rate,
+                "sample_size": stats.total_feedbacks
+            }));
+            let _ = audit_repo.save(&audit_log).await;
+        }
+
+        tracing::info!("✅ Learning job completed successfully");
         Ok(())
     }
 
@@ -429,18 +510,6 @@ impl MatchingEngine {
     pub fn learner(&self) -> &WeightLearner {
         &self.learner
     }
-}
-
-// =============================================================================
-// Thread-safe wrapper for use in async contexts
-// =============================================================================
-
-/// Thread-safe matching engine handle
-pub type MatchingEngineHandle = Arc<MatchingEngine>;
-
-/// Create a new matching engine handle
-pub fn create_matching_engine(config: MatchingEngineConfig) -> MatchingEngineHandle {
-    Arc::new(MatchingEngine::new(config))
 }
 
 // =============================================================================

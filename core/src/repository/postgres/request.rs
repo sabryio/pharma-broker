@@ -1,6 +1,7 @@
 //! PostgreSQL Request Repository (runtime queries)
 
 use async_trait::async_trait;
+use chrono::Duration;
 use sqlx::{PgPool, Row};
 
 use crate::domain::{ItemStatus, Request};
@@ -73,6 +74,31 @@ impl RequestRepository for PostgresRequestRepo {
             .fetch_one(&self.pool)
             .await?;
         Ok(row.get::<i64, _>("count"))
+    }
+
+    async fn find_recent_duplicate(
+        &self,
+        sender_phone: &str,
+        medication: &str,
+        within: Duration,
+    ) -> Result<Option<Request>> {
+        let cutoff = chrono::Utc::now() - within;
+
+        let request = sqlx::query_as::<_, Request>(
+            r#"SELECT id, raw_message_id, source_phone, source_name, source_group,
+                      group_name, medication, medication_raw, quantity, unit,
+                      max_price, currency, urgent, notes, raw_message,
+                      status, created_at, updated_at
+               FROM requests
+               WHERE source_phone = $1 AND medication = $2 AND created_at > $3
+               ORDER BY created_at DESC LIMIT 1"#,
+        )
+        .bind(sender_phone)
+        .bind(medication)
+        .bind(cutoff)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(request)
     }
 
     async fn save(&self, request: &Request) -> Result<()> {

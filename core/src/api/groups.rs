@@ -11,10 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::routes::AppState;
 use crate::domain::Group;
-use crate::repository::{
-    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
-    OfferRepository, RequestRepository, ReviewQueueRepository,
-};
+use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
 
 /// Request body for creating/updating a group
 #[derive(Debug, Deserialize)]
@@ -55,17 +52,13 @@ pub struct GroupListResponse {
 }
 
 /// GET /api/groups - List all groups
-pub async fn get_groups<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn list_groups<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
 ) -> Result<Json<GroupListResponse>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let groups = state
         .group_repo
@@ -83,18 +76,14 @@ where
 }
 
 /// GET /api/groups/:jid - Get a specific group
-pub async fn get_group<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_group<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Path(jid): Path<String>,
 ) -> Result<Json<GroupResponse>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let group = state
         .group_repo
@@ -113,18 +102,14 @@ where
 }
 
 /// POST /api/groups - Create a new group
-pub async fn create_group<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn create_group<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Json(req): Json<CreateGroupRequest>,
 ) -> Result<(StatusCode, Json<GroupResponse>), (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     // Check if group already exists
     if let Ok(Some(_)) = state.group_repo.get_by_jid(&req.jid).await {
@@ -152,19 +137,15 @@ where
 }
 
 /// PUT /api/groups/:jid - Update a group
-pub async fn update_group<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn update_group<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Path(jid): Path<String>,
     Json(req): Json<UpdateGroupRequest>,
 ) -> Result<Json<GroupResponse>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let existing = state
         .group_repo
@@ -199,18 +180,14 @@ where
 }
 
 /// DELETE /api/groups/:jid - Delete a group
-pub async fn delete_group<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn delete_group<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Path(jid): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let deleted = state
         .group_repo

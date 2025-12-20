@@ -10,12 +10,12 @@ use pharma_core::ai::AiClient;
 use pharma_core::api::handlers::init_start_time;
 use pharma_core::api::{create_router, routes::AppState};
 use pharma_core::grpc::{PharmaCoreService, start_grpc_server};
-use pharma_core::matching::{MatchingEngineConfig, create_matching_engine};
+use pharma_core::matching::{MatchingEngine, MatchingEngineConfig};
 use pharma_core::metrics::init_metrics;
-use pharma_core::repository::{
+use pharma_core::repository::postgres::{
     PostgresAuditLogRepo, PostgresFeedbackRepo, PostgresGroupRepo, PostgresMatchRepo,
-    PostgresOfferRepo, PostgresRawMessageRepo, PostgresRequestRepo, PostgresReviewQueueRepo,
-    create_pool,
+    PostgresMedicationMappingRepo, PostgresOfferRepo, PostgresRawMessageRepo, PostgresRequestRepo,
+    PostgresReviewQueueRepo, create_pool,
 };
 
 #[tokio::main]
@@ -67,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🤖 AI Gateway: {}", gateway_url);
 
     // Create broadcast channel for real-time events
+    let medication_mapping_repo = Arc::new(PostgresMedicationMappingRepo::new(pool.clone()));
     let (ws_tx, _) = tokio::sync::broadcast::channel(100);
 
     // Track active WebSocket connections
@@ -83,12 +84,12 @@ async fn main() -> anyhow::Result<()> {
     engine_config.scheduler.enabled = scheduler_enabled;
     engine_config.scheduler.schedule = scheduler_schedule.clone();
 
-    let matching_engine = create_matching_engine(engine_config);
+    let matching_engine = Arc::new(MatchingEngine::new(engine_config));
     tracing::info!("⚖️ Matching engine initialized");
 
     // Start the learning scheduler if enabled
     if scheduler_enabled {
-        if let Err(e) = matching_engine.start_scheduler().await {
+        if let Err(e) = matching_engine.clone().start_scheduler().await {
             tracing::error!(error = %e, "Failed to start learning scheduler");
         } else {
             tracing::info!(schedule = %scheduler_schedule, "📅 Learning scheduler started");
@@ -111,6 +112,7 @@ async fn main() -> anyhow::Result<()> {
         feedback_repo: feedback_repo.clone(),
         review_queue_repo: review_queue_repo.clone(),
         audit_log_repo: audit_log_repo.clone(),
+        medication_mapping_repo: medication_mapping_repo.clone(),
         active_connections: active_connections.clone(),
     };
 
@@ -143,6 +145,7 @@ async fn main() -> anyhow::Result<()> {
         feedback_repo,
         review_queue_repo,
         audit_log_repo,
+        medication_mapping_repo,
         match_repo.clone(),
         ai_client,
         ws_tx.clone(),

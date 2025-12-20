@@ -7,8 +7,9 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::Result;
 use crate::domain::{
-    AuditLog, FeedbackRecord, FeedbackStats, Group, ItemStatus, Match, MatchStatus, Offer,
-    RawMessage, Request, ReviewQueueItem, ReviewQueueStats, ReviewStatus, Stats, WeightHistory,
+    AuditLog, FeedbackRecord, FeedbackStats, Group, ItemStatus, Match, MatchStatus,
+    MedicationMapping, Offer, RawMessage, Request, ReviewQueueItem, ReviewQueueStats, ReviewStatus,
+    Stats, WeightHistory,
 };
 
 /// Offer repository trait
@@ -37,6 +38,12 @@ pub trait RequestRepository: Send + Sync {
     async fn get_active(&self, limit: i64, offset: i64) -> Result<Vec<Request>>;
     async fn search(&self, query: &str, limit: i64, offset: i64) -> Result<Vec<Request>>;
     async fn count_active(&self) -> Result<i64>;
+    async fn find_recent_duplicate(
+        &self,
+        sender_phone: &str,
+        medication: &str,
+        within: Duration,
+    ) -> Result<Option<Request>>;
     async fn save(&self, request: &Request) -> Result<()>;
     async fn update_status(&self, id: &str, status: ItemStatus) -> Result<()>;
 }
@@ -184,6 +191,22 @@ pub trait ReviewQueueRepository: Send + Sync {
 
     /// Check if a raw message is already queued
     async fn exists_for_message(&self, raw_message_id: &str) -> Result<bool>;
+}
+
+/// Medication mapping repository trait
+#[async_trait]
+pub trait MedicationMappingRepository: Send + Sync {
+    /// Save a new mapping
+    async fn save(&self, mapping: &MedicationMapping) -> Result<()>;
+
+    /// Find relevant mappings based on raw text (fuzzy/trigram search)
+    async fn find_relevant(&self, query: &str, limit: i64) -> Result<Vec<MedicationMapping>>;
+
+    /// Get all mappings (for maintenance)
+    async fn get_all(&self, limit: i64, offset: i64) -> Result<Vec<MedicationMapping>>;
+
+    /// Count total mappings
+    async fn count(&self) -> Result<i64>;
 }
 
 /// Audit log repository trait

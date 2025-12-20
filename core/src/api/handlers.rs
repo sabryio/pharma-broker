@@ -12,10 +12,7 @@ use serde::{Deserialize, Serialize};
 use super::routes::AppState;
 use crate::domain::{AuditLog, FeedbackRecord, ItemStatus, MatchStatus};
 use crate::metrics;
-use crate::repository::{
-    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
-    OfferRepository, RequestRepository, ReviewQueueRepository,
-};
+use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
 use crate::ws::{MatchStatusEvent, WsEvent};
 
 /// Pagination query parameters
@@ -105,17 +102,13 @@ pub async fn health_check() -> Json<serde_json::Value> {
 }
 
 /// Readiness probe - checks if service can handle requests (DB connected)
-pub async fn health_ready<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn health_ready<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
 ) -> Result<Json<HealthResponse>, (StatusCode, Json<serde_json::Value>)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     // Check database by counting offers (simple query)
     let db_status = match state.offer_repo.count_active().await {
@@ -165,18 +158,14 @@ pub async fn health_live() -> Json<serde_json::Value> {
 
 /// Get active offers with pagination
 /// Ported from: legacy/api/handlers/offer_handler.go:GetOffersGin
-pub async fn get_offers<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_offers<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Query(pagination): Query<Pagination>,
 ) -> Result<Json<ApiResponse<Vec<crate::domain::Offer>>>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let offers = state
         .offer_repo
@@ -195,18 +184,14 @@ where
 
 /// Get active requests with pagination
 /// Ported from: legacy/api/handlers/request_handler.go:GetRequestsGin
-pub async fn get_requests<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_requests<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Query(pagination): Query<Pagination>,
 ) -> Result<Json<ApiResponse<Vec<crate::domain::Request>>>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let requests = state
         .request_repo
@@ -225,18 +210,14 @@ where
 
 /// Get pending matches with pagination
 /// Ported from: legacy/api/handlers/match_handler.go:GetMatchesGin
-pub async fn get_matches<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_matches<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Query(pagination): Query<Pagination>,
 ) -> Result<Json<ApiResponse<Vec<crate::domain::Match>>>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let matches = state
         .match_repo
@@ -263,19 +244,15 @@ pub struct ConfirmRequest {
 
 /// Confirm a pending match
 /// Ported from: legacy/api/handlers/match_handler.go:ConfirmMatchGin
-pub async fn confirm_match<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn confirm_match<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Path(id): Path<String>,
     Json(req): Json<ConfirmRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     // Get the match first
     let match_entity = state
@@ -367,19 +344,15 @@ pub struct RejectRequest {
 
 /// Reject a pending match
 /// Ported from: legacy/api/handlers/match_handler.go:RejectMatchGin
-pub async fn reject_match<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn reject_match<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
     Path(id): Path<String>,
     Json(req): Json<RejectRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     // Get the match first for score data
     let match_entity = state
@@ -458,17 +431,13 @@ where
 
 /// Get dashboard stats
 /// Ported from: legacy/api/handlers/stats_handler.go:GetStatsGin
-pub async fn get_stats<O, R, M, G, F, RQ, A>(
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+pub async fn get_stats<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
 ) -> Result<Json<crate::domain::Stats>, (StatusCode, String)>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     let active_offers = state.offer_repo.count_active().await.unwrap_or(0);
     let active_requests = state.request_repo.count_active().await.unwrap_or(0);

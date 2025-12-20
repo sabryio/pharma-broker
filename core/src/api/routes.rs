@@ -14,46 +14,39 @@ use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::broadcast;
 
 use super::{groups, handlers, review_queue, weights};
-use crate::matching::MatchingEngineHandle;
+use crate::matching::MatchingEngine;
 use crate::repository::{
     AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
-    OfferRepository, RequestRepository, ReviewQueueRepository,
+    MedicationMappingRepository, OfferRepository, RequestRepository, ReviewQueueRepository,
 };
 use crate::ws::{self, WsEvent};
 
 /// Application state shared across handlers
-pub struct AppState<O, R, M, G, F, RQ, A>
+pub struct AppState<RQ, A, MM>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
-    pub offer_repo: Arc<O>,
-    pub request_repo: Arc<R>,
-    pub match_repo: Arc<M>,
-    pub group_repo: Arc<G>,
-    pub feedback_repo: Arc<F>,
+    pub offer_repo: Arc<dyn OfferRepository + Send + Sync>,
+    pub request_repo: Arc<dyn RequestRepository + Send + Sync>,
+    pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
+    pub group_repo: Arc<dyn GroupRepository + Send + Sync>,
+    pub feedback_repo: Arc<dyn FeedbackRecordRepository + Send + Sync>,
     pub review_queue_repo: Arc<RQ>,
     pub audit_log_repo: Arc<A>,
-    pub matching_engine: Option<MatchingEngineHandle>,
+    pub medication_mapping_repo: Arc<MM>,
+    pub matching_engine: Option<Arc<MatchingEngine>>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub metrics_handle: Option<PrometheusHandle>,
     pub active_connections: Arc<AtomicUsize>,
 }
 
-impl<O, R, M, G, F, RQ, A> Clone for AppState<O, R, M, G, F, RQ, A>
+impl<RQ, A, MM> Clone for AppState<RQ, A, MM>
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     fn clone(&self) -> Self {
         Self {
@@ -64,6 +57,7 @@ where
             feedback_repo: self.feedback_repo.clone(),
             review_queue_repo: self.review_queue_repo.clone(),
             audit_log_repo: self.audit_log_repo.clone(),
+            medication_mapping_repo: self.medication_mapping_repo.clone(),
             matching_engine: self.matching_engine.clone(),
             ws_tx: self.ws_tx.clone(),
             metrics_handle: self.metrics_handle.clone(),
@@ -73,157 +67,85 @@ where
 }
 
 /// Create the main API router
-///
-/// Endpoints ported from legacy/api/routes.go:
-/// - GET  /api/offers         - List active offers
-/// - GET  /api/requests       - List active requests
-/// - GET  /api/matches        - List pending matches
-/// - POST /api/matches/:id/confirm - Confirm a match
-/// - POST /api/matches/:id/reject  - Reject a match
-/// - GET  /api/stats          - Get dashboard stats
-/// - GET  /api/groups         - List all groups
-/// - POST /api/groups         - Create a group
-/// - PUT  /api/groups/:jid    - Update a group
-/// - DELETE /api/groups/:jid  - Delete a group
-/// - GET  /health             - Health check
-/// - GET  /metrics            - Prometheus metrics
-/// - GET  /ws                 - WebSocket real-time updates
-pub fn create_router<O, R, M, G, F, RQ, A>(state: AppState<O, R, M, G, F, RQ, A>) -> Router
+pub fn create_router<RQ, A, MM>(state: AppState<RQ, A, MM>) -> Router
 where
-    O: OfferRepository + 'static,
-    R: RequestRepository + 'static,
-    M: MatchRepository + 'static,
-    G: GroupRepository + 'static,
-    F: FeedbackRecordRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     Router::new()
-        // Health checks (Kubernetes probes)
+        // Health checks
         .route("/health", get(handlers::health_check))
-        .route(
-            "/health/ready",
-            get(handlers::health_ready::<O, R, M, G, F, RQ, A>),
-        )
+        .route("/health/ready", get(handlers::health_ready::<RQ, A, MM>))
         .route("/health/live", get(handlers::health_live))
         // Prometheus metrics
-        .route("/metrics", get(metrics_handler::<O, R, M, G, F, RQ, A>))
+        .route("/metrics", get(metrics_handler::<RQ, A, MM>))
         // Offers
-        .route(
-            "/api/offers",
-            get(handlers::get_offers::<O, R, M, G, F, RQ, A>),
-        )
+        .route("/api/offers", get(handlers::get_offers::<RQ, A, MM>))
         // Requests
-        .route(
-            "/api/requests",
-            get(handlers::get_requests::<O, R, M, G, F, RQ, A>),
-        )
+        .route("/api/requests", get(handlers::get_requests::<RQ, A, MM>))
         // Matches
-        .route(
-            "/api/matches",
-            get(handlers::get_matches::<O, R, M, G, F, RQ, A>),
-        )
+        .route("/api/matches", get(handlers::get_matches::<RQ, A, MM>))
         .route(
             "/api/matches/{id}/confirm",
-            post(handlers::confirm_match::<O, R, M, G, F, RQ, A>),
+            post(handlers::confirm_match::<RQ, A, MM>),
         )
         .route(
             "/api/matches/{id}/reject",
-            post(handlers::reject_match::<O, R, M, G, F, RQ, A>),
+            post(handlers::reject_match::<RQ, A, MM>),
         )
         // Stats
-        .route(
-            "/api/stats",
-            get(handlers::get_stats::<O, R, M, G, F, RQ, A>),
-        )
-        // Groups (new CRUD endpoints)
-        .route(
-            "/api/groups",
-            get(groups::get_groups::<O, R, M, G, F, RQ, A>),
-        )
-        .route(
-            "/api/groups",
-            post(groups::create_group::<O, R, M, G, F, RQ, A>),
-        )
+        .route("/api/stats", get(handlers::get_stats::<RQ, A, MM>))
+        // Groups
+        .route("/api/groups", get(groups::list_groups::<RQ, A, MM>))
+        .route("/api/groups", post(groups::create_group::<RQ, A, MM>))
+        .route("/api/groups/{jid}", get(groups::get_group::<RQ, A, MM>))
+        .route("/api/groups/{jid}", put(groups::update_group::<RQ, A, MM>))
         .route(
             "/api/groups/{jid}",
-            get(groups::get_group::<O, R, M, G, F, RQ, A>),
-        )
-        .route(
-            "/api/groups/{jid}",
-            put(groups::update_group::<O, R, M, G, F, RQ, A>),
-        )
-        .route(
-            "/api/groups/{jid}",
-            delete(groups::delete_group::<O, R, M, G, F, RQ, A>),
+            delete(groups::delete_group::<RQ, A, MM>),
         )
         // Weights management
-        .route(
-            "/api/weights",
-            get(weights::get_weights::<O, R, M, G, F, RQ, A>),
-        )
-        .route(
-            "/api/weights",
-            put(weights::update_weights::<O, R, M, G, F, RQ, A>),
-        )
+        .route("/api/weights", get(weights::get_weights::<RQ, A, MM>))
+        .route("/api/weights", put(weights::update_weights::<RQ, A, MM>))
         .route(
             "/api/weights/scheduler",
-            get(weights::get_scheduler_status::<O, R, M, G, F, RQ, A>),
+            get(weights::get_scheduler_status::<RQ, A, MM>),
         )
         .route(
             "/api/weights/influence",
-            get(weights::get_influence::<O, R, M, G, F, RQ, A>),
-        )
-        .route(
-            "/api/weights/abtest",
-            get(weights::list_ab_tests::<O, R, M, G, F, RQ, A>),
-        )
-        .route(
-            "/api/weights/abtest",
-            post(weights::create_ab_test::<O, R, M, G, F, RQ, A>),
-        )
-        .route(
-            "/api/weights/abtest/{id}",
-            get(weights::get_ab_test_result::<O, R, M, G, F, RQ, A>),
-        )
-        .route(
-            "/api/weights/abtest/{id}",
-            delete(weights::end_ab_test::<O, R, M, G, F, RQ, A>),
+            get(weights::get_influence::<RQ, A, MM>),
         )
         // Review Queue
         .route(
             "/api/review-queue",
-            get(review_queue::get_review_queue::<O, R, M, G, F, RQ, A>),
+            get(review_queue::list_review_items::<RQ, A, MM>),
         )
         .route(
             "/api/review-queue/stats",
-            get(review_queue::get_review_stats::<O, R, M, G, F, RQ, A>),
+            get(review_queue::get_review_stats::<RQ, A, MM>),
         )
         .route(
             "/api/review-queue/{id}",
-            get(review_queue::get_review_item::<O, R, M, G, F, RQ, A>),
+            get(review_queue::get_review_item::<RQ, A, MM>),
         )
         .route(
-            "/api/review-queue/{id}/review",
-            post(review_queue::update_review_status::<O, R, M, G, F, RQ, A>),
+            "/api/review-queue/{id}/status",
+            put(review_queue::update_review_status::<RQ, A, MM>),
         )
         // WebSocket
-        .route("/ws", get(ws::ws_handler::<O, R, M, G, F, RQ, A>))
+        .route("/ws", get(ws::ws_handler::<RQ, A, MM>))
         .with_state(state)
 }
 
-/// Handler for /metrics endpoint - returns Prometheus format
-async fn metrics_handler<O, R, M, G, F, RQ, A>(
-    axum::extract::State(state): axum::extract::State<AppState<O, R, M, G, F, RQ, A>>,
+/// Handler for /metrics endpoint
+async fn metrics_handler<RQ, A, MM>(
+    axum::extract::State(state): axum::extract::State<AppState<RQ, A, MM>>,
 ) -> impl IntoResponse
 where
-    O: OfferRepository,
-    R: RequestRepository,
-    M: MatchRepository,
-    G: GroupRepository,
-    F: FeedbackRecordRepository,
-    RQ: ReviewQueueRepository,
-    A: AuditLogRepository,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     if let Some(handle) = &state.metrics_handle {
         handle.render()

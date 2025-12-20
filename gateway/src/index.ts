@@ -129,10 +129,14 @@ Before generating valid JSON, strictly follow this internal process:
 - IGNORE: "تواصل", "استفسار", "خاص", "موبيل", "010xxxx", "011xxxx".
 - IGNORE: "سعر", "بكام" (Price inquiries are NOT Requests unless explicit "Need").
 
+# Medication Mappings (Use these for exact translation)
+{{MEDICATION_MAPPINGS}}
+
 # Context & Replies
 - If "Replying to" is present, inherit context (Medication name, Intent).
 - "نفسه" or "منه" refers to the medication in the replied message.
 - "بكام؟" on an OFFER -> Contextual Query (ignore as Request, unless "عايز منه").
+- IMPORTANT: Use the provided Medication Mappings to resolve Arabic names to English brand names.
 
 # Examples (Few-Shot)
 
@@ -241,10 +245,26 @@ app.post("/ai/parse", async (c) => {
   prompt += `Content:\n${content}\n\n`;
   prompt += "=== END MESSAGE ===\n\nReturn valid JSON only.\n";
 
+  let systemPrompt = SYSTEM_PROMPT;
+  if (
+    Array.isArray(body.medication_mappings) &&
+    body.medication_mappings.length > 0
+  ) {
+    const mappingList = body.medication_mappings
+      .map((m: string) => `- ${m}`)
+      .join("\n");
+    systemPrompt = systemPrompt.replace("{{MEDICATION_MAPPINGS}}", mappingList);
+  } else {
+    systemPrompt = systemPrompt.replace(
+      "{{MEDICATION_MAPPINGS}}",
+      "No mappings available."
+    );
+  }
+
   try {
     const { text, usage } = await generateText({
       model,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       prompt,
       maxOutputTokens: 1000,
       temperature: 0.3,

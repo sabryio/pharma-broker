@@ -10,8 +10,9 @@ mod learner;
 mod scheduler;
 mod scorer;
 mod service;
+mod thresholds;
 mod warm_start;
-mod weights;
+mod weights; // Added thresholds module
 
 pub use abtest::*;
 pub use actions::*;

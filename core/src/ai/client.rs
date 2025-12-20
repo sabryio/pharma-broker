@@ -83,6 +83,7 @@ struct ParseRequest {
     sender_name: Option<String>,
     group_name: Option<String>,
     reply_to: Option<String>,
+    medication_mappings: Option<Vec<String>>,
 }
 
 /// AI Gateway client
@@ -121,6 +122,7 @@ impl AiClient {
         sender_name: Option<&str>,
         group_name: Option<&str>,
         reply_to: Option<&str>,
+        medication_mappings: Option<Vec<String>>,
     ) -> Result<Vec<ParsedItem>, AiError> {
         // Check circuit breaker
         if !self.circuit_breaker.allow_request() {
@@ -134,6 +136,7 @@ impl AiClient {
             sender_name: sender_name.map(|s| s.to_string()),
             group_name: group_name.map(|s| s.to_string()),
             reply_to: reply_to.map(|s| s.to_string()),
+            medication_mappings,
         };
 
         tracing::debug!(
@@ -185,18 +188,19 @@ impl AiClient {
         Ok(items)
     }
 
-    /// Parse a message with automatic retry for transient failures
     pub async fn parse_with_retry(
         &self,
         content: &str,
         sender_name: Option<&str>,
         group_name: Option<&str>,
         reply_to: Option<&str>,
+        medication_mappings: Option<Vec<String>>,
     ) -> RetryResult<Vec<ParsedItem>, AiError> {
         let content = content.to_string();
         let sender_name = sender_name.map(|s| s.to_string());
         let group_name = group_name.map(|s| s.to_string());
         let reply_to = reply_to.map(|s| s.to_string());
+        let mm = medication_mappings.clone();
 
         with_retry(
             RetryConfig::for_ai_gateway(),
@@ -205,8 +209,9 @@ impl AiClient {
                 let sn = sender_name.clone();
                 let gn = group_name.clone();
                 let rt = reply_to.clone();
+                let m = mm.clone();
                 async move {
-                    self.parse(&c, sn.as_deref(), gn.as_deref(), rt.as_deref())
+                    self.parse(&c, sn.as_deref(), gn.as_deref(), rt.as_deref(), m)
                         .await
                 }
             },
@@ -258,6 +263,7 @@ impl AiClient {
                         msg.sender_name.as_deref(),
                         msg.group_name.as_deref(),
                         msg.reply_to.as_deref(),
+                        None, // Batch mappings not supported yet
                     )
                     .await;
 

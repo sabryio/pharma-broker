@@ -21,8 +21,7 @@ use uuid::Uuid;
 use crate::api::routes::AppState;
 use crate::domain::{Match, Offer, Request};
 use crate::repository::{
-    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
-    OfferRepository, RequestRepository, ReviewQueueRepository,
+    AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository,
 };
 
 /// Payload for match status change events
@@ -57,19 +56,15 @@ pub enum WsEvent {
 }
 
 /// WebSocket handler
-pub async fn ws_handler<O, R, M, G, F, RQ, A>(
+pub async fn ws_handler<RQ, A, MM>(
     ws: WebSocketUpgrade,
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
+    State(state): State<AppState<RQ, A, MM>>,
 ) -> impl IntoResponse
 where
-    O: OfferRepository + 'static,
-    R: RequestRepository + 'static,
-    M: MatchRepository + 'static,
-    G: GroupRepository + 'static,
-    F: FeedbackRecordRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     // 1. Auth check
     let token = params.get("token");
@@ -91,17 +86,11 @@ where
 }
 
 /// Handle a single WebSocket connection
-async fn handle_socket<O, R, M, G, F, RQ, A>(
-    socket: WebSocket,
-    state: AppState<O, R, M, G, F, RQ, A>,
-) where
-    O: OfferRepository + 'static,
-    R: RequestRepository + 'static,
-    M: MatchRepository + 'static,
-    G: GroupRepository + 'static,
-    F: FeedbackRecordRepository + 'static,
+async fn handle_socket<RQ, A, MM>(socket: WebSocket, state: AppState<RQ, A, MM>)
+where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
 {
     // Increment connection count
     state.active_connections.fetch_add(1, Ordering::SeqCst);
@@ -131,7 +120,7 @@ async fn handle_socket<O, R, M, G, F, RQ, A>(
 
     // Task for sending periodic heartbeats (pings)
     let ws_tx_heartbeat = state.ws_tx.clone();
-    let mut heartbeat_task = tokio::spawn(async move {
+    let heartbeat_task = tokio::spawn(async move {
         let mut ticker = interval(Duration::from_secs(30));
         loop {
             ticker.tick().await;
