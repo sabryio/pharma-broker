@@ -28,16 +28,16 @@ impl ParseJob {
     }
 }
 
-/// Result of parsing a single message
+/// Result of parsing a single message (job-level result)
 #[derive(Debug, Clone)]
-pub struct ParseResult {
+pub struct ParseJobResult {
     pub message_id: String,
     pub items: Vec<crate::ai::ParsedItem>,
     pub error: Option<String>,
     pub pass: ParsePass,
 }
 
-impl ParseResult {
+impl ParseJobResult {
     pub fn success(message_id: String, items: Vec<crate::ai::ParsedItem>, pass: ParsePass) -> Self {
         Self {
             message_id,
@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn test_parse_result_success() {
-        let result = ParseResult::success("msg-1".to_string(), vec![], ParsePass::Strict);
+        let result = ParseJobResult::success("msg-1".to_string(), vec![], ParsePass::Strict);
         assert!(result.error.is_none());
         assert_eq!(result.message_id, "msg-1");
         assert_eq!(result.pass, ParsePass::Strict);
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_parse_result_error() {
-        let result = ParseResult::error("msg-2".to_string(), "AI failed".to_string());
+        let result = ParseJobResult::error("msg-2".to_string(), "AI failed".to_string());
         assert!(result.error.is_some());
         assert_eq!(result.error.unwrap(), "AI failed");
         assert!(result.items.is_empty());

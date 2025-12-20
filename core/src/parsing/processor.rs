@@ -8,7 +8,7 @@ use tokio::sync::{RwLock, broadcast, mpsc, watch};
 use tokio::time::interval;
 use tracing::{error, info, warn};
 
-use crate::ai::{AiClient, ParsedItem};
+use crate::ai::{ParsedItem, PharmaParser};
 use crate::domain::{
     AuditAction, AuditLog, EntityType, ItemStatus, Offer, RawMessage, Request, ReviewQueueItem,
 };
@@ -19,7 +19,7 @@ use crate::repository::{
 use crate::ws::WsEvent;
 
 use super::config::{BatchConfig, MultiPassConfig, ParsePass};
-use super::{BatchStats, ParseJob, ParseResult};
+use super::{BatchStats, ParseJob, ParseJobResult};
 
 /// Batch processor for message parsing
 ///
@@ -31,7 +31,7 @@ pub struct BatchProcessor {
     multi_pass_config: MultiPassConfig,
 
     // Dependencies
-    ai_client: Arc<AiClient>,
+    ai_client: Arc<PharmaParser>,
     raw_message_repo: Arc<dyn RawMessageRepository>,
     offer_repo: Arc<dyn OfferRepository>,
     request_repo: Arc<dyn RequestRepository>,
@@ -55,7 +55,7 @@ impl BatchProcessor {
     pub fn new(
         config: BatchConfig,
         multi_pass_config: MultiPassConfig,
-        ai_client: Arc<AiClient>,
+        ai_client: Arc<PharmaParser>,
         raw_message_repo: Arc<dyn RawMessageRepository>,
         offer_repo: Arc<dyn OfferRepository>,
         request_repo: Arc<dyn RequestRepository>,
@@ -216,16 +216,16 @@ impl BatchProcessor {
         messages: &[&RawMessage],
         mappings: &[String],
         pass: ParsePass,
-    ) -> Vec<ParseResult> {
+    ) -> Vec<ParseJobResult> {
         let mut results = Vec::with_capacity(messages.len());
 
         // For now, parse each message individually
-        // (batch API would be more efficient but requires gateway changes)
         for msg in messages {
-            let mapping_opt = if mappings.is_empty() {
+            // Pass medication mappings to parser for better context
+            let mapping_slice = if mappings.is_empty() {
                 None
             } else {
-                Some(mappings.to_vec())
+                Some(mappings)
             };
 
             let parse_result = self
@@ -235,17 +235,17 @@ impl BatchProcessor {
                     Some(&msg.sender_name),
                     Some(&msg.group_name),
                     msg.reply_to_content.as_deref(),
-                    mapping_opt,
+                    mapping_slice,
                 )
                 .await;
 
             match parse_result {
                 Ok(items) => {
-                    results.push(ParseResult::success(msg.id.clone(), items, pass));
+                    results.push(ParseJobResult::success(msg.id.clone(), items, pass));
                 }
                 Err(e) => {
                     error!(error = %e, msg_id = %msg.id, "AI parsing failed");
-                    results.push(ParseResult::error(msg.id.clone(), e.to_string()));
+                    results.push(ParseJobResult::error(msg.id.clone(), e.to_string()));
                 }
             }
         }
@@ -254,7 +254,7 @@ impl BatchProcessor {
     }
 
     /// Process a single parse result
-    async fn process_single_result(&self, msg: &RawMessage, result: ParseResult) {
+    async fn process_single_result(&self, msg: &RawMessage, result: ParseJobResult) {
         // Handle error
         if let Some(error) = &result.error {
             warn!(msg_id = %msg.id, error = %error, "Parse error");

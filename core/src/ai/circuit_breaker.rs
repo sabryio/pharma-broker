@@ -48,6 +48,26 @@ impl CircuitBreakerConfig {
             success_threshold: 2,
         }
     }
+
+    /// Load configuration from environment variables
+    pub fn from_env() -> Self {
+        Self {
+            failure_threshold: std::env::var("CB_FAILURE_THRESHOLD")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(5),
+            recovery_timeout: Duration::from_secs(
+                std::env::var("CB_RECOVERY_TIMEOUT_SECS")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(30),
+            ),
+            success_threshold: std::env::var("CB_SUCCESS_THRESHOLD")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(2),
+        }
+    }
 }
 
 /// Circuit breaker for protecting downstream services

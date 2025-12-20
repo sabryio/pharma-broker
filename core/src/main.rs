@@ -4,9 +4,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
+use pharma_core::ai::PharmaParser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use pharma_core::ai::AiClient;
 use pharma_core::api::handlers::init_start_time;
 use pharma_core::api::{create_router, routes::AppState};
 use pharma_core::grpc::{PharmaCoreService, start_grpc_server};
@@ -64,7 +64,7 @@ async fn main() -> anyhow::Result<()> {
     let match_queue_repo = Arc::new(PostgresMatchQueueRepo::new(pool.clone()));
 
     // Create AI client (reads AI_GATEWAY_URL from env)
-    let ai_client = Arc::new(AiClient::from_env());
+    let ai_client = Arc::new(PharmaParser::from_env());
     let gateway_url =
         std::env::var("AI_GATEWAY_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     tracing::info!("🤖 AI Gateway: {}", gateway_url);

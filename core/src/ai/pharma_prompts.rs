@@ -1,7 +1,10 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { z } from "zod";
+//! Pharma-specific prompts for AI parsing
+//!
+//! Ported from gateway/src/shared.ts to match the exact prompt used by the TypeScript gateway.
 
-export const SYSTEM_PROMPT = `# Role
+/// System prompt for medication parsing
+/// This matches the SYSTEM_PROMPT from gateway/src/shared.ts exactly.
+pub const SYSTEM_PROMPT: &str = r#"# Role
 You are an expert Pharmaceutical Data Analyst with 10+ years of experience in parsing unstructured trade messages from pharmaceutical community groups. You handle both Arabic and English messages.
 
 # Task
@@ -130,40 +133,82 @@ Output:
 ## ❌ Bad Example (Avoid)
 Input: "للتواصل 01012345678"
 CORRECT Output: {"items": []}
-(Phone numbers are NOT medications)`;
+(Phone numbers are NOT medications)"#;
 
-export const MedicationItemSchema = z.object({
-  type: z.enum(["OFFER", "REQUEST"]),
-  medication: z.string(),
-  medication_raw: z.string(),
-  ai_confidence: z.number().min(0).max(1),
-  quantity: z.number().default(0),
-  unit: z.string().nullable().optional(),
-  price: z.number().default(0),
-  max_price: z.number().optional(),
-  urgent: z.boolean().optional(),
-  notes: z.string().optional(),
-});
+/// Build a user prompt with medication mappings
+pub fn build_user_prompt_with_mappings(
+    content: &str,
+    sender_name: Option<&str>,
+    group_name: Option<&str>,
+    reply_to: Option<&str>,
+    medication_mappings: Option<&[String]>,
+) -> String {
+    let mut prompt = String::with_capacity(content.len() + 500);
 
-export const ParseResultSchema = z.object({
-  items: z.array(MedicationItemSchema),
-});
+    // Add medication mappings if provided
+    if let Some(mappings) = medication_mappings
+        && !mappings.is_empty()
+    {
+        prompt.push_str("# MEDICATION MAPPINGS (Arabic -> English)\n");
+        for mapping in mappings {
+            prompt.push_str(&format!("- {}\n", mapping));
+        }
+        prompt.push('\n');
+    }
 
-export type ParseResult = z.infer<typeof ParseResultSchema>;
+    prompt.push_str("=== MESSAGE TO PARSE ===\n");
+    if let Some(sender) = sender_name {
+        prompt.push_str(&format!("From: {}\n", sender));
+    }
+    if let Some(group) = group_name {
+        prompt.push_str(&format!("Group: {}\n", group));
+    }
+    if let Some(reply) = reply_to {
+        prompt.push_str(&format!("Replying to: \"{}\"\n", reply));
+    }
+    prompt.push_str(&format!("Content:\n{}\n", content));
+    prompt.push_str("=== END MESSAGE ===\n\nReturn valid JSON only.");
 
-export const AI_BASE_URL =
-  process.env.AI_BASE_URL || "http://localhost:12434/engines/llama.cpp/v1";
+    prompt
+}
 
-const provider = createOpenAICompatible({
-  name: "docker-model-runner",
-  apiKey: process.env.AI_API_KEY || "not-needed",
-  baseURL: AI_BASE_URL,
-});
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-export const models = {
-  qwen: provider("ai/qwen3-vl:latest"),
-  ministral: provider("ai/ministral3:latest"),
-  gemma: provider("ai/gemma3:latest"),
-};
+    #[test]
+    fn test_build_user_prompt() {
+        let prompt = build_user_prompt_with_mappings(
+            "متوفر اوجمنتين",
+            Some("Ahmed"),
+            Some("Pharmacy"),
+            None,
+            None,
+        );
+        assert!(prompt.contains("From: Ahmed"));
+        assert!(prompt.contains("Group: Pharmacy"));
+        assert!(prompt.contains("متوفر اوجمنتين"));
+    }
 
-export const defaultModel = models.qwen;
+    #[test]
+    fn test_build_user_prompt_with_mappings() {
+        let mappings = vec!["اوجمنتين -> Augmentin".to_string()];
+        let prompt = build_user_prompt_with_mappings(
+            "متوفر اوجمنتين",
+            Some("Ahmed"),
+            None,
+            None,
+            Some(&mappings),
+        );
+        assert!(prompt.contains("MEDICATION MAPPINGS"));
+        assert!(prompt.contains("اوجمنتين -> Augmentin"));
+    }
+
+    #[test]
+    fn test_system_prompt_contains_examples() {
+        assert!(SYSTEM_PROMPT.contains("Augmentin 1g"));
+        assert!(SYSTEM_PROMPT.contains("Ozempic 1mg"));
+        assert!(SYSTEM_PROMPT.contains("محتاج"));
+        assert!(SYSTEM_PROMPT.contains("عندي"));
+    }
+}

@@ -13,8 +13,10 @@
   "dependencies": {
     "@ai-sdk/openai": "^2.0.88",
     "@ai-sdk/openai-compatible": "^1.0.29",
-    "ai": "^5.0.115",
+    "ai": "^5.0.116",
+    "cli-table3": "^0.6.5",
     "hono": "^4.11.1",
+    "p-limit": "^7.2.0",
     "zod": "^4.2.1"
   },
   "devDependencies": {

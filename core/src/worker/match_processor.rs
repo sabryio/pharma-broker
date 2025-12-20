@@ -7,7 +7,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::Result;
-use crate::ai::AiClient;
+use crate::ai::PharmaParser;
 use crate::domain::{
     AuditAction, AuditLog, ConfidenceBand, EntityType, Match as MatchEntity, MatchQueueItem,
     MatchStatus, Offer, Request,
@@ -26,7 +26,8 @@ pub struct MatchProcessor {
     match_repo: Arc<dyn MatchRepository>,
     audit_log_repo: Arc<dyn AuditLogRepository>,
     matching_engine: Arc<MatchingEngine>,
-    ai_client: Arc<AiClient>,
+    #[allow(dead_code)]
+    ai_parser: Arc<PharmaParser>,
     ws_tx: broadcast::Sender<WsEvent>,
     worker_id: String,
 }
@@ -39,7 +40,7 @@ impl MatchProcessor {
         match_repo: Arc<dyn MatchRepository>,
         audit_log_repo: Arc<dyn AuditLogRepository>,
         matching_engine: Arc<MatchingEngine>,
-        ai_client: Arc<AiClient>,
+        ai_parser: Arc<PharmaParser>,
         ws_tx: broadcast::Sender<WsEvent>,
     ) -> Self {
         Self {
@@ -49,7 +50,7 @@ impl MatchProcessor {
             match_repo,
             audit_log_repo,
             matching_engine,
-            ai_client,
+            ai_parser,
             ws_tx,
             worker_id: Uuid::new_v4().to_string(),
         }

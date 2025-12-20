@@ -10,14 +10,14 @@ use tokio::sync::broadcast;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::ws::WsEvent;
+use crate::{ai::ItemType, ws::WsEvent};
 
 use super::pharma::{
     HealthRequest, HealthResponse, MonitoredGroupsRequest, MonitoredGroupsResponse,
     ProcessResponse, RawMessage as ProtoRawMessage, StatsRequest, StatsResponse,
     pharma_core_server::{PharmaCore, PharmaCoreServer},
 };
-use crate::ai::AiClient;
+use crate::ai::PharmaParser;
 use crate::domain::{
     AuditAction, AuditLog, EntityType, ItemStatus, Offer, RawMessage, Request as RequestEntity,
     ReviewQueueItem,
@@ -52,7 +52,7 @@ where
     pub match_queue_repo: Arc<MQ>,
     pub medication_mapping_repo: Arc<dyn MedicationMappingRepository + Send + Sync>,
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
-    pub ai_client: Arc<AiClient>,
+    pub ai_client: Arc<PharmaParser>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub matching_engine: Arc<MatchingEngine>,
     pub auto_action: AutoActionHandler,
@@ -82,7 +82,7 @@ where
         match_queue_repo: Arc<MQ>,
         medication_mapping_repo: Arc<dyn MedicationMappingRepository + Send + Sync>,
         match_repo: Arc<dyn MatchRepository + Send + Sync>,
-        ai_client: Arc<AiClient>,
+        ai_client: Arc<PharmaParser>,
         ws_tx: broadcast::Sender<WsEvent>,
         matching_engine: Arc<MatchingEngine>,
     ) -> Self {
@@ -132,7 +132,6 @@ fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
     }
 }
 
-#[tonic::async_trait]
 #[tonic::async_trait]
 impl<O, R, M, G, F, RQ, A, MQ> PharmaCore for PharmaCoreService<O, R, M, G, F, RQ, A, MQ>
 where
@@ -243,12 +242,18 @@ where
             tracing::info!(id = %msg_id, "🤖 Starting AI parsing (background)");
 
             // Step 5a: Fetch medication mappings (RAG-Lite)
-            let mappings = match medication_mapping_repo.find_relevant(&content, 5).await {
-                Ok(m) => Some(m.into_iter().map(|map| map.to_prompt_context()).collect()),
-                Err(e) => {
-                    tracing::warn!(error = %e, "Failed to fetch medication mappings");
-                    None
-                }
+            let mappings_vec: Vec<String> =
+                match medication_mapping_repo.find_relevant(&content, 5).await {
+                    Ok(m) => m.into_iter().map(|map| map.to_prompt_context()).collect(),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to fetch medication mappings");
+                        Vec::new()
+                    }
+                };
+            let mappings_opt = if mappings_vec.is_empty() {
+                None
+            } else {
+                Some(mappings_vec.as_slice())
             };
 
             // Call AI gateway
@@ -258,7 +263,7 @@ where
                     Some(&sender_name),
                     Some(&group_name),
                     reply_to.as_deref(),
-                    mappings,
+                    mappings_opt,
                 )
                 .await
             {
@@ -298,7 +303,7 @@ where
                             }
                         };
 
-                        if item.item_type == "OFFER" {
+                        if item.item_type == ItemType::Offer {
                             let offer = Offer {
                                 id: Uuid::new_v4().to_string(),
                                 raw_message_id: msg_id.clone(),
@@ -382,7 +387,7 @@ where
                                 .with_details(serde_json::json!({ "message_id": msg_id }));
                                 let _ = audit_log_repo.save(&audit_log).await;
                             }
-                        } else if item.item_type == "REQUEST" {
+                        } else if item.item_type == ItemType::Request {
                             let request = RequestEntity {
                                 id: Uuid::new_v4().to_string(),
                                 raw_message_id: msg_id.clone(),
