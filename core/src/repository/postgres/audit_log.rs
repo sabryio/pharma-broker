@@ -148,4 +148,12 @@ impl AuditLogRepository for PostgresAuditLogRepo {
 
         Ok(count.0)
     }
+
+    async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<usize> {
+        let result = sqlx::query("DELETE FROM audit_logs WHERE created_at < $1")
+            .bind(cutoff)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() as usize)
+    }
 }

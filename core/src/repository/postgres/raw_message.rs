@@ -95,4 +95,15 @@ impl RawMessageRepository for PostgresRawMessageRepo {
 
         Ok(())
     }
+
+    async fn delete_before(&self, cutoff: &chrono::DateTime<chrono::Utc>) -> Result<usize> {
+        // Only delete processed messages
+        let result = sqlx::query(
+            "DELETE FROM raw_messages WHERE processed_at IS NOT NULL AND processed_at < $1",
+        )
+        .bind(cutoff)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() as usize)
+    }
 }

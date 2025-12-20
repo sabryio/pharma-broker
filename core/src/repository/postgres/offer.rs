@@ -205,4 +205,12 @@ impl OfferRepository for PostgresOfferRepo {
 
         Ok(())
     }
+
+    async fn delete_before(&self, cutoff: &chrono::DateTime<chrono::Utc>) -> Result<usize> {
+        let result = sqlx::query("DELETE FROM offers WHERE created_at < $1")
+            .bind(cutoff)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() as usize)
+    }
 }

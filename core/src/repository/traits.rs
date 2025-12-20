@@ -34,6 +34,8 @@ pub trait OfferRepository: Send + Sync {
         similarity_threshold: f64,
         within: Duration,
     ) -> Result<Vec<Offer>>;
+    /// Delete offers created before a given timestamp (for cleanup)
+    async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<usize>;
 }
 
 /// Request repository trait
@@ -58,6 +60,8 @@ pub trait RequestRepository: Send + Sync {
         similarity_threshold: f64,
         within: Duration,
     ) -> Result<Vec<Request>>;
+    /// Delete requests created before a given timestamp (for cleanup)
+    async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<usize>;
 }
 
 /// Match repository trait
@@ -76,6 +80,8 @@ pub trait MatchRepository: Send + Sync {
         matched_by: &str,
         notes: &str,
     ) -> Result<()>;
+    /// Delete matches created before a given timestamp (for cleanup)
+    async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<usize>;
 }
 
 /// Raw message repository trait
@@ -85,6 +91,8 @@ pub trait RawMessageRepository: Send + Sync {
     async fn save(&self, message: &RawMessage) -> Result<()>;
     async fn get_unprocessed(&self, limit: i64) -> Result<Vec<RawMessage>>;
     async fn mark_processed(&self, id: &str, error: Option<&str>) -> Result<()>;
+    /// Delete raw messages processed before a given timestamp (for cleanup)
+    async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<usize>;
 }
 
 /// Group repository trait
@@ -258,6 +266,8 @@ pub trait AuditLogRepository: Send + Sync {
 
     /// Count total audit logs
     async fn count(&self) -> Result<i64>;
+    /// Delete audit logs created before a given timestamp (for cleanup)
+    async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<usize>;
 }
 
 /// Match queue repository trait
