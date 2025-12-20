@@ -7,7 +7,8 @@
     "dev": "bun run --watch src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target node",
     "start": "bun run dist/index.js",
-    "test": "bun test"
+    "test": "bun test",
+    "playground": "bun run src/playground/cli.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.88",

@@ -4,8 +4,10 @@
 
 mod abtest;
 mod actions;
+pub mod arabic;
 mod dosage;
 mod engine;
+pub mod fuzzy;
 mod learner;
 mod scheduler;
 mod scorer;
@@ -16,8 +18,10 @@ mod weights; // Added thresholds module
 
 pub use abtest::*;
 pub use actions::*;
+pub use arabic::*;
 pub use dosage::*;
 pub use engine::*;
+pub use fuzzy::*;
 pub use learner::*;
 pub use scheduler::*;
 pub use scorer::*;

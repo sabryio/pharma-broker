@@ -214,20 +214,6 @@ impl MatchProcessor {
     }
 
     fn fallback_similarity(&self, offer: &Offer, request: &Request) -> f64 {
-        if offer.medication.eq_ignore_ascii_case(&request.medication) {
-            1.0
-        } else if offer
-            .medication
-            .to_lowercase()
-            .contains(&request.medication.to_lowercase())
-            || request
-                .medication
-                .to_lowercase()
-                .contains(&offer.medication.to_lowercase())
-        {
-            0.7
-        } else {
-            0.0
-        }
+        crate::matching::medication_similarity(&offer.medication, &request.medication)
     }
 }

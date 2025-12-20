@@ -18,6 +18,7 @@ tower-http = { version = "0.6.8", features = ["cors", "trace"] }
 tonic = "0.14.2"
 prost = "0.14.1"
 tonic-prost = "0.14.2"
+strsim = "0.11"
 
 # Database
 sqlx = { version = "0.8.6", features = [
