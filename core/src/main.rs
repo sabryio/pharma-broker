@@ -104,6 +104,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Initialize and start MatchProcessor (background worker)
+    // Create shutdown channel for worker coordination
+    let (worker_shutdown_tx, worker_shutdown_rx) = tokio::sync::watch::channel(false);
+
     let processor = MatchProcessor::new(
         match_queue_repo.clone(),
         offer_repo.clone(),
@@ -114,8 +117,8 @@ async fn main() -> anyhow::Result<()> {
         ai_client.clone(),
         ws_tx.clone(),
     );
-    tokio::spawn(async move {
-        processor.run().await;
+    let worker_handle = tokio::spawn(async move {
+        processor.run(worker_shutdown_rx).await;
     });
 
     // Create application state for HTTP (with matching engine)
@@ -168,19 +171,37 @@ async fn main() -> anyhow::Result<()> {
         match_repo.clone(),
         ai_client,
         ws_tx.clone(),
-        matching_engine,
+        matching_engine.clone(),
     );
 
-    // Shutdown signal for graceful termination
+    // Shutdown signal for graceful termination (Ctrl+C and SIGTERM)
     let shutdown = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-        tracing::info!("Shutdown signal received, starting graceful shutdown...");
+        let ctrl_c = tokio::signal::ctrl_c();
+
+        #[cfg(unix)]
+        let terminate = async {
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("failed to install SIGTERM handler")
+                .recv()
+                .await;
+        };
+
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
+        tokio::select! {
+            _ = ctrl_c => tracing::info!("📛 Ctrl+C received"),
+            _ = terminate => tracing::info!("📛 SIGTERM received"),
+        }
+
+        tracing::info!("🛑 Starting graceful shutdown...");
     };
 
     // Shared shutdown signal for both servers
     let (tx, _rx) = tokio::sync::watch::channel(());
+
+    // Clone matching_engine for shutdown
+    let matching_engine_shutdown = matching_engine.clone();
 
     let grpc = {
         let mut rx = tx.subscribe();
@@ -217,9 +238,29 @@ async fn main() -> anyhow::Result<()> {
         _ = grpc => {},
         _ = http => {},
         _ = shutdown => {
+            // Phase 1: Signal servers to stop accepting new connections
+            tracing::info!("Phase 1: Stopping servers...");
             let _ = tx.send(());
-            // Give servers a moment to drain
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+            // Phase 2: Stop background workers
+            tracing::info!("Phase 2: Stopping background workers...");
+            let _ = worker_shutdown_tx.send(true);
+
+            // Phase 3: Stop the learning scheduler
+            tracing::info!("Phase 3: Stopping learning scheduler...");
+            matching_engine_shutdown.stop_scheduler().await;
+
+            // Phase 4: Wait for workers to drain (with timeout)
+            tracing::info!("Phase 4: Waiting for workers to drain...");
+            let drain_timeout = std::time::Duration::from_secs(10);
+            match tokio::time::timeout(drain_timeout, worker_handle).await {
+                Ok(Ok(())) => tracing::info!("✅ Worker stopped gracefully"),
+                Ok(Err(e)) => tracing::warn!("⚠️ Worker task panicked: {}", e),
+                Err(_) => tracing::warn!("⚠️ Worker drain timed out after {:?}", drain_timeout),
+            }
+
+            // Phase 5: Final drain for servers
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         },
     }
 

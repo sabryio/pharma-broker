@@ -55,24 +55,39 @@ impl MatchProcessor {
         }
     }
 
-    /// Run the processor loop
-    pub async fn run(&self) {
+    /// Run the processor loop with shutdown support
+    ///
+    /// The processor will stop when the shutdown signal is received,
+    /// completing any in-progress work before exiting.
+    pub async fn run(&self, mut shutdown: tokio::sync::watch::Receiver<bool>) {
         info!(worker_id = %self.worker_id, "🚀 Match processor started");
 
         loop {
-            match self.process_batch().await {
-                Ok(count) => {
-                    if count == 0 {
-                        // No items, sleep for a bit
-                        sleep(Duration::from_secs(1)).await;
+            tokio::select! {
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() {
+                        info!(worker_id = %self.worker_id, "🛑 Match processor received shutdown signal");
+                        break;
                     }
                 }
-                Err(e) => {
-                    error!(error = %e, "❌ Error processing match batch");
-                    sleep(Duration::from_secs(5)).await;
+                result = self.process_batch() => {
+                    match result {
+                        Ok(count) => {
+                            if count == 0 {
+                                // No items, sleep for a bit
+                                sleep(Duration::from_secs(1)).await;
+                            }
+                        }
+                        Err(e) => {
+                            error!(error = %e, "❌ Error processing match batch");
+                            sleep(Duration::from_secs(5)).await;
+                        }
+                    }
                 }
             }
         }
+
+        info!(worker_id = %self.worker_id, "👋 Match processor stopped gracefully");
     }
 
     /// Process a batch of pending items
