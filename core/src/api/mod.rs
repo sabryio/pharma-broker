@@ -4,6 +4,7 @@
 
 pub mod groups;
 pub mod handlers;
+pub mod middleware;
 pub mod rate_limit;
 pub mod review_queue;
 pub mod routes;

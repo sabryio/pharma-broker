@@ -41,10 +41,11 @@ thiserror = "2.0.17"
 anyhow = "1.0.100"
 async-trait = "0.1.89"
 
-# Cryptography (for WebSocket HMAC auth)
+# Cryptography (for WebSocket HMAC auth and JWT)
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
+jsonwebtoken = "9"
 
 # Configuration
 config = "0.15.19"

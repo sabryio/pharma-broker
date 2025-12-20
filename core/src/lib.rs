@@ -11,6 +11,7 @@ pub mod grpc;
 pub mod matching;
 pub mod metrics;
 pub mod notify;
+pub mod parsing;
 pub mod queue;
 pub mod repository;
 pub mod retry;
