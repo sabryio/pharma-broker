@@ -24,13 +24,13 @@ The system is a pharmaceutical medication matching platform that:
 
 ### 1.2 Functional Assessment
 
-| Area            | Complete | Missing                         | Priority |
-| --------------- | -------- | ------------------------------- | -------- |
-| Core matching   | ✅       | -                               | -        |
-| AI integration  | ✅       | Token batching, circuit breaker | High     |
-| Learning system | ✅       | Feedback persistence            | High     |
-| WebSocket       | ✅       | Auth, heartbeat                 | Medium   |
-| Bot commands    | ❌       | All commands                    | Low      |
+| Area            | Complete | Missing         | Priority |
+| --------------- | -------- | --------------- | -------- |
+| Core matching   | ✅       | -               | -        |
+| AI integration  | ✅       | Circuit breaker | High     |
+| Learning system | ✅       | -               | -        |
+| WebSocket       | ✅       | Auth, heartbeat | Medium   |
+| Bot commands    | ❌       | All commands    | Low      |
 
 ### 1.3 Pros and Cons
 
@@ -56,13 +56,13 @@ The system is a pharmaceutical medication matching platform that:
 
 ### 1.5 Production Readiness
 
-| Criterion         | Status        | Risk            |
-| ----------------- | ------------- | --------------- |
-| Core stability    | ✅ High       | Low             |
-| Error handling    | ⚠️ Partial    | Medium          |
-| Monitoring        | ✅ Prometheus | Low             |
-| Graceful shutdown | ⚠️            | Medium          |
-| Data persistence  | ⚠️            | High (feedback) |
+| Criterion         | Status        | Risk   |
+| ----------------- | ------------- | ------ |
+| Core stability    | ✅ High       | Low    |
+| Error handling    | ⚠️ Partial    | Medium |
+| Monitoring        | ✅ Prometheus | Low    |
+| Graceful shutdown | ⚠️            | Medium |
+| Data persistence  | ✅            | Low    |
 
 ### 1.6 Testing Strategy
 
@@ -262,16 +262,16 @@ AI parsing pipeline that:
 
 ### 3.2 Functional Assessment
 
-| Feature            | Legacy | Rust | Gap               |
-| ------------------ | ------ | ---- | ----------------- |
-| AI parsing         | ✅     | ✅   | None              |
-| Embedding          | ✅     | ✅   | None              |
-| Retry logic        | ✅ 3x  | ✅   | None              |
-| Circuit breaker    | ✅     | ❌   | **High priority** |
-| Token batching     | ✅     | ❌   | Medium priority   |
-| Dynamic thresholds | ✅     | ❌   | Low               |
-| Review queue       | ✅     | ❌   | Medium            |
-| FTS mapping        | ✅     | ❌   | Low               |
+| Feature            | Legacy | Rust | Gap  |
+| ------------------ | ------ | ---- | ---- |
+| AI parsing         | ✅     | ✅   | None |
+| Embedding          | ✅     | ✅   | None |
+| Retry logic        | ✅ 3x  | ✅   | None |
+| Circuit breaker    | ✅     | ⚠️   | WIP  |
+| Token batching     | ✅     | ✅   | None |
+| Dynamic thresholds | ✅     | ❌   | Low  |
+| Review queue       | ✅     | ✅   | None |
+| FTS mapping        | ✅     | ❌   | Low  |
 
 ### 3.3 Pros and Cons
 
@@ -539,13 +539,13 @@ Automatic actions based on match confidence:
 
 ### 5.2 Functional Assessment
 
-| Feature          | Legacy | Rust | Gap             |
-| ---------------- | ------ | ---- | --------------- |
-| Confidence bands | ✅     | ✅   | None            |
-| Auto-confirm     | ✅     | ⚠️   | Logic only      |
-| Operator notify  | ✅     | ❌   | Not implemented |
-| Review queue     | ✅     | ❌   | Not implemented |
-| Config runtime   | ✅     | ❌   | Static          |
+| Feature          | Legacy | Rust | Gap       |
+| ---------------- | ------ | ---- | --------- |
+| Confidence bands | ✅     | ✅   | None      |
+| Auto-confirm     | ✅     | ✅   | Complete  |
+| Operator notify  | ✅     | ✅   | WebSocket |
+| Review queue     | ✅     | ✅   | Complete  |
+| Config runtime   | ✅     | ❌   | Static    |
 
 ### 5.3 Pros and Cons
 
@@ -569,12 +569,12 @@ Automatic actions based on match confidence:
 
 ### 5.5 Production Readiness
 
-| Criterion     | Status | Risk              |
-| ------------- | ------ | ----------------- |
-| Core logic    | ✅     | Low               |
-| Auto-confirm  | ⚠️     | Medium            |
-| Notifications | ❌     | High              |
-| Audit trail   | ❌     | High (compliance) |
+| Criterion     | Status | Risk |
+| ------------- | ------ | ---- |
+| Core logic    | ✅     | Low  |
+| Auto-confirm  | ✅     | Low  |
+| Notifications | ✅     | Low  |
+| Audit trail   | ✅     | Low  |
 
 ### 5.6 Testing Strategy
 
@@ -624,23 +624,16 @@ Integration Tests:
 
 > **Implementation Notes (2025-12-20):** Created `MatchNotifier` trait with `WebSocketNotifier`, `CompositeNotifier`, and `NullNotifier` implementations. Integrated with `WsEvent::MatchConfirmed` for auto-confirmation broadcasts.
 
-#### Task 5.3: Audit Logging
+#### Task 5.3: Audit Logging ✅ COMPLETED
 
-- [ ] **Step 1:** Create `audit_logs` table
-  ```sql
-  CREATE TABLE audit_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    action TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    entity_id UUID NOT NULL,
-    actor TEXT NOT NULL,
-    details JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-  );
-  ```
-- [ ] **Step 2:** Create `AuditLogger` trait and implementation
-- [ ] **Step 3:** Log on: match_confirmed, match_rejected, weights_updated
-- [ ] **Test:** `cargo test audit_` - verify logs persisted
+- [x] **Step 1:** Create `audit_logs` table
+  - Migration: `migrations/004_add_audit_logs.sql`
+- [x] **Step 2:** Create `AuditLogRepository` trait and implementation
+  - `AuditLogRepository` in `traits.rs`, `PostgresAuditLogRepo` in `postgres/audit_log.rs`
+- [x] **Step 3:** Log on: match_confirmed, match_rejected, weights_updated, entity_created, review_queued
+- [x] **Test:** `cargo test audit_` - 8 tests passing
+
+> **Implementation Notes (2025-12-20):** Created `AuditLog` domain entity with `AuditAction` and `EntityType` enums. Integrated into Axum handlers and gRPC background tasks. Supports structured JSON details.
 
 ---
 
@@ -742,12 +735,15 @@ Load Tests:
 
 > **Implementation Notes (2025-12-20):** Updated `reject_match` in `handlers.rs` to record negative feedback (confirmed=false) via `state.feedback_repo.save()`.
 
-#### Task 6.3: Rate Limiting
+#### Task 6.3: Rate Limiting ✅ COMPLETED
 
-- [ ] **Step 1:** Add tower middleware for rate limiting per IP
-- [ ] **Step 2:** Configure: 100 req/min per IP
-- [ ] **Step 3:** Add header `X-RateLimit-Remaining`
-- [ ] **Test:** Send 150 requests, verify 429 after 100
+- [x] **Step 1:** Add tower middleware for rate limiting per IP
+  - Created `core/src/api/rate_limit.rs` with token bucket algorithm
+- [x] **Step 2:** Configure: 100 req/min per IP (configurable via `RateLimitConfig`)
+- [x] **Step 3:** Add header `X-RateLimit-Remaining` (implemented in middleware)
+- [x] **Test:** `cargo test rate_limit` - verify tokens consumed and 429 returned when exhausted
+
+> **Implementation Notes (2025-12-20):** Implemented thread-safe `RateLimiter` using `dashmap` for per-key (IP) state. Includes unit tests for burst handling and recovery.
 
 ---
 
@@ -895,7 +891,7 @@ Continuous improvement based on feedback:
 | Scheduler         | ✅     | -       |
 | Warm Start        | ✅     | -       |
 | A/B Testing       | ✅     | -       |
-| **Persistence**   | ❌     | Repos   |
+| **Persistence**   | ✅     | -       |
 
 ### 8.3 Pros and Cons
 
@@ -921,13 +917,13 @@ Continuous improvement based on feedback:
 
 ### 8.5 Production Readiness
 
-| Criterion             | Status      | Risk         |
-| --------------------- | ----------- | ------------ |
-| Algorithm correctness | ✅          | Low          |
-| Test coverage         | ✅ 52 tests | Low          |
-| Persistence           | ❌          | **Critical** |
-| Scheduler             | ✅          | Low          |
-| Rollback              | ⚠️          | Medium       |
+| Criterion             | Status      | Risk   |
+| --------------------- | ----------- | ------ |
+| Algorithm correctness | ✅          | Low    |
+| Test coverage         | ✅ 52 tests | Low    |
+| Persistence           | ✅          | Low    |
+| Scheduler             | ✅          | Low    |
+| Rollback              | ⚠️          | Medium |
 
 ### 8.6 Testing Strategy
 
@@ -1011,7 +1007,7 @@ Infrastructure supporting all phases:
 | Structured logging | ✅     | -                           |
 | Trace IDs          | ✅     | -                           |
 | Health endpoints   | ✅     | Deep checks                 |
-| Database repos     | ⚠️     | 3 missing                   |
+| Database repos     | ✅     | -                           |
 | Configuration      | ⚠️     | No YAML                     |
 
 ### 9.3 Pros and Cons
@@ -1074,12 +1070,14 @@ Configuration Tests:
 
 ### 9.8 Implementation Tasks
 
-#### Task 9.1: Missing Repositories
+#### Task 9.1: Missing Repositories ✅ COMPLETED
 
-- [ ] **Step 1:** Implement `FeedbackRecordRepository` (see Task 4.1)
-- [ ] **Step 2:** Implement `WeightHistoryRepository` (see Task 4.2)
-- [ ] **Step 3:** Implement `ReviewQueueRepository` (see Task 3.3)
-- [ ] **Test:** All 3 repos have CRUD + aggregation tests
+- [x] **Step 1:** Implement `FeedbackRecordRepository` (see Task 4.1)
+- [x] **Step 2:** Implement `WeightHistoryRepository` (see Task 4.2)
+- [x] **Step 3:** Implement `ReviewQueueRepository` (see Task 3.3)
+- [x] **Test:** All 3 repos have CRUD + aggregation tests passing in CI (or local environment)
+
+> **Implementation Notes (2025-12-20):** All 3 repositories implemented using `sqlx` and PostgreSQL. Integrated into `PharmaCoreService` and `AppState`.
 
 #### Task 9.2: Deep Health Checks
 
@@ -1117,21 +1115,22 @@ Configuration Tests:
 
 ## Summary: Priority Matrix
 
-| Priority     | Phase | Action                              |
-| ------------ | ----- | ----------------------------------- |
-| **Critical** | 8     | Implement FeedbackRecordRepository  |
-| **Critical** | 8     | Implement WeightHistoryRepository   |
-| **Critical** | 3     | Add circuit breaker to AI client    |
-| **Critical** | 7     | Add WebSocket authentication        |
-| **High**     | 2     | Implement per-group ordered queue   |
-| **High**     | 5     | Implement AutoActionHandler         |
-| **High**     | 6     | Add /confirm and /reject endpoints  |
-| **High**     | 7     | Add connection limits and heartbeat |
-| **Medium**   | 3     | Token-aware batching                |
-| **Medium**   | 5     | Review queue for low-confidence     |
-| **Medium**   | 9     | YAML config support                 |
-| **Low**      | 6     | Web operator dashboard              |
-| **Low**      | 3     | Dynamic confidence thresholds       |
+| Priority     | Phase | Action                              | Status      |
+| ------------ | ----- | ----------------------------------- | ----------- |
+| **Critical** | 8     | Implement FeedbackRecordRepository  | ✅ Complete |
+| **Critical** | 8     | Implement WeightHistoryRepository   | ✅ Complete |
+| **Critical** | 3     | Add circuit breaker to AI client    | ⚠️ WIP      |
+| **Critical** | 7     | Add WebSocket authentication        | ❌ Open     |
+| **High**     | 2     | Implement per-group ordered queue   | ❌ Open     |
+| **High**     | 5     | Implement AutoActionHandler         | ✅ Complete |
+| **High**     | 6     | Add /confirm and /reject endpoints  | ✅ Complete |
+| **High**     | 7     | Add connection limits and heartbeat | ❌ Open     |
+| **Medium**   | 3     | Token-aware batching                | ✅ Complete |
+| **Medium**   | 5     | Review queue for low-confidence     | ✅ Complete |
+| **Medium**   | 9     | YAML config support                 | ❌ Open     |
+| **Low**      | 6     | Web operator dashboard              | ❌ Open     |
+| **Low**      | 3     | Dynamic confidence thresholds       | ❌ Open     |
+| **Low**      | 5     | Audit Logging                       | ✅ Complete |
 
 ---
 
