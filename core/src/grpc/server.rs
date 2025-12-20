@@ -574,9 +574,10 @@ where
 }
 
 /// Start the gRPC server on the specified address
-pub async fn start_grpc_server<O, R, M, G, F, RQ, A>(
+pub async fn start_grpc_server<O, R, M, G, F, RQ, A, S>(
     addr: SocketAddr,
     service: PharmaCoreService<O, R, M, G, F, RQ, A>,
+    shutdown: S,
 ) -> std::result::Result<(), tonic::transport::Error>
 where
     O: OfferRepository + 'static,
@@ -586,11 +587,12 @@ where
     F: FeedbackRecordRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
+    S: std::future::Future<Output = ()> + Send + 'static,
 {
     tracing::info!("🔌 gRPC server starting on {}", addr);
 
     tonic::transport::Server::builder()
         .add_service(PharmaCoreServer::new(service))
-        .serve(addr)
+        .serve_with_shutdown(addr, shutdown)
         .await
 }

@@ -3,6 +3,7 @@
 //! Defines the axum router with all REST endpoints
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 
 use axum::{
     Router,
@@ -41,6 +42,7 @@ where
     pub matching_engine: Option<MatchingEngineHandle>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub metrics_handle: Option<PrometheusHandle>,
+    pub active_connections: Arc<AtomicUsize>,
 }
 
 impl<O, R, M, G, F, RQ, A> Clone for AppState<O, R, M, G, F, RQ, A>
@@ -65,6 +67,7 @@ where
             matching_engine: self.matching_engine.clone(),
             ws_tx: self.ws_tx.clone(),
             metrics_handle: self.metrics_handle.clone(),
+            active_connections: self.active_connections.clone(),
         }
     }
 }

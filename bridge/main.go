@@ -107,6 +107,9 @@ type Bridge struct {
 	groupCache   *cache.GroupCache
 	retryBuffer  *resilience.RetryBuffer
 	circuit      *resilience.CircuitBreaker
+
+	// Ordered processing
+	workers []chan *events.Message
 }
 
 // NewBridge creates a new WhatsApp bridge
@@ -184,6 +187,13 @@ func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
 		deduplicator: dedup,
 		groupCache:   groupCache,
 		circuit:      circuit,
+		workers:      make([]chan *events.Message, 20), // 20 workers for ordered processing
+	}
+
+	// Start workers
+	for i := 0; i < 20; i++ {
+		b.workers[i] = make(chan *events.Message, 100)
+		go b.workerLoop(i, b.workers[i])
 	}
 
 	// Create retry buffer (1000 messages)
@@ -289,8 +299,39 @@ func (b *Bridge) handleEvent(evt interface{}) {
 	}
 }
 
-// handleMessage processes incoming WhatsApp messages
+// workerLoop processes messages from the worker's channel sequentially
+func (b *Bridge) workerLoop(id int, ch chan *events.Message) {
+	b.logger.Debug().Int("worker_id", id).Msg("Worker started")
+	for evt := range ch {
+		b.processMessage(evt)
+	}
+}
+
+// handleMessage routes messages to the appropriate worker based on Group JID
 func (b *Bridge) handleMessage(evt *events.Message) {
+	if !evt.Info.IsGroup {
+		return
+	}
+
+	// Shard by Group JID to ensure same group goes to same worker
+	jid := evt.Info.Chat.String()
+	hash := 0
+	for i := 0; i < len(jid); i++ {
+		hash = 31*hash + int(jid[i])
+	}
+	workerIdx := (hash & 0x7fffffff) % len(b.workers)
+
+	// Send to worker (non-blocking to avoid stalling WhatsApp event loop)
+	select {
+	case b.workers[workerIdx] <- evt:
+		// Sent to worker
+	default:
+		b.logger.Warn().Str("group", jid).Int("worker", workerIdx).Msg("Worker queue full, message dropped to prevent stalling")
+	}
+}
+
+// processMessage contains the original logic of handleMessage
+func (b *Bridge) processMessage(evt *events.Message) {
 	// Step 1: Only process group messages
 	if !evt.Info.IsGroup {
 		return
@@ -479,7 +520,7 @@ func startHealthServer(bridge *Bridge) {
 			status = "core_disconnected"
 		}
 
-		response := map[string]interface{}{
+		response := map[string]any{
 			"status":             status,
 			"service":            "pharma-bridge",
 			"version":            "0.2.0",

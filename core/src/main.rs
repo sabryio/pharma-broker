@@ -2,6 +2,7 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -68,6 +69,9 @@ async fn main() -> anyhow::Result<()> {
     // Create broadcast channel for real-time events
     let (ws_tx, _) = tokio::sync::broadcast::channel(100);
 
+    // Track active WebSocket connections
+    let active_connections = Arc::new(AtomicUsize::new(0));
+
     // Create matching engine with scheduler config from environment
     let scheduler_enabled = std::env::var("LEARNING_SCHEDULER_ENABLED")
         .map(|v| v == "true" || v == "1")
@@ -107,6 +111,7 @@ async fn main() -> anyhow::Result<()> {
         feedback_repo: feedback_repo.clone(),
         review_queue_repo: review_queue_repo.clone(),
         audit_log_repo: audit_log_repo.clone(),
+        active_connections: active_connections.clone(),
     };
 
     // Create HTTP router
@@ -144,22 +149,58 @@ async fn main() -> anyhow::Result<()> {
         matching_engine,
     );
 
-    // Start both servers concurrently
-    tokio::select! {
-        result = async {
-            let listener = tokio::net::TcpListener::bind(http_addr).await?;
-            axum::serve(listener, app).await
-        } => {
-            if let Err(e) = result {
-                tracing::error!("HTTP server error: {}", e);
-            }
-        }
-        result = start_grpc_server(grpc_addr, grpc_service) => {
-            if let Err(e) = result {
+    // Shutdown signal for graceful termination
+    let shutdown = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+        tracing::info!("Shutdown signal received, starting graceful shutdown...");
+    };
+
+    // Shared shutdown signal for both servers
+    let (tx, _rx) = tokio::sync::watch::channel(());
+
+    let grpc = {
+        let mut rx = tx.subscribe();
+        async move {
+            let shutdown_future = async move {
+                let _ = rx.changed().await;
+            };
+            if let Err(e) = start_grpc_server(grpc_addr, grpc_service, shutdown_future).await {
                 tracing::error!("gRPC server error: {}", e);
             }
         }
+    };
+
+    let http = {
+        let mut rx = tx.subscribe();
+        async move {
+            let shutdown_future = async move {
+                let _ = rx.changed().await;
+            };
+            let listener = tokio::net::TcpListener::bind(http_addr)
+                .await
+                .expect("Failed to bind HTTP listener");
+            if let Err(e) = axum::serve(listener, app)
+                .with_graceful_shutdown(shutdown_future)
+                .await
+            {
+                tracing::error!("HTTP server error: {}", e);
+            }
+        }
+    };
+
+    // Start both servers concurrently and wait for shutdown
+    tokio::select! {
+        _ = grpc => {},
+        _ = http => {},
+        _ = shutdown => {
+            let _ = tx.send(());
+            // Give servers a moment to drain
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        },
     }
 
+    tracing::info!("👋 PharmaBroker Core Engine stopped cleanly");
     Ok(())
 }

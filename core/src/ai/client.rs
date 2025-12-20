@@ -4,8 +4,10 @@
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tracing;
 
+use crate::ai::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitOpenError};
 use crate::retry::{RetryConfig, RetryResult, with_retry};
 
 /// Configuration for the AI client
@@ -87,6 +89,7 @@ struct ParseRequest {
 pub struct AiClient {
     client: Client,
     config: AiConfig,
+    circuit_breaker: Arc<CircuitBreaker>,
 }
 
 impl AiClient {
@@ -97,7 +100,13 @@ impl AiClient {
             .build()
             .expect("Failed to create HTTP client");
 
-        Self { client, config }
+        let circuit_breaker = Arc::new(CircuitBreaker::new(CircuitBreakerConfig::for_ai_gateway()));
+
+        Self {
+            client,
+            config,
+            circuit_breaker,
+        }
     }
 
     /// Create a new AI client from environment variables
@@ -113,6 +122,11 @@ impl AiClient {
         group_name: Option<&str>,
         reply_to: Option<&str>,
     ) -> Result<Vec<ParsedItem>, AiError> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_request() {
+            return Err(AiError::Network(CircuitOpenError.to_string()));
+        }
+
         let url = format!("{}/ai/parse", self.config.gateway_url);
 
         let request = ParseRequest {
@@ -134,20 +148,27 @@ impl AiClient {
             .json(&request)
             .send()
             .await
-            .map_err(|e| AiError::Network(e.to_string()))?;
+            .map_err(|e| {
+                self.circuit_breaker.record_failure();
+                AiError::Network(e.to_string())
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+            self.circuit_breaker.record_failure();
             return Err(AiError::Gateway(format!("Status {}: {}", status, body)));
         }
 
-        let gateway_response: GatewayResponse = response
-            .json()
-            .await
-            .map_err(|e| AiError::Parse(e.to_string()))?;
+        let gateway_response: GatewayResponse = response.json().await.map_err(|e| {
+            // Parse errors in JSON don't necessarily mean gateway failure,
+            // but let's be conservative if it's a structural mismatch
+            self.circuit_breaker.record_failure();
+            AiError::Parse(e.to_string())
+        })?;
 
         if !gateway_response.success {
+            self.circuit_breaker.record_failure();
             return Err(AiError::Gateway(
                 gateway_response
                     .error
@@ -155,6 +176,8 @@ impl AiClient {
             ));
         }
 
+        // Success!
+        self.circuit_breaker.record_success();
         let items = gateway_response.parsed.map(|p| p.items).unwrap_or_default();
 
         tracing::info!(items_count = items.len(), "AI parsing complete");
@@ -356,32 +379,45 @@ impl AiClient {
             "Calling AI gateway for embeddings"
         );
 
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_request() {
+            return Err(AiError::Network(CircuitOpenError.to_string()));
+        }
+
         let response = self
             .client
             .post(&url)
             .json(&request)
             .send()
             .await
-            .map_err(|e| AiError::Network(e.to_string()))?;
+            .map_err(|e| {
+                self.circuit_breaker.record_failure();
+                AiError::Network(e.to_string())
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+            self.circuit_breaker.record_failure();
             return Err(AiError::Gateway(format!("Status {}: {}", status, body)));
         }
 
-        let embed_response: EmbedResponse = response
-            .json()
-            .await
-            .map_err(|e| AiError::Parse(e.to_string()))?;
+        let embed_response: EmbedResponse = response.json().await.map_err(|e| {
+            self.circuit_breaker.record_failure();
+            AiError::Parse(e.to_string())
+        })?;
 
         if !embed_response.success {
+            self.circuit_breaker.record_failure();
             return Err(AiError::Gateway(
                 embed_response
                     .error
                     .unwrap_or_else(|| "Unknown error".to_string()),
             ));
         }
+
+        // Success!
+        self.circuit_breaker.record_success();
 
         tracing::info!(
             embeddings_count = embed_response.embeddings.len(),

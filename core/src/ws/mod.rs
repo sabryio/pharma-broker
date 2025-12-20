@@ -5,14 +5,17 @@
 
 use axum::{
     extract::{
-        State,
+        Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     response::IntoResponse,
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
-use tracing::{error, info};
+use std::collections::HashMap;
+use std::sync::atomic::Ordering;
+use tokio::time::{Duration, interval};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::api::routes::AppState;
@@ -56,6 +59,7 @@ pub enum WsEvent {
 /// WebSocket handler
 pub async fn ws_handler<O, R, M, G, F, RQ, A>(
     ws: WebSocketUpgrade,
+    Query(params): Query<HashMap<String, String>>,
     State(state): State<AppState<O, R, M, G, F, RQ, A>>,
 ) -> impl IntoResponse
 where
@@ -67,6 +71,22 @@ where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
 {
+    // 1. Auth check
+    let token = params.get("token");
+    let expected_token = std::env::var("WS_TOKEN").unwrap_or_else(|_| "secret-token".to_string());
+
+    if token != Some(&expected_token) {
+        warn!("🚫 Unauthenticated WebSocket connection attempt");
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    }
+
+    // 2. Connection limit check
+    let current_connections = state.active_connections.load(Ordering::Relaxed);
+    if current_connections >= 100 {
+        warn!("🚫 WebSocket connection limit reached (100)");
+        return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
@@ -83,6 +103,9 @@ async fn handle_socket<O, R, M, G, F, RQ, A>(
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
 {
+    // Increment connection count
+    state.active_connections.fetch_add(1, Ordering::SeqCst);
+
     let (mut sender, mut receiver) = socket.split();
     let mut rx = state.ws_tx.subscribe();
 
@@ -94,7 +117,7 @@ async fn handle_socket<O, R, M, G, F, RQ, A>(
             let msg = match serde_json::to_string(&event) {
                 Ok(json) => Message::Text(json.into()),
                 Err(e) => {
-                    error!("Fata to serialize WS event: {}", e);
+                    error!("Failed to serialize WS event: {}", e);
                     continue;
                 }
             };
@@ -106,25 +129,45 @@ async fn handle_socket<O, R, M, G, F, RQ, A>(
         }
     });
 
-    // Task for receiving messages from this client (e.g. pings)
+    // Task for sending periodic heartbeats (pings)
+    let ws_tx_heartbeat = state.ws_tx.clone();
+    let mut heartbeat_task = tokio::spawn(async move {
+        let mut ticker = interval(Duration::from_secs(30));
+        loop {
+            ticker.tick().await;
+            if let Err(e) = ws_tx_heartbeat.send(WsEvent::Ping) {
+                error!("Failed to broadcast WS ping: {}", e);
+                break;
+            }
+        }
+    });
+
+    // Task for receiving messages from this client (e.g. pongs)
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
                 Message::Close(_) => break,
-                Message::Ping(p) => {
-                    // Axum handles pings automatically, but we can log
-                    info!("Received ping: {:?}", p);
+                Message::Pong(_) => {
+                    // info!("Received pong from client");
                 }
                 _ => {}
             }
         }
     });
 
-    // Wait for either task to finish
+    // Wait for either active task to finish
     tokio::select! {
-        _ = (&mut send_task) => recv_task.abort(),
-        _ = (&mut recv_task) => send_task.abort(),
+        _ = (&mut send_task) => {
+            recv_task.abort();
+            heartbeat_task.abort();
+        },
+        _ = (&mut recv_task) => {
+            send_task.abort();
+            heartbeat_task.abort();
+        },
     }
 
+    // Decrement connection count
+    state.active_connections.fetch_sub(1, Ordering::SeqCst);
     info!("🔌 WebSocket client disconnected");
 }
