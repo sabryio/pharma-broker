@@ -38,6 +38,7 @@ services:
       - pharmabroker-network
 
   # Rust Core Engine (gRPC + REST API)
+  # Now directly uses Docker Model Runner (no TypeScript gateway needed)
   core:
     build:
       context: ./core
@@ -49,7 +50,6 @@ services:
       RUST_LOG: info
       API_PORT: "8080"
       GRPC_PORT: "50051"
-      AI_GATEWAY_URL: http://gateway:3000
     ports:
       - "8080:8080" # REST API
       - "50051:50051" # gRPC
@@ -59,6 +59,16 @@ services:
     restart: unless-stopped
     networks:
       - pharmabroker-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Bind models directly to core service
+    models:
+      llm:
+        endpoint_var: AI_BASE_URL
+        model_var: AI_MODEL
+      embedding:
+        endpoint_var: EMBEDDING_BASE_URL
+        model_var: EMBEDDING_MODEL
 
   # Go WhatsApp Bridge
   bridge:
@@ -78,33 +88,6 @@ services:
     restart: unless-stopped
     networks:
       - pharmabroker-network
-
-  # TypeScript AI Gateway (uses Docker Model Runner)
-  gateway:
-    build:
-      context: ./gateway
-      dockerfile: Dockerfile
-    container_name: pharma-gateway
-    environment:
-      PORT: "3000"
-      CORE_API_URL: http://core:8080
-    ports:
-      - "3000:3000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      - core
-    restart: unless-stopped
-    networks:
-      - pharmabroker-network
-    # Bind models using long syntax with custom env var names
-    models:
-      llm:
-        endpoint_var: AI_BASE_URL
-        model_var: AI_MODEL_ID
-      embedding:
-        endpoint_var: EMBEDDING_BASE_URL
-        model_var: EMBEDDING_MODEL_ID
 
 # Local AI models via Docker Model Runner
 models:
