@@ -238,7 +238,9 @@ impl TokenBatcher {
 
             // Check if single message exceeds limit (oversized)
             if msg_tokens > available_tokens {
-                self.stats.oversized_messages.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .oversized_messages
+                    .fetch_add(1, Ordering::Relaxed);
                 tracing::warn!(
                     msg_id = %msg.id,
                     tokens = msg_tokens,

@@ -13,7 +13,7 @@ use pharma_core::matching::{MatchingEngineConfig, create_matching_engine};
 use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
     PostgresFeedbackRepo, PostgresGroupRepo, PostgresMatchRepo, PostgresOfferRepo,
-    PostgresRawMessageRepo, PostgresRequestRepo, create_pool,
+    PostgresRawMessageRepo, PostgresRequestRepo, PostgresReviewQueueRepo, create_pool,
 };
 
 #[tokio::main]
@@ -55,6 +55,7 @@ async fn main() -> anyhow::Result<()> {
     let raw_message_repo = Arc::new(PostgresRawMessageRepo::new(pool.clone()));
     let group_repo = Arc::new(PostgresGroupRepo::new(pool.clone()));
     let feedback_repo = Arc::new(PostgresFeedbackRepo::new(pool.clone()));
+    let review_queue_repo = Arc::new(PostgresReviewQueueRepo::new(pool.clone()));
 
     // Create AI client (reads AI_GATEWAY_URL from env)
     let ai_client = Arc::new(AiClient::from_env());
@@ -102,6 +103,7 @@ async fn main() -> anyhow::Result<()> {
         ws_tx: ws_tx.clone(),
         metrics_handle: Some(metrics_handle),
         feedback_repo: feedback_repo.clone(),
+        review_queue_repo: review_queue_repo.clone(),
     };
 
     // Create HTTP router

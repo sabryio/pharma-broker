@@ -367,14 +367,24 @@ Failure Tests:
 
 > **Implementation Notes (2025-12-20):** Ported from legacy/parsing/token_batcher.go. Created TokenBatcher::split_into_batches() with oversized message handling and stats tracking.
 
-#### Task 3.3: Review Queue
+#### Task 3.3: Review Queue ✅ COMPLETED
 
-- [ ] **Step 1:** Create `review_queue` table in PostgreSQL
-  - Fields: id, raw_message_id, ai_result, confidence, reason, status
-- [ ] **Step 2:** Create `ReviewQueueRepository` in `core/src/repository/`
-- [ ] **Step 3:** Queue messages with avg_confidence < 0.5
-- [ ] **Step 4:** Add API endpoint `GET /api/review-queue`
-- [ ] **Test:** `cargo test review_queue_`
+- [x] **Step 1:** Create `review_queue` table in PostgreSQL
+  - Fields: id, raw_message_id, ai_result, confidence, reason, status, reviewed_by, review_notes, created_at, reviewed_at
+  - Migration: `migrations/003_add_review_queue.sql`
+- [x] **Step 2:** Create `ReviewQueueRepository` in `core/src/repository/`
+  - `PostgresReviewQueueRepo` with 8 methods: save, get_by_id, get_pending, get_by_status, update_status, get_stats, count_pending, exists_for_message
+- [x] **Step 3:** Create `ReviewQueueItem` domain entity with `ReviewStatus` enum
+  - Factory methods: `new()`, `for_low_confidence()`
+  - State transitions: `approve()`, `reject()`, `skip()`
+- [x] **Step 4:** Add API endpoints
+  - `GET /api/review-queue` - List pending items (paginated)
+  - `GET /api/review-queue/stats` - Get queue statistics
+  - `GET /api/review-queue/{id}` - Get single item
+  - `POST /api/review-queue/{id}/review` - Update status (approve/reject/skip)
+- [x] **Test:** `cargo test review_queue` - 12 tests passing
+
+> **Implementation Notes (2025-12-20):** Created comprehensive review queue system with domain entity (`review_queue.rs`), PostgreSQL repository (`postgres/review_queue.rs`), API handlers (`api/review_queue.rs`), SQL migration, and updated AppState with 6th generic parameter `RQ: ReviewQueueRepository`.
 
 #### Task 3.4: AI Latency Metrics ✅ COMPLETED
 

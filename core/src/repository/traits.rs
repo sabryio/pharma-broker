@@ -8,7 +8,7 @@ use chrono::Duration;
 use crate::Result;
 use crate::domain::{
     FeedbackRecord, FeedbackStats, Group, ItemStatus, Match, MatchStatus, Offer, RawMessage,
-    Request, Stats, WeightHistory,
+    Request, ReviewQueueItem, ReviewQueueStats, ReviewStatus, Stats, WeightHistory,
 };
 
 /// Offer repository trait
@@ -144,4 +144,44 @@ pub trait WeightHistoryRepository: Send + Sync {
 
     /// Count total history entries
     async fn count(&self) -> Result<i64>;
+}
+
+/// Review queue repository trait
+/// Used for managing AI parse results that require human review
+#[async_trait]
+pub trait ReviewQueueRepository: Send + Sync {
+    /// Save a new review queue item
+    async fn save(&self, item: &ReviewQueueItem) -> Result<()>;
+
+    /// Get a review item by ID
+    async fn get_by_id(&self, id: &str) -> Result<Option<ReviewQueueItem>>;
+
+    /// Get pending items (paginated)
+    async fn get_pending(&self, limit: i64, offset: i64) -> Result<Vec<ReviewQueueItem>>;
+
+    /// Get items by status (paginated)
+    async fn get_by_status(
+        &self,
+        status: ReviewStatus,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ReviewQueueItem>>;
+
+    /// Update item status (approve/reject/skip)
+    async fn update_status(
+        &self,
+        id: &str,
+        status: ReviewStatus,
+        reviewed_by: &str,
+        notes: Option<&str>,
+    ) -> Result<()>;
+
+    /// Get review queue statistics
+    async fn get_stats(&self) -> Result<ReviewQueueStats>;
+
+    /// Count pending items
+    async fn count_pending(&self) -> Result<i64>;
+
+    /// Check if a raw message is already queued
+    async fn exists_for_message(&self, raw_message_id: &str) -> Result<bool>;
 }

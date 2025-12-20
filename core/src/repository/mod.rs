@@ -7,6 +7,7 @@ mod traits;
 
 pub use postgres::{
     PostgresFeedbackRepo, PostgresGroupRepo, PostgresMatchRepo, PostgresOfferRepo,
-    PostgresRawMessageRepo, PostgresRequestRepo, PostgresWeightHistoryRepo, create_pool,
+    PostgresRawMessageRepo, PostgresRequestRepo, PostgresReviewQueueRepo,
+    PostgresWeightHistoryRepo, create_pool,
 };
 pub use traits::*;

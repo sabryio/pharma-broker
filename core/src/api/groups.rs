@@ -9,11 +9,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::api::routes::AppState;
 use crate::domain::Group;
 use crate::repository::{
     FeedbackRecordRepository, GroupRepository, MatchRepository, OfferRepository, RequestRepository,
 };
+use crate::{api::routes::AppState, repository::ReviewQueueRepository};
 
 /// Request body for creating/updating a group
 #[derive(Debug, Deserialize)]
@@ -54,8 +54,8 @@ pub struct GroupListResponse {
 }
 
 /// GET /api/groups - List all groups
-pub async fn get_groups<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn get_groups<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
 ) -> Result<Json<GroupListResponse>, (StatusCode, String)>
 where
     O: OfferRepository,
@@ -63,6 +63,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let groups = state
         .group_repo
@@ -80,8 +81,8 @@ where
 }
 
 /// GET /api/groups/:jid - Get a specific group
-pub async fn get_group<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn get_group<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
     Path(jid): Path<String>,
 ) -> Result<Json<GroupResponse>, (StatusCode, String)>
 where
@@ -90,6 +91,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let group = state
         .group_repo
@@ -108,8 +110,8 @@ where
 }
 
 /// POST /api/groups - Create a new group
-pub async fn create_group<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn create_group<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
     Json(req): Json<CreateGroupRequest>,
 ) -> Result<(StatusCode, Json<GroupResponse>), (StatusCode, String)>
 where
@@ -118,6 +120,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     // Check if group already exists
     if let Ok(Some(_)) = state.group_repo.get_by_jid(&req.jid).await {
@@ -145,8 +148,8 @@ where
 }
 
 /// PUT /api/groups/:jid - Update a group
-pub async fn update_group<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn update_group<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
     Path(jid): Path<String>,
     Json(req): Json<UpdateGroupRequest>,
 ) -> Result<Json<GroupResponse>, (StatusCode, String)>
@@ -156,6 +159,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let existing = state
         .group_repo
@@ -190,8 +194,8 @@ where
 }
 
 /// DELETE /api/groups/:jid - Delete a group
-pub async fn delete_group<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn delete_group<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
     Path(jid): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)>
 where
@@ -200,6 +204,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let deleted = state
         .group_repo

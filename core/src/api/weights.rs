@@ -18,11 +18,15 @@ use axum::{
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::matching::{
-    ABTestConfig, ABTestResult, MatchingEngineHandle, PerformanceMetrics, SchedulerStatus, Weights,
-};
 use crate::repository::{
     FeedbackRecordRepository, GroupRepository, MatchRepository, OfferRepository, RequestRepository,
+};
+use crate::{
+    matching::{
+        ABTestConfig, ABTestResult, MatchingEngineHandle, PerformanceMetrics, SchedulerStatus,
+        Weights,
+    },
+    repository::ReviewQueueRepository,
 };
 
 use super::routes::AppState;
@@ -98,8 +102,8 @@ pub struct InfluenceResponse {
 // =============================================================================
 
 /// GET /api/weights - Get current weights and influence
-pub async fn get_weights<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn get_weights<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
     O: OfferRepository,
@@ -107,6 +111,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -130,8 +135,8 @@ where
 }
 
 /// PUT /api/weights - Update weights manually
-pub async fn update_weights<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn update_weights<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
     Json(req): Json<UpdateWeightsRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
@@ -140,6 +145,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -201,8 +207,8 @@ where
 }
 
 /// GET /api/weights/scheduler - Get scheduler status
-pub async fn get_scheduler_status<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn get_scheduler_status<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
     O: OfferRepository,
@@ -210,6 +216,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -235,8 +242,8 @@ where
 }
 
 /// GET /api/weights/influence - Get warm start influence
-pub async fn get_influence<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn get_influence<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
     O: OfferRepository,
@@ -244,6 +251,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -267,8 +275,8 @@ where
 }
 
 /// GET /api/weights/abtest - List all A/B tests
-pub async fn list_ab_tests<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn list_ab_tests<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
     O: OfferRepository,
@@ -276,6 +284,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -304,8 +313,8 @@ where
 }
 
 /// POST /api/weights/abtest - Create a new A/B test
-pub async fn create_ab_test<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn create_ab_test<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
     Json(req): Json<CreateABTestRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
@@ -314,6 +323,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -362,8 +372,8 @@ where
 }
 
 /// GET /api/weights/abtest/:id - Get A/B test result
-pub async fn get_ab_test_result<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn get_ab_test_result<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
     Path(test_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
@@ -372,6 +382,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -406,8 +417,8 @@ where
 }
 
 /// DELETE /api/weights/abtest/:id - End an A/B test
-pub async fn end_ab_test<O, R, M, G, F>(
-    State(state): State<AppState<O, R, M, G, F>>,
+pub async fn end_ab_test<O, R, M, G, F, RQ>(
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
     Path(test_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
@@ -416,6 +427,7 @@ where
     M: MatchRepository,
     G: GroupRepository,
     F: FeedbackRecordRepository,
+    RQ: ReviewQueueRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,

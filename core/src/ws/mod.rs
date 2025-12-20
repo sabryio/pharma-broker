@@ -14,11 +14,11 @@ use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
 use tracing::{error, info};
 
-use crate::api::routes::AppState;
 use crate::domain::{Match, Offer, Request};
 use crate::repository::{
     FeedbackRecordRepository, GroupRepository, MatchRepository, OfferRepository, RequestRepository,
 };
+use crate::{api::routes::AppState, repository::ReviewQueueRepository};
 
 /// Payload for match status change events
 #[derive(Debug, Clone, Serialize)]
@@ -50,9 +50,9 @@ pub enum WsEvent {
 }
 
 /// WebSocket handler
-pub async fn ws_handler<O, R, M, G, F>(
+pub async fn ws_handler<O, R, M, G, F, RQ>(
     ws: WebSocketUpgrade,
-    State(state): State<AppState<O, R, M, G, F>>,
+    State(state): State<AppState<O, R, M, G, F, RQ>>,
 ) -> impl IntoResponse
 where
     O: OfferRepository + 'static,
@@ -60,18 +60,20 @@ where
     M: MatchRepository + 'static,
     G: GroupRepository + 'static,
     F: FeedbackRecordRepository + 'static,
+    RQ: ReviewQueueRepository + 'static,
 {
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
 /// Handle a single WebSocket connection
-async fn handle_socket<O, R, M, G, F>(socket: WebSocket, state: AppState<O, R, M, G, F>)
+async fn handle_socket<O, R, M, G, F, RQ>(socket: WebSocket, state: AppState<O, R, M, G, F, RQ>)
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: MatchRepository + 'static,
     G: GroupRepository + 'static,
     F: FeedbackRecordRepository + 'static,
+    RQ: ReviewQueueRepository + 'static,
 {
     let (mut sender, mut receiver) = socket.split();
     let mut rx = state.ws_tx.subscribe();
