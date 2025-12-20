@@ -13,12 +13,14 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
 use tracing::{error, info};
+use uuid::Uuid;
 
+use crate::api::routes::AppState;
 use crate::domain::{Match, Offer, Request};
 use crate::repository::{
-    FeedbackRecordRepository, GroupRepository, MatchRepository, OfferRepository, RequestRepository,
+    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
+    OfferRepository, RequestRepository, ReviewQueueRepository,
 };
-use crate::{api::routes::AppState, repository::ReviewQueueRepository};
 
 /// Payload for match status change events
 #[derive(Debug, Clone, Serialize)]
@@ -45,14 +47,16 @@ pub enum WsEvent {
     MatchConfirmed(MatchStatusEvent),
     /// Match was rejected by operator
     MatchRejected(MatchStatusEvent),
+    /// Item queued for review
+    ReviewQueued(Uuid),
     /// Ping message (keep-alive)
     Ping,
 }
 
 /// WebSocket handler
-pub async fn ws_handler<O, R, M, G, F, RQ>(
+pub async fn ws_handler<O, R, M, G, F, RQ, A>(
     ws: WebSocketUpgrade,
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
 ) -> impl IntoResponse
 where
     O: OfferRepository + 'static,
@@ -61,19 +65,23 @@ where
     G: GroupRepository + 'static,
     F: FeedbackRecordRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
 {
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
 /// Handle a single WebSocket connection
-async fn handle_socket<O, R, M, G, F, RQ>(socket: WebSocket, state: AppState<O, R, M, G, F, RQ>)
-where
+async fn handle_socket<O, R, M, G, F, RQ, A>(
+    socket: WebSocket,
+    state: AppState<O, R, M, G, F, RQ, A>,
+) where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: MatchRepository + 'static,
     G: GroupRepository + 'static,
     F: FeedbackRecordRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
 {
     let (mut sender, mut receiver) = socket.split();
     let mut rx = state.ws_tx.subscribe();

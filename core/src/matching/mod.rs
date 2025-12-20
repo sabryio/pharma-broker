@@ -3,6 +3,7 @@
 //! Ported from legacy/matching/*.go
 
 mod abtest;
+mod actions;
 mod dosage;
 mod engine;
 mod learner;
@@ -13,6 +14,7 @@ mod warm_start;
 mod weights;
 
 pub use abtest::*;
+pub use actions::*;
 pub use dosage::*;
 pub use engine::*;
 pub use learner::*;

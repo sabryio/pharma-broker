@@ -8,17 +8,18 @@
 //! - ABTestManager (A/B testing)
 //! - OutlierDetector (anomaly filtering)
 
-use chrono::{DateTime, Duration, Utc};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use super::{
-    ABTestConfig, ABTestManager, ABTestResult, FeedbackStats, LearnerError, LearningConfig,
-    MatchScore, OutlierDetector, OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig,
-    SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
+    ABTestConfig, ABTestManager, ABTestResult, AutoActionHandler, FeedbackStats, LearnerError,
+    MatchAction, MatchScore, OutlierDetector, OutlierDetectorConfig, PerformanceMetrics,
+    SchedulerConfig, SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner,
+    Weights,
 };
-use crate::domain::{Offer, Request};
+use crate::domain::{Match as MatchEntity, Offer, Request};
+use crate::notify::MatchNotifier;
 
 /// Matching engine configuration
 #[derive(Debug, Clone)]
@@ -62,6 +63,10 @@ pub struct MatchingEngine {
     sample_count: RwLock<usize>,
     /// Cron scheduler handle
     scheduler_handle: RwLock<Option<JobScheduler>>,
+    /// Auto action handler
+    pub auto_action: AutoActionHandler,
+    /// Notification sender
+    pub notifier: Arc<dyn MatchNotifier>,
 }
 
 impl Default for MatchingEngine {
@@ -88,7 +93,14 @@ impl MatchingEngine {
             config: RwLock::new(config),
             sample_count: RwLock::new(0),
             scheduler_handle: RwLock::new(None),
+            auto_action: AutoActionHandler::from_env(),
+            notifier: Arc::new(crate::notify::NullNotifier), // Default to null, can be replaced
         }
+    }
+
+    /// Update the notifier
+    pub fn set_notifier(&mut self, notifier: Arc<dyn MatchNotifier>) {
+        self.notifier = notifier;
     }
 
     // =========================================================================
@@ -96,14 +108,14 @@ impl MatchingEngine {
     // =========================================================================
 
     /// Score a match between offer and request
-    /// Uses: Scorer + WarmStart + ABTest
+    /// Uses: Scorer + WarmStart + ABTest + AutoAction
     pub async fn score_match(
         &self,
         offer: &Offer,
         request: &Request,
         medication_score: f64,
         user_id: Option<&str>,
-    ) -> MatchScore {
+    ) -> (MatchScore, MatchAction) {
         // Get weights (consider A/B test if user_id provided)
         let weights = self.get_weights_for_scoring(user_id).await;
 
@@ -117,7 +129,46 @@ impl MatchingEngine {
         self.scorer.update_weights(effective_weights);
 
         // Score the match
-        self.scorer.score_match(offer, request, medication_score)
+        let score = self.scorer.score_match(offer, request, medication_score);
+
+        // Determine action based on score
+        let action = self.auto_action.determine_action(score.total);
+
+        (score, action)
+    }
+
+    /// Process a MatchAction (notify, auto-confirm, etc.)
+    pub async fn process_match_action(
+        &self,
+        match_entity: &MatchEntity,
+        action: MatchAction,
+    ) -> crate::Result<()> {
+        match action {
+            MatchAction::AutoConfirm => {
+                // Notifying about auto-confirmation
+                self.notifier
+                    .notify_auto_confirmed(&match_entity.id, match_entity.score)
+                    .await?;
+            }
+            MatchAction::SuggestToOperator => {
+                self.notifier.notify_suggested(match_entity).await?;
+            }
+            MatchAction::QueueForReview => {
+                self.notifier
+                    .notify_queued_for_review(&match_entity.id, "low_confidence_match")
+                    .await?;
+            }
+            MatchAction::Ignore => {
+                // Nothing to do
+            }
+        }
+
+        // Also notify about the new match in general if it's not ignored
+        if action != MatchAction::Ignore {
+            self.notifier.notify_new_match(match_entity, action).await?;
+        }
+
+        Ok(())
     }
 
     /// Get weights for scoring (considering A/B tests)
@@ -141,7 +192,7 @@ impl MatchingEngine {
         user_id: &str,
         confirmed: bool,
         total_score: f64,
-    ) -> Result<(), String> {
+    ) -> std::result::Result<(), String> {
         // Check for outliers
         if self.outlier_detector.is_outlier(total_score) {
             tracing::warn!(
@@ -180,7 +231,7 @@ impl MatchingEngine {
     pub async fn calculate_new_weights(
         &self,
         stats: &FeedbackStats,
-    ) -> Result<(Weights, PerformanceMetrics), LearnerError> {
+    ) -> std::result::Result<(Weights, PerformanceMetrics), LearnerError> {
         let sample_count = *self.sample_count.read().await;
 
         // Get current weights with warm start blending
@@ -222,7 +273,7 @@ impl MatchingEngine {
     // =========================================================================
 
     /// Start the learning scheduler
-    pub async fn start_scheduler(&self) -> Result<(), String> {
+    pub async fn start_scheduler(&self) -> std::result::Result<(), String> {
         let config = self.config.read().await;
 
         if !config.scheduler.enabled {
@@ -283,7 +334,7 @@ impl MatchingEngine {
     // =========================================================================
 
     /// Create a new A/B test
-    pub fn create_ab_test(&self, config: ABTestConfig) -> Result<(), String> {
+    pub fn create_ab_test(&self, config: ABTestConfig) -> std::result::Result<(), String> {
         self.ab_test.create_test(config)
     }
 
@@ -398,6 +449,8 @@ pub fn create_matching_engine(config: MatchingEngineConfig) -> MatchingEngineHan
 
 #[cfg(test)]
 mod tests {
+    use chrono::{Duration, Utc};
+
     use super::*;
 
     #[tokio::test]
@@ -427,7 +480,7 @@ mod tests {
             ..Default::default()
         };
 
-        let score = engine.score_match(&offer, &request, 0.95, None).await;
+        let (score, _action) = engine.score_match(&offer, &request, 0.95, None).await;
 
         assert!(score.total > 0.0);
         assert!(score.medication_score == 0.95);

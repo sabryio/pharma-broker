@@ -599,28 +599,30 @@ Integration Tests:
 
 ### 5.8 Implementation Tasks
 
-#### Task 5.1: AutoActionHandler
+#### Task 5.1: AutoActionHandler ✅ COMPLETED
 
-- [ ] **Step 1:** Create `core/src/matching/actions.rs`
+- [x] **Step 1:** Create `core/src/matching/actions.rs`
   - `MatchAction` enum: AutoConfirm, SuggestToOperator, QueueForReview, Ignore
-  - `AutoActionConfig` struct with configurable thresholds
-- [ ] **Step 2:** Implement `determine_action(score: &MatchScore) -> MatchAction`
-- [ ] **Step 3:** Integrate into `MatchingEngine::score_match()` return
-- [ ] **Test:** `cargo test auto_action_` - boundary cases (0.899 vs 0.90)
+  - `ParseAction` enum: Accept, QueueForReview, Reject (for AI parses)
+  - `AutoActionConfig` struct with configurable thresholds + env loading
+- [x] **Step 2:** Implement `determine_action(score: f64) -> MatchAction`
+- [x] **Step 3:** Implement `action_for_band(band: ConfidenceBand) -> MatchAction`
+- [x] **Step 4:** Add `ParseAction::from_confidence()` for AI parse integration
+- [x] **Test:** `cargo test actions` - 9 tests passing (boundary cases included)
 
-#### Task 5.2: MatchNotifier Trait
+> **Implementation Notes (2025-12-20):** Created comprehensive action system with `AutoActionHandler`, `ActionResult`, env-based configuration (`from_env()`), and integration with `ConfidenceBand`. Includes `should_auto_confirm()` and `should_queue_for_review()` helpers.
 
-- [ ] **Step 1:** Create `core/src/notify/mod.rs` with trait
-  ```rust
-  #[async_trait]
-  pub trait MatchNotifier: Send + Sync {
-      async fn notify_new_match(&self, match_id: &str, score: f64) -> Result<()>;
-      async fn notify_suggested(&self, match_id: &str) -> Result<()>;
-  }
-  ```
-- [ ] **Step 2:** Implement `WebSocketNotifier`
-- [ ] **Step 3:** Implement `TelegramNotifier` (future)
-- [ ] **Test:** `cargo test notifier_` - mock implementations
+#### Task 5.2: MatchNotifier Trait ✅ COMPLETED
+
+- [x] **Step 1:** Create `core/src/notify/mod.rs` with trait
+  - `MatchNotifier` trait with 4 async methods
+  - `notify_new_match`, `notify_auto_confirmed`, `notify_suggested`, `notify_queued_for_review`
+- [x] **Step 2:** Implement `WebSocketNotifier` using broadcast channel
+- [x] **Step 3:** Implement `CompositeNotifier` for multi-channel delivery
+- [x] **Step 4:** Implement `NullNotifier` for testing
+- [x] **Test:** `cargo test notify` - 3 tests passing
+
+> **Implementation Notes (2025-12-20):** Created `MatchNotifier` trait with `WebSocketNotifier`, `CompositeNotifier`, and `NullNotifier` implementations. Integrated with `WsEvent::MatchConfirmed` for auto-confirmation broadcasts.
 
 #### Task 5.3: Audit Logging
 

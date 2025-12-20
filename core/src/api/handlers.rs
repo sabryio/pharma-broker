@@ -10,15 +10,13 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use super::routes::AppState;
+use crate::domain::{AuditLog, FeedbackRecord, ItemStatus, MatchStatus};
 use crate::metrics;
 use crate::repository::{
-    FeedbackRecordRepository, GroupRepository, MatchRepository, OfferRepository, RequestRepository,
+    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
+    OfferRepository, RequestRepository, ReviewQueueRepository,
 };
 use crate::ws::{MatchStatusEvent, WsEvent};
-use crate::{
-    domain::{FeedbackRecord, ItemStatus, MatchStatus},
-    repository::ReviewQueueRepository,
-};
 
 /// Pagination query parameters
 #[derive(Debug, Deserialize)]
@@ -107,8 +105,8 @@ pub async fn health_check() -> Json<serde_json::Value> {
 }
 
 /// Readiness probe - checks if service can handle requests (DB connected)
-pub async fn health_ready<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn health_ready<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
 ) -> Result<Json<HealthResponse>, (StatusCode, Json<serde_json::Value>)>
 where
     O: OfferRepository,
@@ -117,6 +115,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     // Check database by counting offers (simple query)
     let db_status = match state.offer_repo.count_active().await {
@@ -166,8 +165,8 @@ pub async fn health_live() -> Json<serde_json::Value> {
 
 /// Get active offers with pagination
 /// Ported from: legacy/api/handlers/offer_handler.go:GetOffersGin
-pub async fn get_offers<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn get_offers<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
     Query(pagination): Query<Pagination>,
 ) -> Result<Json<ApiResponse<Vec<crate::domain::Offer>>>, (StatusCode, String)>
 where
@@ -177,6 +176,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let offers = state
         .offer_repo
@@ -195,8 +195,8 @@ where
 
 /// Get active requests with pagination
 /// Ported from: legacy/api/handlers/request_handler.go:GetRequestsGin
-pub async fn get_requests<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn get_requests<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
     Query(pagination): Query<Pagination>,
 ) -> Result<Json<ApiResponse<Vec<crate::domain::Request>>>, (StatusCode, String)>
 where
@@ -206,6 +206,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let requests = state
         .request_repo
@@ -224,8 +225,8 @@ where
 
 /// Get pending matches with pagination
 /// Ported from: legacy/api/handlers/match_handler.go:GetMatchesGin
-pub async fn get_matches<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn get_matches<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
     Query(pagination): Query<Pagination>,
 ) -> Result<Json<ApiResponse<Vec<crate::domain::Match>>>, (StatusCode, String)>
 where
@@ -235,6 +236,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let matches = state
         .match_repo
@@ -261,8 +263,8 @@ pub struct ConfirmRequest {
 
 /// Confirm a pending match
 /// Ported from: legacy/api/handlers/match_handler.go:ConfirmMatchGin
-pub async fn confirm_match<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn confirm_match<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
     Path(id): Path<String>,
     Json(req): Json<ConfirmRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)>
@@ -273,6 +275,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     // Get the match first
     let match_entity = state
@@ -335,14 +338,21 @@ where
     if let Err(e) = state.ws_tx.send(ws_event) {
         tracing::warn!(error = %e, "Failed to broadcast match confirmation event");
     }
+
+    // Task 5.3: Audit Logging
+    let audit_log = AuditLog::match_confirmed(&id, &req.matched_by, match_entity.score);
+    if let Err(e) = state.audit_log_repo.save(&audit_log).await {
+        tracing::warn!(error = %e, match_id = %id, "Failed to save audit log for match confirmation");
+    }
+
     // Record metrics
     metrics::record_match_confirmation(true);
     metrics::record_match_score(match_entity.score, "confirmed");
 
     Ok(Json(serde_json::json!({
-        "status": "confirmed",
+        "success": true,
         "match_id": id,
-        "feedback_recorded": true
+        "status": "confirmed"
     })))
 }
 
@@ -357,8 +367,8 @@ pub struct RejectRequest {
 
 /// Reject a pending match
 /// Ported from: legacy/api/handlers/match_handler.go:RejectMatchGin
-pub async fn reject_match<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn reject_match<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
     Path(id): Path<String>,
     Json(req): Json<RejectRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)>
@@ -369,6 +379,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     // Get the match first for score data
     let match_entity = state
@@ -420,21 +431,35 @@ where
         tracing::warn!(error = %e, "Failed to broadcast match rejection event");
     }
 
+    // Task 5.3: Audit Logging
+    let audit_log = AuditLog::match_rejected(
+        &id,
+        &req.matched_by,
+        if req.reason.is_empty() {
+            None
+        } else {
+            Some(&req.reason)
+        },
+    );
+    if let Err(e) = state.audit_log_repo.save(&audit_log).await {
+        tracing::warn!(error = %e, match_id = %id, "Failed to save audit log for match rejection");
+    }
+
     // Record metrics
     metrics::record_match_confirmation(false);
     metrics::record_match_score(match_entity.score, "rejected");
 
     Ok(Json(serde_json::json!({
-        "status": "rejected",
+        "success": true,
         "match_id": id,
-        "feedback_recorded": true
+        "status": "rejected"
     })))
 }
 
 /// Get dashboard stats
 /// Ported from: legacy/api/handlers/stats_handler.go:GetStatsGin
-pub async fn get_stats<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn get_stats<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
 ) -> Result<Json<crate::domain::Stats>, (StatusCode, String)>
 where
     O: OfferRepository,
@@ -443,6 +468,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let active_offers = state.offer_repo.count_active().await.unwrap_or(0);
     let active_requests = state.request_repo.count_active().await.unwrap_or(0);

@@ -2,6 +2,7 @@
 //!
 //! Ported from legacy/domain/entity/entity.go
 
+mod audit_log;
 mod feedback;
 mod group;
 mod match_entity;
@@ -13,6 +14,7 @@ mod stats;
 mod types;
 mod weight_history;
 
+pub use audit_log::{AuditAction, AuditLog, EntityType};
 pub use feedback::{FeedbackAverage, FeedbackRecord, FeedbackStats};
 pub use group::Group;
 pub use match_entity::{Match, MatchWithDetails};

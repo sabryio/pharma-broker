@@ -2,6 +2,7 @@
 //!
 //! Uses sqlx for async database operations
 
+mod audit_log;
 mod feedback;
 mod group;
 mod match_repo;
@@ -11,6 +12,7 @@ mod request;
 mod review_queue;
 mod weight_history;
 
+pub use audit_log::PostgresAuditLogRepo;
 pub use feedback::PostgresFeedbackRepo;
 pub use group::PostgresGroupRepo;
 pub use match_repo::PostgresMatchRepo;

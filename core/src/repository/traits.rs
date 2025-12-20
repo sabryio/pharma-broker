@@ -3,12 +3,12 @@
 //! Ported from legacy/domain/repository/repository.go
 
 use async_trait::async_trait;
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 
 use crate::Result;
 use crate::domain::{
-    FeedbackRecord, FeedbackStats, Group, ItemStatus, Match, MatchStatus, Offer, RawMessage,
-    Request, ReviewQueueItem, ReviewQueueStats, ReviewStatus, Stats, WeightHistory,
+    AuditLog, FeedbackRecord, FeedbackStats, Group, ItemStatus, Match, MatchStatus, Offer,
+    RawMessage, Request, ReviewQueueItem, ReviewQueueStats, ReviewStatus, Stats, WeightHistory,
 };
 
 /// Offer repository trait
@@ -184,4 +184,40 @@ pub trait ReviewQueueRepository: Send + Sync {
 
     /// Check if a raw message is already queued
     async fn exists_for_message(&self, raw_message_id: &str) -> Result<bool>;
+}
+
+/// Audit log repository trait
+/// Stores audit trail for compliance and debugging
+#[async_trait]
+pub trait AuditLogRepository: Send + Sync {
+    /// Save an audit log entry
+    async fn save(&self, log: &AuditLog) -> Result<()>;
+
+    /// Get logs by entity
+    async fn get_by_entity(
+        &self,
+        entity_type: &str,
+        entity_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AuditLog>>;
+
+    /// Get logs by actor
+    async fn get_by_actor(&self, actor: &str, limit: i64) -> Result<Vec<AuditLog>>;
+
+    /// Get logs by action type
+    async fn get_by_action(&self, action: &str, limit: i64) -> Result<Vec<AuditLog>>;
+
+    /// Get recent logs (paginated)
+    async fn get_recent(&self, limit: i64, offset: i64) -> Result<Vec<AuditLog>>;
+
+    /// Get logs within a time range
+    async fn get_by_date_range(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<AuditLog>>;
+
+    /// Count total audit logs
+    async fn count(&self) -> Result<i64>;
 }

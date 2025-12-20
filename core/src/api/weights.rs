@@ -18,15 +18,11 @@ use axum::{
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::domain::AuditLog;
+use crate::matching::{ABTestConfig, Weights};
 use crate::repository::{
-    FeedbackRecordRepository, GroupRepository, MatchRepository, OfferRepository, RequestRepository,
-};
-use crate::{
-    matching::{
-        ABTestConfig, ABTestResult, MatchingEngineHandle, PerformanceMetrics, SchedulerStatus,
-        Weights,
-    },
-    repository::ReviewQueueRepository,
+    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
+    OfferRepository, RequestRepository, ReviewQueueRepository,
 };
 
 use super::routes::AppState;
@@ -102,8 +98,8 @@ pub struct InfluenceResponse {
 // =============================================================================
 
 /// GET /api/weights - Get current weights and influence
-pub async fn get_weights<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn get_weights<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
     O: OfferRepository,
@@ -112,6 +108,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -135,8 +132,8 @@ where
 }
 
 /// PUT /api/weights - Update weights manually
-pub async fn update_weights<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn update_weights<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
     Json(req): Json<UpdateWeightsRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
@@ -146,6 +143,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -189,8 +187,28 @@ where
 
     let reason = req
         .reason
+        .clone()
         .unwrap_or_else(|| "Manual update via API".to_string());
+
+    // Get previous weights for audit log
+    let previous_weights = engine.get_weights();
+
     engine.apply_weights(new_weights.clone(), &reason).await;
+
+    // Task 5.3: Audit Logging
+    let audit_log = AuditLog::weights_updated(
+        "admin", // TODO: replace with actual user ID when auth is added
+        "api",
+        Some(serde_json::to_value(&previous_weights).unwrap_or(serde_json::Value::Null)),
+    )
+    .with_details(serde_json::json!({
+        "new_weights": new_weights,
+        "reason": reason
+    }));
+
+    if let Err(e) = state.audit_log_repo.save(&audit_log).await {
+        tracing::warn!(error = %e, "Failed to save audit log for weights update");
+    }
 
     tracing::info!(
         medication = %new_weights.medication,
@@ -207,8 +225,8 @@ where
 }
 
 /// GET /api/weights/scheduler - Get scheduler status
-pub async fn get_scheduler_status<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn get_scheduler_status<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
     O: OfferRepository,
@@ -217,6 +235,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -242,8 +261,8 @@ where
 }
 
 /// GET /api/weights/influence - Get warm start influence
-pub async fn get_influence<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn get_influence<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
     O: OfferRepository,
@@ -252,6 +271,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -275,8 +295,8 @@ where
 }
 
 /// GET /api/weights/abtest - List all A/B tests
-pub async fn list_ab_tests<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn list_ab_tests<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
     O: OfferRepository,
@@ -285,6 +305,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -313,8 +334,8 @@ where
 }
 
 /// POST /api/weights/abtest - Create a new A/B test
-pub async fn create_ab_test<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn create_ab_test<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
     Json(req): Json<CreateABTestRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
@@ -324,6 +345,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -372,8 +394,8 @@ where
 }
 
 /// GET /api/weights/abtest/:id - Get A/B test result
-pub async fn get_ab_test_result<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn get_ab_test_result<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
     Path(test_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
@@ -383,6 +405,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -417,8 +440,8 @@ where
 }
 
 /// DELETE /api/weights/abtest/:id - End an A/B test
-pub async fn end_ab_test<O, R, M, G, F, RQ>(
-    State(state): State<AppState<O, R, M, G, F, RQ>>,
+pub async fn end_ab_test<O, R, M, G, F, RQ, A>(
+    State(state): State<AppState<O, R, M, G, F, RQ, A>>,
     Path(test_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)>
 where
@@ -428,6 +451,7 @@ where
     G: GroupRepository,
     F: FeedbackRecordRepository,
     RQ: ReviewQueueRepository,
+    A: AuditLogRepository,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,

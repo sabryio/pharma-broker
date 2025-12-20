@@ -12,8 +12,9 @@ use pharma_core::grpc::{PharmaCoreService, start_grpc_server};
 use pharma_core::matching::{MatchingEngineConfig, create_matching_engine};
 use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
-    PostgresFeedbackRepo, PostgresGroupRepo, PostgresMatchRepo, PostgresOfferRepo,
-    PostgresRawMessageRepo, PostgresRequestRepo, PostgresReviewQueueRepo, create_pool,
+    PostgresAuditLogRepo, PostgresFeedbackRepo, PostgresGroupRepo, PostgresMatchRepo,
+    PostgresOfferRepo, PostgresRawMessageRepo, PostgresRequestRepo, PostgresReviewQueueRepo,
+    create_pool,
 };
 
 #[tokio::main]
@@ -56,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
     let group_repo = Arc::new(PostgresGroupRepo::new(pool.clone()));
     let feedback_repo = Arc::new(PostgresFeedbackRepo::new(pool.clone()));
     let review_queue_repo = Arc::new(PostgresReviewQueueRepo::new(pool.clone()));
+    let audit_log_repo = Arc::new(PostgresAuditLogRepo::new(pool.clone()));
 
     // Create AI client (reads AI_GATEWAY_URL from env)
     let ai_client = Arc::new(AiClient::from_env());
@@ -104,6 +106,7 @@ async fn main() -> anyhow::Result<()> {
         metrics_handle: Some(metrics_handle),
         feedback_repo: feedback_repo.clone(),
         review_queue_repo: review_queue_repo.clone(),
+        audit_log_repo: audit_log_repo.clone(),
     };
 
     // Create HTTP router
@@ -132,6 +135,9 @@ async fn main() -> anyhow::Result<()> {
         request_repo,
         raw_message_repo,
         group_repo,
+        feedback_repo,
+        review_queue_repo,
+        audit_log_repo,
         match_repo.clone(),
         ai_client,
         ws_tx.clone(),

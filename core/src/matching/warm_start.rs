@@ -2,7 +2,7 @@
 //!
 //! Ported from legacy/matching/warm_start.go
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use std::sync::RwLock;
 
 use super::Weights;

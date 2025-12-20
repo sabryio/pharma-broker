@@ -19,45 +19,60 @@ use super::pharma::{
 };
 use crate::ai::AiClient;
 use crate::domain::{
-    ConfidenceBand, ItemStatus, Match as MatchEntity, MatchStatus, Offer, RawMessage,
-    Request as RequestEntity,
+    AuditAction, AuditLog, ConfidenceBand, EntityType, ItemStatus, Match as MatchEntity,
+    MatchStatus, Offer, RawMessage, Request as RequestEntity, ReviewQueueItem,
 };
-use crate::matching::{MatchingEngineHandle, cosine_similarity};
+use crate::matching::{AutoActionHandler, MatchAction, MatchingEngineHandle, cosine_similarity};
 use crate::repository::{
-    GroupRepository, MatchRepository, OfferRepository, RawMessageRepository, RequestRepository,
+    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
+    OfferRepository, RawMessageRepository, RequestRepository, ReviewQueueRepository,
 };
 
 /// The gRPC service implementation
-pub struct PharmaCoreService<O, R, M, G>
+pub struct PharmaCoreService<O, R, M, G, F, RQ, A>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
     G: GroupRepository + 'static,
+    F: FeedbackRecordRepository + 'static,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
 {
     pub offer_repo: Arc<O>,
     pub request_repo: Arc<R>,
     pub raw_message_repo: Arc<M>,
     pub group_repo: Arc<G>,
+    pub feedback_repo: Arc<F>,
+    pub review_queue_repo: Arc<RQ>,
+    pub audit_log_repo: Arc<A>,
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
     pub ai_client: Arc<AiClient>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub matching_engine: MatchingEngineHandle,
+    pub auto_action: AutoActionHandler,
     start_time: std::time::Instant,
 }
 
-impl<O, R, M, G> PharmaCoreService<O, R, M, G>
+impl<O, R, M, G, F, RQ, A> PharmaCoreService<O, R, M, G, F, RQ, A>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
     G: GroupRepository + 'static,
+    F: FeedbackRecordRepository + 'static,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         offer_repo: Arc<O>,
         request_repo: Arc<R>,
         raw_message_repo: Arc<M>,
         group_repo: Arc<G>,
+        feedback_repo: Arc<F>,
+        review_queue_repo: Arc<RQ>,
+        audit_log_repo: Arc<A>,
         match_repo: Arc<dyn MatchRepository + Send + Sync>,
         ai_client: Arc<AiClient>,
         ws_tx: broadcast::Sender<WsEvent>,
@@ -68,10 +83,14 @@ where
             request_repo,
             raw_message_repo,
             group_repo,
+            feedback_repo,
+            review_queue_repo,
+            audit_log_repo,
             match_repo,
             ai_client,
             ws_tx,
             matching_engine,
+            auto_action: AutoActionHandler::from_env(),
             start_time: std::time::Instant::now(),
         }
     }
@@ -104,12 +123,15 @@ fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
 }
 
 #[tonic::async_trait]
-impl<O, R, M, G> PharmaCore for PharmaCoreService<O, R, M, G>
+impl<O, R, M, G, F, RQ, A> PharmaCore for PharmaCoreService<O, R, M, G, F, RQ, A>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
     G: GroupRepository + 'static,
+    F: FeedbackRecordRepository + 'static,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
 {
     /// Process an incoming WhatsApp message
     async fn process_message(
@@ -199,6 +221,9 @@ where
         let ws_tx = self.ws_tx.clone();
         let match_repo = self.match_repo.clone();
         let matching_engine = self.matching_engine.clone();
+        let review_queue_repo = self.review_queue_repo.clone();
+        let audit_log_repo = self.audit_log_repo.clone();
+        let auto_action = self.auto_action.clone();
 
         tokio::spawn(async move {
             tracing::info!(id = %msg_id, "🤖 Starting AI parsing (background)");
@@ -232,74 +257,141 @@ where
             // Create Offer/Request entities from parsed items
             let mut offers_created = 0;
             let mut requests_created = 0;
+            let mut items_queued = 0;
 
             for item in parsed_items {
-                if item.item_type == "OFFER" {
-                    let offer = Offer {
-                        id: Uuid::new_v4().to_string(),
-                        raw_message_id: msg_id.clone(),
-                        source_phone: sender_phone.clone(),
-                        source_name: sender_name.clone(),
-                        source_group: group_jid.clone(),
-                        group_name: group_name.clone(),
-                        medication: item.medication.clone(),
-                        medication_raw: item.medication_raw.clone(),
-                        quantity: item.quantity,
-                        unit: item.unit.clone(),
-                        price: item.price,
-                        currency: Some("EGP".to_string()),
-                        expiry_date: None,
-                        batch_number: None,
-                        notes: item.notes.clone(),
-                        raw_message: content.clone(),
-                        status: ItemStatus::Active,
-                        created_at: Utc::now(),
-                        updated_at: Utc::now(),
-                    };
+                // Task 3.3: Determine action based on AI confidence
+                let parse_action = auto_action.determine_parse_action(item.ai_confidence);
 
-                    if let Err(e) = offer_repo.save(&offer).await {
-                        tracing::error!(error = %e, offer_id = %offer.id, "Failed to save offer");
-                    } else {
-                        tracing::info!(
-                            offer_id = %offer.id,
-                            medication = %offer.medication,
-                            "💊 Offer created"
-                        );
-                        offers_created += 1;
-                        let _ = ws_tx.send(WsEvent::NewOffer(offer));
+                match parse_action {
+                    crate::matching::ParseAction::Accept => {
+                        if item.item_type == "OFFER" {
+                            let offer = Offer {
+                                id: Uuid::new_v4().to_string(),
+                                raw_message_id: msg_id.clone(),
+                                source_phone: sender_phone.clone(),
+                                source_name: sender_name.clone(),
+                                source_group: group_jid.clone(),
+                                group_name: group_name.clone(),
+                                medication: item.medication.clone(),
+                                medication_raw: item.medication_raw.clone(),
+                                quantity: item.quantity,
+                                unit: item.unit.clone(),
+                                price: item.price,
+                                currency: Some("EGP".to_string()),
+                                expiry_date: None,
+                                batch_number: None,
+                                notes: item.notes.clone(),
+                                raw_message: content.clone(),
+                                status: ItemStatus::Active,
+                                created_at: Utc::now(),
+                                updated_at: Utc::now(),
+                            };
+
+                            if let Err(e) = offer_repo.save(&offer).await {
+                                tracing::error!(error = %e, offer_id = %offer.id, "Failed to save offer");
+                            } else {
+                                tracing::info!(
+                                    offer_id = %offer.id,
+                                    medication = %offer.medication,
+                                    "💊 Offer created"
+                                );
+                                offers_created += 1;
+                                let _ = ws_tx.send(WsEvent::NewOffer(offer.clone()));
+
+                                // Task 5.3: Audit log Offer creation
+                                let audit_log = AuditLog::system(
+                                    AuditAction::OfferCreated,
+                                    EntityType::Offer,
+                                    offer.id.clone(),
+                                )
+                                .with_details(serde_json::json!({ "message_id": msg_id }));
+                                let _ = audit_log_repo.save(&audit_log).await;
+                            }
+                        } else if item.item_type == "REQUEST" {
+                            let request = RequestEntity {
+                                id: Uuid::new_v4().to_string(),
+                                raw_message_id: msg_id.clone(),
+                                source_phone: sender_phone.clone(),
+                                source_name: sender_name.clone(),
+                                source_group: group_jid.clone(),
+                                group_name: group_name.clone(),
+                                medication: item.medication.clone(),
+                                medication_raw: item.medication_raw.clone(),
+                                quantity: item.quantity,
+                                unit: item.unit.clone(),
+                                max_price: item.max_price,
+                                currency: Some("EGP".to_string()),
+                                urgent: item.urgent,
+                                notes: item.notes.clone(),
+                                raw_message: content.clone(),
+                                status: ItemStatus::Active,
+                                created_at: Utc::now(),
+                                updated_at: Utc::now(),
+                            };
+
+                            if let Err(e) = request_repo.save(&request).await {
+                                tracing::error!(error = %e, request_id = %request.id, "Failed to save request");
+                            } else {
+                                tracing::info!(
+                                    request_id = %request.id,
+                                    medication = %request.medication,
+                                    "❓ Request created"
+                                );
+                                requests_created += 1;
+                                let _ = ws_tx.send(WsEvent::NewRequest(request.clone()));
+
+                                // Task 5.3: Audit log Request creation
+                                let audit_log = AuditLog::system(
+                                    AuditAction::RequestCreated,
+                                    EntityType::Request,
+                                    request.id.clone(),
+                                )
+                                .with_details(serde_json::json!({ "message_id": msg_id }));
+                                let _ = audit_log_repo.save(&audit_log).await;
+                            }
+                        }
                     }
-                } else if item.item_type == "REQUEST" {
-                    let request = RequestEntity {
-                        id: Uuid::new_v4().to_string(),
-                        raw_message_id: msg_id.clone(),
-                        source_phone: sender_phone.clone(),
-                        source_name: sender_name.clone(),
-                        source_group: group_jid.clone(),
-                        group_name: group_name.clone(),
-                        medication: item.medication.clone(),
-                        medication_raw: item.medication_raw.clone(),
-                        quantity: item.quantity,
-                        unit: item.unit.clone(),
-                        max_price: item.max_price,
-                        currency: Some("EGP".to_string()),
-                        urgent: item.urgent,
-                        notes: item.notes.clone(),
-                        raw_message: content.clone(),
-                        status: ItemStatus::Active,
-                        created_at: Utc::now(),
-                        updated_at: Utc::now(),
-                    };
-
-                    if let Err(e) = request_repo.save(&request).await {
-                        tracing::error!(error = %e, request_id = %request.id, "Failed to save request");
-                    } else {
-                        tracing::info!(
-                            request_id = %request.id,
-                            medication = %request.medication,
-                            "🔍 Request created"
+                    crate::matching::ParseAction::QueueForReview => {
+                        // Task 3.3: Queue for human review
+                        let review_item = ReviewQueueItem::for_low_confidence(
+                            msg_id.clone(),
+                            serde_json::to_value(&item).unwrap_or(serde_json::Value::Null),
+                            item.ai_confidence,
                         );
-                        requests_created += 1;
-                        let _ = ws_tx.send(WsEvent::NewRequest(request));
+
+                        if let Err(e) = review_queue_repo.save(&review_item).await {
+                            tracing::error!(error = %e, id = %msg_id, "Failed to save review queue item");
+                        } else {
+                            tracing::info!(
+                                id = %msg_id,
+                                medication = %item.medication,
+                                confidence = %item.ai_confidence,
+                                "📋 Item queued for human review (low confidence)"
+                            );
+                            items_queued += 1;
+                            let _ = ws_tx.send(WsEvent::ReviewQueued(review_item.id)); // Notify clients
+
+                            // Task 5.3: Audit log Review Queue entry
+                            let audit_log = AuditLog::system(
+                                AuditAction::ReviewQueued,
+                                EntityType::ReviewQueue,
+                                review_item.id.to_string(),
+                            )
+                            .with_details(serde_json::json!({
+                                "message_id": msg_id,
+                                "confidence": item.ai_confidence
+                            }));
+                            let _ = audit_log_repo.save(&audit_log).await;
+                        }
+                    }
+                    crate::matching::ParseAction::Reject => {
+                        tracing::info!(
+                            id = %msg_id,
+                            medication = %item.medication,
+                            confidence = %item.ai_confidence,
+                            "🚫 Item rejected (too low confidence)"
+                        );
                     }
                 }
             }
@@ -311,7 +403,8 @@ where
                 id = %msg_id,
                 offers = offers_created,
                 requests = requests_created,
-                "✅ Message processing complete"
+                queued = items_queued,
+                "✅ Background processing complete"
             );
 
             // Trigger matching engine for new requests
@@ -375,13 +468,15 @@ where
                             };
 
                             // Score using the unified matching engine
-                            // This integrates: Scorer + WarmStart + ABTest
-                            let score = matching_engine
+                            // This integrates: Scorer + WarmStart + ABTest + AutoAction
+                            let (score, action) = matching_engine
                                 .score_match(offer, request, med_score, Some(&sender_phone))
                                 .await;
 
-                            // Only create match if confidence is not NONE
-                            if score.confidence != ConfidenceBand::None {
+                            // Only create match if confidence is not NONE and not ignored
+                            if score.confidence != ConfidenceBand::None
+                                && action != MatchAction::Ignore
+                            {
                                 let match_entity = MatchEntity {
                                     id: Uuid::new_v4().to_string(),
                                     offer_id: offer.id.clone(),
@@ -407,7 +502,12 @@ where
                                         "🎯 Match created"
                                     );
                                     matches_created += 1;
-                                    let _ = ws_tx.send(WsEvent::NewMatch(match_entity));
+                                    let _ = ws_tx.send(WsEvent::NewMatch(match_entity.clone()));
+
+                                    // Task 5.1/5.2: Process actions and notifications
+                                    let _ = matching_engine
+                                        .process_match_action(&match_entity, action)
+                                        .await;
                                 }
                             }
                         }
@@ -474,15 +574,18 @@ where
 }
 
 /// Start the gRPC server on the specified address
-pub async fn start_grpc_server<O, R, M, G>(
+pub async fn start_grpc_server<O, R, M, G, F, RQ, A>(
     addr: SocketAddr,
-    service: PharmaCoreService<O, R, M, G>,
-) -> Result<(), tonic::transport::Error>
+    service: PharmaCoreService<O, R, M, G, F, RQ, A>,
+) -> std::result::Result<(), tonic::transport::Error>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
     G: GroupRepository + 'static,
+    F: FeedbackRecordRepository + 'static,
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
 {
     tracing::info!("🔌 gRPC server starting on {}", addr);
 
