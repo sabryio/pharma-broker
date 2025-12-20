@@ -1,13 +1,24 @@
-//! AI Playground CLI
+//! # AI Parser Benchmark CLI
 //!
-//! Benchmarks AI parsing with the direct AI client (no gateway).
+//! Benchmarks AI parsing performance with concurrent requests.
+//! Loads messages from database and measures parsing latency per message.
 //!
-//! Usage: cargo run --bin playground -- [limit] [concurrency]
+//! ## Usage
+//! ```bash
+//! cargo run --bin bench-parser -- --limit 5 --concurrency 3
+//! cargo run --bin bench-parser -- -l 10 -c 5
+//! ```
+//!
+//! ## Environment Variables
+//! - `AI_BASE_URL` / `AI_MODEL` - AI model configuration
+//! - `DATABASE_URL` - PostgreSQL connection string
+//! - `RUST_LOG` - Logging level (default: warn)
 
 use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
+use clap::Parser;
 use pharma_core::ai::{
     BatchMessage, ItemType, PharmaParser, PharmaParserConfig, TokenBatchConfig, TokenBatcher,
 };
@@ -15,16 +26,52 @@ use sqlx::postgres::PgPoolOptions;
 use tokio::sync::Semaphore;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+// ============================================================================
+// CLI Arguments
+// ============================================================================
+
+/// Benchmark AI parsing performance with concurrent requests
+#[derive(Parser, Debug)]
+#[command(name = "bench-parser")]
+#[command(author = "PharmaBroker Team")]
+#[command(version = "0.1.0")]
+#[command(about = "Benchmark AI parsing with concurrency control", long_about = None)]
+struct Args {
+    /// Number of messages to process from database
+    #[arg(short, long, default_value_t = 5)]
+    limit: i64,
+
+    /// Maximum concurrent parsing requests
+    #[arg(short, long, default_value_t = 3)]
+    concurrency: usize,
+
+    /// Database URL (defaults to DATABASE_URL env var)
+    #[arg(long)]
+    database_url: Option<String>,
+}
+
+// ============================================================================
+// Types
+// ============================================================================
+
 #[derive(Debug, Clone)]
 struct LegacyMessage {
+    #[allow(dead_code)]
     id: String,
     content: String,
     sender_name: Option<String>,
     group_name: Option<String>,
 }
 
+// ============================================================================
+// Main
+// ============================================================================
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Parse CLI arguments
+    let args = Args::parse();
+
     // Initialize tracing (suppress by default for clean output)
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
@@ -33,18 +80,19 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Parse CLI args
-    let args: Vec<String> = env::args().collect();
-    let limit: i64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(5);
-    let concurrency: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(3);
+    let limit = args.limit;
+    let concurrency = args.concurrency;
 
-    println!("🚀 AI Playground CLI (Direct - No Gateway)");
-    println!("   - Messages: {}", limit);
-    println!("   - Concurrency: {}", concurrency);
+    println!("🚀 AI Parser Benchmark CLI");
+    println!("   --limit: {}", limit);
+    println!("   --concurrency: {}", concurrency);
 
     // Connect to database
-    let database_url = env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
+    let database_url = args.database_url.unwrap_or_else(|| {
+        env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgres://postgres:password@localhost:5432/pharmabroker".to_string()
+        })
+    });
 
     let pool = PgPoolOptions::new()
         .max_connections(5)

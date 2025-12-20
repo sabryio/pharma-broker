@@ -1,11 +1,21 @@
-//! Playground to test AI parsing
+//! # Parse CLI - AI Parser Testing Tool
 //!
-//! Usage:
-//!   cargo run --bin ai_playground                               # Load from database (default 10)
-//!   cargo run --bin ai_playground -- -l 20                      # Load 20 messages from database
-//!   cargo run --bin ai_playground -- -i messages.json           # Load from file
-//!   cargo run --bin ai_playground -- -i messages.json -o results.json  # Save results
-//!   cargo run --bin ai_playground -- --help
+//! Interactive CLI for testing AI parsing with messages from database or JSON files.
+//! Supports custom medication mappings and result export.
+//!
+//! ## Usage
+//! ```bash
+//! cargo run --bin parse-cli                           # Load from database (default 10)
+//! cargo run --bin parse-cli -- --limit 20             # Load 20 messages from database
+//! cargo run --bin parse-cli -- --input messages.json  # Load from file
+//! cargo run --bin parse-cli -- --output results.json  # Save results to file
+//! cargo run --bin parse-cli -- --help
+//! ```
+//!
+//! ## Environment Variables
+//! - `AI_BASE_URL` / `AI_MODEL` - AI model configuration
+//! - `DATABASE_URL` - PostgreSQL connection string
+//! - `RUST_LOG` - Logging level (default: info)
 
 use std::env;
 use std::fs;
@@ -13,12 +23,45 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
+use clap::Parser;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use pharma_core::ai::{ParsedItem, PharmaParser, PharmaParserConfig};
+
+// ============================================================================
+// CLI Arguments
+// ============================================================================
+
+/// Test AI parsing with messages from database or JSON files
+#[derive(Parser, Debug)]
+#[command(name = "parse-cli")]
+#[command(author = "PharmaBroker Team")]
+#[command(version = "0.1.0")]
+#[command(about = "Interactive AI parser testing tool", long_about = None)]
+struct Args {
+    /// JSON file with test messages (loads from DB if not provided)
+    #[arg(short, long)]
+    input: Option<PathBuf>,
+
+    /// JSON file to save results
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+
+    /// JSON file with medication mappings (arabic -> english)
+    #[arg(short, long)]
+    mappings: Option<PathBuf>,
+
+    /// Number of messages to load from database
+    #[arg(short, long, default_value_t = 10)]
+    limit: i64,
+
+    /// Database URL (defaults to DATABASE_URL env var)
+    #[arg(long)]
+    database_url: Option<String>,
+}
 
 // ============================================================================
 // Types
@@ -71,101 +114,6 @@ struct TestSummary {
     total_items: usize,
     results: Vec<TestResult>,
     tested_at: DateTime<Utc>,
-}
-
-// ============================================================================
-// CLI Args
-// ============================================================================
-
-struct Args {
-    input_file: Option<PathBuf>,
-    output_file: Option<PathBuf>,
-    mappings_file: Option<PathBuf>,
-    limit: i64,
-}
-
-fn parse_args() -> Args {
-    let args: Vec<String> = env::args().collect();
-    let mut input_file = None;
-    let mut output_file = None;
-    let mut mappings_file = None;
-    let mut limit: i64 = 10;
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "-i" | "--input" => {
-                if i + 1 < args.len() {
-                    input_file = Some(PathBuf::from(&args[i + 1]));
-                    i += 1;
-                }
-            }
-            "-o" | "--output" => {
-                if i + 1 < args.len() {
-                    output_file = Some(PathBuf::from(&args[i + 1]));
-                    i += 1;
-                }
-            }
-            "-m" | "--mappings" => {
-                if i + 1 < args.len() {
-                    mappings_file = Some(PathBuf::from(&args[i + 1]));
-                    i += 1;
-                }
-            }
-            "-l" | "--limit" => {
-                if i + 1 < args.len() {
-                    limit = args[i + 1].parse().unwrap_or(10);
-                    i += 1;
-                }
-            }
-            "-h" | "--help" => {
-                print_help();
-                std::process::exit(0);
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    Args {
-        input_file,
-        output_file,
-        mappings_file,
-        limit,
-    }
-}
-
-fn print_help() {
-    println!(
-        r#"AI Playground - Test AI Gateway parsing
-
-USAGE:
-    cargo run --bin ai_playground -- [OPTIONS]
-
-OPTIONS:
-    -i, --input <FILE>      JSON file with test messages (optional, loads from DB if not provided)
-    -o, --output <FILE>     JSON file to save results
-    -m, --mappings <FILE>   JSON file with medication mappings
-    -l, --limit <N>         Number of messages to load from database (default: 10)
-    -h, --help              Print help information
-
-EXAMPLES:
-    cargo run --bin ai_playground                    # Load 10 messages from database
-    cargo run --bin ai_playground -- -l 20           # Load 20 messages from database
-    cargo run --bin ai_playground -- -i messages.json -o results.json
-
-INPUT FORMAT (messages.json):
-    [
-      {{
-        "id": "msg-1",
-        "group_jid": "group@g.us",
-        "group_name": "Pharmacy Group",
-        "content": "عندي اوجمنتين 1 جم 50 علبة بـ 150",
-        "sender_name": "Dr. Ahmed"
-      }}
-    ]
-"#
-    );
 }
 
 // ============================================================================
@@ -256,8 +204,8 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Parse CLI args
-    let args = parse_args();
+    // Parse CLI arguments
+    let args = Args::parse();
 
     // Create AI client
     let parser_config = PharmaParserConfig::from_env();
@@ -266,7 +214,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Testing Direct AI Client (no gateway)");
 
     // Load test messages from file or database
-    let test_messages = if let Some(ref input_file) = args.input_file {
+    let test_messages = if let Some(ref input_file) = args.input {
         match load_messages_from_file(input_file) {
             Ok(msgs) => {
                 info!(
@@ -300,7 +248,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Load medication mappings if provided
-    let mappings: Option<Vec<String>> = if let Some(ref mappings_file) = args.mappings_file {
+    let mappings: Option<Vec<String>> = if let Some(ref mappings_file) = args.mappings {
         match load_mappings_from_file(mappings_file) {
             Ok(m) => {
                 info!(count = m.len(), file = ?mappings_file, "Loaded medication mappings");
@@ -414,7 +362,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Save results if output file specified
-    if let Some(ref output_file) = args.output_file {
+    if let Some(ref output_file) = args.output {
         let summary = TestSummary {
             gateway_url: "Direct AI (no gateway)".to_string(),
             total_time: format!("{:?}", total_elapsed),

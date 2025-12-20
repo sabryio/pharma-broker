@@ -14,16 +14,20 @@ name = "pharma-core"
 path = "src/main.rs"
 
 [[bin]]
-name = "playground"
-path = "src/bin/playground.rs"
+name = "bench-parser"
+path = "src/bin/bench_parser.rs"
 
 [[bin]]
-name = "workflow"
-path = "src/bin/workflow.rs"
+name = "pipeline-sim"
+path = "src/bin/pipeline_sim.rs"
 
 [[bin]]
-name = "ai_playground"
-path = "src/bin/ai_playground.rs"
+name = "parse-cli"
+path = "src/bin/parse_cli.rs"
+
+[[bin]]
+name = "compare-models"
+path = "src/bin/compare_models.rs"
 
 [dependencies]
 # Async runtime
@@ -99,6 +103,8 @@ ai-client = { path = "crates/ai-client" }
 # Enums
 strum = { version = "0.27.2", features = ["derive"] }
 strum_macros = "0.27.2"
+prettytable-rs = "0.10.0"
+clap = { version = "4.5.53", features = ["derive"] }
 
 [dev-dependencies]
 tokio-test = "0.4.4"

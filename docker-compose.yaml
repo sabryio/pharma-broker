@@ -12,7 +12,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      # For pg18+, mount at /var/lib/postgresql (not /data subdirectory)
+      - ./data/postgres:/var/lib/postgresql
       - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres -d pharmabroker" ]
@@ -101,32 +102,33 @@ models:
   qwen:
     model: ai/qwen3-vl:latest
     context_size: 16384
-    runtime_flags:
-      - "--temp"
-      - "0.3"
+    # runtime_flags:
+    #   - "--temp"
+    #   - "0.3"
 
-  # Alternative LLM (smaller, faster)
+    # Alternative LLM (smaller, faster)
   ministral:
     model: ai/ministral3:latest
     context_size: 16384
-    runtime_flags:
-      - "--temp"
-      - "0.3"
+    # runtime_flags:
+    #   - "--temp"
+    #   - "0.3"
 
-  # Alternative LLM (Google)
+    # Alternative LLM (Google)
   gemma:
     model: ai/gemma3:latest
     context_size: 16384
-    runtime_flags:
-      - "--temp"
-      - "0.3"
+    # runtime_flags:
+    #   - "--temp"
+    #   - "0.3"
 
-  # Embedding model
+    # Embedding model
   embedding:
     model: ai/embeddinggemma:latest
     context_size: 16384
 
 volumes:
+  postgres_data:
   bridge_data:
   prometheus_data:
   grafana_data:

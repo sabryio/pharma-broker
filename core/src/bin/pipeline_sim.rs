@@ -1,24 +1,33 @@
-//! Comprehensive Local Workflow Playground
+//! # Pipeline Simulation CLI
 //!
-//! Tests the FULL PharmaBroker pipeline using ACTUAL package implementations,
-//! simulating REAL WhatsApp message behavior exactly like the main server:
+//! Full end-to-end pipeline simulation using actual PharmaBroker implementations.
+//! Simulates WhatsApp message flow from ingestion to AI parsing to entity creation.
 //!
-//! 1. Initialize database and all repositories
+//! ## Usage
+//! ```bash
+//! cargo run --bin pipeline-sim -- --limit 8
+//! cargo run --bin pipeline-sim -- -l 5
+//! ```
+//!
+//! ## Pipeline Stages
+//! 1. Initialize database and repositories
 //! 2. Create AI client with token batching
-//! 3. Create BatchProcessor (actual implementation)
+//! 3. Create BatchProcessor
 //! 4. Simulate WhatsApp messages
-//! 5. Let BatchProcessor process (AI parsing + entity creation)
+//! 5. Process with AI parsing + entity creation
 //! 6. Display results
 //!
-//! Usage:
-//!   cargo run --bin workflow
-//!   cargo run --bin workflow -- --limit 10
+//! ## Environment Variables
+//! - `DATABASE_URL` - PostgreSQL connection string
+//! - `AI_BASE_URL` / `AI_MODEL` - AI model configuration
+//! - `RUST_LOG` - Logging level (default: info,sqlx=warn)
 
 use std::env;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use clap::Parser;
 use tokio::sync::{broadcast, watch};
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -35,6 +44,26 @@ use pharma_core::repository::{
     GroupRepository, MatchRepository, OfferRepository, RawMessageRepository, RequestRepository,
 };
 use pharma_core::ws::WsEvent;
+
+// ============================================================================
+// CLI Arguments
+// ============================================================================
+
+/// Simulate full PharmaBroker pipeline with mock WhatsApp messages
+#[derive(Parser, Debug)]
+#[command(name = "pipeline-sim")]
+#[command(author = "PharmaBroker Team")]
+#[command(version = "0.1.0")]
+#[command(about = "Full pipeline simulation from message ingestion to AI parsing", long_about = None)]
+struct Args {
+    /// Number of mock messages to process
+    #[arg(short, long, default_value_t = 8)]
+    limit: usize,
+
+    /// Database URL (defaults to DATABASE_URL env var)
+    #[arg(long)]
+    database_url: Option<String>,
+}
 
 // ============================================================================
 // Phase Tracking
@@ -275,6 +304,9 @@ fn truncate(s: &str, max_len: usize) -> String {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Parse CLI arguments
+    let args = Args::parse();
+
     // Initialize tracing
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
@@ -283,21 +315,14 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Parse CLI args
-    let args: Vec<String> = env::args().collect();
-    let limit: usize = args
-        .iter()
-        .position(|a| a == "--limit")
-        .and_then(|i| args.get(i + 1))
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(8);
+    let limit = args.limit;
 
     println!("\n{}", "=".repeat(70));
-    println!("🔬 PHARMABROKER REALISTIC WORKFLOW TEST (Rust)");
-    println!("   Simulating REAL WhatsApp message flow");
+    println!("🔬 PHARMABROKER PIPELINE SIMULATION");
+    println!("   Full message flow: Ingestion → AI Parsing → Entity Creation");
     println!("{}", "=".repeat(70));
     println!(
-        "Time: {} | Messages: {}",
+        "Time: {} | --limit: {}",
         Utc::now().format("%H:%M:%S"),
         limit
     );
@@ -310,8 +335,11 @@ async fn main() -> anyhow::Result<()> {
     // ============================================================
     workflow.start_phase("Database Init");
 
-    let database_url = env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
+    let database_url = args.database_url.unwrap_or_else(|| {
+        env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgres://postgres:password@localhost:5432/pharmabroker".to_string()
+        })
+    });
 
     let pool = match create_pool(&database_url).await {
         Ok(p) => p,
