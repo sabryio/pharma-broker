@@ -25,7 +25,7 @@ services:
 
   # Redis (for future caching/pubsub)
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: pharma-redis
     ports:
       - "6379:6379"
@@ -41,8 +41,8 @@ services:
   # Now directly uses Docker Model Runner (no TypeScript gateway needed)
   core:
     build:
-      context: ./core
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: core/Dockerfile
     container_name: pharma-core
     environment:
       DATABASE_URL: postgres://postgres:password@postgres:5432/pharmabroker
@@ -63,9 +63,15 @@ services:
       - "host.docker.internal:host-gateway"
     # Bind models directly to core service
     models:
-      llm:
+      qwen:
         endpoint_var: AI_BASE_URL
         model_var: AI_MODEL
+      ministral:
+        endpoint_var: MINISTRAL_BASE_URL
+        model_var: MINISTRAL_MODEL
+      gemma:
+        endpoint_var: GEMMA_BASE_URL
+        model_var: GEMMA_MODEL
       embedding:
         endpoint_var: EMBEDDING_BASE_URL
         model_var: EMBEDDING_MODEL
@@ -91,16 +97,34 @@ services:
 
 # Local AI models via Docker Model Runner
 models:
-  llm:
+  # Primary LLM for parsing
+  qwen:
     model: ai/qwen3-vl:latest
     context_size: 16384
     runtime_flags:
       - "--temp"
       - "0.3"
 
+  # Alternative LLM (smaller, faster)
+  ministral:
+    model: ai/ministral3:latest
+    context_size: 16384
+    runtime_flags:
+      - "--temp"
+      - "0.3"
+
+  # Alternative LLM (Google)
+  gemma:
+    model: ai/gemma3:latest
+    context_size: 16384
+    runtime_flags:
+      - "--temp"
+      - "0.3"
+
+  # Embedding model
   embedding:
     model: ai/embeddinggemma:latest
-    context_size: 8192
+    context_size: 16384
 
 volumes:
   bridge_data:

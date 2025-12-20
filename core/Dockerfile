@@ -1,7 +1,8 @@
 # Rust Core Engine Dockerfile
 # Multi-stage build for smaller final image
+# Build context should be project root with dockerfile: core/Dockerfile
 
-FROM rust:1.87-slim-bookworm AS builder
+FROM rust:1-slim-bookworm AS builder
 
 WORKDIR /app
 
@@ -12,19 +13,22 @@ RUN apt-get update && apt-get install -y \
     protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy manifests
-COPY Cargo.toml Cargo.lock ./
-COPY build.rs ./
+# Copy manifests from core directory
+COPY core/Cargo.toml core/Cargo.lock ./
+COPY core/build.rs ./
 
-# Copy proto files
-COPY ../proto ../proto
+# Copy proto files from project root
+COPY proto ./proto
+
+# Copy crates directory
+COPY core/crates ./crates
 
 # Create dummy src to build dependencies
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release --bin pharma-core 2>/dev/null || true
 
 # Copy actual source
-COPY src ./src
+COPY core/src ./src
 
 # Build the real application
 RUN cargo build --release --bin pharma-core
