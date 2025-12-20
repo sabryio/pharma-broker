@@ -64,36 +64,6 @@ async fn main() -> anyhow::Result<()> {
     // Create broadcast channel for real-time events
     let (ws_tx, _) = tokio::sync::broadcast::channel(100);
 
-    // Create application state for HTTP
-    let state = AppState {
-        offer_repo: offer_repo.clone(),
-        request_repo: request_repo.clone(),
-        match_repo: match_repo.clone(),
-        group_repo: group_repo.clone(),
-        ws_tx: ws_tx.clone(),
-        metrics_handle: Some(metrics_handle),
-    };
-
-    // Create HTTP router
-    let app = create_router(state);
-
-    // Parse ports
-    let http_port: u16 = std::env::var("API_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(8080);
-
-    let grpc_port: u16 = std::env::var("GRPC_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(50051);
-
-    let http_addr = SocketAddr::from(([0, 0, 0, 0], http_port));
-    let grpc_addr = SocketAddr::from(([0, 0, 0, 0], grpc_port));
-
-    tracing::info!("🚀 HTTP server listening on http://{}", http_addr);
-    tracing::info!("🔌 gRPC server listening on grpc://{}", grpc_addr);
-
     // Create matching engine with scheduler config from environment
     let scheduler_enabled = std::env::var("LEARNING_SCHEDULER_ENABLED")
         .map(|v| v == "true" || v == "1")
@@ -121,6 +91,37 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Create application state for HTTP (with matching engine)
+    let state = AppState {
+        offer_repo: offer_repo.clone(),
+        request_repo: request_repo.clone(),
+        match_repo: match_repo.clone(),
+        group_repo: group_repo.clone(),
+        matching_engine: Some(matching_engine.clone()),
+        ws_tx: ws_tx.clone(),
+        metrics_handle: Some(metrics_handle),
+    };
+
+    // Create HTTP router
+    let app = create_router(state);
+
+    // Parse ports
+    let http_port: u16 = std::env::var("API_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8080);
+
+    let grpc_port: u16 = std::env::var("GRPC_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(50051);
+
+    let http_addr = SocketAddr::from(([0, 0, 0, 0], http_port));
+    let grpc_addr = SocketAddr::from(([0, 0, 0, 0], grpc_port));
+
+    tracing::info!("🚀 HTTP server listening on http://{}", http_addr);
+    tracing::info!("🔌 gRPC server listening on grpc://{}", grpc_addr);
+
     // Create gRPC service with all repositories and AI client
     let grpc_service = PharmaCoreService::new(
         offer_repo,
@@ -129,7 +130,7 @@ async fn main() -> anyhow::Result<()> {
         group_repo,
         match_repo.clone(),
         ai_client,
-        ws_tx,
+        ws_tx.clone(),
         matching_engine,
     );
 

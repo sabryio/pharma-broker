@@ -12,7 +12,8 @@ use axum::{
 use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::broadcast;
 
-use super::{groups, handlers};
+use super::{groups, handlers, weights};
+use crate::matching::MatchingEngineHandle;
 use crate::repository::{GroupRepository, MatchRepository, OfferRepository, RequestRepository};
 use crate::ws::{self, WsEvent};
 
@@ -28,7 +29,7 @@ where
     pub request_repo: Arc<R>,
     pub match_repo: Arc<M>,
     pub group_repo: Arc<G>,
-    // pub scorer: Arc<Scorer>,
+    pub matching_engine: Option<MatchingEngineHandle>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub metrics_handle: Option<PrometheusHandle>,
 }
@@ -46,6 +47,7 @@ where
             request_repo: self.request_repo.clone(),
             match_repo: self.match_repo.clone(),
             group_repo: self.group_repo.clone(),
+            matching_engine: self.matching_engine.clone(),
             ws_tx: self.ws_tx.clone(),
             metrics_handle: self.metrics_handle.clone(),
         }
@@ -106,6 +108,33 @@ where
         .route(
             "/api/groups/{jid}",
             delete(groups::delete_group::<O, R, M, G>),
+        )
+        // Weights management
+        .route("/api/weights", get(weights::get_weights::<O, R, M, G>))
+        .route("/api/weights", put(weights::update_weights::<O, R, M, G>))
+        .route(
+            "/api/weights/scheduler",
+            get(weights::get_scheduler_status::<O, R, M, G>),
+        )
+        .route(
+            "/api/weights/influence",
+            get(weights::get_influence::<O, R, M, G>),
+        )
+        .route(
+            "/api/weights/abtest",
+            get(weights::list_ab_tests::<O, R, M, G>),
+        )
+        .route(
+            "/api/weights/abtest",
+            post(weights::create_ab_test::<O, R, M, G>),
+        )
+        .route(
+            "/api/weights/abtest/{id}",
+            get(weights::get_ab_test_result::<O, R, M, G>),
+        )
+        .route(
+            "/api/weights/abtest/{id}",
+            delete(weights::end_ab_test::<O, R, M, G>),
         )
         // WebSocket
         .route("/ws", get(ws::ws_handler::<O, R, M, G>))

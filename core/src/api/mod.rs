@@ -5,5 +5,6 @@
 pub mod groups;
 pub mod handlers;
 pub mod routes;
+pub mod weights;
 
 pub use routes::create_router;
