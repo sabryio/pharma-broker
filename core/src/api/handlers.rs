@@ -10,8 +10,11 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use super::routes::AppState;
-use crate::domain::{ItemStatus, MatchStatus};
-use crate::repository::{GroupRepository, MatchRepository, OfferRepository, RequestRepository};
+use crate::domain::{FeedbackRecord, ItemStatus, MatchStatus};
+use crate::repository::{
+    FeedbackRecordRepository, GroupRepository, MatchRepository, OfferRepository, RequestRepository,
+};
+use crate::ws::{MatchStatusEvent, WsEvent};
 
 /// Pagination query parameters
 #[derive(Debug, Deserialize)]
@@ -100,14 +103,15 @@ pub async fn health_check() -> Json<serde_json::Value> {
 }
 
 /// Readiness probe - checks if service can handle requests (DB connected)
-pub async fn health_ready<O, R, M, G>(
-    State(state): State<AppState<O, R, M, G>>,
+pub async fn health_ready<O, R, M, G, F>(
+    State(state): State<AppState<O, R, M, G, F>>,
 ) -> Result<Json<HealthResponse>, (StatusCode, Json<serde_json::Value>)>
 where
     O: OfferRepository,
     R: RequestRepository,
     M: MatchRepository,
     G: GroupRepository,
+    F: FeedbackRecordRepository,
 {
     // Check database by counting offers (simple query)
     let db_status = match state.offer_repo.count_active().await {
@@ -157,8 +161,8 @@ pub async fn health_live() -> Json<serde_json::Value> {
 
 /// Get active offers with pagination
 /// Ported from: legacy/api/handlers/offer_handler.go:GetOffersGin
-pub async fn get_offers<O, R, M, G>(
-    State(state): State<AppState<O, R, M, G>>,
+pub async fn get_offers<O, R, M, G, F>(
+    State(state): State<AppState<O, R, M, G, F>>,
     Query(pagination): Query<Pagination>,
 ) -> Result<Json<ApiResponse<Vec<crate::domain::Offer>>>, (StatusCode, String)>
 where
@@ -166,6 +170,7 @@ where
     R: RequestRepository,
     M: MatchRepository,
     G: GroupRepository,
+    F: FeedbackRecordRepository,
 {
     let offers = state
         .offer_repo
@@ -184,8 +189,8 @@ where
 
 /// Get active requests with pagination
 /// Ported from: legacy/api/handlers/request_handler.go:GetRequestsGin
-pub async fn get_requests<O, R, M, G>(
-    State(state): State<AppState<O, R, M, G>>,
+pub async fn get_requests<O, R, M, G, F>(
+    State(state): State<AppState<O, R, M, G, F>>,
     Query(pagination): Query<Pagination>,
 ) -> Result<Json<ApiResponse<Vec<crate::domain::Request>>>, (StatusCode, String)>
 where
@@ -193,6 +198,7 @@ where
     R: RequestRepository,
     M: MatchRepository,
     G: GroupRepository,
+    F: FeedbackRecordRepository,
 {
     let requests = state
         .request_repo
@@ -211,8 +217,8 @@ where
 
 /// Get pending matches with pagination
 /// Ported from: legacy/api/handlers/match_handler.go:GetMatchesGin
-pub async fn get_matches<O, R, M, G>(
-    State(state): State<AppState<O, R, M, G>>,
+pub async fn get_matches<O, R, M, G, F>(
+    State(state): State<AppState<O, R, M, G, F>>,
     Query(pagination): Query<Pagination>,
 ) -> Result<Json<ApiResponse<Vec<crate::domain::Match>>>, (StatusCode, String)>
 where
@@ -220,6 +226,7 @@ where
     R: RequestRepository,
     M: MatchRepository,
     G: GroupRepository,
+    F: FeedbackRecordRepository,
 {
     let matches = state
         .match_repo
@@ -246,8 +253,8 @@ pub struct ConfirmRequest {
 
 /// Confirm a pending match
 /// Ported from: legacy/api/handlers/match_handler.go:ConfirmMatchGin
-pub async fn confirm_match<O, R, M, G>(
-    State(state): State<AppState<O, R, M, G>>,
+pub async fn confirm_match<O, R, M, G, F>(
+    State(state): State<AppState<O, R, M, G, F>>,
     Path(id): Path<String>,
     Json(req): Json<ConfirmRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)>
@@ -256,6 +263,7 @@ where
     R: RequestRepository,
     M: MatchRepository,
     G: GroupRepository,
+    F: FeedbackRecordRepository,
 {
     // Get the match first
     let match_entity = state
@@ -282,9 +290,47 @@ where
         .update_status(&match_entity.request_id, ItemStatus::Matched)
         .await;
 
+    // Record feedback for learning system
+    // Parse match_id as UUID for feedback record
+    if let Ok(match_uuid) = uuid::Uuid::parse_str(&id) {
+        let feedback = FeedbackRecord::new(
+            match_uuid,
+            req.matched_by.clone(),
+            true,                      // confirmed = positive feedback
+            match_entity.score * 0.9,  // Estimate medication score from total
+            match_entity.score * 0.8,  // Estimate dosage score
+            match_entity.score * 0.85, // Estimate quantity score
+            match_entity.score * 0.95, // Estimate price score
+            0.7,                       // Default recency score
+            match_entity.score,
+        );
+
+        if let Err(e) = state.feedback_repo.save(&feedback).await {
+            tracing::warn!(error = %e, match_id = %id, "Failed to record confirmation feedback");
+        } else {
+            tracing::info!(match_id = %id, user = %req.matched_by, "Recorded confirmation feedback");
+        }
+    }
+
+    // Broadcast WebSocket event for match confirmation
+    let ws_event = WsEvent::MatchConfirmed(MatchStatusEvent {
+        match_id: id.clone(),
+        user_id: req.matched_by.clone(),
+        notes: if req.notes.is_empty() {
+            None
+        } else {
+            Some(req.notes.clone())
+        },
+        reason: None,
+    });
+    if let Err(e) = state.ws_tx.send(ws_event) {
+        tracing::warn!(error = %e, "Failed to broadcast match confirmation event");
+    }
+
     Ok(Json(serde_json::json!({
         "status": "confirmed",
-        "match_id": id
+        "match_id": id,
+        "feedback_recorded": true
     })))
 }
 
@@ -299,8 +345,8 @@ pub struct RejectRequest {
 
 /// Reject a pending match
 /// Ported from: legacy/api/handlers/match_handler.go:RejectMatchGin
-pub async fn reject_match<O, R, M, G>(
-    State(state): State<AppState<O, R, M, G>>,
+pub async fn reject_match<O, R, M, G, F>(
+    State(state): State<AppState<O, R, M, G, F>>,
     Path(id): Path<String>,
     Json(req): Json<RejectRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)>
@@ -309,29 +355,76 @@ where
     R: RequestRepository,
     M: MatchRepository,
     G: GroupRepository,
+    F: FeedbackRecordRepository,
 {
+    // Get the match first for score data
+    let match_entity = state
+        .match_repo
+        .get_by_id(&id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Match not found".to_string()))?;
+
+    // Update match status
     state
         .match_repo
         .update_status(&id, MatchStatus::Rejected, &req.matched_by, &req.reason)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // Record negative feedback for learning system
+    if let Ok(match_uuid) = uuid::Uuid::parse_str(&id) {
+        let feedback = FeedbackRecord::new(
+            match_uuid,
+            req.matched_by.clone(),
+            false, // confirmed = false (rejection is negative feedback)
+            match_entity.score * 0.9,
+            match_entity.score * 0.8,
+            match_entity.score * 0.85,
+            match_entity.score * 0.95,
+            0.7,
+            match_entity.score,
+        );
+
+        if let Err(e) = state.feedback_repo.save(&feedback).await {
+            tracing::warn!(error = %e, match_id = %id, "Failed to record rejection feedback");
+        } else {
+            tracing::info!(match_id = %id, user = %req.matched_by, reason = %req.reason, "Recorded rejection feedback");
+        }
+    }
+    // Broadcast WebSocket event for match rejection
+    let ws_event = WsEvent::MatchRejected(MatchStatusEvent {
+        match_id: id.clone(),
+        user_id: req.matched_by.clone(),
+        notes: None,
+        reason: if req.reason.is_empty() {
+            None
+        } else {
+            Some(req.reason.clone())
+        },
+    });
+    if let Err(e) = state.ws_tx.send(ws_event) {
+        tracing::warn!(error = %e, "Failed to broadcast match rejection event");
+    }
+
     Ok(Json(serde_json::json!({
         "status": "rejected",
-        "match_id": id
+        "match_id": id,
+        "feedback_recorded": true
     })))
 }
 
 /// Get dashboard stats
 /// Ported from: legacy/api/handlers/stats_handler.go:GetStatsGin
-pub async fn get_stats<O, R, M, G>(
-    State(state): State<AppState<O, R, M, G>>,
+pub async fn get_stats<O, R, M, G, F>(
+    State(state): State<AppState<O, R, M, G, F>>,
 ) -> Result<Json<crate::domain::Stats>, (StatusCode, String)>
 where
     O: OfferRepository,
     R: RequestRepository,
     M: MatchRepository,
     G: GroupRepository,
+    F: FeedbackRecordRepository,
 {
     let active_offers = state.offer_repo.count_active().await.unwrap_or(0);
     let active_requests = state.request_repo.count_active().await.unwrap_or(0);

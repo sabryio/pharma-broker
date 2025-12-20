@@ -6,7 +6,10 @@ use async_trait::async_trait;
 use chrono::Duration;
 
 use crate::Result;
-use crate::domain::{Group, ItemStatus, Match, MatchStatus, Offer, RawMessage, Request, Stats};
+use crate::domain::{
+    FeedbackRecord, FeedbackStats, Group, ItemStatus, Match, MatchStatus, Offer, RawMessage,
+    Request, Stats, WeightHistory,
+};
 
 /// Offer repository trait
 /// Ported from Go: OfferReader + OfferWriter (repository.go:13-32)
@@ -93,4 +96,52 @@ pub trait GroupRepository: Send + Sync {
 #[async_trait]
 pub trait StatsRepository: Send + Sync {
     async fn get_stats(&self) -> Result<Stats>;
+}
+
+/// Feedback record repository trait
+/// Used by the weight learning system to collect and aggregate feedback
+#[async_trait]
+pub trait FeedbackRecordRepository: Send + Sync {
+    /// Save a new feedback record
+    async fn save(&self, record: &FeedbackRecord) -> Result<()>;
+
+    /// Get feedback records within a date range
+    async fn get_by_date_range(
+        &self,
+        start: chrono::DateTime<chrono::Utc>,
+        end: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<FeedbackRecord>>;
+
+    /// Get aggregated feedback statistics for learning
+    async fn get_stats(
+        &self,
+        start: chrono::DateTime<chrono::Utc>,
+        end: chrono::DateTime<chrono::Utc>,
+    ) -> Result<FeedbackStats>;
+
+    /// Count total feedback records
+    async fn count(&self) -> Result<i64>;
+
+    /// Get feedback by match ID
+    async fn get_by_match_id(&self, match_id: &str) -> Result<Option<FeedbackRecord>>;
+}
+
+/// Weight history repository trait
+/// Used for auditing and rollback of weight configurations
+#[async_trait]
+pub trait WeightHistoryRepository: Send + Sync {
+    /// Save a new weight history entry
+    async fn save(&self, history: &WeightHistory) -> Result<()>;
+
+    /// Get the most recent weights
+    async fn get_current(&self) -> Result<Option<WeightHistory>>;
+
+    /// Get weight history with optional limit
+    async fn get_history(&self, limit: i64) -> Result<Vec<WeightHistory>>;
+
+    /// Get weights by ID (for rollback)
+    async fn get_by_id(&self, id: &str) -> Result<Option<WeightHistory>>;
+
+    /// Count total history entries
+    async fn count(&self) -> Result<i64>;
 }
