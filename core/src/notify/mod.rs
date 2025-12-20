@@ -3,6 +3,12 @@
 //! Implements Task 5.2: MatchNotifier trait
 //! Provides notification delivery for match events.
 
+mod email;
+mod telegram;
+
+pub use email::{EmailConfig, EmailNotifier};
+pub use telegram::{TelegramConfig, TelegramNotifier};
+
 use async_trait::async_trait;
 use tokio::sync::broadcast;
 
