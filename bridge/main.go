@@ -18,6 +18,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/grpc"
@@ -26,6 +27,7 @@ import (
 
 	"pharma-bridge/cache"
 	"pharma-bridge/deduplicator"
+	"pharma-bridge/historysync"
 	pb "pharma-bridge/proto"
 	"pharma-bridge/reconnector"
 	"pharma-bridge/resilience"
@@ -107,6 +109,10 @@ type Bridge struct {
 	groupCache   *cache.GroupCache
 	retryBuffer  *resilience.RetryBuffer
 	circuit      *resilience.CircuitBreaker
+	rateLimiter  *resilience.RateLimiter
+
+	// History sync handler
+	historySync *historysync.Handler
 
 	// Ordered processing
 	workers []chan *events.Message
@@ -177,6 +183,12 @@ func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
 		log.Warn().Int("state", int(s)).Msg("Circuit breaker state changed")
 	})
 
+	// Create rate limiter (prevents WhatsApp bans)
+	rateLimiter := resilience.NewRateLimiter(resilience.DefaultRateLimiterConfig())
+
+	// Create history sync handler
+	historyHandler := historysync.New(historysync.DefaultConfig(), log.Logger)
+
 	b := &Bridge{
 		cfg:          cfg,
 		store:        container,
@@ -187,11 +199,13 @@ func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
 		deduplicator: dedup,
 		groupCache:   groupCache,
 		circuit:      circuit,
+		rateLimiter:  rateLimiter,
+		historySync:  historyHandler,
 		workers:      make([]chan *events.Message, 20), // 20 workers for ordered processing
 	}
 
 	// Start workers
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		b.workers[i] = make(chan *events.Message, 100)
 		go b.workerLoop(i, b.workers[i])
 	}
@@ -287,7 +301,7 @@ func (b *Bridge) Stop() {
 }
 
 // handleEvent processes WhatsApp events
-func (b *Bridge) handleEvent(evt interface{}) {
+func (b *Bridge) handleEvent(evt any) {
 	switch v := evt.(type) {
 	case *events.Message:
 		b.handleMessage(v)
@@ -296,6 +310,8 @@ func (b *Bridge) handleEvent(evt interface{}) {
 	case *events.Disconnected:
 		b.logger.Warn().Msg("WhatsApp disconnected")
 		// Reconnection is handled by whatsmeow internally
+	case *events.HistorySync:
+		b.handleHistorySync(v)
 	}
 }
 
@@ -501,6 +517,144 @@ func (b *Bridge) syncGroupsWorker(ctx context.Context) {
 	}
 }
 
+// handleHistorySync processes history sync events with deduplication.
+// Prevents duplicate processing by enforcing cooldown, filtering old messages,
+// and tracking processed message IDs.
+func (b *Bridge) handleHistorySync(v *events.HistorySync) {
+	// Check cooldown
+	if !b.historySync.ShouldProcess() {
+		return
+	}
+
+	// Count total messages
+	totalMessages := 0
+	for _, conv := range v.Data.Conversations {
+		totalMessages += len(conv.Messages)
+	}
+	b.historySync.RecordReceived(totalMessages)
+
+	b.logger.Info().
+		Int("conversations", len(v.Data.Conversations)).
+		Int("total_messages", totalMessages).
+		Msg("Processing History Sync")
+
+	// Clean up old entries from processed IDs cache
+	b.historySync.CleanupCache()
+
+	processedCount := 0
+	skippedOld := 0
+	skippedDuplicate := 0
+
+	for _, conv := range v.Data.Conversations {
+		for _, waMsg := range conv.Messages {
+			// Check message limit
+			if processedCount >= b.historySync.MaxMessages() {
+				b.logger.Warn().
+					Int("limit", b.historySync.MaxMessages()).
+					Msg("History sync message limit reached")
+				goto done
+			}
+
+			if waMsg.Message == nil || waMsg.Message.Key == nil {
+				continue
+			}
+
+			key := waMsg.Message.Key
+			msgID := key.GetID()
+
+			// Get timestamp
+			ts := int64(0)
+			if waMsg.Message.MessageTimestamp != nil {
+				ts = int64(*waMsg.Message.MessageTimestamp)
+			}
+			msgTime := time.Unix(ts, 0)
+
+			// Skip old messages
+			if b.historySync.IsMessageTooOld(msgTime) {
+				skippedOld++
+				continue
+			}
+
+			// Skip already processed messages
+			if b.historySync.IsMessageProcessed(msgID) {
+				skippedDuplicate++
+				continue
+			}
+
+			// Mark as processed
+			b.historySync.MarkMessageProcessed(msgID)
+
+			// Parse chat JID to check if it's a group
+			if key.RemoteJID == nil {
+				continue
+			}
+
+			chatJID, err := types.ParseJID(*key.RemoteJID)
+			if err != nil || chatJID.Server != "g.us" {
+				continue // Only process group messages
+			}
+
+			// Check if group is monitored
+			if !b.groupCache.IsMonitored(chatJID.String()) {
+				continue
+			}
+
+			// Extract content
+			content := ""
+			if waMsg.Message.Message != nil {
+				if waMsg.Message.Message.GetConversation() != "" {
+					content = waMsg.Message.Message.GetConversation()
+				} else if waMsg.Message.Message.GetExtendedTextMessage() != nil {
+					content = waMsg.Message.Message.GetExtendedTextMessage().GetText()
+				}
+			}
+
+			if content == "" {
+				continue
+			}
+
+			// Get sender info
+			senderJID := ""
+			senderPhone := ""
+			if key.Participant != nil {
+				senderJID = *key.Participant
+				if parsed, err := types.ParseJID(*key.Participant); err == nil {
+					senderPhone = parsed.User
+				}
+			}
+
+			pushName := ""
+			if waMsg.Message.PushName != nil {
+				pushName = *waMsg.Message.PushName
+			}
+
+			// Forward to core
+			b.forwardToCore(
+				msgID,
+				chatJID.String(),
+				chatJID.String(), // Group name not available in history sync
+				senderJID,
+				senderPhone,
+				pushName,
+				content,
+				ts,
+			)
+			processedCount++
+		}
+	}
+
+done:
+	b.historySync.RecordSkipped(skippedOld + skippedDuplicate)
+	b.historySync.RecordProcessed(processedCount)
+
+	b.logger.Info().
+		Int("processed", processedCount).
+		Int("skipped_old", skippedOld).
+		Int("skipped_duplicate", skippedDuplicate).
+		Int("total", totalMessages).
+		Msg("History sync completed")
+}
+
 // messagesForwarded tracks total messages forwarded for health reporting
 var messagesForwarded int64
 
@@ -520,6 +674,17 @@ func startHealthServer(bridge *Bridge) {
 			status = "core_disconnected"
 		}
 
+		// Get circuit breaker state
+		circuitState := "closed"
+		if bridge.circuit != nil {
+			switch bridge.circuit.State() {
+			case resilience.StateOpen:
+				circuitState = "open"
+			case resilience.StateHalfOpen:
+				circuitState = "half_open"
+			}
+		}
+
 		response := map[string]any{
 			"status":             status,
 			"service":            "pharma-bridge",
@@ -527,6 +692,11 @@ func startHealthServer(bridge *Bridge) {
 			"whatsapp_connected": whatsappConnected,
 			"core_connected":     coreConnected,
 			"messages_forwarded": atomic.LoadInt64(&messagesForwarded),
+			"circuit_breaker":    circuitState,
+			"retry_buffer_size":  bridge.retryBuffer.Size(),
+			"deduplicator_stats": bridge.deduplicator.Stats(),
+			"rate_limiter_stats": bridge.rateLimiter.GetStats(),
+			"history_sync_stats": bridge.historySync.GetStats(),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
