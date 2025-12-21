@@ -12,7 +12,12 @@ import (
 
 func TestNew(t *testing.T) {
 	logger := zerolog.Nop()
-	cfg := DefaultConfig()
+	cfg := Config{
+		InitialInterval:     5 * time.Second,
+		MaxInterval:         5 * time.Minute,
+		Multiplier:          2.0,
+		RandomizationFactor: 0.1,
+	}
 
 	r := New(cfg, logger)
 	if r == nil {
@@ -318,8 +323,15 @@ func TestReconnector_ConcurrentRun(t *testing.T) {
 	<-done1
 }
 
-func TestDefaultConfig(t *testing.T) {
-	cfg := DefaultConfig()
+func TestConfigValues(t *testing.T) {
+	cfg := Config{
+		InitialInterval:     5 * time.Second,
+		MaxInterval:         5 * time.Minute,
+		Multiplier:          2.0,
+		RandomizationFactor: 0.1,
+		MaxElapsedTime:      0,
+		MaxRetries:          0,
+	}
 
 	if cfg.InitialInterval != 5*time.Second {
 		t.Errorf("Expected initial interval 5s, got %v", cfg.InitialInterval)

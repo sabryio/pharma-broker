@@ -3,6 +3,7 @@ package resilience
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	pb "pharma-bridge/proto"
@@ -16,6 +17,7 @@ type RetryBuffer struct {
 	onFlush   func(context.Context, *pb.RawMessage) error
 	flushChan chan struct{}
 	done      chan struct{}
+	closed    atomic.Bool
 }
 
 // NewRetryBuffer creates a new retry buffer with a maximum size.
@@ -72,6 +74,9 @@ func (b *RetryBuffer) Start(ctx context.Context) {
 
 // Stop stops the background flushing worker.
 func (b *RetryBuffer) Stop() {
+	if b.closed.Swap(true) {
+		return // Already closed
+	}
 	close(b.done)
 }
 

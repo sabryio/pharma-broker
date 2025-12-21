@@ -27,18 +27,6 @@ type Config struct {
 	MaxRetries uint64
 }
 
-// DefaultConfig returns production-ready defaults.
-func DefaultConfig() Config {
-	return Config{
-		InitialInterval:     5 * time.Second,
-		MaxInterval:         5 * time.Minute,
-		Multiplier:          2.0,
-		RandomizationFactor: 0.1, // 10% jitter
-		MaxElapsedTime:      0,   // Infinite
-		MaxRetries:          0,   // Infinite
-	}
-}
-
 // ConnectFunc is the operation to retry (returns error if needs retry).
 type ConnectFunc func(ctx context.Context) error
 

@@ -1,5 +1,4 @@
 // Package deduplicator provides in-memory message deduplication.
-// Simplified port from legacy/messaging/deduplicator for the minimal bridge.
 package deduplicator
 
 import (
@@ -9,53 +8,43 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+
+	"pharma-bridge/domain"
+	"pharma-bridge/ports"
 )
 
 // Config holds configuration for the message deduplicator.
 type Config struct {
-	// Window is the time window for detecting duplicates.
-	Window time.Duration
-	// CacheSize is the maximum number of entries in the cache.
-	CacheSize int
-	// CacheTTL is how long entries stay in cache.
-	CacheTTL time.Duration
-	// CleanupInterval is how often expired entries are removed.
+	Window          time.Duration
+	CacheSize       int
+	CacheTTL        time.Duration
 	CleanupInterval time.Duration
 }
 
-// DefaultConfig returns sensible defaults.
-func DefaultConfig() Config {
-	return Config{
-		Window:          10 * time.Second,
-		CacheSize:       10000,
-		CacheTTL:        30 * time.Second,
-		CleanupInterval: time.Minute,
-	}
+// cacheKey is a strongly-typed key for the dedup cache.
+type cacheKey string
+
+func makeCacheKey(groupJID, senderJID domain.JID) cacheKey {
+	return cacheKey(string(groupJID) + "|" + string(senderJID))
 }
 
-// Deduplicator detects and filters duplicate messages using in-memory cache.
-type Deduplicator struct {
-	cfg Config
-	log zerolog.Logger
-
-	// In-memory cache: key (group|sender) -> entry
-	cache   map[string]cacheEntry
-	cacheMu sync.RWMutex
-
-	// Stats (atomic for thread safety)
-	hits   atomic.Int64
-	misses atomic.Int64
-
-	// Lifecycle
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-}
-
-// cacheEntry represents a cached message for deduplication.
 type cacheEntry struct {
 	Content   string
 	Timestamp time.Time
 	ExpiresAt time.Time
+}
+
+// Deduplicator detects and filters duplicate messages using in-memory cache.
+type Deduplicator struct {
+	cfg     Config
+	log     zerolog.Logger
+	cache   map[cacheKey]cacheEntry
+	cacheMu sync.RWMutex
+	hits    atomic.Int64
+	misses  atomic.Int64
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+	closed  atomic.Bool
 }
 
 // New creates a new message deduplicator.
@@ -65,11 +54,10 @@ func New(ctx context.Context, cfg Config, log zerolog.Logger) *Deduplicator {
 	d := &Deduplicator{
 		cfg:    cfg,
 		log:    log.With().Str("component", "deduplicator").Logger(),
-		cache:  make(map[string]cacheEntry, cfg.CacheSize),
+		cache:  make(map[cacheKey]cacheEntry, cfg.CacheSize),
 		cancel: cancel,
 	}
 
-	// Start cleanup goroutine
 	d.wg.Add(1)
 	go d.cleanupLoop(ctx)
 
@@ -82,45 +70,44 @@ func New(ctx context.Context, cfg Config, log zerolog.Logger) *Deduplicator {
 	return d
 }
 
-// Close stops background goroutines and releases resources.
+// Close stops background goroutines.
 func (d *Deduplicator) Close() {
+	if d.closed.Swap(true) {
+		return // Already closed
+	}
 	if d.cancel != nil {
 		d.cancel()
 	}
 	d.wg.Wait()
 }
 
-// IsDuplicate checks if a message is a duplicate of a recent message.
-// Returns true if the message should be filtered out.
-func (d *Deduplicator) IsDuplicate(groupJID, senderJID, content string, timestamp time.Time) bool {
+// IsDuplicate checks if a message is a duplicate.
+func (d *Deduplicator) IsDuplicate(groupJID, senderJID domain.JID, content string, timestamp time.Time) bool {
 	d.cacheMu.RLock()
 	defer d.cacheMu.RUnlock()
 
-	key := cacheKey(groupJID, senderJID)
+	key := makeCacheKey(groupJID, senderJID)
 	entry, exists := d.cache[key]
 	if !exists {
 		d.misses.Add(1)
 		return false
 	}
 
-	// Check if entry is expired
 	if time.Now().After(entry.ExpiresAt) {
 		d.misses.Add(1)
 		return false
 	}
 
-	// Check if within deduplication window
 	timeDiff := absDuration(timestamp.Sub(entry.Timestamp))
 	if timeDiff >= d.cfg.Window {
 		d.misses.Add(1)
 		return false
 	}
 
-	// Check content match
 	if entry.Content == content {
 		d.hits.Add(1)
 		d.log.Debug().
-			Str("sender", senderJID).
+			Str("sender", string(senderJID)).
 			Dur("time_diff", timeDiff).
 			Msg("Duplicate message detected")
 		return true
@@ -130,9 +117,9 @@ func (d *Deduplicator) IsDuplicate(groupJID, senderJID, content string, timestam
 	return false
 }
 
-// RecordMessage records a message in the cache for future deduplication checks.
-func (d *Deduplicator) RecordMessage(groupJID, senderJID, content string, timestamp time.Time) {
-	key := cacheKey(groupJID, senderJID)
+// Record stores the message for future deduplication checks.
+func (d *Deduplicator) Record(groupJID, senderJID domain.JID, content string, timestamp time.Time) {
+	key := makeCacheKey(groupJID, senderJID)
 	entry := cacheEntry{
 		Content:   content,
 		Timestamp: timestamp,
@@ -142,7 +129,6 @@ func (d *Deduplicator) RecordMessage(groupJID, senderJID, content string, timest
 	d.cacheMu.Lock()
 	defer d.cacheMu.Unlock()
 
-	// Evict if cache is full
 	if len(d.cache) >= d.cfg.CacheSize {
 		d.evictOne()
 	}
@@ -150,12 +136,6 @@ func (d *Deduplicator) RecordMessage(groupJID, senderJID, content string, timest
 	d.cache[key] = entry
 }
 
-// cacheKey generates a unique key for sender+group combination.
-func cacheKey(groupJID, senderJID string) string {
-	return groupJID + "|" + senderJID
-}
-
-// absDuration returns the absolute value of a duration.
 func absDuration(d time.Duration) time.Duration {
 	if d < 0 {
 		return -d
@@ -163,8 +143,6 @@ func absDuration(d time.Duration) time.Duration {
 	return d
 }
 
-// evictOne removes one entry from the cache to make room.
-// Caller must hold the write lock.
 func (d *Deduplicator) evictOne() {
 	for key := range d.cache {
 		delete(d.cache, key)
@@ -172,7 +150,6 @@ func (d *Deduplicator) evictOne() {
 	}
 }
 
-// cleanupLoop periodically removes expired entries from the cache.
 func (d *Deduplicator) cleanupLoop(ctx context.Context) {
 	defer d.wg.Done()
 
@@ -189,7 +166,6 @@ func (d *Deduplicator) cleanupLoop(ctx context.Context) {
 	}
 }
 
-// cleanup removes expired entries from the cache.
 func (d *Deduplicator) cleanup() {
 	d.cacheMu.Lock()
 	defer d.cacheMu.Unlock()
@@ -240,3 +216,5 @@ func calculateHitRate(hits, misses int64) float64 {
 	}
 	return float64(hits) / float64(total) * 100
 }
+
+var _ ports.Deduplicator = (*Deduplicator)(nil)

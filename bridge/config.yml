@@ -1,0 +1,69 @@
+# PharmaBroker WhatsApp Bridge Configuration
+# Environment variables override these values with BRIDGE_ prefix
+# Example: BRIDGE_GRPC_CORE_ADDR=localhost:50051
+
+# gRPC client configuration
+grpc:
+  core_addr: "localhost:50051"
+  connect_timeout: 5s
+
+# WhatsApp client configuration
+whatsapp:
+  store_path: "./data/whatsapp.db"
+  qr_retries: 5
+  qr_timeout: 60s
+  qr_terminal: true
+
+# HTTP server configuration
+http:
+  port: "5050"
+  mode: "release" # debug, release, test
+
+# Message processing configuration
+processing:
+  skip_own_messages: true
+  worker_count: 20
+  worker_queue_size: 100
+
+# Resilience configuration
+resilience:
+  circuit_breaker:
+    max_failures: 3
+    timeout: 30s
+  retry_buffer:
+    max_size: 1000
+    flush_interval: 10s
+
+# Rate limiting configuration
+rate_limit:
+  per_minute: 20
+  burst_size: 5
+  enabled: true
+
+# Group sync configuration
+group_sync:
+  interval: 5m
+
+# Message deduplication configuration
+dedup:
+  window: 10s
+  cache_size: 10000
+  cache_ttl: 30s
+  cleanup_interval: 1m
+
+# History sync configuration
+history_sync:
+  cooldown: 5m
+  max_age: 24h
+  max_messages: 1000
+  cache_size: 10000
+  cache_ttl: 1h
+
+# Reconnection configuration
+reconnector:
+  initial_interval: 5s
+  max_interval: 5m
+  multiplier: 2.0
+  randomization_factor: 0.1
+  max_elapsed_time: 0s # 0 = infinite
+  max_retries: 0 # 0 = infinite

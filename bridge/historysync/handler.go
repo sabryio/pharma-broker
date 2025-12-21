@@ -9,15 +9,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Constants for history sync handling
-const (
-	DefaultCooldown    = 5 * time.Minute // Minimum time between processing history syncs
-	DefaultMaxAge      = 24 * time.Hour  // Only process messages newer than this
-	DefaultMaxMessages = 1000            // Maximum messages to process per sync
-	DefaultCacheSize   = 10000           // Size of processed message IDs cache
-	DefaultCacheTTL    = 1 * time.Hour   // TTL for processed IDs cache entries
-)
-
 // Config holds configuration for history sync handling.
 type Config struct {
 	Cooldown    time.Duration // Minimum time between processing history syncs
@@ -25,17 +16,6 @@ type Config struct {
 	MaxMessages int           // Maximum messages to process per sync
 	CacheSize   int           // Size of processed message IDs cache
 	CacheTTL    time.Duration // TTL for processed IDs cache entries
-}
-
-// DefaultConfig returns sensible defaults for history sync handling.
-func DefaultConfig() Config {
-	return Config{
-		Cooldown:    DefaultCooldown,
-		MaxAge:      DefaultMaxAge,
-		MaxMessages: DefaultMaxMessages,
-		CacheSize:   DefaultCacheSize,
-		CacheTTL:    DefaultCacheTTL,
-	}
 }
 
 // Stats tracks history sync processing statistics.
@@ -63,22 +43,6 @@ type Handler struct {
 
 // New creates a new history sync handler.
 func New(cfg Config, logger zerolog.Logger) *Handler {
-	if cfg.Cooldown <= 0 {
-		cfg.Cooldown = DefaultCooldown
-	}
-	if cfg.MaxAge <= 0 {
-		cfg.MaxAge = DefaultMaxAge
-	}
-	if cfg.MaxMessages <= 0 {
-		cfg.MaxMessages = DefaultMaxMessages
-	}
-	if cfg.CacheSize <= 0 {
-		cfg.CacheSize = DefaultCacheSize
-	}
-	if cfg.CacheTTL <= 0 {
-		cfg.CacheTTL = DefaultCacheTTL
-	}
-
 	return &Handler{
 		cfg:          cfg,
 		logger:       logger.With().Str("component", "historysync").Logger(),

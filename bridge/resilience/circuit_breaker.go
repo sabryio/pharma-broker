@@ -3,6 +3,8 @@ package resilience
 import (
 	"sync"
 	"time"
+
+	"pharma-bridge/ports"
 )
 
 type State int
@@ -14,6 +16,7 @@ const (
 )
 
 // CircuitBreaker prevents cascading failures by stopping calls after consecutive errors.
+// Implements ports.CircuitBreaker interface.
 type CircuitBreaker struct {
 	mu            sync.RWMutex
 	state         State
@@ -32,6 +35,9 @@ func NewCircuitBreaker(maxFailures int, resetTimeout time.Duration) *CircuitBrea
 		resetTimeout: resetTimeout,
 	}
 }
+
+// Ensure CircuitBreaker implements the interface
+var _ ports.CircuitBreaker = (*CircuitBreaker)(nil)
 
 // SetOnStateChange sets a callback for state changes.
 func (cb *CircuitBreaker) SetOnStateChange(fn func(State)) {

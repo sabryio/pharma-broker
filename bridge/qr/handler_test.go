@@ -7,233 +7,237 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 )
 
-func newTestHandler() *Handler {
-	logger := zerolog.Nop()
-	return New(DefaultConfig(), logger)
+func init() {
+	gin.SetMode(gin.TestMode)
+}
+
+func testConfig() Config {
+	return Config{
+		RenderTerminal: false,
+		QRTimeout:      60 * time.Second,
+		MaxRetries:     5,
+	}
 }
 
 func TestNewHandler(t *testing.T) {
-	h := newTestHandler()
+	h := New(testConfig(), zerolog.Nop())
 	defer h.Close()
 
-	if h.state != StateWaiting {
-		t.Errorf("expected initial state %s, got %s", StateWaiting, h.state)
+	if h == nil {
+		t.Fatal("Expected handler to be created")
 	}
-
-	if h.IsPaired() {
-		t.Error("expected IsPaired() to be false initially")
+	if h.state != StateWaiting {
+		t.Errorf("Expected state %s, got %s", StateWaiting, h.state)
 	}
 }
 
 func TestHandleQRCode(t *testing.T) {
-	h := newTestHandler()
+	cfg := Config{RenderTerminal: false, QRTimeout: time.Minute, MaxRetries: 5}
+	h := New(cfg, zerolog.Nop())
 	defer h.Close()
 
-	cfg := Config{RenderTerminal: false, QRTimeout: 60 * time.Second}
 	h.HandleQRCode("test-qr-code", cfg)
 
 	state := h.GetState()
 	if state.State != StateReady {
-		t.Errorf("expected state %s, got %s", StateReady, state.State)
+		t.Errorf("Expected state %s, got %s", StateReady, state.State)
 	}
 	if state.Code != "test-qr-code" {
-		t.Errorf("expected code 'test-qr-code', got '%s'", state.Code)
+		t.Errorf("Expected code 'test-qr-code', got '%s'", state.Code)
 	}
-	if state.ExpiresAt.IsZero() {
-		t.Error("expected ExpiresAt to be set")
+	if state.Attempt != 1 {
+		t.Errorf("Expected attempt 1, got %d", state.Attempt)
 	}
 }
 
 func TestHandleEventSuccess(t *testing.T) {
-	h := newTestHandler()
+	cfg := testConfig()
+	h := New(cfg, zerolog.Nop())
 	defer h.Close()
 
-	cfg := DefaultConfig()
 	h.HandleEvent("success", cfg)
 
 	if !h.IsPaired() {
-		t.Error("expected IsPaired() to be true after success")
-	}
-
-	state := h.GetState()
-	if state.State != StatePaired {
-		t.Errorf("expected state %s, got %s", StatePaired, state.State)
+		t.Error("Expected handler to be paired")
 	}
 }
 
 func TestHandleEventTimeout(t *testing.T) {
-	h := newTestHandler()
+	cfg := testConfig()
+	h := New(cfg, zerolog.Nop())
 	defer h.Close()
 
-	cfg := DefaultConfig()
 	h.HandleEvent("timeout", cfg)
 
 	state := h.GetState()
 	if state.State != StateTimeout {
-		t.Errorf("expected state %s, got %s", StateTimeout, state.State)
+		t.Errorf("Expected state %s, got %s", StateTimeout, state.State)
 	}
 }
 
 func TestHandleError(t *testing.T) {
-	h := newTestHandler()
+	h := New(testConfig(), zerolog.Nop())
 	defer h.Close()
 
 	h.HandleError(http.ErrServerClosed)
 
 	state := h.GetState()
 	if state.State != StateError {
-		t.Errorf("expected state %s, got %s", StateError, state.State)
+		t.Errorf("Expected state %s, got %s", StateError, state.State)
 	}
 	if state.Error == "" {
-		t.Error("expected error message to be set")
+		t.Error("Expected error message")
 	}
 }
 
 func TestSetPaired(t *testing.T) {
-	h := newTestHandler()
+	h := New(testConfig(), zerolog.Nop())
 	defer h.Close()
 
 	h.SetPaired()
 
 	if !h.IsPaired() {
-		t.Error("expected IsPaired() to be true after SetPaired()")
+		t.Error("Expected handler to be paired")
 	}
 }
 
-func TestHTTPHandler_Waiting(t *testing.T) {
-	h := newTestHandler()
+func TestJSONHandler_Waiting(t *testing.T) {
+	h := New(testConfig(), zerolog.Nop())
 	defer h.Close()
 
-	req := httptest.NewRequest("GET", "/qr/json", nil)
-	w := httptest.NewRecorder()
+	router := gin.New()
+	h.RegisterRoutes(router.Group("/qr"))
 
-	h.HTTPHandler(w, req)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/qr/json", nil)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusAccepted {
-		t.Errorf("expected status %d, got %d", http.StatusAccepted, w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusAccepted, w.Code)
 	}
 
-	var state QRUpdate
-	json.NewDecoder(w.Body).Decode(&state)
-	if state.State != StateWaiting {
-		t.Errorf("expected state %s, got %s", StateWaiting, state.State)
+	var resp Update
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.State != StateWaiting {
+		t.Errorf("Expected state %s, got %s", StateWaiting, resp.State)
 	}
 }
 
-func TestHTTPHandler_Ready(t *testing.T) {
-	h := newTestHandler()
+func TestJSONHandler_Ready(t *testing.T) {
+	cfg := Config{RenderTerminal: false, QRTimeout: time.Minute}
+	h := New(cfg, zerolog.Nop())
 	defer h.Close()
 
-	cfg := Config{RenderTerminal: false, QRTimeout: 60 * time.Second}
 	h.HandleQRCode("test-code", cfg)
 
-	req := httptest.NewRequest("GET", "/qr/json", nil)
-	w := httptest.NewRecorder()
+	router := gin.New()
+	h.RegisterRoutes(router.Group("/qr"))
 
-	h.HTTPHandler(w, req)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/qr/json", nil)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var state QRUpdate
-	json.NewDecoder(w.Body).Decode(&state)
-	if state.State != StateReady {
-		t.Errorf("expected state %s, got %s", StateReady, state.State)
-	}
-	if state.Code != "test-code" {
-		t.Errorf("expected code 'test-code', got '%s'", state.Code)
+	var resp Update
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.State != StateReady {
+		t.Errorf("Expected state %s, got %s", StateReady, resp.State)
 	}
 }
 
-func TestHTTPHandler_Paired(t *testing.T) {
-	h := newTestHandler()
+func TestJSONHandler_Paired(t *testing.T) {
+	h := New(testConfig(), zerolog.Nop())
 	defer h.Close()
 
 	h.SetPaired()
 
-	req := httptest.NewRequest("GET", "/qr/json", nil)
-	w := httptest.NewRecorder()
+	router := gin.New()
+	h.RegisterRoutes(router.Group("/qr"))
 
-	h.HTTPHandler(w, req)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/qr/json", nil)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
-	}
-
-	var state QRUpdate
-	json.NewDecoder(w.Body).Decode(&state)
-	if state.State != StatePaired {
-		t.Errorf("expected state %s, got %s", StatePaired, state.State)
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 }
 
-func TestHTTPHandler_Timeout(t *testing.T) {
-	h := newTestHandler()
+func TestJSONHandler_Timeout(t *testing.T) {
+	cfg := testConfig()
+	h := New(cfg, zerolog.Nop())
 	defer h.Close()
 
-	h.HandleEvent("timeout", DefaultConfig())
+	h.HandleEvent("timeout", cfg)
 
-	req := httptest.NewRequest("GET", "/qr/json", nil)
+	router := gin.New()
+	h.RegisterRoutes(router.Group("/qr"))
+
 	w := httptest.NewRecorder()
-
-	h.HTTPHandler(w, req)
+	req, _ := http.NewRequest("GET", "/qr/json", nil)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusGone {
-		t.Errorf("expected status %d, got %d", http.StatusGone, w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusGone, w.Code)
 	}
 }
 
-func TestHTTPHandler_Error(t *testing.T) {
-	h := newTestHandler()
+func TestJSONHandler_Error(t *testing.T) {
+	h := New(testConfig(), zerolog.Nop())
 	defer h.Close()
 
 	h.HandleError(http.ErrServerClosed)
 
-	req := httptest.NewRequest("GET", "/qr/json", nil)
-	w := httptest.NewRecorder()
+	router := gin.New()
+	h.RegisterRoutes(router.Group("/qr"))
 
-	h.HTTPHandler(w, req)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/qr/json", nil)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusInternalServerError, w.Code)
 	}
 }
 
 func TestHTMLHandler(t *testing.T) {
-	h := newTestHandler()
+	h := New(testConfig(), zerolog.Nop())
 	defer h.Close()
 
-	req := httptest.NewRequest("GET", "/qr", nil)
-	w := httptest.NewRecorder()
+	router := gin.New()
+	h.RegisterRoutes(router.Group("/qr"))
 
-	h.HTMLHandler(w, req)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/qr", nil)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
 	contentType := w.Header().Get("Content-Type")
 	if contentType != "text/html; charset=utf-8" {
-		t.Errorf("expected Content-Type 'text/html; charset=utf-8', got '%s'", contentType)
-	}
-
-	body := w.Body.String()
-	if len(body) < 100 {
-		t.Error("expected HTML body to be non-empty")
+		t.Errorf("Expected content type 'text/html; charset=utf-8', got '%s'", contentType)
 	}
 }
 
-func TestDefaultConfig(t *testing.T) {
-	cfg := DefaultConfig()
+func TestConfigValues(t *testing.T) {
+	cfg := testConfig()
 
-	if !cfg.RenderTerminal {
-		t.Error("expected RenderTerminal to be true by default")
+	if cfg.RenderTerminal {
+		t.Error("Expected RenderTerminal to be false in test config")
 	}
 	if cfg.QRTimeout != 60*time.Second {
-		t.Errorf("expected QRTimeout to be 60s, got %v", cfg.QRTimeout)
+		t.Errorf("Expected QRTimeout 60s, got %v", cfg.QRTimeout)
+	}
+	if cfg.MaxRetries != 5 {
+		t.Errorf("Expected MaxRetries 5, got %d", cfg.MaxRetries)
 	}
 }

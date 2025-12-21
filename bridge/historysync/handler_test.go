@@ -7,25 +7,35 @@ import (
 	"github.com/rs/zerolog"
 )
 
+func testConfig() Config {
+	return Config{
+		Cooldown:    5 * time.Minute,
+		MaxAge:      24 * time.Hour,
+		MaxMessages: 1000,
+		CacheSize:   10000,
+		CacheTTL:    time.Hour,
+	}
+}
+
 func TestNew(t *testing.T) {
 	logger := zerolog.Nop()
-	cfg := DefaultConfig()
+	cfg := testConfig()
 	h := New(cfg, logger)
 
 	if h == nil {
 		t.Fatal("New returned nil")
 	}
 
-	if h.cfg.Cooldown != DefaultCooldown {
-		t.Errorf("Expected cooldown %v, got %v", DefaultCooldown, h.cfg.Cooldown)
+	if h.cfg.Cooldown != 5*time.Minute {
+		t.Errorf("Expected cooldown 5m, got %v", h.cfg.Cooldown)
 	}
 
-	if h.cfg.MaxAge != DefaultMaxAge {
-		t.Errorf("Expected max age %v, got %v", DefaultMaxAge, h.cfg.MaxAge)
+	if h.cfg.MaxAge != 24*time.Hour {
+		t.Errorf("Expected max age 24h, got %v", h.cfg.MaxAge)
 	}
 
-	if h.cfg.MaxMessages != DefaultMaxMessages {
-		t.Errorf("Expected max messages %v, got %v", DefaultMaxMessages, h.cfg.MaxMessages)
+	if h.cfg.MaxMessages != 1000 {
+		t.Errorf("Expected max messages 1000, got %v", h.cfg.MaxMessages)
 	}
 }
 
@@ -33,10 +43,10 @@ func TestHandler_ShouldProcess(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := Config{
 		Cooldown:    100 * time.Millisecond, // Short cooldown for testing
-		MaxAge:      DefaultMaxAge,
-		MaxMessages: DefaultMaxMessages,
-		CacheSize:   DefaultCacheSize,
-		CacheTTL:    DefaultCacheTTL,
+		MaxAge:      24 * time.Hour,
+		MaxMessages: 1000,
+		CacheSize:   10000,
+		CacheTTL:    time.Hour,
 	}
 	h := New(cfg, logger)
 
@@ -70,11 +80,11 @@ func TestHandler_ShouldProcess(t *testing.T) {
 func TestHandler_IsMessageTooOld(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := Config{
-		Cooldown:    DefaultCooldown,
+		Cooldown:    5 * time.Minute,
 		MaxAge:      1 * time.Hour, // 1 hour max age
-		MaxMessages: DefaultMaxMessages,
-		CacheSize:   DefaultCacheSize,
-		CacheTTL:    DefaultCacheTTL,
+		MaxMessages: 1000,
+		CacheSize:   10000,
+		CacheTTL:    time.Hour,
 	}
 	h := New(cfg, logger)
 
@@ -93,7 +103,7 @@ func TestHandler_IsMessageTooOld(t *testing.T) {
 
 func TestHandler_MessageProcessing(t *testing.T) {
 	logger := zerolog.Nop()
-	cfg := DefaultConfig()
+	cfg := testConfig()
 	h := New(cfg, logger)
 
 	msgID := "test-message-123"
@@ -120,9 +130,9 @@ func TestHandler_MessageProcessing(t *testing.T) {
 func TestHandler_CleanupCache(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := Config{
-		Cooldown:    DefaultCooldown,
-		MaxAge:      DefaultMaxAge,
-		MaxMessages: DefaultMaxMessages,
+		Cooldown:    5 * time.Minute,
+		MaxAge:      24 * time.Hour,
+		MaxMessages: 1000,
 		CacheSize:   5,                     // Small cache for testing
 		CacheTTL:    50 * time.Millisecond, // Short TTL for testing
 	}
@@ -151,9 +161,9 @@ func TestHandler_CleanupCache(t *testing.T) {
 func TestHandler_CacheSizeLimit(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := Config{
-		Cooldown:    DefaultCooldown,
-		MaxAge:      DefaultMaxAge,
-		MaxMessages: DefaultMaxMessages,
+		Cooldown:    5 * time.Minute,
+		MaxAge:      24 * time.Hour,
+		MaxMessages: 1000,
 		CacheSize:   3, // Very small cache
 		CacheTTL:    1 * time.Hour,
 	}
@@ -174,7 +184,7 @@ func TestHandler_CacheSizeLimit(t *testing.T) {
 
 func TestHandler_Reset(t *testing.T) {
 	logger := zerolog.Nop()
-	cfg := DefaultConfig()
+	cfg := testConfig()
 	h := New(cfg, logger)
 
 	// Process some messages
@@ -202,7 +212,7 @@ func TestHandler_Reset(t *testing.T) {
 
 func TestHandler_RecordStats(t *testing.T) {
 	logger := zerolog.Nop()
-	cfg := DefaultConfig()
+	cfg := testConfig()
 	h := New(cfg, logger)
 
 	h.RecordReceived(100)
@@ -224,11 +234,11 @@ func TestHandler_RecordStats(t *testing.T) {
 func TestHandler_MaxMessages(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := Config{
-		Cooldown:    DefaultCooldown,
-		MaxAge:      DefaultMaxAge,
+		Cooldown:    5 * time.Minute,
+		MaxAge:      24 * time.Hour,
 		MaxMessages: 500,
-		CacheSize:   DefaultCacheSize,
-		CacheTTL:    DefaultCacheTTL,
+		CacheSize:   10000,
+		CacheTTL:    time.Hour,
 	}
 	h := New(cfg, logger)
 

@@ -7,7 +7,11 @@ import (
 )
 
 func TestNewRateLimiter(t *testing.T) {
-	cfg := DefaultRateLimiterConfig()
+	cfg := RateLimiterConfig{
+		RatePerMinute: 20,
+		BurstSize:     5,
+		Enabled:       true,
+	}
 	rl := NewRateLimiter(cfg)
 
 	if rl == nil {
@@ -15,15 +19,15 @@ func TestNewRateLimiter(t *testing.T) {
 	}
 
 	if !rl.IsEnabled() {
-		t.Error("Rate limiter should be enabled by default")
+		t.Error("Rate limiter should be enabled")
 	}
 
-	if rl.ratePerMinute != DefaultRatePerMinute {
-		t.Errorf("Expected rate %v, got %v", DefaultRatePerMinute, rl.ratePerMinute)
+	if rl.ratePerMinute != 20 {
+		t.Errorf("Expected rate 20, got %v", rl.ratePerMinute)
 	}
 
-	if rl.burstSize != DefaultBurstSize {
-		t.Errorf("Expected burst size %v, got %v", DefaultBurstSize, rl.burstSize)
+	if rl.burstSize != 5 {
+		t.Errorf("Expected burst size 5, got %v", rl.burstSize)
 	}
 }
 
@@ -157,7 +161,11 @@ func TestRateLimiter_SetEnabled(t *testing.T) {
 }
 
 func TestRateLimiter_SetRate(t *testing.T) {
-	cfg := DefaultRateLimiterConfig()
+	cfg := RateLimiterConfig{
+		RatePerMinute: 20,
+		BurstSize:     5,
+		Enabled:       true,
+	}
 	rl := NewRateLimiter(cfg)
 
 	rl.SetRate(120, 10)

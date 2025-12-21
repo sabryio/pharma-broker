@@ -3,12 +3,16 @@ package cache
 import (
 	"sync"
 	"time"
+
+	"pharma-bridge/domain"
+	"pharma-bridge/ports"
 )
 
 // GroupCache stores monitored group JIDs with a TTL.
+// Implements ports.GroupCache interface.
 type GroupCache struct {
 	mu           sync.RWMutex
-	jids         map[string]struct{}
+	jids         map[domain.JID]struct{}
 	lastSync     time.Time
 	syncInterval time.Duration
 }
@@ -16,13 +20,16 @@ type GroupCache struct {
 // NewGroupCache creates a new group cache with the specified sync interval.
 func NewGroupCache(syncInterval time.Duration) *GroupCache {
 	return &GroupCache{
-		jids:         make(map[string]struct{}),
+		jids:         make(map[domain.JID]struct{}),
 		syncInterval: syncInterval,
 	}
 }
 
+// Ensure GroupCache implements the interface
+var _ ports.GroupCache = (*GroupCache)(nil)
+
 // IsMonitored checks if a group JID is in the cache.
-func (c *GroupCache) IsMonitored(jid string) bool {
+func (c *GroupCache) IsMonitored(jid domain.JID) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -34,11 +41,11 @@ func (c *GroupCache) IsMonitored(jid string) bool {
 }
 
 // Update sets the monitored JIDs and updates the last sync time.
-func (c *GroupCache) Update(jids []string) {
+func (c *GroupCache) Update(jids []domain.JID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	newJids := make(map[string]struct{}, len(jids))
+	newJids := make(map[domain.JID]struct{}, len(jids))
 	for _, jid := range jids {
 		newJids[jid] = struct{}{}
 	}

@@ -2,17 +2,14 @@ package resilience
 
 import (
 	"context"
+	"pharma-bridge/ports"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-// Constants for rate limiting
-const (
-	DefaultRatePerMinute = 20               // Default: 20 messages per minute
-	DefaultBurstSize     = 5                // Allow burst of 5 messages
-	RateLimitWaitTimeout = 30 * time.Second // Max wait time for rate limit
-)
+// RateLimitWaitTimeout is the max wait time for rate limit.
+const RateLimitWaitTimeout = 30 * time.Second
 
 // RateLimiterStats tracks rate limiter statistics.
 type RateLimiterStats struct {
@@ -28,15 +25,6 @@ type RateLimiterConfig struct {
 	RatePerMinute float64 // Messages allowed per minute
 	BurstSize     int     // Maximum burst size
 	Enabled       bool    // Whether rate limiting is enabled
-}
-
-// DefaultRateLimiterConfig returns sensible defaults.
-func DefaultRateLimiterConfig() RateLimiterConfig {
-	return RateLimiterConfig{
-		RatePerMinute: DefaultRatePerMinute,
-		BurstSize:     DefaultBurstSize,
-		Enabled:       true,
-	}
 }
 
 // RateLimiter controls the rate of outgoing messages to prevent WhatsApp bans.
@@ -58,13 +46,6 @@ type RateLimiter struct {
 
 // NewRateLimiter creates a new rate limiter with the given configuration.
 func NewRateLimiter(cfg RateLimiterConfig) *RateLimiter {
-	if cfg.RatePerMinute <= 0 {
-		cfg.RatePerMinute = DefaultRatePerMinute
-	}
-	if cfg.BurstSize <= 0 {
-		cfg.BurstSize = DefaultBurstSize
-	}
-
 	rl := &RateLimiter{
 		ratePerMinute: cfg.RatePerMinute,
 		burstSize:     cfg.BurstSize,
@@ -233,3 +214,6 @@ func (rl *RateLimiter) Reset() {
 	rl.tokens = float64(rl.burstSize)
 	rl.lastRefill = time.Now()
 }
+
+// Ensure RateLimiter implements the interface
+var _ ports.RateLimiter = (*RateLimiter)(nil)
