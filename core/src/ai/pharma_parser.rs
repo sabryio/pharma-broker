@@ -1,14 +1,19 @@
 //! Pharma AI Parser
 //!
 //! High-level wrapper around ai-client for pharma-specific parsing,
-//! with circuit breaker, retry support, and context size management.
+//! with circuit breaker, retry support, context size management,
+//! and LLM feedback loop for continuous improvement.
 
 use std::sync::Arc;
 
 use ai_client::{Client, ClientConfig, Error as ClientError};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
+use super::feedback_loop::{
+    AIExtraction, CorrectExtraction, ExtractionFeedback, FeedbackLoopConfig, FeedbackLoopStats,
+    FeedbackType, FewShotExample, LLMFeedbackLoop, MedicationCorrection,
+};
 use super::pharma_prompts::{SYSTEM_PROMPT, build_user_prompt_with_mappings};
 use super::pharma_types::{ParseResult, ParsedItem};
 use super::token_batcher::{BatchMessage, TokenBatchConfig, TokenBatcher};
@@ -44,6 +49,8 @@ pub struct PharmaParserConfig {
     pub circuit_breaker: CircuitBreakerConfig,
     /// Token batch configuration
     pub token_batch: TokenBatchConfig,
+    /// Feedback loop configuration
+    pub feedback_loop: FeedbackLoopConfig,
 }
 
 impl PharmaParserConfig {
@@ -53,6 +60,7 @@ impl PharmaParserConfig {
             client: ClientConfig::from_env(),
             circuit_breaker: CircuitBreakerConfig::from_env(),
             token_batch: TokenBatchConfig::default(),
+            feedback_loop: FeedbackLoopConfig::default(),
         }
     }
 }
@@ -79,11 +87,12 @@ impl ParseError {
     }
 }
 
-/// Pharma AI parser with circuit breaker and batch support
+/// Pharma AI parser with circuit breaker, batch support, and feedback loop
 pub struct PharmaParser {
     client: Client,
     circuit_breaker: Arc<CircuitBreaker>,
     token_batcher: TokenBatcher,
+    feedback_loop: Arc<LLMFeedbackLoop>,
 }
 
 impl PharmaParser {
@@ -93,6 +102,7 @@ impl PharmaParser {
             client: Client::new(config.client),
             circuit_breaker: Arc::new(CircuitBreaker::new(config.circuit_breaker)),
             token_batcher: TokenBatcher::new(config.token_batch),
+            feedback_loop: Arc::new(LLMFeedbackLoop::new(config.feedback_loop)),
         }
     }
 
@@ -102,6 +112,7 @@ impl PharmaParser {
     }
 
     /// Parse a single message with optional medication mappings
+    /// Automatically enhances prompts with learned examples from feedback loop
     pub async fn parse(
         &self,
         content: &str,
@@ -132,13 +143,47 @@ impl PharmaParser {
                 .await;
         }
 
-        // Normal path - content fits in context
+        // Build user prompt with mappings
         let user_prompt =
             build_user_prompt_with_mappings(content, sender_name, group_name, reply_to, mappings);
 
+        // Enhance system prompt with learned examples from feedback loop
+        let enhanced_system_prompt = self
+            .feedback_loop
+            .build_enhanced_prompt(SYSTEM_PROMPT, content);
+
+        // Get learned medication mappings from feedback loop
+        let learned_mappings = self.feedback_loop.get_medication_mappings();
+        let all_mappings = if !learned_mappings.is_empty() {
+            let mut combined = mappings.map(|m| m.to_vec()).unwrap_or_default();
+            combined.extend(learned_mappings);
+            Some(combined)
+        } else {
+            mappings.map(|m| m.to_vec())
+        };
+
+        // Rebuild user prompt with combined mappings if we have learned ones
+        let final_user_prompt = if all_mappings.is_some() {
+            build_user_prompt_with_mappings(
+                content,
+                sender_name,
+                group_name,
+                reply_to,
+                all_mappings.as_deref(),
+            )
+        } else {
+            user_prompt
+        };
+
+        debug!(
+            learned_examples = self.feedback_loop.example_count(),
+            learned_corrections = self.feedback_loop.correction_count(),
+            "Parsing with feedback loop enhancements"
+        );
+
         let result: Result<ParseResult, ClientError> = self
             .client
-            .generate_object_with_system(SYSTEM_PROMPT, &user_prompt)
+            .generate_object_with_system(&enhanced_system_prompt, &final_user_prompt)
             .await;
 
         match result {
@@ -156,6 +201,7 @@ impl PharmaParser {
     }
 
     /// Parse a large message by splitting into chunks
+    /// Uses enhanced prompts from feedback loop for each chunk
     async fn parse_chunked(
         &self,
         content: &str,
@@ -171,16 +217,37 @@ impl PharmaParser {
             chunks.len()
         );
 
+        // Get learned medication mappings from feedback loop (once for all chunks)
+        let learned_mappings = self.feedback_loop.get_medication_mappings();
+        let all_mappings = if !learned_mappings.is_empty() {
+            let mut combined = mappings.map(|m| m.to_vec()).unwrap_or_default();
+            combined.extend(learned_mappings);
+            Some(combined)
+        } else {
+            mappings.map(|m| m.to_vec())
+        };
+
         let mut all_items = Vec::new();
         let mut errors = Vec::new();
 
         for (idx, chunk) in chunks.iter().enumerate() {
-            let user_prompt =
-                build_user_prompt_with_mappings(chunk, sender_name, group_name, reply_to, mappings);
+            // Build user prompt with combined mappings
+            let user_prompt = build_user_prompt_with_mappings(
+                chunk,
+                sender_name,
+                group_name,
+                reply_to,
+                all_mappings.as_deref(),
+            );
+
+            // Enhance system prompt with learned examples for this chunk
+            let enhanced_system_prompt = self
+                .feedback_loop
+                .build_enhanced_prompt(SYSTEM_PROMPT, chunk);
 
             let result: Result<ParseResult, ClientError> = self
                 .client
-                .generate_object_with_system(SYSTEM_PROMPT, &user_prompt)
+                .generate_object_with_system(&enhanced_system_prompt, &user_prompt)
                 .await;
 
             match result {
@@ -339,6 +406,222 @@ impl PharmaParser {
     pub fn batcher_stats(&self) -> super::token_batcher::TokenBatchStatsSnapshot {
         self.token_batcher.stats()
     }
+
+    // =========================================================================
+    // Feedback Loop Methods
+    // =========================================================================
+
+    /// Record extraction feedback for continuous improvement
+    ///
+    /// Call this when an operator confirms or corrects an AI extraction.
+    /// The feedback loop will learn from this to improve future extractions.
+    pub fn record_extraction_feedback(&self, feedback: ExtractionFeedback) {
+        self.feedback_loop.record_feedback(feedback);
+    }
+
+    /// Record a correct extraction (shorthand for positive feedback)
+    pub fn record_correct_extraction(
+        &self,
+        message_id: &str,
+        message_content: &str,
+        medication: &str,
+        medication_raw: &str,
+        item_type: &str,
+        quantity: f64,
+        price: f64,
+        ai_confidence: f64,
+    ) {
+        let feedback = ExtractionFeedback {
+            message_id: message_id.to_string(),
+            message_content: message_content.to_string(),
+            ai_extraction: AIExtraction {
+                medication: Some(medication.to_string()),
+                medication_raw: Some(medication_raw.to_string()),
+                item_type: Some(item_type.to_string()),
+                quantity: Some(quantity),
+                price: Some(price),
+                confidence: ai_confidence,
+            },
+            correct_extraction: CorrectExtraction {
+                medication: medication.to_string(),
+                medication_raw: medication_raw.to_string(),
+                item_type: item_type.to_string(),
+                quantity,
+                price,
+            },
+            feedback_type: FeedbackType::Correct,
+            feedback_source: "operator".to_string(),
+            created_at: chrono::Utc::now(),
+        };
+        self.feedback_loop.record_feedback(feedback);
+    }
+
+    /// Record a medication correction (AI got the medication name wrong)
+    pub fn record_medication_correction(
+        &self,
+        message_id: &str,
+        message_content: &str,
+        ai_medication: &str,
+        correct_medication: &str,
+        medication_raw: &str,
+        item_type: &str,
+        quantity: f64,
+        price: f64,
+        ai_confidence: f64,
+    ) {
+        let feedback = ExtractionFeedback {
+            message_id: message_id.to_string(),
+            message_content: message_content.to_string(),
+            ai_extraction: AIExtraction {
+                medication: Some(ai_medication.to_string()),
+                medication_raw: Some(medication_raw.to_string()),
+                item_type: Some(item_type.to_string()),
+                quantity: Some(quantity),
+                price: Some(price),
+                confidence: ai_confidence,
+            },
+            correct_extraction: CorrectExtraction {
+                medication: correct_medication.to_string(),
+                medication_raw: medication_raw.to_string(),
+                item_type: item_type.to_string(),
+                quantity,
+                price,
+            },
+            feedback_type: FeedbackType::WrongMedication,
+            feedback_source: "operator".to_string(),
+            created_at: chrono::Utc::now(),
+        };
+        self.feedback_loop.record_feedback(feedback);
+    }
+
+    /// Record a missed extraction (AI didn't find an item that exists)
+    pub fn record_missed_extraction(
+        &self,
+        message_id: &str,
+        message_content: &str,
+        medication: &str,
+        medication_raw: &str,
+        item_type: &str,
+        quantity: f64,
+        price: f64,
+    ) {
+        let feedback = ExtractionFeedback {
+            message_id: message_id.to_string(),
+            message_content: message_content.to_string(),
+            ai_extraction: AIExtraction {
+                medication: None,
+                medication_raw: None,
+                item_type: None,
+                quantity: None,
+                price: None,
+                confidence: 0.0,
+            },
+            correct_extraction: CorrectExtraction {
+                medication: medication.to_string(),
+                medication_raw: medication_raw.to_string(),
+                item_type: item_type.to_string(),
+                quantity,
+                price,
+            },
+            feedback_type: FeedbackType::Missed,
+            feedback_source: "operator".to_string(),
+            created_at: chrono::Utc::now(),
+        };
+        self.feedback_loop.record_feedback(feedback);
+    }
+
+    /// Record a false positive (AI extracted something that wasn't a medication)
+    pub fn record_false_positive(
+        &self,
+        message_id: &str,
+        message_content: &str,
+        ai_medication: &str,
+        ai_confidence: f64,
+    ) {
+        let feedback = ExtractionFeedback {
+            message_id: message_id.to_string(),
+            message_content: message_content.to_string(),
+            ai_extraction: AIExtraction {
+                medication: Some(ai_medication.to_string()),
+                medication_raw: None,
+                item_type: Some("OFFER".to_string()),
+                quantity: Some(1.0),
+                price: None,
+                confidence: ai_confidence,
+            },
+            correct_extraction: CorrectExtraction {
+                medication: String::new(),
+                medication_raw: String::new(),
+                item_type: String::new(),
+                quantity: 0.0,
+                price: 0.0,
+            },
+            feedback_type: FeedbackType::FalsePositive,
+            feedback_source: "operator".to_string(),
+            created_at: chrono::Utc::now(),
+        };
+        self.feedback_loop.record_feedback(feedback);
+    }
+
+    /// Get feedback loop statistics
+    pub fn feedback_stats(&self) -> FeedbackLoopStats {
+        self.feedback_loop.get_stats()
+    }
+
+    /// Get feedback loop configuration
+    pub fn feedback_config(&self) -> FeedbackLoopConfig {
+        self.feedback_loop.get_config()
+    }
+
+    /// Update feedback loop configuration
+    pub fn set_feedback_config(&self, config: FeedbackLoopConfig) {
+        self.feedback_loop.set_config(config);
+    }
+
+    /// Enable or disable feedback loop
+    pub fn enable_feedback_loop(&self, enabled: bool) {
+        self.feedback_loop.enable(enabled);
+    }
+
+    /// Check if feedback loop is enabled
+    pub fn is_feedback_enabled(&self) -> bool {
+        self.feedback_loop.is_enabled()
+    }
+
+    /// Get number of learned examples
+    pub fn learned_example_count(&self) -> usize {
+        self.feedback_loop.example_count()
+    }
+
+    /// Get number of learned medication corrections
+    pub fn learned_correction_count(&self) -> usize {
+        self.feedback_loop.correction_count()
+    }
+
+    /// Export learned examples for persistence
+    pub fn export_learned_examples(&self) -> Vec<FewShotExample> {
+        self.feedback_loop.export_examples()
+    }
+
+    /// Import learned examples from external source
+    pub fn import_learned_examples(&self, examples: Vec<FewShotExample>) {
+        self.feedback_loop.import_examples(examples);
+    }
+
+    /// Export medication corrections for persistence
+    pub fn export_medication_corrections(&self) -> Vec<MedicationCorrection> {
+        self.feedback_loop.export_corrections()
+    }
+
+    /// Import medication corrections from external source
+    pub fn import_medication_corrections(&self, corrections: Vec<MedicationCorrection>) {
+        self.feedback_loop.import_corrections(corrections);
+    }
+
+    /// Clear all learned data (examples and corrections)
+    pub fn clear_learned_data(&self) {
+        self.feedback_loop.clear();
+    }
 }
 
 /// Result for a single message in a batch
@@ -350,11 +633,325 @@ pub struct BatchParseResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn test_parser_creation() {
         let parser = PharmaParser::new(PharmaParserConfig::default());
-        // Just test it compiles
-        let _ = parser;
+        assert!(parser.is_feedback_enabled());
+        assert_eq!(parser.learned_example_count(), 0);
+        assert_eq!(parser.learned_correction_count(), 0);
+    }
+
+    #[test]
+    fn test_parser_from_env() {
+        let parser = PharmaParser::from_env();
+        assert!(parser.is_feedback_enabled());
+    }
+
+    // =========================================================================
+    // Feedback Recording Tests
+    // =========================================================================
+
+    #[test]
+    fn test_record_correct_extraction() {
+        let parser = PharmaParser::new(PharmaParserConfig::default());
+
+        parser.record_correct_extraction(
+            "msg-1",
+            "متوفر اوجمنتين 1 جم",
+            "Augmentin 1g",
+            "اوجمنتين 1 جم",
+            "OFFER",
+            1.0,
+            300.0,
+            0.95,
+        );
+
+        let stats = parser.feedback_stats();
+        assert_eq!(stats.total_feedback_received, 1);
+        assert_eq!(stats.correct_extractions, 1);
+    }
+
+    #[test]
+    fn test_record_medication_correction() {
+        let parser = PharmaParser::new(PharmaParserConfig::default());
+
+        parser.record_medication_correction(
+            "msg-1",
+            "متوفر بروفين",
+            "Brofen",      // AI got it wrong
+            "Brufen",      // Correct name
+            "بروفين",
+            "OFFER",
+            1.0,
+            100.0,
+            0.8,
+        );
+
+        let stats = parser.feedback_stats();
+        assert_eq!(stats.wrong_extractions, 1);
+        assert!(parser.learned_correction_count() > 0);
+    }
+
+    #[test]
+    fn test_record_missed_extraction() {
+        let parser = PharmaParser::new(PharmaParserConfig::default());
+
+        parser.record_missed_extraction(
+            "msg-1",
+            "محتاج فلاجيل",
+            "Flagyl",
+            "فلاجيل",
+            "REQUEST",
+            1.0,
+            0.0,
+        );
+
+        let stats = parser.feedback_stats();
+        assert_eq!(stats.missed_extractions, 1);
+        assert!(parser.learned_example_count() > 0);
+    }
+
+    #[test]
+    fn test_record_false_positive() {
+        let parser = PharmaParser::new(PharmaParserConfig::default());
+
+        parser.record_false_positive(
+            "msg-1",
+            "مرحبا كيف الحال",
+            "مرحبا",  // AI incorrectly extracted this as medication
+            0.6,
+        );
+
+        let stats = parser.feedback_stats();
+        assert_eq!(stats.false_positives, 1);
+        assert!(parser.learned_example_count() > 0);
+    }
+
+    // =========================================================================
+    // Feedback Loop Configuration Tests
+    // =========================================================================
+
+    #[test]
+    fn test_enable_disable_feedback() {
+        let parser = PharmaParser::new(PharmaParserConfig::default());
+
+        assert!(parser.is_feedback_enabled());
+
+        parser.enable_feedback_loop(false);
+        assert!(!parser.is_feedback_enabled());
+
+        parser.enable_feedback_loop(true);
+        assert!(parser.is_feedback_enabled());
+    }
+
+    #[test]
+    fn test_feedback_config_update() {
+        let parser = PharmaParser::new(PharmaParserConfig::default());
+
+        let mut config = parser.feedback_config();
+        config.max_examples = 50;
+        config.examples_per_prompt = 5;
+        parser.set_feedback_config(config);
+
+        let updated = parser.feedback_config();
+        assert_eq!(updated.max_examples, 50);
+        assert_eq!(updated.examples_per_prompt, 5);
+    }
+
+    // =========================================================================
+    // Export/Import Tests
+    // =========================================================================
+
+    #[test]
+    fn test_export_import_examples() {
+        let parser1 = PharmaParser::new(PharmaParserConfig::default());
+
+        // Record some feedback to generate examples
+        parser1.record_missed_extraction(
+            "msg-1",
+            "متوفر دواء",
+            "Medicine",
+            "دواء",
+            "OFFER",
+            1.0,
+            100.0,
+        );
+
+        let examples = parser1.export_learned_examples();
+        assert!(!examples.is_empty());
+
+        // Import into new parser
+        let parser2 = PharmaParser::new(PharmaParserConfig::default());
+        parser2.import_learned_examples(examples);
+        assert!(parser2.learned_example_count() > 0);
+    }
+
+    #[test]
+    fn test_export_import_corrections() {
+        let parser1 = PharmaParser::new(PharmaParserConfig::default());
+
+        parser1.record_medication_correction(
+            "msg-1",
+            "Test",
+            "Wrong",
+            "Correct",
+            "raw",
+            "OFFER",
+            1.0,
+            100.0,
+            0.8,
+        );
+
+        let corrections = parser1.export_medication_corrections();
+        assert!(!corrections.is_empty());
+
+        let parser2 = PharmaParser::new(PharmaParserConfig::default());
+        parser2.import_medication_corrections(corrections);
+        assert!(parser2.learned_correction_count() > 0);
+    }
+
+    #[test]
+    fn test_clear_learned_data() {
+        let parser = PharmaParser::new(PharmaParserConfig::default());
+
+        parser.record_missed_extraction(
+            "msg-1",
+            "Test",
+            "Med",
+            "raw",
+            "OFFER",
+            1.0,
+            100.0,
+        );
+        parser.record_medication_correction(
+            "msg-2",
+            "Test",
+            "Wrong",
+            "Correct",
+            "raw",
+            "OFFER",
+            1.0,
+            100.0,
+            0.8,
+        );
+
+        assert!(parser.learned_example_count() > 0);
+        assert!(parser.learned_correction_count() > 0);
+
+        parser.clear_learned_data();
+
+        assert_eq!(parser.learned_example_count(), 0);
+        assert_eq!(parser.learned_correction_count(), 0);
+    }
+
+    // =========================================================================
+    // Token Estimation Tests
+    // =========================================================================
+
+    #[rstest]
+    #[case("Hello", 2)]
+    #[case("Hello World", 3)]
+    #[case("", 1)]
+    #[case("A very long message that should have many tokens", 12)]
+    fn test_estimate_tokens(#[case] text: &str, #[case] expected_min: usize) {
+        let tokens = PharmaParser::estimate_tokens(text);
+        assert!(tokens >= expected_min.saturating_sub(1));
+    }
+
+    // =========================================================================
+    // Content Splitting Tests
+    // =========================================================================
+
+    #[test]
+    fn test_split_content_short() {
+        let content = "Short message";
+        let chunks = PharmaParser::split_content_into_chunks(content);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0], content);
+    }
+
+    #[test]
+    fn test_split_content_many_lines() {
+        let lines: Vec<String> = (0..50).map(|i| format!("Line {}", i)).collect();
+        let content = lines.join("\n");
+
+        let chunks = PharmaParser::split_content_into_chunks(&content);
+        assert!(chunks.len() > 1);
+
+        // Each chunk should have at most MAX_MESSAGE_LINES lines
+        for chunk in &chunks {
+            let line_count = chunk.lines().count();
+            assert!(line_count <= MAX_MESSAGE_LINES);
+        }
+    }
+
+    #[test]
+    fn test_split_by_tokens() {
+        let content = "Short content";
+        let chunks = PharmaParser::split_by_tokens(content);
+        assert_eq!(chunks.len(), 1);
+    }
+
+    // =========================================================================
+    // Accuracy Rate Tests
+    // =========================================================================
+
+    #[test]
+    fn test_accuracy_tracking() {
+        let parser = PharmaParser::new(PharmaParserConfig::default());
+
+        // Record 8 correct, 2 wrong
+        for i in 0..8 {
+            parser.record_correct_extraction(
+                &format!("msg-{}", i),
+                "Test",
+                "Med",
+                "raw",
+                "OFFER",
+                1.0,
+                100.0,
+                0.9,
+            );
+        }
+        for i in 0..2 {
+            parser.record_medication_correction(
+                &format!("msg-wrong-{}", i),
+                "Test",
+                "Wrong",
+                "Correct",
+                "raw",
+                "OFFER",
+                1.0,
+                100.0,
+                0.8,
+            );
+        }
+
+        let stats = parser.feedback_stats();
+        assert!((stats.accuracy_rate - 0.8).abs() < 0.01);
+    }
+
+    // =========================================================================
+    // Circuit Breaker Integration Tests
+    // =========================================================================
+
+    #[test]
+    fn test_circuit_state_accessible() {
+        let parser = PharmaParser::new(PharmaParserConfig::default());
+        let state = parser.circuit_state();
+        assert!(matches!(state, super::super::circuit_breaker::CircuitState::Closed));
+    }
+
+    // =========================================================================
+    // Batcher Stats Tests
+    // =========================================================================
+
+    #[test]
+    fn test_batcher_stats_accessible() {
+        let parser = PharmaParser::new(PharmaParserConfig::default());
+        let stats = parser.batcher_stats();
+        assert_eq!(stats.total_batches, 0);
     }
 }

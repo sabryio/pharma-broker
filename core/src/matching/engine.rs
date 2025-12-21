@@ -10,6 +10,7 @@
 //! - MatchFilter (stale/same-sender filtering)
 //! - EmbeddingCache (medication embedding cache)
 //! - AuditTrail (comprehensive audit logging)
+//! - HistoricalLearner (medication pair affinity learning)
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -19,9 +20,10 @@ use super::{
     ABTestConfig, ABTestManager, ABTestResult, AuditTrail, AuditTrailConfig, AutoActionHandler,
     CalibrationConfig, CalibrationReport, ConfidenceCalibrator, ConfidenceConfig,
     ConfidenceManager, ConfidenceManagerStats, EmbeddingCache, EmbeddingCacheStatsSnapshot,
-    LearnerError, MatchAction, MatchFilter, MatchFilterConfig, MatchFilterStatsSnapshot,
-    MatchScore, OutlierDetector, OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig,
-    SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
+    HistoricalLearner, HistoricalLearnerStats, HistoricalLearningConfig, LearnerError, MatchAction,
+    MatchFilter, MatchFilterConfig, MatchFilterStatsSnapshot, MatchScore, MedicationAffinity,
+    OutlierDetector, OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig, SchedulerStatus,
+    Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
 };
 use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackStats, MedicationMapping};
 use crate::domain::{Match as MatchEntity, Offer, Request};
@@ -47,6 +49,8 @@ pub struct MatchingEngineConfig {
     pub match_filter: MatchFilterConfig,
     /// Audit trail settings
     pub audit_trail: AuditTrailConfig,
+    /// Historical learning settings
+    pub historical: HistoricalLearningConfig,
 }
 
 /// Unified matching engine orchestrating all components
@@ -71,6 +75,8 @@ pub struct MatchingEngine {
     embedding_cache: EmbeddingCache,
     /// Audit trail for match actions
     audit_trail: AuditTrail,
+    /// Historical pattern learner
+    historical_learner: HistoricalLearner,
     /// Configuration
     config: RwLock<MatchingEngineConfig>,
     /// Current sample count for warm start
@@ -106,6 +112,7 @@ impl MatchingEngine {
         let match_filter = MatchFilter::new(config.match_filter.clone());
         let embedding_cache = EmbeddingCache::new();
         let audit_trail = AuditTrail::new(config.audit_trail.clone());
+        let historical_learner = HistoricalLearner::new(config.historical.clone());
 
         Self {
             scorer,
@@ -118,6 +125,7 @@ impl MatchingEngine {
             match_filter,
             embedding_cache,
             audit_trail,
+            historical_learner,
             config: RwLock::new(config),
             sample_count: RwLock::new(0),
             scheduler_handle: RwLock::new(None),
@@ -148,7 +156,7 @@ impl MatchingEngine {
     // =========================================================================
 
     /// Score a match between offer and request
-    /// Uses: Scorer + WarmStart + ABTest + AutoAction + ConfidenceManager
+    /// Uses: Scorer + WarmStart + ABTest + AutoAction + ConfidenceManager + HistoricalLearner
     pub async fn score_match(
         &self,
         offer: &Offer,
@@ -169,7 +177,21 @@ impl MatchingEngine {
         self.scorer.update_weights(effective_weights);
 
         // Score the match
-        let score = self.scorer.score_match(offer, request, medication_score);
+        let mut score = self.scorer.score_match(offer, request, medication_score);
+
+        // Apply historical learning bonus/penalty
+        let historical_bonus = self
+            .historical_learner
+            .get_historical_bonus(&offer.medication, &request.medication);
+        if historical_bonus.abs() > 0.001 {
+            score.total = (score.total + historical_bonus).clamp(0.0, 1.0);
+            tracing::debug!(
+                offer_med = %offer.medication,
+                request_med = %request.medication,
+                bonus = historical_bonus,
+                "Applied historical learning bonus"
+            );
+        }
 
         // Evaluate confidence (tracks statistics and may adjust thresholds)
         let _meets_strict = self.confidence_manager.evaluate(score.total);
@@ -178,6 +200,26 @@ impl MatchingEngine {
         let action = self.auto_action.determine_action(score.total).await;
 
         (score, action)
+    }
+
+    /// Score a match with historical bonus details
+    /// Returns the score, action, and historical bonus applied
+    pub async fn score_match_with_details(
+        &self,
+        offer: &Offer,
+        request: &Request,
+        medication_score: f64,
+        user_id: Option<&str>,
+    ) -> (MatchScore, MatchAction, f64) {
+        let historical_bonus = self
+            .historical_learner
+            .get_historical_bonus(&offer.medication, &request.medication);
+
+        let (score, action) = self
+            .score_match(offer, request, medication_score, user_id)
+            .await;
+
+        (score, action, historical_bonus)
     }
 
     /// Process a MatchAction (notify, auto-confirm, etc.)
@@ -281,6 +323,34 @@ impl MatchingEngine {
             confirmed = confirmed,
             score = total_score,
             "Feedback recorded"
+        );
+
+        Ok(())
+    }
+
+    /// Record operator feedback with medication names for historical learning
+    /// Uses: OutlierDetector + ABTest + SampleCount + Calibrator + HistoricalLearner
+    pub async fn record_feedback_with_medications(
+        &self,
+        user_id: &str,
+        confirmed: bool,
+        total_score: f64,
+        offer_medication: &str,
+        request_medication: &str,
+    ) -> std::result::Result<(), String> {
+        // Record basic feedback
+        self.record_feedback(user_id, confirmed, total_score)
+            .await?;
+
+        // Record for historical learning (medication pair affinity)
+        self.historical_learner
+            .record_feedback(offer_medication, request_medication, confirmed);
+
+        tracing::debug!(
+            offer_med = offer_medication,
+            request_med = request_medication,
+            confirmed = confirmed,
+            "Historical learning feedback recorded"
         );
 
         Ok(())
@@ -641,6 +711,10 @@ impl MatchingEngine {
         // Update audit trail
         self.audit_trail.set_config(config.audit_trail.clone());
 
+        // Update historical learner
+        self.historical_learner
+            .set_config(config.historical.clone());
+
         // Update A/B test base weights
         self.ab_test.set_base_weights(config.weights.clone());
 
@@ -856,6 +930,84 @@ impl MatchingEngine {
     /// Enable or disable audit trail
     pub fn enable_audit_trail(&self, enabled: bool) {
         self.audit_trail.enable(enabled);
+    }
+
+    // =========================================================================
+    // Historical Learning (Medication Pair Affinity)
+    // =========================================================================
+
+    /// Get historical learning statistics
+    pub fn get_historical_stats(&self) -> HistoricalLearnerStats {
+        self.historical_learner.get_stats()
+    }
+
+    /// Get historical learning configuration
+    pub fn get_historical_config(&self) -> HistoricalLearningConfig {
+        self.historical_learner.get_config()
+    }
+
+    /// Update historical learning configuration
+    pub fn set_historical_config(&self, config: HistoricalLearningConfig) {
+        self.historical_learner.set_config(config);
+    }
+
+    /// Enable or disable historical learning
+    pub fn enable_historical_learning(&self, enabled: bool) {
+        self.historical_learner.enable(enabled);
+    }
+
+    /// Check if historical learning is enabled
+    pub fn is_historical_learning_enabled(&self) -> bool {
+        self.historical_learner.is_enabled()
+    }
+
+    /// Get affinity score for a medication pair
+    pub fn get_medication_affinity(&self, med_a: &str, med_b: &str) -> Option<f64> {
+        self.historical_learner.get_affinity(med_a, med_b)
+    }
+
+    /// Get full affinity record for a medication pair
+    pub fn get_medication_affinity_record(
+        &self,
+        med_a: &str,
+        med_b: &str,
+    ) -> Option<MedicationAffinity> {
+        self.historical_learner.get_affinity_record(med_a, med_b)
+    }
+
+    /// Get top medication affinities (highest affinity pairs)
+    pub fn get_top_medication_affinities(&self, limit: usize) -> Vec<MedicationAffinity> {
+        self.historical_learner.get_top_affinities(limit)
+    }
+
+    /// Get bottom medication affinities (problematic pairs)
+    pub fn get_bottom_medication_affinities(&self, limit: usize) -> Vec<MedicationAffinity> {
+        self.historical_learner.get_bottom_affinities(limit)
+    }
+
+    /// Apply time decay to all medication affinities
+    pub fn apply_historical_decay(&self) {
+        self.historical_learner.apply_decay();
+    }
+
+    /// Clear all learned medication affinities
+    pub fn clear_historical_learning(&self) {
+        self.historical_learner.clear();
+    }
+
+    /// Load medication affinities from external source
+    pub fn load_medication_affinities(&self, affinities: Vec<MedicationAffinity>) {
+        self.historical_learner.load_affinities(affinities);
+    }
+
+    /// Export all medication affinities for persistence
+    pub fn export_medication_affinities(&self) -> Vec<MedicationAffinity> {
+        self.historical_learner.export_affinities()
+    }
+
+    /// Get number of tracked medication pairs
+    pub fn medication_pair_count(&self) -> usize {
+        self.historical_learner.pair_count()
     }
 }
 
@@ -1136,5 +1288,122 @@ mod tests {
 
         let recent = engine.get_recent_audit_actions(10).await.unwrap();
         assert_eq!(recent.len(), 1);
+    }
+
+    // =========================================================================
+    // Historical Learning Integration Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_historical_learning_integration() {
+        let engine = MatchingEngine::default();
+
+        assert!(engine.is_historical_learning_enabled());
+        assert_eq!(engine.medication_pair_count(), 0);
+
+        // Record feedback with medications
+        engine
+            .record_feedback_with_medications("user-1", true, 0.85, "Brufen", "Ibuprofen")
+            .await
+            .unwrap();
+
+        assert_eq!(engine.medication_pair_count(), 1);
+
+        // Check affinity was recorded
+        let affinity = engine.get_medication_affinity("Brufen", "Ibuprofen");
+        assert!(affinity.is_some());
+        assert!(affinity.unwrap() > 0.5); // Should be above neutral
+    }
+
+    #[tokio::test]
+    async fn test_historical_learning_bonus_applied() {
+        let mut config = MatchingEngineConfig::default();
+        config.historical.min_confirmations = 3;
+        config.historical.confidence_threshold = 3;
+        config.historical.historical_weight = 0.10;
+        let engine = MatchingEngine::new(config);
+
+        // Record enough confirmations to trigger bonus
+        for _ in 0..5 {
+            engine
+                .record_feedback_with_medications("user", true, 0.85, "Brufen", "Ibuprofen")
+                .await
+                .unwrap();
+        }
+
+        // Score a match - should include historical bonus
+        let offer = Offer {
+            medication: "Brufen".to_string(),
+            quantity: 100.0,
+            price: 50.0,
+            created_at: Utc::now(),
+            ..Default::default()
+        };
+
+        let request = Request {
+            medication: "Ibuprofen".to_string(),
+            quantity: 100.0,
+            max_price: 60.0,
+            ..Default::default()
+        };
+
+        let (score, _action, bonus) = engine
+            .score_match_with_details(&offer, &request, 0.95, None)
+            .await;
+
+        assert!(bonus > 0.0, "Historical bonus should be positive");
+        assert!(score.total > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_historical_learning_stats() {
+        let engine = MatchingEngine::default();
+
+        engine
+            .record_feedback_with_medications("user", true, 0.85, "A", "B")
+            .await
+            .unwrap();
+        engine
+            .record_feedback_with_medications("user", false, 0.65, "C", "D")
+            .await
+            .unwrap();
+
+        let stats = engine.get_historical_stats();
+        assert_eq!(stats.total_pairs_tracked, 2);
+        assert_eq!(stats.total_confirmations, 1);
+        assert_eq!(stats.total_rejections, 1);
+    }
+
+    #[tokio::test]
+    async fn test_historical_learning_export_import() {
+        let engine1 = MatchingEngine::default();
+
+        engine1
+            .record_feedback_with_medications("user", true, 0.85, "Med1", "Med2")
+            .await
+            .unwrap();
+
+        let exported = engine1.export_medication_affinities();
+        assert_eq!(exported.len(), 1);
+
+        let engine2 = MatchingEngine::default();
+        engine2.load_medication_affinities(exported);
+
+        assert_eq!(engine2.medication_pair_count(), 1);
+        assert!(engine2.get_medication_affinity("Med1", "Med2").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_historical_learning_clear() {
+        let engine = MatchingEngine::default();
+
+        engine
+            .record_feedback_with_medications("user", true, 0.85, "A", "B")
+            .await
+            .unwrap();
+        assert_eq!(engine.medication_pair_count(), 1);
+
+        engine.clear_historical_learning();
+        assert_eq!(engine.medication_pair_count(), 0);
     }
 }
