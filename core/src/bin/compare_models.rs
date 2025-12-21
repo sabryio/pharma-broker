@@ -17,10 +17,9 @@ use dialoguer::{Input, theme::ColorfulTheme};
 use prettytable::format::consts::FORMAT_BOX_CHARS;
 use prettytable::{Table, row};
 use sqlx::postgres::PgPoolOptions;
-use tokio::time::timeout;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use pharma_core::ai::{ParsedItem, PharmaParser, PharmaParserConfig};
+use pharma_core::ai::{PharmaParser, PharmaParserConfig};
 
 // ============================================================================
 // Interactive Config
@@ -28,8 +27,10 @@ use pharma_core::ai::{ParsedItem, PharmaParser, PharmaParserConfig};
 
 struct Config {
     limit: i64,
+    concurrency: usize,
     timeout_secs: u64,
     database_url: String,
+    selected_models: Vec<String>, // Empty means all models
 }
 
 fn get_config_interactive() -> Config {
@@ -56,14 +57,35 @@ fn get_config_interactive() -> Config {
 
     let theme = ColorfulTheme::default();
 
+    // Model selection
+    let model_options = vec!["All Models", "Qwen3-VL", "Ministral3", "Gemma3"];
+    let model_selection = dialoguer::Select::with_theme(&theme)
+        .with_prompt("🤖 Select model(s) to test")
+        .items(&model_options)
+        .default(0)
+        .interact()
+        .unwrap_or(0);
+
+    let selected_models: Vec<String> = if model_selection == 0 {
+        vec![] // Empty = all models
+    } else {
+        vec![model_options[model_selection].to_string()]
+    };
+
     let limit: i64 = Input::with_theme(&theme)
         .with_prompt("📝 Number of messages to test")
+        .default(50)
+        .interact_text()
+        .unwrap_or(50);
+
+    let concurrency: usize = Input::with_theme(&theme)
+        .with_prompt("⚡ Concurrent requests per model")
         .default(3)
         .interact_text()
         .unwrap_or(3);
 
     let timeout_secs: u64 = Input::with_theme(&theme)
-        .with_prompt("⏱️  Timeout per model (seconds)")
+        .with_prompt("⏱️  Timeout per request (seconds)")
         .default(60)
         .interact_text()
         .unwrap_or(60);
@@ -77,16 +99,23 @@ fn get_config_interactive() -> Config {
         .interact_text()
         .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
 
+    let model_display = if selected_models.is_empty() {
+        "All (3 models)"
+    } else {
+        &selected_models[0]
+    };
+
     println!();
     println!(
         "{}",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
     );
     println!(
-        "  {} {} messages, {} {}s timeout",
+        "  {} {} | {} msgs | {} concurrent | {}s timeout",
         "Config:".green().bold(),
+        model_display.yellow(),
         limit.to_string().yellow(),
-        "⏱️".dimmed(),
+        concurrency.to_string().yellow(),
         timeout_secs.to_string().yellow()
     );
     println!(
@@ -97,8 +126,10 @@ fn get_config_interactive() -> Config {
 
     Config {
         limit,
+        concurrency,
         timeout_secs,
         database_url,
+        selected_models,
     }
 }
 
@@ -128,8 +159,6 @@ struct ModelResult {
     items_count: usize,
     latency_ms: u128,
     success: bool,
-    error: Option<String>,
-    items: Vec<ParsedItem>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -172,6 +201,15 @@ fn get_model_configs() -> Vec<ModelConfig> {
     ]
 }
 
+fn truncate(s: &str, max_len: usize) -> String {
+    let s = s.replace('\n', " ");
+    if s.len() <= max_len {
+        s
+    } else {
+        format!("{}...", &s[..max_len])
+    }
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -189,7 +227,7 @@ async fn main() -> anyhow::Result<()> {
     // Get config via interactive prompts
     let config = get_config_interactive();
     let limit = config.limit;
-    let timeout_secs = config.timeout_secs;
+    let _timeout_secs = config.timeout_secs;
 
     // Get model configurations
     let models = get_model_configs();
@@ -229,64 +267,68 @@ async fn main() -> anyhow::Result<()> {
 
     println!("   ✅ Loaded {} messages\n", messages.len());
 
-    // Create parsers for each model
-    let mut parsers: Vec<(String, Arc<PharmaParser>)> = Vec::new();
+    // Filter models based on selection
+    let filtered_models: Vec<ModelConfig> = if config.selected_models.is_empty() {
+        models
+    } else {
+        models
+            .into_iter()
+            .filter(|m| config.selected_models.contains(&m.name))
+            .collect()
+    };
 
-    for model in &models {
+    if filtered_models.is_empty() {
+        println!("{}", "❌ No matching models found.".red());
+        return Ok(());
+    }
+
+    // Results storage: message_results[msg_idx][model_idx]
+    let mut all_message_results: Vec<Vec<ModelResult>> =
+        vec![vec![ModelResult::default(); filtered_models.len()]; messages.len()];
+
+    // Process models SEQUENTIALLY
+    for (model_idx, model) in filtered_models.iter().enumerate() {
+        println!(
+            "\n🚀 Testing Model {}/{} [{}]",
+            model_idx + 1,
+            filtered_models.len(),
+            model.name.green().bold()
+        );
+
         let client_config = pharma_core::ai::ClientConfig {
             base_url: model.base_url.clone(),
             model: model.model.clone(),
-            timeout: Duration::from_secs(timeout_secs),
+            timeout: Duration::from_secs(config.timeout_secs),
             ..Default::default()
         };
 
-        let config = PharmaParserConfig {
+        let parser_config = PharmaParserConfig {
             client: client_config,
             ..Default::default()
         };
-        parsers.push((model.name.clone(), Arc::new(PharmaParser::new(config))));
-    }
+        let parser = Arc::new(PharmaParser::new(parser_config));
 
-    // Run comparisons
-    let mut all_results: Vec<Vec<ModelResult>> = Vec::new();
+        // Process messages CONCURRENTLY for this model
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(config.concurrency));
+        let mut f_handles = Vec::new();
 
-    for (msg_idx, msg) in messages.iter().enumerate() {
-        println!(
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        );
-        let content_preview: String = msg
-            .content
-            .chars()
-            .take(60)
-            .collect::<String>()
-            .replace('\n', " ");
-        println!(
-            "📝 Message {}/{}: \"{}{}\"",
-            msg_idx + 1,
-            messages.len(),
-            content_preview,
-            if msg.content.len() > 60 { "..." } else { "" }
-        );
-        println!();
-
-        // Run all models concurrently
-        println!("   ⏳ Running {} models concurrently...", parsers.len());
-
-        let mut handles = Vec::new();
-
-        for (model_name, parser) in &parsers {
-            let model_name = model_name.clone();
-            let parser = Arc::clone(parser);
+        for (msg_idx, msg) in messages.iter().enumerate() {
+            let permit = Arc::clone(&semaphore).acquire_owned();
+            let parser = Arc::clone(&parser);
             let content = msg.content.clone();
             let sender = msg.sender_name.clone();
             let group = msg.group_name.clone();
+            let model_name = model.name.clone();
+            let timeout_secs = config.timeout_secs;
 
             let handle = tokio::spawn(async move {
+                let _permit = permit.await.unwrap();
                 let start = Instant::now();
                 let parse_fut =
                     parser.parse(&content, sender.as_deref(), group.as_deref(), None, None);
 
-                let result = timeout(Duration::from_secs(timeout_secs), parse_fut).await;
+                let result =
+                    tokio::time::timeout(Duration::from_secs(timeout_secs), parse_fut).await;
                 let latency = start.elapsed().as_millis();
 
                 match result {
@@ -295,96 +337,78 @@ async fn main() -> anyhow::Result<()> {
                         items_count: items.len(),
                         latency_ms: latency,
                         success: true,
-                        error: None,
-                        items,
                     },
-                    Ok(Err(e)) => ModelResult {
+                    Ok(Err(_)) => ModelResult {
                         model_name,
                         items_count: 0,
                         latency_ms: latency,
                         success: false,
-                        error: Some(e.to_string()),
-                        items: vec![],
                     },
                     Err(_) => ModelResult {
                         model_name,
                         items_count: 0,
                         latency_ms: latency,
                         success: false,
-                        error: Some(format!("Timeout after {}s", timeout_secs)),
-                        items: vec![],
                     },
                 }
             });
-
-            handles.push(handle);
+            f_handles.push((msg_idx, handle));
         }
 
-        // Wait for all models to complete
-        let mut msg_results: Vec<ModelResult> = Vec::new();
-        for handle in handles {
-            if let Ok(result) = handle.await {
-                println!(
-                    "   {} {} - {} items in {}ms",
-                    if result.success { "✅" } else { "❌" },
-                    result.model_name,
-                    result.items_count,
-                    result.latency_ms
+        // Wait for all messages for this model to finish
+        for (msg_idx, handle) in f_handles {
+            let res = handle.await?;
+            all_message_results[msg_idx][model_idx] = res;
+
+            // Simple progress indicator
+            if (msg_idx + 1) % 10 == 0 || msg_idx + 1 == messages.len() {
+                print!(
+                    "{} ",
+                    format!("(Ok:{}/{})", msg_idx + 1, messages.len()).dimmed()
                 );
-                msg_results.push(result);
             }
         }
+        println!("{}", "\n   ✅ Model complete.".green());
+    }
 
-        // Display comparison table for this message
-        println!();
-        let mut comparison_table = Table::new();
-        comparison_table.set_format(*FORMAT_BOX_CHARS);
-        comparison_table.add_row(row!["Model", "Items", "Latency", "Status"]);
+    // ========================================================================
+    // Per-Message Comparison (Only for small counts)
+    // ========================================================================
+    if messages.len() <= 5 {
+        for (msg_idx, msg) in messages.iter().enumerate() {
+            println!(
+                "\n{}",
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    .dimmed()
+            );
+            println!(
+                "📝 {}: \"{}\"",
+                format!("Message {}/{}", msg_idx + 1, messages.len())
+                    .cyan()
+                    .bold(),
+                truncate(&msg.content, 100)
+            );
 
-        for r in &msg_results {
-            let status = if r.success {
-                "✅ OK".to_string()
-            } else {
-                format!("❌ {}", r.error.as_deref().unwrap_or("Error"))
-            };
-            comparison_table.add_row(row![
-                r.model_name,
-                r.items_count,
-                format!("{}ms", r.latency_ms),
-                status
-            ]);
-        }
-        comparison_table.printstd();
+            let mut msg_table = Table::new();
+            msg_table.set_format(*FORMAT_BOX_CHARS);
+            msg_table.add_row(row!["Model", "Items", "Latency", "Status"]);
 
-        // Show parsed items comparison
-        let all_successful: Vec<_> = msg_results.iter().filter(|r| r.success).collect();
-        if !all_successful.is_empty() {
-            println!("\n   📊 Parsed Items Comparison:");
-
-            let mut items_table = Table::new();
-            items_table.set_format(*FORMAT_BOX_CHARS);
-            items_table.add_row(row!["Model", "Type", "Medication", "Qty", "Price", "Conf%"]);
-
-            for r in &msg_results {
-                for item in &r.items {
-                    items_table.add_row(row![
-                        r.model_name,
-                        format!("{:?}", item.item_type),
-                        item.medication,
-                        item.quantity,
-                        item.price,
-                        format!("{:.0}%", item.ai_confidence * 100.0)
-                    ]);
-                }
+            for (model_idx, _) in filtered_models.iter().enumerate() {
+                let r = &all_message_results[msg_idx][model_idx];
+                let status = if r.success {
+                    "SUCCESS".green()
+                } else {
+                    "FAILED".red()
+                };
+                msg_table.add_row(row![
+                    r.model_name,
+                    r.items_count.to_string().yellow(),
+                    format!("{}ms", r.latency_ms).dimmed(),
+                    status
+                ]);
             }
-
-            if items_table.len() > 1 {
-                items_table.printstd();
-            }
+            msg_table.printstd();
         }
-
-        all_results.push(msg_results);
-        println!();
     }
 
     // ========================================================================
@@ -397,11 +421,10 @@ async fn main() -> anyhow::Result<()> {
     // Calculate stats per model
     let mut model_stats: Vec<ModelStats> = Vec::new();
 
-    for (model_name, _) in &parsers {
-        let model_results: Vec<&ModelResult> = all_results
+    for (model_idx, model) in filtered_models.iter().enumerate() {
+        let model_results: Vec<&ModelResult> = all_message_results
             .iter()
-            .flat_map(|r| r.iter())
-            .filter(|r| &r.model_name == model_name)
+            .map(|row| &row[model_idx])
             .collect();
 
         let successful = model_results.iter().filter(|r| r.success).count();
@@ -417,7 +440,7 @@ async fn main() -> anyhow::Result<()> {
         let max_latency = latencies.iter().max().copied().unwrap_or(0);
 
         model_stats.push(ModelStats {
-            model_name: model_name.clone(),
+            model_name: model.name.clone(),
             total_messages: model_results.len(),
             successful,
             failed: model_results.len() - successful,

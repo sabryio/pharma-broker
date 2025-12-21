@@ -26,8 +26,8 @@ pub struct ClientConfig {
     pub retry: RetryConfig,
     /// Default temperature
     pub temperature: f32,
-    /// Default max tokens
-    pub max_tokens: u32,
+    /// Default max tokens (None = unlimited/model default)
+    pub max_tokens: Option<u32>,
 }
 
 impl Default for ClientConfig {
@@ -39,7 +39,7 @@ impl Default for ClientConfig {
             timeout: Duration::from_secs(120),
             retry: RetryConfig::default(),
             temperature: 0.1,
-            max_tokens: 1000,
+            max_tokens: None, // Unlimited by default - let the model decide
         }
     }
 }
@@ -130,7 +130,7 @@ impl Client {
             model: self.config.model.clone(),
             messages,
             temperature: Some(self.config.temperature),
-            max_tokens: Some(self.config.max_tokens),
+            max_tokens: self.config.max_tokens,
             response_format: Some(ResponseFormat::JsonSchema {
                 json_schema: JsonSchemaSpec {
                     name: schema_name.to_string(),
@@ -161,7 +161,7 @@ impl Client {
             model: self.config.model.clone(),
             messages,
             temperature: Some(self.config.temperature),
-            max_tokens: Some(self.config.max_tokens),
+            max_tokens: self.config.max_tokens,
             response_format: None,
         };
 

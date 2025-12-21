@@ -29,6 +29,10 @@ path = "src/bin/parse_cli.rs"
 name = "compare-models"
 path = "src/bin/compare_models.rs"
 
+[[bin]]
+name = "analyze-models"
+path = "src/bin/analyze_models.rs"
+
 [dependencies]
 # Async runtime
 tokio = { version = "1.48.0", features = ["full"] }
