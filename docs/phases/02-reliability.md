@@ -20,6 +20,13 @@ graph TB
         CB[Circuit Breaker]
     end
 
+    subgraph "Go Bridge Resilience"
+        DEDUP[Deduplicator]
+        RECON[Reconnector]
+        RATE[Rate Limiter]
+        HIST[History Sync Handler]
+    end
+
     MSG --> Q
     Q --> PROC
     PROC --> AI
@@ -31,12 +38,23 @@ graph TB
 
 ## Key Components
 
+### Rust Core
+
 | File           | Component         | Description                     |
 | -------------- | ----------------- | ------------------------------- |
 | `queue/mod.rs` | `BoundedQueue<T>` | Thread-safe bounded queue       |
 | `retry/mod.rs` | `RetryExecutor`   | Exponential backoff with jitter |
 | `ai/client.rs` | `AiClient`        | AI gateway HTTP client          |
 | `ai/retry.rs`  | Circuit breaker   | Prevent cascading failures      |
+
+### Go Bridge (32 tests)
+
+| File                           | Component      | Description                    | Tests |
+| ------------------------------ | -------------- | ------------------------------ | ----- |
+| `resilience/rate_limiter.go`   | `RateLimiter`  | Token bucket (20/min, burst 5) | 9     |
+| `historysync/handler.go`       | `Handler`      | History sync deduplication     | 9     |
+| `deduplicator/deduplicator.go` | `Deduplicator` | Message deduplication          | 10    |
+| `reconnector/reconnector.go`   | `Reconnector`  | Exponential backoff reconnect  | 10    |
 
 ## Queue Configuration
 

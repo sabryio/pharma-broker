@@ -30,6 +30,9 @@ Migration from monolithic Go to multi-service architecture:
 - [x] Reconnector (exponential backoff)
 - [x] Deduplicator (in-memory cache)
 - [x] Skip own messages
+- [x] Circuit breaker for gRPC calls
+- [x] Retry buffer for failed messages
+- [x] Group cache with TTL
 
 ### Phase 4: Rust Core Business Logic
 
@@ -127,30 +130,34 @@ Port legacy bot commands to Rust REST endpoints:
 
 ---
 
-### Phase 8: Outbound Rate Limiter
+### Phase 8: Outbound Rate Limiter ✅
 
-**Priority: Low** | **Effort: Low**
+**Status: Complete**
 
-Only needed if Rust sends WhatsApp replies.
+Implemented token bucket rate limiter in Go bridge to prevent WhatsApp bans.
 
-Options:
+**Implementation** (`bridge/resilience/rate_limiter.go`):
 
-1. **Implement in Go** - Add `ratelimiter/` package, token bucket
-2. **Skip** - If no outbound messages needed
+- Token bucket algorithm (20 msgs/min default, burst 5)
+- `Wait(ctx)` for blocking, `Allow()` for non-blocking
+- Statistics tracking (requests, allowed, waited, dropped)
+- 9 unit tests passing
 
 ---
 
-### Phase 9: History Sync Handling
+### Phase 9: History Sync Handling ✅
 
-**Priority: Low** | **Effort: Medium**
+**Status: Complete**
 
-Handle whatsmeow history sync events to avoid duplicate processing.
+Implemented history sync handler to avoid duplicate processing of historical messages.
 
-**Implementation:**
+**Implementation** (`bridge/historysync/handler.go`):
 
-- Track `processedMsgIDs` in Go bridge
-- Skip messages older than 24h
-- Cooldown between sync events
+- Cooldown period (5 min default)
+- Max age filtering (24 hours)
+- Processed message ID cache with TTL
+- Max messages per sync limit (1000)
+- 9 unit tests passing
 
 ---
 
@@ -260,16 +267,21 @@ docker-compose up
 ## Architecture Diagram
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   WhatsApp      │     │   Go Bridge     │     │   Rust Core     │
-│                 │────▶│   (dedup)       │────▶│   (gRPC:50051)  │
-│                 │     │   (reconnect)   │     │                 │
-└─────────────────┘     └─────────────────┘     │  - Group check  │
-                                                │  - Save message │
-┌─────────────────┐     ┌─────────────────┐     │  - Call AI      │
-│   Dashboard     │────▶│   TS Gateway    │────▶│                 │
-│   (Browser)     │     │   (port 3000)   │     │  HTTP:8080      │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+┌─────────────────┐     ┌─────────────────────────┐     ┌─────────────────┐
+│   WhatsApp      │     │      Go Bridge          │     │   Rust Core     │
+│                 │────▶│  - Deduplicator         │────▶│   (gRPC:50051)  │
+│                 │     │  - Reconnector          │     │                 │
+└─────────────────┘     │  - Circuit Breaker      │     │  - Group check  │
+                        │  - Retry Buffer         │     │  - Save message │
+                        │  - Rate Limiter ✅      │     │  - Call AI      │
+                        │  - History Sync ✅      │     │                 │
+                        │  - Group Cache          │     │  HTTP:8080      │
+                        └─────────────────────────┘     └─────────────────┘
+                                                               │
+┌─────────────────┐     ┌─────────────────┐                    │
+│   Dashboard     │────▶│   TS Gateway    │────────────────────┘
+│   (Browser)     │     │   (port 3000)   │
+└─────────────────┘     └─────────────────┘
                                │
                                ▼
                         ┌─────────────────┐

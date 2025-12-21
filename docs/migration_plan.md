@@ -313,34 +313,36 @@ async fn test_confirm_match() {
 
 ---
 
-## Phase 5: Go WhatsApp Bridge (Week 5-6)
+## Phase 5: Go WhatsApp Bridge (Week 5-6) ✅
 
 ### 5.1 Minimal Go Service
 
-**Keep from Go** (only whatsmeow-related):
+**Status: Complete**
 
-- `messaging/whatsapp/manager.go` → Simplified
-- `messaging/listener.go` → Forward to Rust
+The Go bridge is fully implemented with comprehensive resilience features:
 
-**New Go Bridge** (~500 LOC):
+**Core Components**:
 
-```go
-// bridge/main.go
-package main
+- `bridge/main.go` - Main bridge with WhatsApp connection
+- `bridge/proto/` - gRPC client for Rust core communication
 
-import (
-    pb "pharma-bridge/proto"
-    "go.mau.fi/whatsmeow"
-)
+**Resilience Components** (32 tests):
 
-func (b *Bridge) handleMessage(evt *events.Message) {
-    // Forward to Rust via gRPC
-    b.rustClient.ProcessMessage(ctx, &pb.RawMessage{
-        Id:      evt.Info.ID,
-        Content: evt.Message.GetConversation(),
-    })
-}
-```
+- `bridge/resilience/circuit_breaker.go` - Prevent cascading failures
+- `bridge/resilience/retry_buffer.go` - Queue failed messages
+- `bridge/resilience/rate_limiter.go` - Token bucket (20/min, burst 5) - 9 tests
+- `bridge/historysync/handler.go` - History sync deduplication - 9 tests
+- `bridge/deduplicator/deduplicator.go` - Message deduplication - 10 tests
+- `bridge/reconnector/reconnector.go` - Exponential backoff - 10 tests
+- `bridge/cache/group_cache.go` - Monitored groups cache
+
+**Health Endpoint** (`/health` on port 5050):
+
+- Circuit breaker state
+- Retry buffer size
+- Deduplicator stats
+- Rate limiter stats
+- History sync stats
 
 ---
 
@@ -404,15 +406,15 @@ async fn test_full_matching_flow() {
 
 ### Per-Phase Verification
 
-| Phase         | Go Tests        | Rust Tests         | Status |
-| ------------- | --------------- | ------------------ | ------ |
-| 1. Domain     | N/A (structs)   | Type serialization | ⬜     |
-| 2. Repository | Mock tests      | sqlx::test         | ⬜     |
-| 3. Matching   | 37 tests        | rstest + criterion | ⬜     |
-| 4. API        | 32 tests        | axum::test         | ⬜     |
-| 5. Bridge     | manager_test.go | gRPC integration   | ⬜     |
-| 6. Gateway    | N/A             | Vitest             | ⬜     |
-| 7. E2E        | 5 tests         | Full stack         | ⬜     |
+| Phase         | Go Tests      | Rust Tests         | Status |
+| ------------- | ------------- | ------------------ | ------ |
+| 1. Domain     | N/A (structs) | Type serialization | ⬜     |
+| 2. Repository | Mock tests    | sqlx::test         | ⬜     |
+| 3. Matching   | 37 tests      | rstest + criterion | ⬜     |
+| 4. API        | 32 tests      | axum::test         | ⬜     |
+| 5. Bridge     | 32 tests ✅   | gRPC integration   | ✅     |
+| 6. Gateway    | N/A           | Vitest             | ⬜     |
+| 7. E2E        | 5 tests       | Full stack         | ⬜     |
 
 ### Test Count Summary
 

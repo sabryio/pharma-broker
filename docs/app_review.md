@@ -1,7 +1,7 @@
 # PharmaBroker Comprehensive App Review
 
 > **Purpose**: Define expectations, deliverables, and verification criteria for each development phase.
-> **Date**: 2025-12-19
+> **Date**: 2025-12-21
 
 ---
 
@@ -20,11 +20,17 @@ PharmaBroker is an AI-powered pharmaceutical trading platform that:
 
 ### Components
 
-| Component          | Location                | Purpose                      |
-| ------------------ | ----------------------- | ---------------------------- |
-| `whatsmeow` Client | `messaging/`            | WhatsApp Web connection      |
-| Manager            | `messaging/manager.go`  | Authentication, reconnection |
-| Listener           | `messaging/listener.go` | Message capture              |
+| Component          | Location                            | Purpose                       |
+| ------------------ | ----------------------------------- | ----------------------------- |
+| `whatsmeow` Client | `bridge/`                           | WhatsApp Web connection       |
+| Bridge Main        | `bridge/main.go`                    | Message forwarding to Rust    |
+| Reconnector        | `bridge/reconnector/`               | Exponential backoff reconnect |
+| Deduplicator       | `bridge/deduplicator/`              | Duplicate message filtering   |
+| Rate Limiter       | `bridge/resilience/rate_limiter.go` | Prevent WhatsApp bans         |
+| History Sync       | `bridge/historysync/handler.go`     | History sync deduplication    |
+| Circuit Breaker    | `bridge/resilience/`                | gRPC failure protection       |
+| Retry Buffer       | `bridge/resilience/`                | Failed message retry queue    |
+| Group Cache        | `bridge/cache/`                     | Monitored groups cache        |
 
 ### Deliverables
 
@@ -32,6 +38,10 @@ PharmaBroker is an AI-powered pharmaceutical trading platform that:
 - [x] Monitor configured groups
 - [x] Save raw messages to `raw_messages` table
 - [x] Handle reconnection gracefully
+- [x] Rate limiting for outbound messages (20/min, burst 5)
+- [x] History sync with deduplication (24h max age, 5min cooldown)
+- [x] Circuit breaker for gRPC calls
+- [x] Retry buffer for failed messages
 
 ### Data Criteria
 
