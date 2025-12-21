@@ -2,6 +2,7 @@
 //!
 //! Ported from legacy/api/handlers/*.go
 
+pub mod confidence;
 pub mod groups;
 pub mod handlers;
 pub mod middleware;

@@ -1,7 +1,7 @@
 //! Pharma AI Parser
 //!
 //! High-level wrapper around ai-client for pharma-specific parsing,
-//! with circuit breaker and retry support.
+//! with circuit breaker, retry support, and context size management.
 
 use std::sync::Arc;
 
@@ -12,6 +12,28 @@ use super::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 use super::pharma_prompts::{SYSTEM_PROMPT, build_user_prompt_with_mappings};
 use super::pharma_types::{ParseResult, ParsedItem};
 use super::token_batcher::{BatchMessage, TokenBatchConfig, TokenBatcher};
+
+// =============================================================================
+// Context Size Constants (matching legacy)
+// =============================================================================
+
+/// Maximum context size for the model (conservative estimate)
+/// Most local models have 8K-32K context, we use 8K as safe default
+const DEFAULT_MAX_CONTEXT_TOKENS: usize = 8000;
+
+/// Estimated tokens for system prompt (SYSTEM_PROMPT is ~3000 tokens)
+const SYSTEM_PROMPT_TOKENS: usize = 3500;
+
+/// Reserved tokens for AI response output
+const RESPONSE_RESERVED_TOKENS: usize = 2000;
+
+/// Maximum lines per message chunk (matching legacy DefaultMaxMessageLines)
+const MAX_MESSAGE_LINES: usize = 20;
+
+/// Available tokens for user prompt = context - system - response
+const fn available_prompt_tokens() -> usize {
+    DEFAULT_MAX_CONTEXT_TOKENS - SYSTEM_PROMPT_TOKENS - RESPONSE_RESERVED_TOKENS
+}
 
 /// Configuration for the PharmaParser
 #[derive(Clone, Default, Debug)]
@@ -94,6 +116,23 @@ impl PharmaParser {
             return Err(ParseError::CircuitOpen);
         }
 
+        // Check if content needs to be split due to context limits
+        let content_tokens = Self::estimate_tokens(content);
+        let available = available_prompt_tokens();
+
+        if content_tokens > available {
+            // Content too large - split into chunks and merge results
+            warn!(
+                content_tokens = content_tokens,
+                available = available,
+                "Message exceeds context limit, splitting into chunks"
+            );
+            return self
+                .parse_chunked(content, sender_name, group_name, reply_to, mappings)
+                .await;
+        }
+
+        // Normal path - content fits in context
         let user_prompt =
             build_user_prompt_with_mappings(content, sender_name, group_name, reply_to, mappings);
 
@@ -114,6 +153,120 @@ impl PharmaParser {
                 Err(ParseError::Client(e))
             }
         }
+    }
+
+    /// Parse a large message by splitting into chunks
+    async fn parse_chunked(
+        &self,
+        content: &str,
+        sender_name: Option<&str>,
+        group_name: Option<&str>,
+        reply_to: Option<&str>,
+        mappings: Option<&[String]>,
+    ) -> Result<Vec<ParsedItem>, ParseError> {
+        let chunks = Self::split_content_into_chunks(content);
+        info!(
+            chunks = chunks.len(),
+            "Split large message into {} chunks",
+            chunks.len()
+        );
+
+        let mut all_items = Vec::new();
+        let mut errors = Vec::new();
+
+        for (idx, chunk) in chunks.iter().enumerate() {
+            let user_prompt =
+                build_user_prompt_with_mappings(chunk, sender_name, group_name, reply_to, mappings);
+
+            let result: Result<ParseResult, ClientError> = self
+                .client
+                .generate_object_with_system(SYSTEM_PROMPT, &user_prompt)
+                .await;
+
+            match result {
+                Ok(parse_result) => {
+                    self.circuit_breaker.record_success();
+                    info!(
+                        chunk = idx + 1,
+                        items = parse_result.items.len(),
+                        "Chunk parsed successfully"
+                    );
+                    all_items.extend(parse_result.items);
+                }
+                Err(e) => {
+                    self.circuit_breaker.record_failure();
+                    error!(chunk = idx + 1, error = %e, "Chunk parsing failed");
+                    errors.push(format!("Chunk {}: {}", idx + 1, e));
+                }
+            }
+        }
+
+        // If all chunks failed, return error
+        if all_items.is_empty() && !errors.is_empty() {
+            return Err(ParseError::Parse(errors.join("; ")));
+        }
+
+        info!(
+            total_items = all_items.len(),
+            chunks = chunks.len(),
+            "Merged results from all chunks"
+        );
+        Ok(all_items)
+    }
+
+    /// Estimate token count for text (~4 chars per token)
+    fn estimate_tokens(text: &str) -> usize {
+        text.len().saturating_div(4).max(1)
+    }
+
+    /// Split content into chunks that fit within context limits
+    fn split_content_into_chunks(content: &str) -> Vec<String> {
+        let lines: Vec<&str> = content.lines().collect();
+
+        // If few lines, split by character count instead
+        if lines.len() <= MAX_MESSAGE_LINES {
+            return Self::split_by_tokens(content);
+        }
+
+        // Split by lines (matching legacy behavior)
+        let mut chunks = Vec::new();
+        for chunk_lines in lines.chunks(MAX_MESSAGE_LINES) {
+            chunks.push(chunk_lines.join("\n"));
+        }
+        chunks
+    }
+
+    /// Split content by estimated token count
+    fn split_by_tokens(content: &str) -> Vec<String> {
+        let available = available_prompt_tokens();
+        let max_chars = available * 4; // ~4 chars per token
+
+        if content.len() <= max_chars {
+            return vec![content.to_string()];
+        }
+
+        let mut chunks = Vec::new();
+        let mut start = 0;
+
+        while start < content.len() {
+            let end = (start + max_chars).min(content.len());
+
+            // Try to break at a newline or space for cleaner splits
+            let actual_end = if end < content.len() {
+                content[start..end]
+                    .rfind('\n')
+                    .or_else(|| content[start..end].rfind(' '))
+                    .map(|pos| start + pos + 1)
+                    .unwrap_or(end)
+            } else {
+                end
+            };
+
+            chunks.push(content[start..actual_end].to_string());
+            start = actual_end;
+        }
+
+        chunks
     }
 
     /// Parse a batch of messages using token-aware batching

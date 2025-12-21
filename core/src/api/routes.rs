@@ -13,7 +13,7 @@ use axum::{
 use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::broadcast;
 
-use super::{groups, handlers, review_queue, weights};
+use super::{confidence, groups, handlers, review_queue, weights};
 use crate::matching::MatchingEngine;
 use crate::repository::{
     AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
@@ -132,6 +132,31 @@ where
         .route(
             "/api/review-queue/{id}/status",
             put(review_queue::update_review_status::<RQ, A, MM>),
+        )
+        // Confidence Management
+        .route(
+            "/api/confidence",
+            get(confidence::get_confidence::<RQ, A, MM>),
+        )
+        .route(
+            "/api/confidence",
+            put(confidence::update_confidence::<RQ, A, MM>),
+        )
+        .route(
+            "/api/confidence/thresholds",
+            put(confidence::update_thresholds::<RQ, A, MM>),
+        )
+        .route(
+            "/api/confidence/reset",
+            post(confidence::reset_confidence::<RQ, A, MM>),
+        )
+        .route(
+            "/api/confidence/adaptive",
+            post(confidence::toggle_adaptive::<RQ, A, MM>),
+        )
+        .route(
+            "/api/confidence/stats/reset",
+            post(confidence::reset_stats::<RQ, A, MM>),
         )
         // WebSocket
         .route("/ws", get(ws::ws_handler::<RQ, A, MM>))

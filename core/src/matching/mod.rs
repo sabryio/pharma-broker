@@ -5,6 +5,7 @@
 mod abtest;
 mod actions;
 pub mod arabic;
+mod confidence;
 mod dosage;
 mod engine;
 pub mod fuzzy;
@@ -14,11 +15,12 @@ mod scorer;
 mod service;
 mod thresholds;
 mod warm_start;
-mod weights; // Added thresholds module
+mod weights;
 
 pub use abtest::*;
 pub use actions::*;
 pub use arabic::*;
+pub use confidence::*;
 pub use dosage::*;
 pub use engine::*;
 pub use fuzzy::*;

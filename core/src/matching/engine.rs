@@ -13,9 +13,10 @@ use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use super::{
-    ABTestConfig, ABTestManager, ABTestResult, AutoActionHandler, LearnerError, MatchAction,
-    MatchScore, OutlierDetector, OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig,
-    SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
+    ABTestConfig, ABTestManager, ABTestResult, AutoActionHandler, ConfidenceConfig,
+    ConfidenceManager, ConfidenceManagerStats, LearnerError, MatchAction, MatchScore,
+    OutlierDetector, OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig, SchedulerStatus,
+    Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
 };
 use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackStats};
 use crate::domain::{Match as MatchEntity, Offer, Request};
@@ -33,6 +34,8 @@ pub struct MatchingEngineConfig {
     pub warm_start: WarmStartConfig,
     /// Outlier detection settings
     pub outlier_detector: OutlierDetectorConfig,
+    /// Confidence manager settings
+    pub confidence: ConfidenceConfig,
 }
 
 /// Unified matching engine orchestrating all components
@@ -47,6 +50,8 @@ pub struct MatchingEngine {
     ab_test: ABTestManager,
     /// Outlier detector
     outlier_detector: OutlierDetector,
+    /// Dynamic confidence manager
+    confidence_manager: ConfidenceManager,
     /// Configuration
     config: RwLock<MatchingEngineConfig>,
     /// Current sample count for warm start
@@ -77,6 +82,7 @@ impl MatchingEngine {
         let warm_start = WarmStartManager::new(config.warm_start.clone());
         let ab_test = ABTestManager::new(config.weights.clone());
         let outlier_detector = OutlierDetector::new(config.outlier_detector.clone());
+        let confidence_manager = ConfidenceManager::new(config.confidence.clone());
 
         Self {
             scorer,
@@ -84,6 +90,7 @@ impl MatchingEngine {
             warm_start,
             ab_test,
             outlier_detector,
+            confidence_manager,
             config: RwLock::new(config),
             sample_count: RwLock::new(0),
             scheduler_handle: RwLock::new(None),
@@ -114,7 +121,7 @@ impl MatchingEngine {
     // =========================================================================
 
     /// Score a match between offer and request
-    /// Uses: Scorer + WarmStart + ABTest + AutoAction
+    /// Uses: Scorer + WarmStart + ABTest + AutoAction + ConfidenceManager
     pub async fn score_match(
         &self,
         offer: &Offer,
@@ -136,6 +143,9 @@ impl MatchingEngine {
 
         // Score the match
         let score = self.scorer.score_match(offer, request, medication_score);
+
+        // Evaluate confidence (tracks statistics and may adjust thresholds)
+        let _meets_strict = self.confidence_manager.evaluate(score.total);
 
         // Determine action based on score
         let action = self.auto_action.determine_action(score.total).await;
@@ -450,6 +460,60 @@ impl MatchingEngine {
     /// Reset outlier detector
     pub fn reset_outlier_detector(&self) {
         self.outlier_detector.reset();
+    }
+
+    // =========================================================================
+    // Confidence Management
+    // =========================================================================
+
+    /// Get confidence manager statistics
+    pub fn get_confidence_stats(&self) -> ConfidenceManagerStats {
+        self.confidence_manager.get_stats()
+    }
+
+    /// Get current strict confidence threshold
+    pub fn get_strict_threshold(&self) -> f64 {
+        self.confidence_manager.strict_threshold()
+    }
+
+    /// Get current relaxed confidence threshold
+    pub fn get_relaxed_threshold(&self) -> f64 {
+        self.confidence_manager.relaxed_threshold()
+    }
+
+    /// Set strict confidence threshold manually
+    pub fn set_strict_threshold(&self, threshold: f64) {
+        self.confidence_manager.set_strict_threshold(threshold);
+    }
+
+    /// Set relaxed confidence threshold manually
+    pub fn set_relaxed_threshold(&self, threshold: f64) {
+        self.confidence_manager.set_relaxed_threshold(threshold);
+    }
+
+    /// Enable or disable adaptive confidence adjustment
+    pub fn enable_adaptive_confidence(&self, enabled: bool) {
+        self.confidence_manager.enable_adaptive(enabled);
+    }
+
+    /// Reset confidence thresholds to base values
+    pub fn reset_confidence_thresholds(&self) {
+        self.confidence_manager.reset_to_base();
+    }
+
+    /// Reset confidence statistics
+    pub fn reset_confidence_stats(&self) {
+        self.confidence_manager.reset_stats();
+    }
+
+    /// Get confidence configuration
+    pub fn get_confidence_config(&self) -> ConfidenceConfig {
+        self.confidence_manager.get_config()
+    }
+
+    /// Update confidence configuration
+    pub fn set_confidence_config(&self, config: ConfidenceConfig) {
+        self.confidence_manager.set_config(config);
     }
 
     // =========================================================================
