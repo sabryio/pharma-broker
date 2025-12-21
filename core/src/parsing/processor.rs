@@ -301,26 +301,42 @@ impl BatchProcessor {
             }
         }
 
-        // Create offers and requests
-        for item in result.items {
-            self.create_entity_from_item(msg, &item).await;
+        // Batch generate embeddings for all items
+        let medications: Vec<String> = result.items.iter().map(|i| i.medication.clone()).collect();
+        let embeddings = if !medications.is_empty() {
+            match self.ai_client.embed_batch(&medications).await {
+                Ok(embs) => embs,
+                Err(e) => {
+                    warn!(error = %e, "Failed to batch generate embeddings, falling back to None");
+                    vec![vec![]; medications.len()]
+                }
+            }
+        } else {
+            vec![]
+        };
+
+        // Create offers and requests with pre-generated embeddings
+        for (item, embedding) in result.items.into_iter().zip(embeddings.into_iter()) {
+            let emb = if embedding.is_empty() {
+                None
+            } else {
+                Some(embedding)
+            };
+            self.create_entity_from_item_with_embedding(msg, &item, emb)
+                .await;
         }
 
         // Mark as processed
         let _ = self.raw_message_repo.mark_processed(&msg.id, None).await;
     }
 
-    /// Create offer or request from parsed item
-    async fn create_entity_from_item(&self, msg: &RawMessage, item: &ParsedItem) {
-        // Generate embedding
-        let embedding = match self.ai_client.embed(&item.medication).await {
-            Ok(emb) => Some(emb),
-            Err(e) => {
-                warn!(error = %e, "Failed to generate embedding");
-                None
-            }
-        };
-
+    /// Create offer or request from parsed item with pre-generated embedding
+    async fn create_entity_from_item_with_embedding(
+        &self,
+        msg: &RawMessage,
+        item: &ParsedItem,
+        embedding: Option<Vec<f32>>,
+    ) {
         match item.item_type.as_str() {
             "OFFER" | "BOTH" => {
                 let offer = Offer {

@@ -299,20 +299,44 @@ where
             let mut requests_created = 0;
             let mut items_queued = 0;
 
+            // Pre-filter items that will be accepted (need embeddings)
+            let accepted_items: Vec<_> = parsed_items
+                .iter()
+                .filter(|item| {
+                    matches!(
+                        auto_action.determine_parse_action(item.ai_confidence),
+                        crate::matching::ParseAction::Accept
+                    )
+                })
+                .collect();
+
+            // Batch generate embeddings for accepted items
+            let medications: Vec<String> = accepted_items
+                .iter()
+                .map(|item| item.medication.clone())
+                .collect();
+
+            let embeddings_map: std::collections::HashMap<String, Vec<f32>> =
+                if !medications.is_empty() {
+                    match ai_client.embed_batch(&medications).await {
+                        Ok(embs) => medications.into_iter().zip(embs).collect(),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Failed to batch generate embeddings");
+                            std::collections::HashMap::new()
+                        }
+                    }
+                } else {
+                    std::collections::HashMap::new()
+                };
+
             for item in parsed_items {
                 // Task 3.3: Determine action based on AI confidence
                 let parse_action = auto_action.determine_parse_action(item.ai_confidence);
 
                 match parse_action {
                     crate::matching::ParseAction::Accept => {
-                        // Generate embedding for the medication name
-                        let content_embedding = match ai_client.embed(&item.medication).await {
-                            Ok(emb) => Some(emb),
-                            Err(e) => {
-                                tracing::warn!(error = %e, medication = %item.medication, "Failed to generate embedding");
-                                None
-                            }
-                        };
+                        // Get pre-generated embedding
+                        let content_embedding = embeddings_map.get(&item.medication).cloned();
 
                         if item.item_type == Intent::Offer {
                             let offer = Offer {
