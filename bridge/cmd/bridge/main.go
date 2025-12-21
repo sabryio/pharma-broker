@@ -56,8 +56,8 @@ func main() {
 
 		// Lifecycle
 		fx.Invoke(registerRoutes),
-		fx.Invoke(startBridge),
 		fx.Invoke(startHTTPServer),
+		fx.Invoke(startBridge),
 	)
 
 	fxApp.Run()
@@ -301,12 +301,13 @@ func healthHandler(deps HealthDeps) gin.HandlerFunc {
 func startBridge(lc fx.Lifecycle, bridge *app.Bridge, source ports.MessageSource, logger zerolog.Logger) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			if err := source.Connect(ctx); err != nil {
-				logger.Error().Err(err).Msg("Failed to connect WhatsApp")
-				return err
-			}
-
+			// Start WhatsApp connection in background to not block HTTP server
 			go func() {
+				if err := source.Connect(context.Background()); err != nil {
+					logger.Error().Err(err).Msg("Failed to connect WhatsApp")
+					return
+				}
+
 				if err := bridge.Run(context.Background()); err != nil {
 					logger.Error().Err(err).Msg("Bridge stopped with error")
 				}

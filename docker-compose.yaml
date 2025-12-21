@@ -16,7 +16,7 @@ services:
       - ./data/postgres:/var/lib/postgresql
       - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d pharmabroker" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pharmabroker"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,7 +31,7 @@ services:
     ports:
       - "6379:6379"
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -84,8 +84,12 @@ services:
       dockerfile: Dockerfile
     container_name: pharma-bridge
     environment:
-      CORE_GRPC_ADDR: core:50051
-      WHATSAPP_STORE: /app/data/whatsapp.db
+      BRIDGE_GRPC_CORE_ADDR: ${BRIDGE_GRPC_CORE_ADDR:-core:50051}
+      BRIDGE_WHATSAPP_STORE_PATH: ${BRIDGE_WHATSAPP_STORE_PATH:-/app/data/whatsapp.db}
+      BRIDGE_WHATSAPP_QR_TERMINAL: ${BRIDGE_WHATSAPP_QR_TERMINAL:-true}
+      BRIDGE_HTTP_MODE: ${BRIDGE_HTTP_MODE:-release}
+    ports:
+      - "5050:5050" # Health server with QR code endpoint
     volumes:
       - bridge_data:/app/data
     depends_on:
@@ -133,12 +137,10 @@ volumes:
   prometheus_data:
   grafana_data:
 
-
 networks:
   pharmabroker-network:
     name: pharmabroker-network
     driver: bridge
-
 # Add monitoring services to the services section above gateway
 # To use, add these to the 'services' section:
 #

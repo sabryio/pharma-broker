@@ -5,7 +5,7 @@
 -- Stores user feedback (confirm/reject) on matches for learning
 CREATE TABLE IF NOT EXISTS feedback_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    match_id UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    match_id VARCHAR(36) NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL,
     confirmed BOOLEAN NOT NULL,
     -- Factor scores at the time of feedback
