@@ -10,7 +10,7 @@ use tokio::sync::broadcast;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::{ai::ItemType, ws::WsEvent};
+use crate::{ai::Intent, ws::WsEvent};
 
 use super::pharma::{
     HealthRequest, HealthResponse, MonitoredGroupsRequest, MonitoredGroupsResponse,
@@ -18,9 +18,10 @@ use super::pharma::{
     pharma_core_server::{PharmaCore, PharmaCoreServer},
 };
 use crate::ai::PharmaParser;
+use crate::ai::UrgencyLevel as AiUrgencyLevel;
 use crate::domain::{
     AuditAction, AuditLog, EntityType, ItemStatus, Offer, RawMessage, Request as RequestEntity,
-    ReviewQueueItem,
+    ReviewQueueItem, UrgencyLevel,
 };
 use crate::matching::AutoActionHandler;
 use crate::matching::MatchingEngine;
@@ -129,6 +130,16 @@ fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
         reply_to_id: proto.reply_to_id.clone(),
         reply_to_content: proto.reply_to_content.clone(),
         reply_to_sender: proto.reply_to_sender.clone(),
+    }
+}
+
+/// Convert AI UrgencyLevel to domain UrgencyLevel
+fn convert_urgency_level(ai_level: AiUrgencyLevel) -> UrgencyLevel {
+    match ai_level {
+        AiUrgencyLevel::Normal => UrgencyLevel::Normal,
+        AiUrgencyLevel::Soon => UrgencyLevel::Soon,
+        AiUrgencyLevel::Urgent => UrgencyLevel::Urgent,
+        AiUrgencyLevel::Critical => UrgencyLevel::Critical,
     }
 }
 
@@ -303,7 +314,7 @@ where
                             }
                         };
 
-                        if item.item_type == ItemType::Offer {
+                        if item.item_type == Intent::Offer {
                             let offer = Offer {
                                 id: Uuid::new_v4().to_string(),
                                 raw_message_id: msg_id.clone(),
@@ -323,6 +334,10 @@ where
                                 raw_message: content.clone(),
                                 status: ItemStatus::Active,
                                 content_embedding: content_embedding.clone(),
+                                urgent: item.urgent,
+                                urgency_level: convert_urgency_level(item.urgency_level),
+                                expiry_info: item.expiry.clone(),
+                                ai_confidence: item.ai_confidence,
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };
@@ -387,7 +402,7 @@ where
                                 .with_details(serde_json::json!({ "message_id": msg_id }));
                                 let _ = audit_log_repo.save(&audit_log).await;
                             }
-                        } else if item.item_type == ItemType::Request {
+                        } else if item.item_type == Intent::Request {
                             let request = RequestEntity {
                                 id: Uuid::new_v4().to_string(),
                                 raw_message_id: msg_id.clone(),
@@ -402,6 +417,9 @@ where
                                 max_price: item.max_price,
                                 currency: Some("EGP".to_string()),
                                 urgent: item.urgent,
+                                urgency_level: convert_urgency_level(item.urgency_level),
+                                expiry_requirement: item.expiry.clone(),
+                                ai_confidence: item.ai_confidence,
                                 notes: item.notes.clone(),
                                 raw_message: content.clone(),
                                 status: ItemStatus::Active,

@@ -81,6 +81,63 @@ pub enum FeedbackDecision {
     Rejected,
 }
 
+/// Urgency level for medication requests/offers
+/// Maps to PostgreSQL enum: urgency_level
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "urgency_level", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum UrgencyLevel {
+    /// Normal priority - no urgency indicated
+    #[default]
+    Normal,
+    /// Moderate urgency - needed soon
+    Soon,
+    /// High urgency - needed urgently
+    Urgent,
+    /// Critical urgency - immediate need
+    Critical,
+}
+
+impl UrgencyLevel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UrgencyLevel::Normal => "NORMAL",
+            UrgencyLevel::Soon => "SOON",
+            UrgencyLevel::Urgent => "URGENT",
+            UrgencyLevel::Critical => "CRITICAL",
+        }
+    }
+
+    /// Convert from boolean urgent flag (backward compatibility)
+    pub fn from_bool(urgent: bool) -> Self {
+        if urgent {
+            UrgencyLevel::Urgent
+        } else {
+            UrgencyLevel::Normal
+        }
+    }
+
+    /// Check if this is any level of urgency
+    pub fn is_urgent(&self) -> bool {
+        !matches!(self, UrgencyLevel::Normal)
+    }
+
+    /// Get priority score (0.0 = normal, 1.0 = critical)
+    pub fn priority_score(&self) -> f64 {
+        match self {
+            UrgencyLevel::Normal => 0.0,
+            UrgencyLevel::Soon => 0.3,
+            UrgencyLevel::Urgent => 0.7,
+            UrgencyLevel::Critical => 1.0,
+        }
+    }
+}
+
+impl std::fmt::Display for UrgencyLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Confidence bands for matching
 /// Ported from Go: matching/interface.go
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -11,6 +11,7 @@ use tracing::{error, info, warn};
 use crate::ai::{ParsedItem, PharmaParser};
 use crate::domain::{
     AuditAction, AuditLog, EntityType, ItemStatus, Offer, RawMessage, Request, ReviewQueueItem,
+    UrgencyLevel,
 };
 use crate::repository::{
     AuditLogRepository, MatchQueueRepository, MedicationMappingRepository, OfferRepository,
@@ -341,6 +342,10 @@ impl BatchProcessor {
                     raw_message: msg.content.clone(),
                     status: ItemStatus::Active,
                     content_embedding: embedding.clone(),
+                    urgent: item.urgent,
+                    urgency_level: UrgencyLevel::from_bool(item.urgent),
+                    expiry_info: item.expiry.clone(),
+                    ai_confidence: item.ai_confidence,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 };
@@ -387,6 +392,9 @@ impl BatchProcessor {
                     notes: item.notes.clone(),
                     raw_message: msg.content.clone(),
                     urgent: item.urgent,
+                    urgency_level: UrgencyLevel::from_bool(item.urgent),
+                    expiry_requirement: item.expiry.clone(),
+                    ai_confidence: item.ai_confidence,
                     status: ItemStatus::Active,
                     content_embedding: embedding,
                     created_at: chrono::Utc::now(),

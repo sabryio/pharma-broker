@@ -30,7 +30,9 @@ impl OfferRepository for PostgresOfferRepo {
             SELECT id, raw_message_id, source_phone, source_name, source_group,
                    group_name, medication, medication_raw, quantity, unit,
                    price, currency, expiry_date, batch_number, notes,
-                   raw_message, status, content_embedding, created_at, updated_at
+                   raw_message, status, content_embedding,
+                   urgent, urgency_level, expiry_info, ai_confidence,
+                   created_at, updated_at
             FROM offers WHERE id = $1
             "#,
         )
@@ -47,7 +49,9 @@ impl OfferRepository for PostgresOfferRepo {
             SELECT id, raw_message_id, source_phone, source_name, source_group,
                    group_name, medication, medication_raw, quantity, unit,
                    price, currency, expiry_date, batch_number, notes,
-                   raw_message, status, content_embedding, created_at, updated_at
+                   raw_message, status, content_embedding,
+                   urgent, urgency_level, expiry_info, ai_confidence,
+                   created_at, updated_at
             FROM offers WHERE status = 'ACTIVE'
             ORDER BY created_at DESC LIMIT $1 OFFSET $2
             "#,
@@ -67,7 +71,9 @@ impl OfferRepository for PostgresOfferRepo {
             SELECT id, raw_message_id, source_phone, source_name, source_group,
                    group_name, medication, medication_raw, quantity, unit,
                    price, currency, expiry_date, batch_number, notes,
-                   raw_message, status, content_embedding, created_at, updated_at
+                   raw_message, status, content_embedding,
+                   urgent, urgency_level, expiry_info, ai_confidence,
+                   created_at, updated_at
             FROM offers WHERE status = 'ACTIVE'
               AND (medication ILIKE $1 OR medication_raw ILIKE $1)
             ORDER BY created_at DESC LIMIT $2 OFFSET $3
@@ -102,7 +108,9 @@ impl OfferRepository for PostgresOfferRepo {
             SELECT id, raw_message_id, source_phone, source_name, source_group,
                    group_name, medication, medication_raw, quantity, unit,
                    price, currency, expiry_date, batch_number, notes,
-                   raw_message, status, content_embedding, created_at, updated_at
+                   raw_message, status, content_embedding,
+                   urgent, urgency_level, expiry_info, ai_confidence,
+                   created_at, updated_at
             FROM offers
             WHERE source_phone = $1 AND medication = $2 AND created_at > $3
             ORDER BY created_at DESC LIMIT 1
@@ -134,7 +142,9 @@ impl OfferRepository for PostgresOfferRepo {
             SELECT id, raw_message_id, source_phone, source_name, source_group,
                    group_name, medication, medication_raw, quantity, unit,
                    price, currency, expiry_date, batch_number, notes,
-                   raw_message, status, content_embedding, created_at, updated_at
+                   raw_message, status, content_embedding,
+                   urgent, urgency_level, expiry_info, ai_confidence,
+                   created_at, updated_at
             FROM offers
             WHERE created_at > $1
               AND content_embedding <=> $2 < $3
@@ -158,12 +168,17 @@ impl OfferRepository for PostgresOfferRepo {
                 id, raw_message_id, source_phone, source_name, source_group,
                 group_name, medication, medication_raw, quantity, unit,
                 price, currency, expiry_date, batch_number, notes,
-                raw_message, status, content_embedding, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+                raw_message, status, content_embedding,
+                urgent, urgency_level, expiry_info, ai_confidence,
+                created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
             ON CONFLICT (id) DO UPDATE SET
                 medication = EXCLUDED.medication, quantity = EXCLUDED.quantity,
                 price = EXCLUDED.price, status = EXCLUDED.status, 
-                content_embedding = EXCLUDED.content_embedding, updated_at = EXCLUDED.updated_at
+                content_embedding = EXCLUDED.content_embedding,
+                urgent = EXCLUDED.urgent, urgency_level = EXCLUDED.urgency_level,
+                expiry_info = EXCLUDED.expiry_info, ai_confidence = EXCLUDED.ai_confidence,
+                updated_at = EXCLUDED.updated_at
             "#
         )
         .bind(&offer.id)
@@ -184,6 +199,10 @@ impl OfferRepository for PostgresOfferRepo {
         .bind(&offer.raw_message)
         .bind(offer.status.to_string())
         .bind(&offer.content_embedding)
+        .bind(offer.urgent)
+        .bind(&offer.urgency_level)
+        .bind(&offer.expiry_info)
+        .bind(offer.ai_confidence)
         .bind(offer.created_at)
         .bind(offer.updated_at)
         .execute(&self.pool)

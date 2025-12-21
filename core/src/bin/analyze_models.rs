@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use pharma_core::ai::{ItemType, ParsedItem, PharmaParser, PharmaParserConfig};
+use pharma_core::ai::{Intent, ParsedItem, PharmaParser, PharmaParserConfig};
 
 // ============================================================================
 // Configuration
@@ -363,11 +363,11 @@ fn calculate_quality_metrics(model_name: &str, results: &[ModelResult]) -> Quali
     let total_items = all_items.len();
     let offers_count = all_items
         .iter()
-        .filter(|i| i.item_type == ItemType::Offer)
+        .filter(|i| i.item_type == Intent::Offer)
         .count();
     let requests_count = all_items
         .iter()
-        .filter(|i| i.item_type == ItemType::Request)
+        .filter(|i| i.item_type == Intent::Request)
         .count();
     let avg_items_per_message = if successful_parses > 0 {
         total_items as f64 / successful_parses as f64

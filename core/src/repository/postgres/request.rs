@@ -24,7 +24,8 @@ impl RequestRepository for PostgresRequestRepo {
         let request = sqlx::query_as::<_, Request>(
             r#"SELECT id, raw_message_id, source_phone, source_name, source_group,
                       group_name, medication, medication_raw, quantity, unit,
-                      max_price, currency, urgent, notes, raw_message,
+                      max_price, currency, urgent, urgency_level, expiry_requirement,
+                      ai_confidence, notes, raw_message,
                       status, content_embedding, created_at, updated_at
                FROM requests WHERE id = $1"#,
         )
@@ -38,7 +39,8 @@ impl RequestRepository for PostgresRequestRepo {
         let requests = sqlx::query_as::<_, Request>(
             r#"SELECT id, raw_message_id, source_phone, source_name, source_group,
                       group_name, medication, medication_raw, quantity, unit,
-                      max_price, currency, urgent, notes, raw_message,
+                      max_price, currency, urgent, urgency_level, expiry_requirement,
+                      ai_confidence, notes, raw_message,
                       status, content_embedding, created_at, updated_at
                FROM requests WHERE status = 'ACTIVE'
                ORDER BY urgent DESC, created_at DESC LIMIT $1 OFFSET $2"#,
@@ -55,7 +57,8 @@ impl RequestRepository for PostgresRequestRepo {
         let requests = sqlx::query_as::<_, Request>(
             r#"SELECT id, raw_message_id, source_phone, source_name, source_group,
                       group_name, medication, medication_raw, quantity, unit,
-                      max_price, currency, urgent, notes, raw_message,
+                      max_price, currency, urgent, urgency_level, expiry_requirement,
+                      ai_confidence, notes, raw_message,
                       status, content_embedding, created_at, updated_at
                FROM requests WHERE status = 'ACTIVE'
                  AND (medication ILIKE $1 OR medication_raw ILIKE $1)
@@ -87,7 +90,8 @@ impl RequestRepository for PostgresRequestRepo {
         let request = sqlx::query_as::<_, Request>(
             r#"SELECT id, raw_message_id, source_phone, source_name, source_group,
                       group_name, medication, medication_raw, quantity, unit,
-                      max_price, currency, urgent, notes, raw_message,
+                      max_price, currency, urgent, urgency_level, expiry_requirement,
+                      ai_confidence, notes, raw_message,
                       status, content_embedding, created_at, updated_at
                FROM requests
                WHERE source_phone = $1 AND medication = $2 AND created_at > $3
@@ -113,7 +117,8 @@ impl RequestRepository for PostgresRequestRepo {
         let requests = sqlx::query_as::<_, Request>(
             r#"SELECT id, raw_message_id, source_phone, source_name, source_group,
                       group_name, medication, medication_raw, quantity, unit,
-                      max_price, currency, urgent, notes, raw_message,
+                      max_price, currency, urgent, urgency_level, expiry_requirement,
+                      ai_confidence, notes, raw_message,
                       status, content_embedding, created_at, updated_at
                FROM requests
                WHERE created_at > $1
@@ -134,12 +139,15 @@ impl RequestRepository for PostgresRequestRepo {
         sqlx::query(
             r#"INSERT INTO requests (id, raw_message_id, source_phone, source_name, source_group,
                 group_name, medication, medication_raw, quantity, unit, max_price, currency,
-                urgent, notes, raw_message, status, content_embedding, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+                urgent, urgency_level, expiry_requirement, ai_confidence,
+                notes, raw_message, status, content_embedding, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
                ON CONFLICT (id) DO UPDATE SET medication = EXCLUDED.medication,
                  quantity = EXCLUDED.quantity, max_price = EXCLUDED.max_price,
-                 urgent = EXCLUDED.urgent, status = EXCLUDED.status,
-                 content_embedding = EXCLUDED.content_embedding, updated_at = EXCLUDED.updated_at"#,
+                 urgent = EXCLUDED.urgent, urgency_level = EXCLUDED.urgency_level,
+                 expiry_requirement = EXCLUDED.expiry_requirement, ai_confidence = EXCLUDED.ai_confidence,
+                 status = EXCLUDED.status, content_embedding = EXCLUDED.content_embedding,
+                 updated_at = EXCLUDED.updated_at"#,
         )
         .bind(&request.id)
         .bind(&request.raw_message_id)
@@ -154,6 +162,9 @@ impl RequestRepository for PostgresRequestRepo {
         .bind(request.max_price)
         .bind(&request.currency)
         .bind(request.urgent)
+        .bind(&request.urgency_level)
+        .bind(&request.expiry_requirement)
+        .bind(request.ai_confidence)
         .bind(&request.notes)
         .bind(&request.raw_message)
         .bind(request.status.to_string())

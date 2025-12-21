@@ -5,7 +5,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::ItemStatus;
+use super::{ItemStatus, UrgencyLevel};
 
 /// Represents a medication supply offer
 /// Ported from Go: Offer struct (entity.go:86-106)
@@ -29,6 +29,17 @@ pub struct Offer {
     pub raw_message: String,
     pub status: ItemStatus,
     pub content_embedding: Option<Vec<f32>>,
+    /// Urgency flag (seller urgency to sell)
+    #[serde(default)]
+    pub urgent: bool,
+    /// Granular urgency level
+    #[serde(default)]
+    pub urgency_level: UrgencyLevel,
+    /// Expiry info from AI extraction (YYYY-MM or description)
+    pub expiry_info: Option<String>,
+    /// AI extraction confidence score
+    #[serde(default)]
+    pub ai_confidence: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -55,6 +66,10 @@ impl Default for Offer {
             raw_message: String::new(),
             status: ItemStatus::Active,
             content_embedding: None,
+            urgent: false,
+            urgency_level: UrgencyLevel::Normal,
+            expiry_info: None,
+            ai_confidence: 0.0,
             created_at: now,
             updated_at: now,
         }

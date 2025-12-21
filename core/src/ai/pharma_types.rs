@@ -7,12 +7,68 @@ use std::fmt;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// Urgency level for medication requests/offers
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum UrgencyLevel {
+    /// Normal priority - no urgency indicated
+    #[default]
+    Normal,
+    /// Moderate urgency - needed soon
+    Soon,
+    /// High urgency - needed urgently
+    Urgent,
+    /// Critical urgency - immediate need
+    Critical,
+}
+
+impl UrgencyLevel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UrgencyLevel::Normal => "NORMAL",
+            UrgencyLevel::Soon => "SOON",
+            UrgencyLevel::Urgent => "URGENT",
+            UrgencyLevel::Critical => "CRITICAL",
+        }
+    }
+
+    /// Convert from boolean urgent flag (backward compatibility)
+    pub fn from_bool(urgent: bool) -> Self {
+        if urgent {
+            UrgencyLevel::Urgent
+        } else {
+            UrgencyLevel::Normal
+        }
+    }
+
+    /// Check if this is any level of urgency
+    pub fn is_urgent(&self) -> bool {
+        !matches!(self, UrgencyLevel::Normal)
+    }
+
+    /// Get priority score (0.0 = normal, 1.0 = critical)
+    pub fn priority_score(&self) -> f64 {
+        match self {
+            UrgencyLevel::Normal => 0.0,
+            UrgencyLevel::Soon => 0.3,
+            UrgencyLevel::Urgent => 0.7,
+            UrgencyLevel::Critical => 1.0,
+        }
+    }
+}
+
+impl fmt::Display for UrgencyLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// A parsed medication item from AI
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ParsedItem {
     /// Item type: "OFFER" or "REQUEST"
     #[serde(rename = "type")]
-    pub item_type: ItemType,
+    pub item_type: Intent,
 
     /// Canonical English medication name with dosage
     pub medication: String,
@@ -40,36 +96,44 @@ pub struct ParsedItem {
     #[serde(default)]
     pub max_price: f64,
 
-    /// Urgency flag
+    /// Urgency flag (backward compatible)
     #[serde(default)]
     pub urgent: bool,
+
+    /// Urgency level (more granular)
+    #[serde(default)]
+    pub urgency_level: UrgencyLevel,
+
+    /// Expiry date if mentioned (YYYY-MM format or description)
+    #[serde(default)]
+    pub expiry: Option<String>,
 
     /// Additional notes
     #[serde(default)]
     pub notes: Option<String>,
 }
 
-/// Item type enumeration
+/// Intent enumeration
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
-pub enum ItemType {
+pub enum Intent {
     #[default]
     Offer,
     Request,
 }
 
-impl fmt::Display for ItemType {
+impl fmt::Display for Intent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
-impl ItemType {
+impl Intent {
     /// Get string representation for backward compatibility
     pub fn as_str(&self) -> &'static str {
         match self {
-            ItemType::Offer => "OFFER",
-            ItemType::Request => "REQUEST",
+            Intent::Offer => "OFFER",
+            Intent::Request => "REQUEST",
         }
     }
 }
@@ -93,12 +157,104 @@ mod tests {
 
     #[test]
     fn test_item_type_serialization() {
-        let offer = ItemType::Offer;
+        let offer = Intent::Offer;
         let json = serde_json::to_string(&offer).unwrap();
         assert_eq!(json, "\"OFFER\"");
 
-        let request = ItemType::Request;
+        let request = Intent::Request;
         let json = serde_json::to_string(&request).unwrap();
         assert_eq!(json, "\"REQUEST\"");
+    }
+
+    #[test]
+    fn test_urgency_level_serialization() {
+        assert_eq!(
+            serde_json::to_string(&UrgencyLevel::Normal).unwrap(),
+            "\"NORMAL\""
+        );
+        assert_eq!(
+            serde_json::to_string(&UrgencyLevel::Soon).unwrap(),
+            "\"SOON\""
+        );
+        assert_eq!(
+            serde_json::to_string(&UrgencyLevel::Urgent).unwrap(),
+            "\"URGENT\""
+        );
+        assert_eq!(
+            serde_json::to_string(&UrgencyLevel::Critical).unwrap(),
+            "\"CRITICAL\""
+        );
+    }
+
+    #[test]
+    fn test_urgency_level_deserialization() {
+        let normal: UrgencyLevel = serde_json::from_str("\"NORMAL\"").unwrap();
+        assert_eq!(normal, UrgencyLevel::Normal);
+
+        let urgent: UrgencyLevel = serde_json::from_str("\"URGENT\"").unwrap();
+        assert_eq!(urgent, UrgencyLevel::Urgent);
+    }
+
+    #[test]
+    fn test_urgency_level_from_bool() {
+        assert_eq!(UrgencyLevel::from_bool(false), UrgencyLevel::Normal);
+        assert_eq!(UrgencyLevel::from_bool(true), UrgencyLevel::Urgent);
+    }
+
+    #[test]
+    fn test_urgency_level_is_urgent() {
+        assert!(!UrgencyLevel::Normal.is_urgent());
+        assert!(UrgencyLevel::Soon.is_urgent());
+        assert!(UrgencyLevel::Urgent.is_urgent());
+        assert!(UrgencyLevel::Critical.is_urgent());
+    }
+
+    #[test]
+    fn test_urgency_level_priority_score() {
+        assert_eq!(UrgencyLevel::Normal.priority_score(), 0.0);
+        assert_eq!(UrgencyLevel::Soon.priority_score(), 0.3);
+        assert_eq!(UrgencyLevel::Urgent.priority_score(), 0.7);
+        assert_eq!(UrgencyLevel::Critical.priority_score(), 1.0);
+    }
+
+    #[test]
+    fn test_urgency_level_display() {
+        assert_eq!(format!("{}", UrgencyLevel::Normal), "NORMAL");
+        assert_eq!(format!("{}", UrgencyLevel::Critical), "CRITICAL");
+    }
+
+    #[test]
+    fn test_parsed_item_with_urgency() {
+        let json = r#"{
+            "type": "REQUEST",
+            "medication": "Ozempic 1mg",
+            "medication_raw": "Ozempic 1mg",
+            "ai_confidence": 0.95,
+            "urgent": true,
+            "urgency_level": "CRITICAL",
+            "expiry": "2025-06"
+        }"#;
+
+        let item: ParsedItem = serde_json::from_str(json).unwrap();
+        assert_eq!(item.item_type, Intent::Request);
+        assert!(item.urgent);
+        assert_eq!(item.urgency_level, UrgencyLevel::Critical);
+        assert_eq!(item.expiry, Some("2025-06".to_string()));
+    }
+
+    #[test]
+    fn test_parsed_item_defaults() {
+        let json = r#"{
+            "type": "OFFER",
+            "medication": "Aspirin",
+            "medication_raw": "اسبرين"
+        }"#;
+
+        let item: ParsedItem = serde_json::from_str(json).unwrap();
+        assert!(!item.urgent);
+        assert_eq!(item.urgency_level, UrgencyLevel::Normal);
+        assert_eq!(item.expiry, None);
+        assert_eq!(item.quantity, 0.0);
+        assert_eq!(item.price, 0.0);
     }
 }

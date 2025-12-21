@@ -6,7 +6,9 @@
 use chrono::Utc;
 use tokio::sync::broadcast;
 
-use pharma_core::domain::{ItemStatus, Match, MatchStatus, Offer, RawMessage, Request};
+use pharma_core::domain::{
+    ItemStatus, Match, MatchStatus, Offer, RawMessage, Request, UrgencyLevel,
+};
 use pharma_core::matching::{MatchAction, Weights, cosine_similarity};
 use pharma_core::notify::{CompositeNotifier, MatchNotifier, NullNotifier};
 use pharma_core::ws::WsEvent;
@@ -53,6 +55,10 @@ fn create_offer() -> Offer {
         raw_message: "Selling Augmentin 1g - 50 boxes at 150 EGP".to_string(),
         status: ItemStatus::Active,
         content_embedding: None,
+        urgent: false,
+        urgency_level: UrgencyLevel::Normal,
+        expiry_info: None,
+        ai_confidence: 0.9,
         created_at: now,
         updated_at: now,
     }
@@ -75,6 +81,9 @@ fn create_matching_request() -> Request {
         max_price: 160.0, // Higher than offer price
         currency: Some("EGP".to_string()),
         urgent: false,
+        urgency_level: UrgencyLevel::Normal,
+        expiry_requirement: None,
+        ai_confidence: 0.9,
         notes: None,
         raw_message: "Looking for Augmentin 1g - need 30 boxes".to_string(),
         status: ItemStatus::Active,

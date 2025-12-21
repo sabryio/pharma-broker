@@ -15,7 +15,7 @@ use std::time::Instant;
 use colored::Colorize;
 use dialoguer::{Input, theme::ColorfulTheme};
 use pharma_core::ai::{
-    BatchMessage, ItemType, PharmaParser, PharmaParserConfig, TokenBatchConfig, TokenBatcher,
+    BatchMessage, Intent, PharmaParser, PharmaParserConfig, TokenBatchConfig, TokenBatcher,
 };
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::Semaphore;
@@ -268,7 +268,7 @@ async fn main() -> anyhow::Result<()> {
                 for item in items {
                     println!(
                         "       └─ {} {} (qty: {}, price: {}, conf: {:.0}%)",
-                        if item.item_type == ItemType::Offer {
+                        if item.item_type == Intent::Offer {
                             "🟢"
                         } else {
                             "🔵"

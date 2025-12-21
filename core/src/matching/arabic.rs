@@ -103,6 +103,10 @@ mod tests {
     #[test]
     fn test_normalize_for_matching() {
         assert_eq!(normalize_for_matching("أُوجْمَنْتِين"), "اوجمنتين");
-        assert_eq!(normalize_for_matching("Brufen 400mg"), "brufen 400mg");
+        // Dosage is stripped for matching purposes
+        assert_eq!(normalize_for_matching("Brufen 400mg"), "brufen");
+        assert_eq!(normalize_for_matching("Augmentin 1g"), "augmentin");
+        // Without dosage, just lowercased
+        assert_eq!(normalize_for_matching("Panadol"), "panadol");
     }
 }

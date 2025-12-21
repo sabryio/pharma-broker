@@ -29,7 +29,9 @@ Analyze the provided messages and extract structured medication OFFERS and REQUE
       "price": number | 0,
       "max_price": number | 0 (only for requests),
       "urgent": boolean,
-      "notes": "Any other relevant details (expiry, location)"
+      "urgency_level": "NORMAL" | "SOON" | "URGENT" | "CRITICAL",
+      "expiry": "YYYY-MM" | "description" | null,
+      "notes": "Any other relevant details (location, condition)"
     }
   ]
 }
@@ -37,7 +39,7 @@ Analyze the provided messages and extract structured medication OFFERS and REQUE
 # Thinking Process (Structured Thinking)
 Before generating valid JSON, strictly follow this internal process:
 1. [UNDERSTAND] Identify the intent (Buying vs Selling vs Spam).
-2. [ANALYZE] Locate medication names and their associated attributes (price, qty).
+2. [ANALYZE] Locate medication names and their associated attributes (price, qty, urgency, expiry).
 3. [STRATEGIZE] Handle complex cases:
     - Multi-concentration (e.g. "Concor 5 & 10") -> Split into 2 items.
     - Implicit quantities (e.g. "علبتين" = 2).
@@ -84,13 +86,49 @@ Before generating valid JSON, strictly follow this internal process:
 - For REQUESTs: max_price = 0 unless explicitly stated with "أقصى", "max", "حد أقصى".
 - Common price keywords: "ب", "بسعر", "السعر", "الواحدة ب", "للعلبة"
 
-## 4. Confidence Scoring (Confidence-Weighted)
+## 4. Urgency Level Extraction (IMPORTANT)
+Detect urgency from keywords and context:
+
+### CRITICAL (immediate need, life-threatening):
+**Arabic:** "طوارئ", "حالة طوارئ", "فوري", "حياة او موت", "ضروري جدا جدا"
+**English:** "emergency", "life or death", "critical", "immediately", "ASAP", "right now"
+
+### URGENT (needed very soon):
+**Arabic:** "ضروري", "مستعجل", "عاجل", "بسرعة", "النهاردة", "دلوقتي"
+**English:** "urgent", "urgently", "asap", "today", "now", "quickly"
+
+### SOON (needed in near future):
+**Arabic:** "قريب", "في اقرب وقت", "لو سمحت بسرعة"
+**English:** "soon", "as soon as possible", "within days"
+
+### NORMAL (default, no urgency indicated):
+- No urgency keywords present
+- Set urgency_level: "NORMAL" and urgent: false
+
+### Rules:
+- If ANY urgency keyword is found, set urgent: true
+- Set urgency_level based on the HIGHEST urgency detected
+- Multiple urgency words -> use the most urgent level
+
+## 5. Expiry Date Extraction
+Extract expiry/shelf life information when mentioned:
+
+### Patterns to detect:
+**Arabic:** "صلاحية", "تاريخ الصلاحية", "ينتهي", "حتى", "لغاية"
+**English:** "expiry", "expires", "exp", "valid until", "best before", "shelf life"
+
+### Format:
+- If specific date: Use "YYYY-MM" format (e.g., "2025-06")
+- If relative: Use description (e.g., "6 months", "long expiry", "short expiry")
+- If not mentioned: Set to null
+
+## 6. Confidence Scoring (Confidence-Weighted)
 - 1.0: Exact map match + clear price/qty.
 - 0.8: Clear intent + recognizable medication name.
 - 0.5: Ambiguous name or unclear if it's a medication.
 - <0.5: Likely noise.
 
-## 5. Exclusions (Negative Constraints)
+## 7. Exclusions (Negative Constraints)
 - IGNORE: "تواصل", "استفسار", "خاص", "موبيل", "010xxxx", "011xxxx".
 - IGNORE: "سعر", "بكام" (Price inquiries are NOT Requests unless explicit "Need").
 
@@ -102,7 +140,7 @@ Before generating valid JSON, strictly follow this internal process:
 
 # Examples (Few-Shot)
 
-## ✅ Arabic Example
+## ✅ Arabic Example (Normal)
 Input: "عندي 5 علب اوجمنتين 1 جم ب 300"
 Output:
 {
@@ -113,11 +151,13 @@ Output:
     "ai_confidence": 0.98,
     "quantity": 5,
     "unit": "boxes",
-    "price": 300
+    "price": 300,
+    "urgent": false,
+    "urgency_level": "NORMAL"
   }]
 }
 
-## ✅ English Example
+## ✅ English Example (Urgent)
 Input: "Looking for Ozempic 1mg urgently"
 Output:
 {
@@ -126,7 +166,40 @@ Output:
     "medication": "Ozempic 1mg",
     "medication_raw": "Ozempic 1mg",
     "ai_confidence": 0.98,
-    "urgent": true
+    "urgent": true,
+    "urgency_level": "URGENT"
+  }]
+}
+
+## ✅ Arabic Example (Critical with Expiry)
+Input: "طوارئ محتاج انسولين لانتوس فوري - صلاحية طويلة"
+Output:
+{
+  "items": [{
+    "type": "REQUEST",
+    "medication": "Lantus Insulin",
+    "medication_raw": "انسولين لانتوس",
+    "ai_confidence": 0.95,
+    "urgent": true,
+    "urgency_level": "CRITICAL",
+    "expiry": "long expiry",
+    "notes": "Emergency request"
+  }]
+}
+
+## ✅ Offer with Expiry
+Input: "متوفر كونكور 5 صلاحية 2025-08 ب 150"
+Output:
+{
+  "items": [{
+    "type": "OFFER",
+    "medication": "Concor 5mg",
+    "medication_raw": "كونكور 5",
+    "ai_confidence": 0.95,
+    "price": 150,
+    "urgent": false,
+    "urgency_level": "NORMAL",
+    "expiry": "2025-08"
   }]
 }
 

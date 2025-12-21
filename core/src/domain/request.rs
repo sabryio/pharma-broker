@@ -5,7 +5,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::ItemStatus;
+use super::{ItemStatus, UrgencyLevel};
 
 /// Represents a medication demand request
 /// Ported from Go: Request struct (entity.go:109-128)
@@ -23,7 +23,16 @@ pub struct Request {
     pub unit: Option<String>,
     pub max_price: f64,
     pub currency: Option<String>,
+    /// Urgency flag (backward compatible)
     pub urgent: bool,
+    /// Granular urgency level
+    #[serde(default)]
+    pub urgency_level: UrgencyLevel,
+    /// Expiry requirement from AI extraction (YYYY-MM or description)
+    pub expiry_requirement: Option<String>,
+    /// AI extraction confidence score
+    #[serde(default)]
+    pub ai_confidence: f64,
     pub notes: Option<String>,
     pub raw_message: String,
     pub status: ItemStatus,
@@ -49,6 +58,9 @@ impl Default for Request {
             max_price: 0.0,
             currency: None,
             urgent: false,
+            urgency_level: UrgencyLevel::Normal,
+            expiry_requirement: None,
+            ai_confidence: 0.0,
             notes: None,
             raw_message: String::new(),
             status: ItemStatus::Active,

@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::domain::{
     AuditLog, FeedbackRecord, Group, ItemStatus, Match, MatchStatus, Offer, RawMessage, Request,
-    ReviewQueueItem, ReviewStatus, WeightHistory,
+    ReviewQueueItem, ReviewStatus, UrgencyLevel, WeightHistory,
 };
 
 /// Global counter for unique schema names
@@ -119,6 +119,21 @@ impl TestDb {
             .await
             .expect("Failed to create test schema");
 
+        // Create urgency_level enum type in the schema
+        sqlx::query(&format!(
+            r#"
+            DO $$ BEGIN
+                CREATE TYPE {}.urgency_level AS ENUM ('NORMAL', 'SOON', 'URGENT', 'CRITICAL');
+            EXCEPTION
+                WHEN duplicate_object THEN null;
+            END $$
+            "#,
+            schema_name
+        ))
+        .execute(pool)
+        .await
+        .expect("Failed to create urgency_level enum");
+
         // Create raw_messages table
         sqlx::query(&format!(
             r#"
@@ -167,11 +182,15 @@ impl TestDb {
                 raw_message TEXT NOT NULL,
                 status VARCHAR NOT NULL DEFAULT 'ACTIVE',
                 content_embedding vector(768),
+                urgent BOOLEAN NOT NULL DEFAULT FALSE,
+                urgency_level {}.urgency_level NOT NULL DEFAULT 'NORMAL',
+                expiry_info VARCHAR(50),
+                ai_confidence DOUBLE PRECISION DEFAULT 0,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
             "#,
-            schema_name, schema_name
+            schema_name, schema_name, schema_name
         ))
         .execute(pool)
         .await
@@ -194,6 +213,9 @@ impl TestDb {
                 max_price DOUBLE PRECISION NOT NULL DEFAULT 0,
                 currency TEXT,
                 urgent BOOLEAN NOT NULL DEFAULT FALSE,
+                urgency_level {}.urgency_level NOT NULL DEFAULT 'NORMAL',
+                expiry_requirement VARCHAR(50),
+                ai_confidence DOUBLE PRECISION DEFAULT 0,
                 notes TEXT,
                 raw_message TEXT NOT NULL,
                 status VARCHAR NOT NULL DEFAULT 'ACTIVE',
@@ -202,7 +224,7 @@ impl TestDb {
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
             "#,
-            schema_name, schema_name
+            schema_name, schema_name, schema_name
         ))
         .execute(pool)
         .await
@@ -458,6 +480,10 @@ pub fn new_test_offer(raw_message_id: &str) -> Offer {
         raw_message: "للبيع: Augmentin 1g - 50 علبة".to_string(),
         status: ItemStatus::Active,
         content_embedding: None,
+        urgent: false,
+        urgency_level: UrgencyLevel::Normal,
+        expiry_info: None,
+        ai_confidence: 0.9,
         created_at: now,
         updated_at: now,
     }
@@ -481,6 +507,9 @@ pub fn new_test_request(raw_message_id: &str) -> Request {
         max_price: 160.0,
         currency: Some("EGP".to_string()),
         urgent: false,
+        urgency_level: UrgencyLevel::Normal,
+        expiry_requirement: None,
+        ai_confidence: 0.9,
         notes: None,
         raw_message: "مطلوب: أوجمنتين 1 جرام - 20 علبة".to_string(),
         status: ItemStatus::Active,
