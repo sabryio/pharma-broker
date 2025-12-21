@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"pharma-bridge/deduplicator"
 	"pharma-bridge/historysync"
 	pb "pharma-bridge/proto"
+	"pharma-bridge/qr"
 	"pharma-bridge/reconnector"
 	"pharma-bridge/resilience"
 )
@@ -38,7 +40,7 @@ func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	log.Info().Msg("🌉 PharmaBroker WhatsApp Bridge v0.2.0")
+	log.Info().Msg("🌉 PharmaBroker WhatsApp Bridge v0.3.0")
 
 	// Load configuration
 	cfg := loadConfig()
@@ -75,15 +77,24 @@ type Config struct {
 	AllowedPhones   []string
 	MonitoredGroups []string
 	SkipOwnMessages bool
+	QRMaxRetries    int // Maximum QR code attempts before giving up (0 = infinite)
 }
 
 func loadConfig() *Config {
+	qrRetries := 5 // Default: 5 attempts
+	if v := os.Getenv("QR_MAX_RETRIES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			qrRetries = n
+		}
+	}
+
 	return &Config{
 		CoreGRPCAddr:    getEnv("CORE_GRPC_ADDR", "localhost:50051"),
 		WhatsAppStore:   getEnv("WHATSAPP_STORE", "./data/whatsapp.db"),
 		AllowedPhones:   []string{},
 		MonitoredGroups: []string{},
 		SkipOwnMessages: true,
+		QRMaxRetries:    qrRetries,
 	}
 }
 
@@ -113,6 +124,10 @@ type Bridge struct {
 
 	// History sync handler
 	historySync *historysync.Handler
+
+	// QR code handler
+	qrHandler *qr.Handler
+	qrConfig  qr.Config
 
 	// Ordered processing
 	workers []chan *events.Message
@@ -189,6 +204,14 @@ func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
 	// Create history sync handler
 	historyHandler := historysync.New(historysync.DefaultConfig(), log.Logger)
 
+	// Create QR handler
+	qrConfig := qr.Config{
+		RenderTerminal: true,
+		QRTimeout:      60 * time.Second,
+		MaxRetries:     cfg.QRMaxRetries,
+	}
+	qrHandler := qr.New(qrConfig, log.Logger)
+
 	b := &Bridge{
 		cfg:          cfg,
 		store:        container,
@@ -201,6 +224,8 @@ func NewBridge(ctx context.Context, cfg *Config) (*Bridge, error) {
 		circuit:      circuit,
 		rateLimiter:  rateLimiter,
 		historySync:  historyHandler,
+		qrHandler:    qrHandler,
+		qrConfig:     qrConfig,
 		workers:      make([]chan *events.Message, 20), // 20 workers for ordered processing
 	}
 
@@ -255,22 +280,69 @@ func (b *Bridge) connect(ctx context.Context) error {
 
 	// Connect to WhatsApp
 	if b.wa.Store.ID == nil {
-		// Need to pair
-		qrChan, _ := b.wa.GetQRChannel(ctx)
-		if err := b.wa.Connect(); err != nil {
-			return fmt.Errorf("failed to connect: %w", err)
-		}
+		// Need to pair - get QR code with retry support
+		qrAttempt := 0
+		maxRetries := b.cfg.QRMaxRetries
 
-		for evt := range qrChan {
-			if evt.Event == "code" {
-				b.logger.Info().Str("qr", evt.Code).Msg("Scan this QR code to link")
-				fmt.Println("QR Code:", evt.Code)
-			} else {
-				b.logger.Info().Str("event", evt.Event).Msg("QR event")
+		for {
+			qrAttempt++
+			b.logger.Info().
+				Int("attempt", qrAttempt).
+				Int("max_retries", maxRetries).
+				Msg("📱 Starting QR code pairing...")
+
+			qrChan, _ := b.wa.GetQRChannel(ctx)
+			if err := b.wa.Connect(); err != nil {
+				b.qrHandler.HandleError(err)
+				return fmt.Errorf("failed to connect: %w", err)
+			}
+
+			paired := false
+			for evt := range qrChan {
+				switch evt.Event {
+				case "code":
+					// Handle QR code - renders in terminal + broadcasts to WebSocket
+					b.qrHandler.HandleQRCode(evt.Code, b.qrConfig)
+				case "success":
+					b.qrHandler.HandleEvent("success", b.qrConfig)
+					b.logger.Info().Msg("✅ WhatsApp paired successfully")
+					paired = true
+				case "timeout":
+					b.qrHandler.HandleEvent("timeout", b.qrConfig)
+					b.logger.Warn().
+						Int("attempt", qrAttempt).
+						Int("max_retries", maxRetries).
+						Msg("⏰ QR code expired")
+				default:
+					b.qrHandler.HandleEvent(evt.Event, b.qrConfig)
+				}
+			}
+
+			if paired {
+				break
+			}
+
+			// Check if we should retry
+			if maxRetries > 0 && qrAttempt >= maxRetries {
+				return fmt.Errorf("QR code pairing failed after %d attempts - please restart", qrAttempt)
+			}
+
+			// Disconnect and retry
+			b.wa.Disconnect()
+			b.logger.Info().
+				Int("attempt", qrAttempt).
+				Msg("🔄 Retrying QR code pairing in 5 seconds...")
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+				// Continue to next attempt
 			}
 		}
 	} else {
 		// Already paired
+		b.qrHandler.SetPaired()
 		if err := b.wa.Connect(); err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
@@ -296,6 +368,9 @@ func (b *Bridge) Stop() {
 	}
 	if b.reconnector != nil {
 		b.reconnector.Stop()
+	}
+	if b.qrHandler != nil {
+		b.qrHandler.Close()
 	}
 	b.logger.Info().Msg("Bridge stopped")
 }
@@ -663,6 +738,8 @@ func startHealthServer(bridge *Bridge) {
 	port := getEnv("HEALTH_PORT", "5050")
 
 	mux := http.NewServeMux()
+
+	// Health endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		whatsappConnected := bridge.wa != nil && bridge.wa.IsConnected()
 		coreConnected := bridge.grpcConn != nil
@@ -688,7 +765,7 @@ func startHealthServer(bridge *Bridge) {
 		response := map[string]any{
 			"status":             status,
 			"service":            "pharma-bridge",
-			"version":            "0.2.0",
+			"version":            "0.3.0",
 			"whatsapp_connected": whatsappConnected,
 			"core_connected":     coreConnected,
 			"messages_forwarded": atomic.LoadInt64(&messagesForwarded),
@@ -706,7 +783,14 @@ func startHealthServer(bridge *Bridge) {
 		json.NewEncoder(w).Encode(response)
 	})
 
+	// QR code endpoints
+	mux.HandleFunc("/qr", bridge.qrHandler.HTMLHandler)         // HTML page with QR
+	mux.HandleFunc("/qr/json", bridge.qrHandler.HTTPHandler)    // JSON API
+	mux.HandleFunc("/qr/ws", bridge.qrHandler.WebSocketHandler) // WebSocket for real-time
+
 	log.Info().Str("port", port).Msg("🏥 Health server starting")
+	log.Info().Str("url", "http://localhost:"+port+"/qr").Msg("📱 QR code available at")
+
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Error().Err(err).Msg("Health server failed")
 	}
