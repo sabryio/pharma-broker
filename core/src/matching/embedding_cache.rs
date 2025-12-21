@@ -252,12 +252,11 @@ impl EmbeddingCache {
     /// Get all synonyms for a term
     pub fn get_all_synonyms(&self, term: &str) -> Vec<String> {
         let index = self.synonym_index.read().unwrap();
-        if let Some(idx) = index.as_ref() {
-            if let Some(canonical) = idx.get_canonical(term) {
-                if let Some(synonyms) = idx.get_synonyms(canonical) {
-                    return synonyms.iter().cloned().collect();
-                }
-            }
+        if let Some(idx) = index.as_ref()
+            && let Some(canonical) = idx.get_canonical(term)
+            && let Some(synonyms) = idx.get_synonyms(canonical)
+        {
+            return synonyms.iter().cloned().collect();
         }
         Vec::new()
     }

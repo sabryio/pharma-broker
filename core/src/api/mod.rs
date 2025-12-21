@@ -2,10 +2,13 @@
 //!
 //! Ported from legacy/api/handlers/*.go
 
+pub mod audit_trail;
 pub mod calibration;
 pub mod confidence;
+pub mod embedding_cache;
 pub mod groups;
 pub mod handlers;
+pub mod match_filter;
 pub mod middleware;
 pub mod rate_limit;
 pub mod review_queue;

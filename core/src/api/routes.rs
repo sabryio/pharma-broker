@@ -13,7 +13,10 @@ use axum::{
 use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::broadcast;
 
-use super::{calibration, confidence, groups, handlers, review_queue, weights};
+use super::{
+    audit_trail, calibration, confidence, embedding_cache, groups, handlers, match_filter,
+    review_queue, weights,
+};
 use crate::matching::MatchingEngine;
 use crate::repository::{
     AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
@@ -182,6 +185,73 @@ where
         .route(
             "/api/calibration/calibrate",
             post(calibration::calibrate_score::<RQ, A, MM>),
+        )
+        // Match Filter Management
+        .route(
+            "/api/match-filter",
+            get(match_filter::get_match_filter::<RQ, A, MM>),
+        )
+        .route(
+            "/api/match-filter",
+            put(match_filter::update_match_filter::<RQ, A, MM>),
+        )
+        .route(
+            "/api/match-filter/stale",
+            post(match_filter::toggle_stale_filter::<RQ, A, MM>),
+        )
+        .route(
+            "/api/match-filter/same-sender",
+            post(match_filter::toggle_same_sender::<RQ, A, MM>),
+        )
+        .route(
+            "/api/match-filter/stats/reset",
+            post(match_filter::reset_stats::<RQ, A, MM>),
+        )
+        // Embedding Cache Management
+        .route(
+            "/api/embedding-cache",
+            get(embedding_cache::get_cache_stats::<RQ, A, MM>),
+        )
+        .route(
+            "/api/embedding-cache/refresh",
+            post(embedding_cache::refresh_cache::<RQ, A, MM>),
+        )
+        .route(
+            "/api/embedding-cache/clear",
+            post(embedding_cache::clear_cache::<RQ, A, MM>),
+        )
+        .route(
+            "/api/embedding-cache/lookup/{term}",
+            get(embedding_cache::lookup_term::<RQ, A, MM>),
+        )
+        .route(
+            "/api/embedding-cache/synonyms",
+            post(embedding_cache::check_synonyms::<RQ, A, MM>),
+        )
+        .route(
+            "/api/embedding-cache/embedding/{term}",
+            get(embedding_cache::get_embedding::<RQ, A, MM>),
+        )
+        // Audit Trail Management
+        .route(
+            "/api/audit-trail",
+            get(audit_trail::get_audit_trail::<RQ, A, MM>),
+        )
+        .route(
+            "/api/audit-trail",
+            put(audit_trail::update_audit_trail::<RQ, A, MM>),
+        )
+        .route(
+            "/api/audit-trail/enable",
+            post(audit_trail::toggle_audit_trail::<RQ, A, MM>),
+        )
+        .route(
+            "/api/audit-trail/match/{match_id}",
+            get(audit_trail::get_match_history::<RQ, A, MM>),
+        )
+        .route(
+            "/api/audit-trail/recent",
+            get(audit_trail::get_recent_actions::<RQ, A, MM>),
         )
         // WebSocket
         .route("/ws", get(ws::ws_handler::<RQ, A, MM>))

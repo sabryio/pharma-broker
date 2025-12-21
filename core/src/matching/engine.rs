@@ -7,19 +7,23 @@
 //! - WarmStartManager (cold start handling)
 //! - ABTestManager (A/B testing)
 //! - OutlierDetector (anomaly filtering)
+//! - MatchFilter (stale/same-sender filtering)
+//! - EmbeddingCache (medication embedding cache)
+//! - AuditTrail (comprehensive audit logging)
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use super::{
-    ABTestConfig, ABTestManager, ABTestResult, AutoActionHandler, CalibrationConfig,
-    CalibrationReport, ConfidenceCalibrator, ConfidenceConfig, ConfidenceManager,
-    ConfidenceManagerStats, LearnerError, MatchAction, MatchScore, OutlierDetector,
-    OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig, SchedulerStatus, Scorer,
-    WarmStartConfig, WarmStartManager, WeightLearner, Weights,
+    ABTestConfig, ABTestManager, ABTestResult, AuditTrail, AuditTrailConfig, AutoActionHandler,
+    CalibrationConfig, CalibrationReport, ConfidenceCalibrator, ConfidenceConfig,
+    ConfidenceManager, ConfidenceManagerStats, EmbeddingCache, EmbeddingCacheStatsSnapshot,
+    LearnerError, MatchAction, MatchFilter, MatchFilterConfig, MatchFilterStatsSnapshot,
+    MatchScore, OutlierDetector, OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig,
+    SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
 };
-use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackStats};
+use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackStats, MedicationMapping};
 use crate::domain::{Match as MatchEntity, Offer, Request};
 use crate::notify::MatchNotifier;
 use crate::repository::{AuditLogRepository, FeedbackRecordRepository};
@@ -39,6 +43,10 @@ pub struct MatchingEngineConfig {
     pub confidence: ConfidenceConfig,
     /// Calibration settings
     pub calibration: CalibrationConfig,
+    /// Match filter settings
+    pub match_filter: MatchFilterConfig,
+    /// Audit trail settings
+    pub audit_trail: AuditTrailConfig,
 }
 
 /// Unified matching engine orchestrating all components
@@ -57,6 +65,12 @@ pub struct MatchingEngine {
     confidence_manager: ConfidenceManager,
     /// Confidence calibrator
     calibrator: ConfidenceCalibrator,
+    /// Match filter (stale/same-sender)
+    match_filter: MatchFilter,
+    /// Embedding cache for medications
+    embedding_cache: EmbeddingCache,
+    /// Audit trail for match actions
+    audit_trail: AuditTrail,
     /// Configuration
     config: RwLock<MatchingEngineConfig>,
     /// Current sample count for warm start
@@ -89,6 +103,9 @@ impl MatchingEngine {
         let outlier_detector = OutlierDetector::new(config.outlier_detector.clone());
         let confidence_manager = ConfidenceManager::new(config.confidence.clone());
         let calibrator = ConfidenceCalibrator::new(config.calibration.clone());
+        let match_filter = MatchFilter::new(config.match_filter.clone());
+        let embedding_cache = EmbeddingCache::new();
+        let audit_trail = AuditTrail::new(config.audit_trail.clone());
 
         Self {
             scorer,
@@ -98,6 +115,9 @@ impl MatchingEngine {
             outlier_detector,
             confidence_manager,
             calibrator,
+            match_filter,
+            embedding_cache,
+            audit_trail,
             config: RwLock::new(config),
             sample_count: RwLock::new(0),
             scheduler_handle: RwLock::new(None),
@@ -161,11 +181,25 @@ impl MatchingEngine {
     }
 
     /// Process a MatchAction (notify, auto-confirm, etc.)
+    /// Now includes audit trail logging
     pub async fn process_match_action(
         &self,
         match_entity: &MatchEntity,
         action: MatchAction,
     ) -> crate::Result<()> {
+        // Log to audit trail first
+        let reason = match action {
+            MatchAction::AutoConfirm => "High confidence auto-confirmation",
+            MatchAction::SuggestToOperator => "Medium confidence - suggested to operator",
+            MatchAction::QueueForReview => "Low confidence - queued for review",
+            MatchAction::Ignore => "Below threshold - ignored",
+        };
+
+        if let Err(e) = self.log_match_action(match_entity, action, reason).await {
+            tracing::warn!(error = %e, "Failed to log match action to audit trail");
+        }
+
+        // Process notifications
         match action {
             MatchAction::AutoConfirm => {
                 // Notifying about auto-confirmation
@@ -601,6 +635,12 @@ impl MatchingEngine {
         // Update calibrator
         self.calibrator.set_config(config.calibration.clone());
 
+        // Update match filter
+        self.match_filter.set_config(config.match_filter.clone());
+
+        // Update audit trail
+        self.audit_trail.set_config(config.audit_trail.clone());
+
         // Update A/B test base weights
         self.ab_test.set_base_weights(config.weights.clone());
 
@@ -624,6 +664,199 @@ impl MatchingEngine {
     pub fn learner(&self) -> &WeightLearner {
         &self.learner
     }
+
+    // =========================================================================
+    // Match Filter (Stale/Same-Sender Filtering)
+    // =========================================================================
+
+    /// Filter offers for a request (removes stale and same-sender)
+    pub fn filter_offers_for_request<'a>(
+        &self,
+        offers: &'a [Offer],
+        request: &Request,
+    ) -> Vec<&'a Offer> {
+        self.match_filter.filter_offers(offers, request)
+    }
+
+    /// Filter requests for an offer (removes stale and same-sender)
+    pub fn filter_requests_for_offer<'a>(
+        &self,
+        requests: &'a [Request],
+        offer: &Offer,
+    ) -> Vec<&'a Request> {
+        self.match_filter.filter_requests(requests, offer)
+    }
+
+    /// Get match filter statistics
+    pub fn get_match_filter_stats(&self) -> MatchFilterStatsSnapshot {
+        self.match_filter.get_stats()
+    }
+
+    /// Get match filter configuration
+    pub fn get_match_filter_config(&self) -> MatchFilterConfig {
+        self.match_filter.get_config()
+    }
+
+    /// Update match filter configuration
+    pub fn set_match_filter_config(&self, config: MatchFilterConfig) {
+        self.match_filter.set_config(config);
+    }
+
+    /// Enable or disable stale offer filtering
+    pub fn enable_stale_filter(&self, enabled: bool) {
+        self.match_filter.enable_stale_filter(enabled);
+    }
+
+    /// Enable or disable same-sender exclusion
+    pub fn enable_same_sender_exclusion(&self, enabled: bool) {
+        self.match_filter.enable_same_sender_exclusion(enabled);
+    }
+
+    /// Set maximum offer age for stale filtering
+    pub fn set_max_offer_age_days(&self, days: i64) {
+        self.match_filter.set_max_offer_age_days(days);
+    }
+
+    /// Reset match filter statistics
+    pub fn reset_match_filter_stats(&self) {
+        self.match_filter.reset_stats();
+    }
+
+    // =========================================================================
+    // Embedding Cache (Medication Embeddings)
+    // =========================================================================
+
+    /// Refresh the embedding cache from medication mappings
+    pub fn refresh_embedding_cache(&self, mappings: &[MedicationMapping]) {
+        self.embedding_cache.refresh(mappings);
+        tracing::info!(
+            count = mappings.len(),
+            "Refreshed embedding cache from medication mappings"
+        );
+    }
+
+    /// Get embedding for a medication term
+    pub fn get_medication_embedding(&self, term: &str) -> Option<Vec<f32>> {
+        self.embedding_cache.get_embedding(term)
+    }
+
+    /// Check if two medication terms are synonyms
+    pub fn are_medications_synonyms(&self, term1: &str, term2: &str) -> bool {
+        self.embedding_cache.are_synonyms(term1, term2)
+    }
+
+    /// Get canonical name for a medication term
+    pub fn get_canonical_medication(&self, term: &str) -> Option<String> {
+        self.embedding_cache.get_canonical(term)
+    }
+
+    /// Get all synonyms for a medication term
+    pub fn get_medication_synonyms(&self, term: &str) -> Vec<String> {
+        self.embedding_cache.get_all_synonyms(term)
+    }
+
+    /// Get embedding cache statistics
+    pub fn get_embedding_cache_stats(&self) -> EmbeddingCacheStatsSnapshot {
+        self.embedding_cache.get_stats()
+    }
+
+    /// Check if embedding cache is empty
+    pub fn is_embedding_cache_empty(&self) -> bool {
+        self.embedding_cache.is_empty()
+    }
+
+    /// Clear the embedding cache
+    pub fn clear_embedding_cache(&self) {
+        self.embedding_cache.clear();
+    }
+
+    // =========================================================================
+    // Audit Trail (Match Action Logging)
+    // =========================================================================
+
+    /// Log a match action to the audit trail
+    pub async fn log_match_action(
+        &self,
+        match_entity: &MatchEntity,
+        action: MatchAction,
+        reason: &str,
+    ) -> Result<(), super::AuditError> {
+        // Convert MatchAction to ActionType
+        let action_type = match action {
+            MatchAction::AutoConfirm => super::ActionType::AutoConfirm,
+            MatchAction::SuggestToOperator => super::ActionType::SuggestToOperator,
+            MatchAction::QueueForReview => super::ActionType::QueueForReview,
+            MatchAction::Ignore => super::ActionType::Ignore,
+        };
+
+        self.audit_trail
+            .log_match_action(
+                &match_entity.id,
+                &match_entity.offer_id,
+                &match_entity.request_id,
+                action_type,
+                match_entity.score,
+                match_entity.status.clone(),
+                reason,
+                Some(serde_json::json!({
+                    "reasoning": &match_entity.reasoning,
+                })),
+            )
+            .await
+    }
+
+    /// Log a configuration change to the audit trail
+    pub async fn log_config_change(
+        &self,
+        config_type: &str,
+        old_value: serde_json::Value,
+        new_value: serde_json::Value,
+        actor: &str,
+    ) -> Result<(), super::AuditError> {
+        self.audit_trail
+            .log_config_change(config_type, old_value, new_value, actor)
+            .await
+    }
+
+    /// Log a calibration reset to the audit trail
+    pub async fn log_calibration_reset(
+        &self,
+        actor: &str,
+        reason: &str,
+    ) -> Result<(), super::AuditError> {
+        self.audit_trail.log_calibration_reset(actor, reason).await
+    }
+
+    /// Get match history from audit trail
+    pub async fn get_match_audit_history(
+        &self,
+        match_id: &str,
+    ) -> Result<Vec<super::AuditEntry>, super::AuditError> {
+        self.audit_trail.get_match_history(match_id).await
+    }
+
+    /// Get recent audit actions
+    pub async fn get_recent_audit_actions(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<super::AuditEntry>, super::AuditError> {
+        self.audit_trail.get_recent_actions(limit).await
+    }
+
+    /// Get audit trail configuration
+    pub fn get_audit_trail_config(&self) -> AuditTrailConfig {
+        self.audit_trail.get_config()
+    }
+
+    /// Update audit trail configuration
+    pub fn set_audit_trail_config(&self, config: AuditTrailConfig) {
+        self.audit_trail.set_config(config);
+    }
+
+    /// Enable or disable audit trail
+    pub fn enable_audit_trail(&self, enabled: bool) {
+        self.audit_trail.enable(enabled);
+    }
 }
 
 // =============================================================================
@@ -635,6 +868,7 @@ mod tests {
     use chrono::{Duration, Utc};
 
     use super::*;
+    use crate::domain::MatchStatus;
 
     #[tokio::test]
     async fn test_create_matching_engine() {
@@ -751,5 +985,156 @@ mod tests {
 
         let weights = engine.get_weights();
         assert!((weights.medication - 0.50).abs() < 0.001);
+    }
+
+    // =========================================================================
+    // Match Filter Integration Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_match_filter_integration() {
+        let engine = MatchingEngine::default();
+
+        let request = Request {
+            id: "req-1".to_string(),
+            source_phone: "buyer-phone".to_string(),
+            ..Default::default()
+        };
+
+        let offers = vec![
+            Offer {
+                id: "offer-1".to_string(),
+                source_phone: "seller-1".to_string(),
+                created_at: Utc::now(),
+                ..Default::default()
+            },
+            Offer {
+                id: "offer-2".to_string(),
+                source_phone: "buyer-phone".to_string(), // Same as buyer
+                created_at: Utc::now(),
+                ..Default::default()
+            },
+            Offer {
+                id: "offer-3".to_string(),
+                source_phone: "seller-3".to_string(),
+                created_at: Utc::now() - Duration::days(10), // Stale
+                ..Default::default()
+            },
+        ];
+
+        let filtered = engine.filter_offers_for_request(&offers, &request);
+
+        // Only offer-1 should pass (offer-2 same sender, offer-3 stale)
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "offer-1");
+    }
+
+    #[tokio::test]
+    async fn test_match_filter_stats() {
+        let engine = MatchingEngine::default();
+
+        let request = Request {
+            id: "req-1".to_string(),
+            source_phone: "buyer".to_string(),
+            ..Default::default()
+        };
+
+        let offers = vec![Offer {
+            id: "offer-1".to_string(),
+            source_phone: "seller".to_string(),
+            created_at: Utc::now(),
+            ..Default::default()
+        }];
+
+        engine.filter_offers_for_request(&offers, &request);
+
+        let stats = engine.get_match_filter_stats();
+        assert_eq!(stats.total_candidates, 1);
+        assert_eq!(stats.passed_filters, 1);
+    }
+
+    // =========================================================================
+    // Embedding Cache Integration Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_embedding_cache_integration() {
+        let engine = MatchingEngine::default();
+
+        assert!(engine.is_embedding_cache_empty());
+
+        let mappings = vec![MedicationMapping {
+            id: "1".to_string(),
+            arabic_name: "بروفين".to_string(),
+            english_name: "Brufen".to_string(),
+            synonyms: Some(vec!["Ibuprofen".to_string()]),
+            embedding: Some(pgvector::Vector::from(vec![0.1, 0.2, 0.3])),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }];
+
+        engine.refresh_embedding_cache(&mappings);
+
+        assert!(!engine.is_embedding_cache_empty());
+
+        // Test embedding retrieval
+        let emb = engine.get_medication_embedding("Brufen");
+        assert!(emb.is_some());
+
+        // Test synonym check
+        assert!(engine.are_medications_synonyms("Brufen", "Ibuprofen"));
+        assert!(engine.are_medications_synonyms("بروفين", "Brufen"));
+
+        // Test canonical name
+        let canonical = engine.get_canonical_medication("Ibuprofen");
+        assert_eq!(canonical, Some("brufen".to_string()));
+    }
+
+    // =========================================================================
+    // Audit Trail Integration Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_audit_trail_integration() {
+        let engine = MatchingEngine::default();
+
+        let match_entity = MatchEntity {
+            id: "match-123".to_string(),
+            offer_id: "offer-456".to_string(),
+            request_id: "request-789".to_string(),
+            score: 0.95,
+            status: MatchStatus::Confirmed,
+            reasoning: "High confidence match".to_string(),
+            ..Default::default()
+        };
+
+        // Log a match action
+        let result = engine
+            .log_match_action(&match_entity, MatchAction::AutoConfirm, "Test action")
+            .await;
+        assert!(result.is_ok());
+
+        // Get match history
+        let history = engine.get_match_audit_history("match-123").await.unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].match_id, Some("match-123".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_audit_trail_config_change() {
+        let engine = MatchingEngine::default();
+
+        let result = engine
+            .log_config_change(
+                "confidence_threshold",
+                serde_json::json!(0.7),
+                serde_json::json!(0.8),
+                "admin",
+            )
+            .await;
+        assert!(result.is_ok());
+
+        let recent = engine.get_recent_audit_actions(10).await.unwrap();
+        assert_eq!(recent.len(), 1);
     }
 }
