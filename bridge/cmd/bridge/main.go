@@ -166,7 +166,7 @@ func provideWhatsAppClient(
 	cfg *config.Config,
 	qrHandler *qradapter.HandlerAdapter,
 	logger zerolog.Logger,
-) (ports.MessageSource, error) {
+) (*whatsapp.Client, error) {
 	client, err := whatsapp.NewClient(context.Background(), whatsapp.ClientConfig{
 		StorePath:    cfg.WhatsApp.StorePath,
 		QRMaxRetries: cfg.WhatsApp.QRRetries,
@@ -187,7 +187,7 @@ func provideWhatsAppClient(
 }
 
 func provideBridge(
-	source ports.MessageSource,
+	waClient *whatsapp.Client,
 	sink ports.MessageSink,
 	groupCache ports.GroupCache,
 	coreSender *grpcadapter.CoreSender,
@@ -197,13 +197,15 @@ func provideBridge(
 	logger zerolog.Logger,
 ) *app.Bridge {
 	return app.NewBridge(app.BridgeParams{
-		Source:      source,
-		Sink:        sink,
-		GroupCache:  groupCache,
-		GroupRepo:   coreSender,
-		Dedup:       dedup,
-		RateLimiter: rateLimiter,
-		Logger:      logger,
+		Source:        waClient,
+		Sink:          sink,
+		GroupCache:    groupCache,
+		GroupRepo:     coreSender,
+		GroupSyncer:   coreSender,
+		GroupProvider: waClient,
+		Dedup:         dedup,
+		RateLimiter:   rateLimiter,
+		Logger:        logger,
 		Config: app.BridgeConfig{
 			SkipOwnMessages:   cfg.Processing.SkipOwnMessages,
 			WorkerCount:       cfg.Processing.WorkerCount,
@@ -298,12 +300,12 @@ func healthHandler(deps HealthDeps) gin.HandlerFunc {
 	}
 }
 
-func startBridge(lc fx.Lifecycle, bridge *app.Bridge, source ports.MessageSource, logger zerolog.Logger) {
+func startBridge(lc fx.Lifecycle, bridge *app.Bridge, waClient *whatsapp.Client, logger zerolog.Logger) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			// Start WhatsApp connection in background to not block HTTP server
 			go func() {
-				if err := source.Connect(context.Background()); err != nil {
+				if err := waClient.Connect(context.Background()); err != nil {
 					logger.Error().Err(err).Msg("Failed to connect WhatsApp")
 					return
 				}

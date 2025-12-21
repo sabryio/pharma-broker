@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v6.33.2
-// source: pharma.proto
+// source: proto/pharma.proto
 
 package proto
 
@@ -43,7 +43,7 @@ type RawMessage struct {
 
 func (x *RawMessage) Reset() {
 	*x = RawMessage{}
-	mi := &file_pharma_proto_msgTypes[0]
+	mi := &file_proto_pharma_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -55,7 +55,7 @@ func (x *RawMessage) String() string {
 func (*RawMessage) ProtoMessage() {}
 
 func (x *RawMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_pharma_proto_msgTypes[0]
+	mi := &file_proto_pharma_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -68,7 +68,7 @@ func (x *RawMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RawMessage.ProtoReflect.Descriptor instead.
 func (*RawMessage) Descriptor() ([]byte, []int) {
-	return file_pharma_proto_rawDescGZIP(), []int{0}
+	return file_proto_pharma_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *RawMessage) GetId() string {
@@ -167,7 +167,7 @@ type ProcessResponse struct {
 
 func (x *ProcessResponse) Reset() {
 	*x = ProcessResponse{}
-	mi := &file_pharma_proto_msgTypes[1]
+	mi := &file_proto_pharma_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -179,7 +179,7 @@ func (x *ProcessResponse) String() string {
 func (*ProcessResponse) ProtoMessage() {}
 
 func (x *ProcessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pharma_proto_msgTypes[1]
+	mi := &file_proto_pharma_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -192,7 +192,7 @@ func (x *ProcessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessResponse.ProtoReflect.Descriptor instead.
 func (*ProcessResponse) Descriptor() ([]byte, []int) {
-	return file_pharma_proto_rawDescGZIP(), []int{1}
+	return file_proto_pharma_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ProcessResponse) GetSuccess() bool {
@@ -225,7 +225,7 @@ type StatsRequest struct {
 
 func (x *StatsRequest) Reset() {
 	*x = StatsRequest{}
-	mi := &file_pharma_proto_msgTypes[2]
+	mi := &file_proto_pharma_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -237,7 +237,7 @@ func (x *StatsRequest) String() string {
 func (*StatsRequest) ProtoMessage() {}
 
 func (x *StatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pharma_proto_msgTypes[2]
+	mi := &file_proto_pharma_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -250,7 +250,7 @@ func (x *StatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatsRequest.ProtoReflect.Descriptor instead.
 func (*StatsRequest) Descriptor() ([]byte, []int) {
-	return file_pharma_proto_rawDescGZIP(), []int{2}
+	return file_proto_pharma_proto_rawDescGZIP(), []int{2}
 }
 
 // StatsResponse with current system statistics
@@ -268,7 +268,7 @@ type StatsResponse struct {
 
 func (x *StatsResponse) Reset() {
 	*x = StatsResponse{}
-	mi := &file_pharma_proto_msgTypes[3]
+	mi := &file_proto_pharma_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -280,7 +280,7 @@ func (x *StatsResponse) String() string {
 func (*StatsResponse) ProtoMessage() {}
 
 func (x *StatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pharma_proto_msgTypes[3]
+	mi := &file_proto_pharma_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -293,7 +293,7 @@ func (x *StatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatsResponse.ProtoReflect.Descriptor instead.
 func (*StatsResponse) Descriptor() ([]byte, []int) {
-	return file_pharma_proto_rawDescGZIP(), []int{3}
+	return file_proto_pharma_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *StatsResponse) GetActiveOffers() int64 {
@@ -347,7 +347,7 @@ type HealthRequest struct {
 
 func (x *HealthRequest) Reset() {
 	*x = HealthRequest{}
-	mi := &file_pharma_proto_msgTypes[4]
+	mi := &file_proto_pharma_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -359,7 +359,7 @@ func (x *HealthRequest) String() string {
 func (*HealthRequest) ProtoMessage() {}
 
 func (x *HealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pharma_proto_msgTypes[4]
+	mi := &file_proto_pharma_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -372,7 +372,7 @@ func (x *HealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthRequest.ProtoReflect.Descriptor instead.
 func (*HealthRequest) Descriptor() ([]byte, []int) {
-	return file_pharma_proto_rawDescGZIP(), []int{4}
+	return file_proto_pharma_proto_rawDescGZIP(), []int{4}
 }
 
 // HealthResponse indicating service health
@@ -387,7 +387,7 @@ type HealthResponse struct {
 
 func (x *HealthResponse) Reset() {
 	*x = HealthResponse{}
-	mi := &file_pharma_proto_msgTypes[5]
+	mi := &file_proto_pharma_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -399,7 +399,7 @@ func (x *HealthResponse) String() string {
 func (*HealthResponse) ProtoMessage() {}
 
 func (x *HealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pharma_proto_msgTypes[5]
+	mi := &file_proto_pharma_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -412,7 +412,7 @@ func (x *HealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthResponse.ProtoReflect.Descriptor instead.
 func (*HealthResponse) Descriptor() ([]byte, []int) {
-	return file_pharma_proto_rawDescGZIP(), []int{5}
+	return file_proto_pharma_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *HealthResponse) GetHealthy() bool {
@@ -445,7 +445,7 @@ type MonitoredGroupsRequest struct {
 
 func (x *MonitoredGroupsRequest) Reset() {
 	*x = MonitoredGroupsRequest{}
-	mi := &file_pharma_proto_msgTypes[6]
+	mi := &file_proto_pharma_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -457,7 +457,7 @@ func (x *MonitoredGroupsRequest) String() string {
 func (*MonitoredGroupsRequest) ProtoMessage() {}
 
 func (x *MonitoredGroupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pharma_proto_msgTypes[6]
+	mi := &file_proto_pharma_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -470,7 +470,7 @@ func (x *MonitoredGroupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MonitoredGroupsRequest.ProtoReflect.Descriptor instead.
 func (*MonitoredGroupsRequest) Descriptor() ([]byte, []int) {
-	return file_pharma_proto_rawDescGZIP(), []int{6}
+	return file_proto_pharma_proto_rawDescGZIP(), []int{6}
 }
 
 // MonitoredGroupsResponse with list of JIDs
@@ -483,7 +483,7 @@ type MonitoredGroupsResponse struct {
 
 func (x *MonitoredGroupsResponse) Reset() {
 	*x = MonitoredGroupsResponse{}
-	mi := &file_pharma_proto_msgTypes[7]
+	mi := &file_proto_pharma_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -495,7 +495,7 @@ func (x *MonitoredGroupsResponse) String() string {
 func (*MonitoredGroupsResponse) ProtoMessage() {}
 
 func (x *MonitoredGroupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pharma_proto_msgTypes[7]
+	mi := &file_proto_pharma_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -508,7 +508,7 @@ func (x *MonitoredGroupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MonitoredGroupsResponse.ProtoReflect.Descriptor instead.
 func (*MonitoredGroupsResponse) Descriptor() ([]byte, []int) {
-	return file_pharma_proto_rawDescGZIP(), []int{7}
+	return file_proto_pharma_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *MonitoredGroupsResponse) GetJids() []string {
@@ -518,11 +518,186 @@ func (x *MonitoredGroupsResponse) GetJids() []string {
 	return nil
 }
 
-var File_pharma_proto protoreflect.FileDescriptor
+// GroupInfo represents a WhatsApp group
+type GroupInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Jid           string                 `protobuf:"bytes,1,opt,name=jid,proto3" json:"jid,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
 
-const file_pharma_proto_rawDesc = "" +
+func (x *GroupInfo) Reset() {
+	*x = GroupInfo{}
+	mi := &file_proto_pharma_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupInfo) ProtoMessage() {}
+
+func (x *GroupInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_pharma_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupInfo.ProtoReflect.Descriptor instead.
+func (*GroupInfo) Descriptor() ([]byte, []int) {
+	return file_proto_pharma_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GroupInfo) GetJid() string {
+	if x != nil {
+		return x.Jid
+	}
+	return ""
+}
+
+func (x *GroupInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *GroupInfo) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+// SyncGroupsRequest for syncing groups from Bridge to Core
+type SyncGroupsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Groups        []*GroupInfo           `protobuf:"bytes,1,rep,name=groups,proto3" json:"groups,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncGroupsRequest) Reset() {
+	*x = SyncGroupsRequest{}
+	mi := &file_proto_pharma_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncGroupsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncGroupsRequest) ProtoMessage() {}
+
+func (x *SyncGroupsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_pharma_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncGroupsRequest.ProtoReflect.Descriptor instead.
+func (*SyncGroupsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_pharma_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *SyncGroupsRequest) GetGroups() []*GroupInfo {
+	if x != nil {
+		return x.Groups
+	}
+	return nil
+}
+
+// SyncGroupsResponse with sync results
+type SyncGroupsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Added         int32                  `protobuf:"varint,2,opt,name=added,proto3" json:"added,omitempty"`
+	Updated       int32                  `protobuf:"varint,3,opt,name=updated,proto3" json:"updated,omitempty"`
+	Error         string                 `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncGroupsResponse) Reset() {
+	*x = SyncGroupsResponse{}
+	mi := &file_proto_pharma_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncGroupsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncGroupsResponse) ProtoMessage() {}
+
+func (x *SyncGroupsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_pharma_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncGroupsResponse.ProtoReflect.Descriptor instead.
+func (*SyncGroupsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_pharma_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *SyncGroupsResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *SyncGroupsResponse) GetAdded() int32 {
+	if x != nil {
+		return x.Added
+	}
+	return 0
+}
+
+func (x *SyncGroupsResponse) GetUpdated() int32 {
+	if x != nil {
+		return x.Updated
+	}
+	return 0
+}
+
+func (x *SyncGroupsResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+var File_proto_pharma_proto protoreflect.FileDescriptor
+
+const file_proto_pharma_proto_rawDesc = "" +
 	"\n" +
-	"\fpharma.proto\x12\x06pharma\"\xce\x03\n" +
+	"\x12proto/pharma.proto\x12\x06pharma\"\xce\x03\n" +
 	"\n" +
 	"RawMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
@@ -566,28 +741,41 @@ const file_pharma_proto_rawDesc = "" +
 	"\x0euptime_seconds\x18\x03 \x01(\x03R\ruptimeSeconds\"\x18\n" +
 	"\x16MonitoredGroupsRequest\"-\n" +
 	"\x17MonitoredGroupsResponse\x12\x12\n" +
-	"\x04jids\x18\x01 \x03(\tR\x04jids2\x99\x02\n" +
+	"\x04jids\x18\x01 \x03(\tR\x04jids\"S\n" +
+	"\tGroupInfo\x12\x10\n" +
+	"\x03jid\x18\x01 \x01(\tR\x03jid\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\">\n" +
+	"\x11SyncGroupsRequest\x12)\n" +
+	"\x06groups\x18\x01 \x03(\v2\x11.pharma.GroupInfoR\x06groups\"t\n" +
+	"\x12SyncGroupsResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05added\x18\x02 \x01(\x05R\x05added\x12\x18\n" +
+	"\aupdated\x18\x03 \x01(\x05R\aupdated\x12\x14\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error2\xde\x02\n" +
 	"\n" +
 	"PharmaCore\x12=\n" +
 	"\x0eProcessMessage\x12\x12.pharma.RawMessage\x1a\x17.pharma.ProcessResponse\x127\n" +
 	"\bGetStats\x12\x14.pharma.StatsRequest\x1a\x15.pharma.StatsResponse\x12<\n" +
 	"\vHealthCheck\x12\x15.pharma.HealthRequest\x1a\x16.pharma.HealthResponse\x12U\n" +
-	"\x12GetMonitoredGroups\x12\x1e.pharma.MonitoredGroupsRequest\x1a\x1f.pharma.MonitoredGroupsResponseB\x15Z\x13pharma-bridge/protob\x06proto3"
+	"\x12GetMonitoredGroups\x12\x1e.pharma.MonitoredGroupsRequest\x1a\x1f.pharma.MonitoredGroupsResponse\x12C\n" +
+	"\n" +
+	"SyncGroups\x12\x19.pharma.SyncGroupsRequest\x1a\x1a.pharma.SyncGroupsResponseB\x15Z\x13pharma-bridge/protob\x06proto3"
 
 var (
-	file_pharma_proto_rawDescOnce sync.Once
-	file_pharma_proto_rawDescData []byte
+	file_proto_pharma_proto_rawDescOnce sync.Once
+	file_proto_pharma_proto_rawDescData []byte
 )
 
-func file_pharma_proto_rawDescGZIP() []byte {
-	file_pharma_proto_rawDescOnce.Do(func() {
-		file_pharma_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_pharma_proto_rawDesc), len(file_pharma_proto_rawDesc)))
+func file_proto_pharma_proto_rawDescGZIP() []byte {
+	file_proto_pharma_proto_rawDescOnce.Do(func() {
+		file_proto_pharma_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_pharma_proto_rawDesc), len(file_proto_pharma_proto_rawDesc)))
 	})
-	return file_pharma_proto_rawDescData
+	return file_proto_pharma_proto_rawDescData
 }
 
-var file_pharma_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
-var file_pharma_proto_goTypes = []any{
+var file_proto_pharma_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_proto_pharma_proto_goTypes = []any{
 	(*RawMessage)(nil),              // 0: pharma.RawMessage
 	(*ProcessResponse)(nil),         // 1: pharma.ProcessResponse
 	(*StatsRequest)(nil),            // 2: pharma.StatsRequest
@@ -596,45 +784,51 @@ var file_pharma_proto_goTypes = []any{
 	(*HealthResponse)(nil),          // 5: pharma.HealthResponse
 	(*MonitoredGroupsRequest)(nil),  // 6: pharma.MonitoredGroupsRequest
 	(*MonitoredGroupsResponse)(nil), // 7: pharma.MonitoredGroupsResponse
+	(*GroupInfo)(nil),               // 8: pharma.GroupInfo
+	(*SyncGroupsRequest)(nil),       // 9: pharma.SyncGroupsRequest
+	(*SyncGroupsResponse)(nil),      // 10: pharma.SyncGroupsResponse
 }
-var file_pharma_proto_depIdxs = []int32{
-	0, // 0: pharma.PharmaCore.ProcessMessage:input_type -> pharma.RawMessage
-	2, // 1: pharma.PharmaCore.GetStats:input_type -> pharma.StatsRequest
-	4, // 2: pharma.PharmaCore.HealthCheck:input_type -> pharma.HealthRequest
-	6, // 3: pharma.PharmaCore.GetMonitoredGroups:input_type -> pharma.MonitoredGroupsRequest
-	1, // 4: pharma.PharmaCore.ProcessMessage:output_type -> pharma.ProcessResponse
-	3, // 5: pharma.PharmaCore.GetStats:output_type -> pharma.StatsResponse
-	5, // 6: pharma.PharmaCore.HealthCheck:output_type -> pharma.HealthResponse
-	7, // 7: pharma.PharmaCore.GetMonitoredGroups:output_type -> pharma.MonitoredGroupsResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+var file_proto_pharma_proto_depIdxs = []int32{
+	8,  // 0: pharma.SyncGroupsRequest.groups:type_name -> pharma.GroupInfo
+	0,  // 1: pharma.PharmaCore.ProcessMessage:input_type -> pharma.RawMessage
+	2,  // 2: pharma.PharmaCore.GetStats:input_type -> pharma.StatsRequest
+	4,  // 3: pharma.PharmaCore.HealthCheck:input_type -> pharma.HealthRequest
+	6,  // 4: pharma.PharmaCore.GetMonitoredGroups:input_type -> pharma.MonitoredGroupsRequest
+	9,  // 5: pharma.PharmaCore.SyncGroups:input_type -> pharma.SyncGroupsRequest
+	1,  // 6: pharma.PharmaCore.ProcessMessage:output_type -> pharma.ProcessResponse
+	3,  // 7: pharma.PharmaCore.GetStats:output_type -> pharma.StatsResponse
+	5,  // 8: pharma.PharmaCore.HealthCheck:output_type -> pharma.HealthResponse
+	7,  // 9: pharma.PharmaCore.GetMonitoredGroups:output_type -> pharma.MonitoredGroupsResponse
+	10, // 10: pharma.PharmaCore.SyncGroups:output_type -> pharma.SyncGroupsResponse
+	6,  // [6:11] is the sub-list for method output_type
+	1,  // [1:6] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_pharma_proto_init() }
-func file_pharma_proto_init() {
-	if File_pharma_proto != nil {
+func init() { file_proto_pharma_proto_init() }
+func file_proto_pharma_proto_init() {
+	if File_proto_pharma_proto != nil {
 		return
 	}
-	file_pharma_proto_msgTypes[0].OneofWrappers = []any{}
-	file_pharma_proto_msgTypes[1].OneofWrappers = []any{}
+	file_proto_pharma_proto_msgTypes[0].OneofWrappers = []any{}
+	file_proto_pharma_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pharma_proto_rawDesc), len(file_pharma_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_pharma_proto_rawDesc), len(file_proto_pharma_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_pharma_proto_goTypes,
-		DependencyIndexes: file_pharma_proto_depIdxs,
-		MessageInfos:      file_pharma_proto_msgTypes,
+		GoTypes:           file_proto_pharma_proto_goTypes,
+		DependencyIndexes: file_proto_pharma_proto_depIdxs,
+		MessageInfos:      file_proto_pharma_proto_msgTypes,
 	}.Build()
-	File_pharma_proto = out.File
-	file_pharma_proto_goTypes = nil
-	file_pharma_proto_depIdxs = nil
+	File_proto_pharma_proto = out.File
+	file_proto_pharma_proto_goTypes = nil
+	file_proto_pharma_proto_depIdxs = nil
 }

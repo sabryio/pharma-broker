@@ -17,13 +17,15 @@ import (
 // Bridge orchestrates message flow from source to sink.
 // Depends only on interfaces (ports), not concrete implementations (DIP).
 type Bridge struct {
-	source      ports.MessageSource
-	sink        ports.MessageSink
-	groupCache  ports.GroupCache
-	groupRepo   ports.GroupRepository
-	dedup       ports.Deduplicator
-	rateLimiter ports.RateLimiter
-	logger      zerolog.Logger
+	source        ports.MessageSource
+	sink          ports.MessageSink
+	groupCache    ports.GroupCache
+	groupRepo     ports.GroupRepository
+	groupSyncer   ports.GroupSyncer
+	groupProvider ports.GroupProvider
+	dedup         ports.Deduplicator
+	rateLimiter   ports.RateLimiter
+	logger        zerolog.Logger
 
 	skipOwnMessages   bool
 	workers           []chan domain.Message
@@ -52,14 +54,16 @@ func DefaultBridgeConfig() BridgeConfig {
 
 // BridgeParams holds dependencies for creating a Bridge.
 type BridgeParams struct {
-	Source      ports.MessageSource
-	Sink        ports.MessageSink
-	GroupCache  ports.GroupCache
-	GroupRepo   ports.GroupRepository
-	Dedup       ports.Deduplicator
-	RateLimiter ports.RateLimiter
-	Logger      zerolog.Logger
-	Config      BridgeConfig
+	Source        ports.MessageSource
+	Sink          ports.MessageSink
+	GroupCache    ports.GroupCache
+	GroupRepo     ports.GroupRepository
+	GroupSyncer   ports.GroupSyncer
+	GroupProvider ports.GroupProvider
+	Dedup         ports.Deduplicator
+	RateLimiter   ports.RateLimiter
+	Logger        zerolog.Logger
+	Config        BridgeConfig
 }
 
 // NewBridge creates a new Bridge with the given dependencies.
@@ -77,6 +81,8 @@ func NewBridge(params BridgeParams) *Bridge {
 		sink:            params.Sink,
 		groupCache:      params.GroupCache,
 		groupRepo:       params.GroupRepo,
+		groupSyncer:     params.GroupSyncer,
+		groupProvider:   params.GroupProvider,
 		dedup:           params.Dedup,
 		rateLimiter:     params.RateLimiter,
 		logger:          params.Logger.With().Str("component", "bridge").Logger(),
@@ -96,6 +102,9 @@ func (b *Bridge) Run(ctx context.Context) error {
 	for i, ch := range b.workers {
 		go b.workerLoop(ctx, i, ch)
 	}
+
+	// Sync WhatsApp groups to Core on startup
+	go b.syncWhatsAppGroupsOnConnect(ctx)
 
 	go b.syncGroupsWorker(ctx)
 	b.syncGroups(ctx)
@@ -211,6 +220,55 @@ func (b *Bridge) syncGroups(ctx context.Context) {
 
 	b.groupCache.Update(jids)
 	b.logger.Info().Int("count", len(jids)).Msg("✅ Monitored groups synced")
+}
+
+// syncWhatsAppGroupsOnConnect fetches groups from WhatsApp and syncs them to Core.
+func (b *Bridge) syncWhatsAppGroupsOnConnect(ctx context.Context) {
+	if b.groupSyncer == nil || b.groupProvider == nil {
+		b.logger.Debug().Msg("Group syncer or provider not configured, skipping WhatsApp group sync")
+		return
+	}
+
+	// Wait for WhatsApp connection
+	b.logger.Info().Msg("⏳ Waiting for WhatsApp connection to sync groups...")
+	for !b.source.IsConnected() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
+
+	// Small delay to ensure connection is stable
+	time.Sleep(2 * time.Second)
+
+	// Fetch groups from WhatsApp
+	groups, err := b.groupProvider.GetJoinedGroups(ctx)
+	if err != nil {
+		b.logger.Error().Err(err).Msg("Failed to get WhatsApp groups")
+		return
+	}
+
+	if len(groups) == 0 {
+		b.logger.Warn().Msg("No WhatsApp groups found")
+		return
+	}
+
+	// Sync to Core
+	added, updated, err := b.groupSyncer.SyncGroups(ctx, groups)
+	if err != nil {
+		b.logger.Error().Err(err).Msg("Failed to sync groups to Core")
+		return
+	}
+
+	b.logger.Info().
+		Int32("added", added).
+		Int32("updated", updated).
+		Int("total", len(groups)).
+		Msg("📱 WhatsApp groups synced to Core")
+
+	// Refresh monitored groups cache
+	b.syncGroups(ctx)
 }
 
 func (b *Bridge) syncGroupsWorker(ctx context.Context) {

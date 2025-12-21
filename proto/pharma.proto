@@ -17,6 +17,9 @@ service PharmaCore {
 
     // GetMonitoredGroups returns a list of JIDs that should be monitored
     rpc GetMonitoredGroups(MonitoredGroupsRequest) returns (MonitoredGroupsResponse);
+
+    // SyncGroups syncs WhatsApp groups from Bridge to Core
+    rpc SyncGroups(SyncGroupsRequest) returns (SyncGroupsResponse);
 }
 
 // RawMessage represents an incoming WhatsApp message
@@ -73,4 +76,24 @@ message MonitoredGroupsRequest {}
 // MonitoredGroupsResponse with list of JIDs
 message MonitoredGroupsResponse {
     repeated string jids = 1;
+}
+
+// GroupInfo represents a WhatsApp group
+message GroupInfo {
+    string jid = 1;
+    string name = 2;
+    string description = 3;
+}
+
+// SyncGroupsRequest for syncing groups from Bridge to Core
+message SyncGroupsRequest {
+    repeated GroupInfo groups = 1;
+}
+
+// SyncGroupsResponse with sync results
+message SyncGroupsResponse {
+    bool success = 1;
+    int32 added = 2;
+    int32 updated = 3;
+    string error = 4;
 }

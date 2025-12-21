@@ -276,4 +276,28 @@ func (c *Client) GetWhatsmeowClient() *whatsmeow.Client {
 	return c.wa
 }
 
+// GetJoinedGroups returns all WhatsApp groups the user has joined.
+func (c *Client) GetJoinedGroups(ctx context.Context) ([]domain.GroupInfo, error) {
+	if c.wa == nil || !c.wa.IsConnected() {
+		return nil, fmt.Errorf("not connected to WhatsApp")
+	}
+
+	groups, err := c.wa.GetJoinedGroups(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get joined groups: %w", err)
+	}
+
+	result := make([]domain.GroupInfo, 0, len(groups))
+	for _, g := range groups {
+		result = append(result, domain.GroupInfo{
+			JID:         domain.JID(g.JID.String()),
+			Name:        g.Name,
+			Description: g.Topic,
+		})
+	}
+
+	c.logger.Info().Int("count", len(result)).Msg("📋 Fetched joined groups from WhatsApp")
+	return result, nil
+}
+
 var _ ports.MessageSource = (*Client)(nil)

@@ -63,6 +63,13 @@ type UnixTimestamp int64
 
 func (t UnixTimestamp) Int64() int64 { return int64(t) }
 
+// GroupInfo represents a WhatsApp group for syncing.
+type GroupInfo struct {
+	JID         JID
+	Name        string
+	Description string
+}
+
 // Version represents a semantic version string.
 type Version string
 

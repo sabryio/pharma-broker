@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.0
 // - protoc             v6.33.2
-// source: pharma.proto
+// source: proto/pharma.proto
 
 package proto
 
@@ -23,6 +23,7 @@ const (
 	PharmaCore_GetStats_FullMethodName           = "/pharma.PharmaCore/GetStats"
 	PharmaCore_HealthCheck_FullMethodName        = "/pharma.PharmaCore/HealthCheck"
 	PharmaCore_GetMonitoredGroups_FullMethodName = "/pharma.PharmaCore/GetMonitoredGroups"
+	PharmaCore_SyncGroups_FullMethodName         = "/pharma.PharmaCore/SyncGroups"
 )
 
 // PharmaCoreClient is the client API for PharmaCore service.
@@ -39,6 +40,8 @@ type PharmaCoreClient interface {
 	HealthCheck(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
 	// GetMonitoredGroups returns a list of JIDs that should be monitored
 	GetMonitoredGroups(ctx context.Context, in *MonitoredGroupsRequest, opts ...grpc.CallOption) (*MonitoredGroupsResponse, error)
+	// SyncGroups syncs WhatsApp groups from Bridge to Core
+	SyncGroups(ctx context.Context, in *SyncGroupsRequest, opts ...grpc.CallOption) (*SyncGroupsResponse, error)
 }
 
 type pharmaCoreClient struct {
@@ -89,6 +92,16 @@ func (c *pharmaCoreClient) GetMonitoredGroups(ctx context.Context, in *Monitored
 	return out, nil
 }
 
+func (c *pharmaCoreClient) SyncGroups(ctx context.Context, in *SyncGroupsRequest, opts ...grpc.CallOption) (*SyncGroupsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SyncGroupsResponse)
+	err := c.cc.Invoke(ctx, PharmaCore_SyncGroups_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PharmaCoreServer is the server API for PharmaCore service.
 // All implementations must embed UnimplementedPharmaCoreServer
 // for forward compatibility.
@@ -103,6 +116,8 @@ type PharmaCoreServer interface {
 	HealthCheck(context.Context, *HealthRequest) (*HealthResponse, error)
 	// GetMonitoredGroups returns a list of JIDs that should be monitored
 	GetMonitoredGroups(context.Context, *MonitoredGroupsRequest) (*MonitoredGroupsResponse, error)
+	// SyncGroups syncs WhatsApp groups from Bridge to Core
+	SyncGroups(context.Context, *SyncGroupsRequest) (*SyncGroupsResponse, error)
 	mustEmbedUnimplementedPharmaCoreServer()
 }
 
@@ -124,6 +139,9 @@ func (UnimplementedPharmaCoreServer) HealthCheck(context.Context, *HealthRequest
 }
 func (UnimplementedPharmaCoreServer) GetMonitoredGroups(context.Context, *MonitoredGroupsRequest) (*MonitoredGroupsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetMonitoredGroups not implemented")
+}
+func (UnimplementedPharmaCoreServer) SyncGroups(context.Context, *SyncGroupsRequest) (*SyncGroupsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SyncGroups not implemented")
 }
 func (UnimplementedPharmaCoreServer) mustEmbedUnimplementedPharmaCoreServer() {}
 func (UnimplementedPharmaCoreServer) testEmbeddedByValue()                    {}
@@ -218,6 +236,24 @@ func _PharmaCore_GetMonitoredGroups_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PharmaCore_SyncGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncGroupsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PharmaCoreServer).SyncGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PharmaCore_SyncGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PharmaCoreServer).SyncGroups(ctx, req.(*SyncGroupsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PharmaCore_ServiceDesc is the grpc.ServiceDesc for PharmaCore service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -241,7 +277,11 @@ var PharmaCore_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetMonitoredGroups",
 			Handler:    _PharmaCore_GetMonitoredGroups_Handler,
 		},
+		{
+			MethodName: "SyncGroups",
+			Handler:    _PharmaCore_SyncGroups_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "pharma.proto",
+	Metadata: "proto/pharma.proto",
 }

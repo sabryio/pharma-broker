@@ -135,5 +135,40 @@ func (s *CoreSender) GetMonitoredGroups(ctx context.Context) ([]domain.JID, erro
 	return jids, nil
 }
 
+// SyncGroups sends groups from WhatsApp to the Rust core for storage.
+func (s *CoreSender) SyncGroups(ctx context.Context, groups []domain.GroupInfo) (added, updated int32, err error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	protoGroups := make([]*pb.GroupInfo, len(groups))
+	for i, g := range groups {
+		protoGroups[i] = &pb.GroupInfo{
+			Jid:         g.JID.String(),
+			Name:        g.Name,
+			Description: g.Description,
+		}
+	}
+
+	resp, err := s.client.SyncGroups(ctx, &pb.SyncGroupsRequest{
+		Groups: protoGroups,
+	})
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to sync groups to Core")
+		return 0, 0, err
+	}
+
+	if !resp.Success {
+		return 0, 0, fmt.Errorf("sync failed: %s", resp.Error)
+	}
+
+	s.logger.Info().
+		Int32("added", resp.Added).
+		Int32("updated", resp.Updated).
+		Msg("✅ Groups synced to Core")
+
+	return resp.Added, resp.Updated, nil
+}
+
 var _ ports.MessageSink = (*CoreSender)(nil)
 var _ ports.GroupRepository = (*CoreSender)(nil)
+var _ ports.GroupSyncer = (*CoreSender)(nil)

@@ -20,3 +20,9 @@ type GroupRepository interface {
 	// GetMonitoredGroups returns the list of monitored group JIDs.
 	GetMonitoredGroups(ctx context.Context) ([]domain.JID, error)
 }
+
+// GroupSyncer syncs groups from WhatsApp to the core.
+type GroupSyncer interface {
+	// SyncGroups sends groups to the core for storage.
+	SyncGroups(ctx context.Context, groups []domain.GroupInfo) (added, updated int32, err error)
+}

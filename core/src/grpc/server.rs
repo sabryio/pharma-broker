@@ -13,15 +13,16 @@ use uuid::Uuid;
 use crate::{ai::Intent, ws::WsEvent};
 
 use super::pharma::{
-    HealthRequest, HealthResponse, MonitoredGroupsRequest, MonitoredGroupsResponse,
-    ProcessResponse, RawMessage as ProtoRawMessage, StatsRequest, StatsResponse,
+    GroupInfo as ProtoGroupInfo, HealthRequest, HealthResponse, MonitoredGroupsRequest,
+    MonitoredGroupsResponse, ProcessResponse, RawMessage as ProtoRawMessage, StatsRequest,
+    StatsResponse, SyncGroupsRequest, SyncGroupsResponse,
     pharma_core_server::{PharmaCore, PharmaCoreServer},
 };
 use crate::ai::PharmaParser;
 use crate::ai::UrgencyLevel as AiUrgencyLevel;
 use crate::domain::{
-    AuditAction, AuditLog, EntityType, ItemStatus, Offer, RawMessage, Request as RequestEntity,
-    ReviewQueueItem, UrgencyLevel,
+    AuditAction, AuditLog, EntityType, Group, ItemStatus, Offer, RawMessage,
+    Request as RequestEntity, ReviewQueueItem, UrgencyLevel,
 };
 use crate::matching::AutoActionHandler;
 use crate::matching::MatchingEngine;
@@ -635,6 +636,66 @@ where
         let jids = groups.into_iter().map(|g| g.jid).collect();
 
         Ok(Response::new(MonitoredGroupsResponse { jids }))
+    }
+
+    /// Sync groups from WhatsApp Bridge to Core
+    async fn sync_groups(
+        &self,
+        request: Request<SyncGroupsRequest>,
+    ) -> Result<Response<SyncGroupsResponse>, Status> {
+        let req = request.into_inner();
+        let mut added: i32 = 0;
+        let mut updated: i32 = 0;
+
+        tracing::info!(count = req.groups.len(), "📱 Syncing groups from Bridge");
+
+        for proto_group in req.groups {
+            let ProtoGroupInfo {
+                jid,
+                name,
+                description,
+            } = proto_group;
+
+            // Check if group exists
+            let existing = self.group_repo.get_by_jid(&jid).await.ok().flatten();
+
+            let group = Group {
+                jid: jid.clone(),
+                name,
+                description: if description.is_empty() {
+                    None
+                } else {
+                    Some(description)
+                },
+                // Preserve monitoring status for existing groups, default to false for new
+                monitored: existing.as_ref().map(|e| e.monitored).unwrap_or(false),
+                added_at: existing
+                    .as_ref()
+                    .map(|e| e.added_at)
+                    .unwrap_or_else(Utc::now),
+                last_message: existing.as_ref().and_then(|e| e.last_message),
+                message_count: existing.as_ref().map(|e| e.message_count).unwrap_or(0),
+            };
+
+            if existing.is_some() {
+                updated += 1;
+            } else {
+                added += 1;
+            }
+
+            if let Err(e) = self.group_repo.save(&group).await {
+                tracing::warn!(error = %e, jid = %jid, "Failed to save group");
+            }
+        }
+
+        tracing::info!(added, updated, "✅ Groups synced from Bridge");
+
+        Ok(Response::new(SyncGroupsResponse {
+            success: true,
+            added,
+            updated,
+            error: String::new(),
+        }))
     }
 }
 

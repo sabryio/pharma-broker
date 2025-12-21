@@ -20,6 +20,12 @@ type MessageSource interface {
 	IsConnected() bool
 }
 
+// GroupProvider provides access to joined groups from the message source.
+type GroupProvider interface {
+	// GetJoinedGroups returns all groups the user has joined.
+	GetJoinedGroups(ctx context.Context) ([]domain.GroupInfo, error)
+}
+
 // QRHandler handles QR code events for pairing.
 type QRHandler interface {
 	// HandleQRCode processes a new QR code.

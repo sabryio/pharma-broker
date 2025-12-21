@@ -135,6 +135,7 @@ dialoguer = "0.12.0"
 # TUI (for monitor)
 ratatui = "0.29.0"
 crossterm = "0.29.0"
+whatlang = "0.16"
 
 [dev-dependencies]
 tokio-test = "0.4.4"

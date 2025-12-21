@@ -36,6 +36,119 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs},
 };
 use sqlx::postgres::PgPoolOptions;
+use whatlang::{Lang, detect};
+
+// ============================================================================
+// Bidirectional Text Handling (Arabic RTL + English LTR)
+// ============================================================================
+
+/// Formats text for proper terminal display.
+/// Handles mixed Arabic/English text by reversing only Arabic segments.
+fn format_for_terminal(text: &str) -> String {
+    // If no Arabic, return as-is
+    if !contains_arabic(text) {
+        return text.to_string();
+    }
+
+    // If pure Arabic (high confidence), reverse entire string
+    if let Some(info) = detect(text)
+        && info.lang() == Lang::Ara
+        && info.confidence() > 0.8
+    {
+        return reverse_string(text);
+    }
+
+    // Mixed text: process segments
+    format_bidi_text(text)
+}
+
+/// Formats bidirectional text by segmenting into Arabic and non-Arabic runs.
+fn format_bidi_text(text: &str) -> String {
+    let mut result = String::new();
+    let mut segments: Vec<(String, bool)> = Vec::new(); // (text, is_arabic)
+    let mut current_segment = String::new();
+    let mut current_is_arabic: Option<bool> = None;
+
+    for c in text.chars() {
+        let is_arabic = is_arabic_char(c);
+        let is_neutral = is_neutral_char(c);
+
+        match current_is_arabic {
+            None => {
+                // First character
+                if !is_neutral {
+                    current_is_arabic = Some(is_arabic);
+                }
+                current_segment.push(c);
+            }
+            Some(was_arabic) => {
+                if is_neutral {
+                    // Neutral characters (spaces, punctuation) stay with current segment
+                    current_segment.push(c);
+                } else if is_arabic == was_arabic {
+                    // Same direction, continue segment
+                    current_segment.push(c);
+                } else {
+                    // Direction change, save current segment and start new one
+                    if !current_segment.is_empty() {
+                        segments.push((current_segment.clone(), was_arabic));
+                        current_segment.clear();
+                    }
+                    current_is_arabic = Some(is_arabic);
+                    current_segment.push(c);
+                }
+            }
+        }
+    }
+
+    // Don't forget the last segment
+    if !current_segment.is_empty() {
+        let is_arabic = current_is_arabic.unwrap_or(false);
+        segments.push((current_segment, is_arabic));
+    }
+
+    // Build result: reverse Arabic segments, keep English as-is
+    // For terminal display, we reverse the order of segments and reverse Arabic content
+    for (segment, is_arabic) in segments.iter().rev() {
+        if *is_arabic {
+            result.push_str(&reverse_string(segment));
+        } else {
+            result.push_str(segment);
+        }
+    }
+
+    result
+}
+
+/// Checks if a character is Arabic.
+fn is_arabic_char(c: char) -> bool {
+    // Arabic Unicode ranges
+    matches!(c,
+        '\u{0600}'..='\u{06FF}' |  // Arabic
+        '\u{0750}'..='\u{077F}' |  // Arabic Supplement
+        '\u{08A0}'..='\u{08FF}' |  // Arabic Extended-A
+        '\u{FB50}'..='\u{FDFF}' |  // Arabic Presentation Forms-A
+        '\u{FE70}'..='\u{FEFF}'    // Arabic Presentation Forms-B
+    )
+}
+
+/// Checks if a character is directionally neutral (spaces, numbers, punctuation).
+fn is_neutral_char(c: char) -> bool {
+    c.is_whitespace()
+        || c.is_ascii_digit()
+        || c.is_ascii_punctuation()
+        || matches!(c, '،' | '؟' | '؛' | '٪') // Arabic punctuation
+}
+
+/// Checks if text contains any Arabic characters.
+fn contains_arabic(text: &str) -> bool {
+    text.chars().any(is_arabic_char)
+}
+
+/// Reverses a string (for RTL display).
+fn reverse_string(text: &str) -> String {
+    text.chars().rev().collect()
+}
 
 // ============================================================================
 // Colors (matching Go version)
@@ -232,17 +345,17 @@ impl App {
     fn toggle_current(&mut self) {
         match self.active_tab {
             Tab::Groups => {
-                if let Some(i) = self.group_state.selected() {
-                    if i < self.groups.len() {
-                        self.groups[i].monitored = !self.groups[i].monitored;
-                    }
+                if let Some(i) = self.group_state.selected()
+                    && i < self.groups.len()
+                {
+                    self.groups[i].monitored = !self.groups[i].monitored;
                 }
             }
             Tab::Config => {
-                if let Some(i) = self.config_state.selected() {
-                    if i < self.configs.len() {
-                        self.configs[i].enabled = !self.configs[i].enabled;
-                    }
+                if let Some(i) = self.config_state.selected()
+                    && i < self.configs.len()
+                {
+                    self.configs[i].enabled = !self.configs[i].enabled;
                 }
             }
         }
@@ -353,7 +466,9 @@ fn render_groups(frame: &mut Frame, area: Rect, app: &mut App) {
                 Span::styled("○ ", Style::default().fg(COLOR_MUTED))
             };
 
-            let name = Span::styled(&g.name, Style::default().fg(COLOR_TEXT));
+            // Format name for proper RTL display (Arabic text)
+            let display_name = format_for_terminal(&g.name);
+            let name = Span::styled(display_name, Style::default().fg(COLOR_TEXT));
 
             ListItem::new(Line::from(vec![check, name]))
         })
@@ -502,43 +617,43 @@ async fn run_app(
     loop {
         terminal.draw(|f| ui(f, app))?;
 
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
-                }
+        if event::poll(Duration::from_millis(100))?
+            && let Event::Key(key) = event::read()?
+        {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
 
-                match key.code {
-                    KeyCode::Char('q') => {
-                        app.should_quit = true;
-                    }
-                    KeyCode::Tab | KeyCode::Right => {
-                        app.next_tab();
-                    }
-                    KeyCode::BackTab | KeyCode::Left => {
-                        app.prev_tab();
-                    }
-                    KeyCode::Char('1') => {
-                        app.active_tab = Tab::Groups;
-                    }
-                    KeyCode::Char('2') => {
-                        app.active_tab = Tab::Config;
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        app.next_item();
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        app.prev_item();
-                    }
-                    KeyCode::Char(' ') => {
-                        app.toggle_current();
-                    }
-                    KeyCode::Enter => {
-                        app.save_all().await?;
-                        app.should_quit = true;
-                    }
-                    _ => {}
+            match key.code {
+                KeyCode::Char('q') => {
+                    app.should_quit = true;
                 }
+                KeyCode::Tab | KeyCode::Right => {
+                    app.next_tab();
+                }
+                KeyCode::BackTab | KeyCode::Left => {
+                    app.prev_tab();
+                }
+                KeyCode::Char('1') => {
+                    app.active_tab = Tab::Groups;
+                }
+                KeyCode::Char('2') => {
+                    app.active_tab = Tab::Config;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    app.next_item();
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    app.prev_item();
+                }
+                KeyCode::Char(' ') => {
+                    app.toggle_current();
+                }
+                KeyCode::Enter => {
+                    app.save_all().await?;
+                    app.should_quit = true;
+                }
+                _ => {}
             }
         }
 
