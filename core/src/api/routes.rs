@@ -13,7 +13,7 @@ use axum::{
 use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::broadcast;
 
-use super::{confidence, groups, handlers, review_queue, weights};
+use super::{calibration, confidence, groups, handlers, review_queue, weights};
 use crate::matching::MatchingEngine;
 use crate::repository::{
     AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
@@ -157,6 +157,31 @@ where
         .route(
             "/api/confidence/stats/reset",
             post(confidence::reset_stats::<RQ, A, MM>),
+        )
+        // Calibration Management
+        .route(
+            "/api/calibration",
+            get(calibration::get_calibration::<RQ, A, MM>),
+        )
+        .route(
+            "/api/calibration",
+            put(calibration::update_calibration::<RQ, A, MM>),
+        )
+        .route(
+            "/api/calibration/reset",
+            post(calibration::reset_calibration::<RQ, A, MM>),
+        )
+        .route(
+            "/api/calibration/enable",
+            post(calibration::toggle_calibration::<RQ, A, MM>),
+        )
+        .route(
+            "/api/calibration/smoothing",
+            put(calibration::update_smoothing::<RQ, A, MM>),
+        )
+        .route(
+            "/api/calibration/calibrate",
+            post(calibration::calibrate_score::<RQ, A, MM>),
         )
         // WebSocket
         .route("/ws", get(ws::ws_handler::<RQ, A, MM>))

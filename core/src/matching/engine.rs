@@ -13,10 +13,11 @@ use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use super::{
-    ABTestConfig, ABTestManager, ABTestResult, AutoActionHandler, ConfidenceConfig,
-    ConfidenceManager, ConfidenceManagerStats, LearnerError, MatchAction, MatchScore,
-    OutlierDetector, OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig, SchedulerStatus,
-    Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
+    ABTestConfig, ABTestManager, ABTestResult, AutoActionHandler, CalibrationConfig,
+    CalibrationReport, ConfidenceCalibrator, ConfidenceConfig, ConfidenceManager,
+    ConfidenceManagerStats, LearnerError, MatchAction, MatchScore, OutlierDetector,
+    OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig, SchedulerStatus, Scorer,
+    WarmStartConfig, WarmStartManager, WeightLearner, Weights,
 };
 use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackStats};
 use crate::domain::{Match as MatchEntity, Offer, Request};
@@ -36,6 +37,8 @@ pub struct MatchingEngineConfig {
     pub outlier_detector: OutlierDetectorConfig,
     /// Confidence manager settings
     pub confidence: ConfidenceConfig,
+    /// Calibration settings
+    pub calibration: CalibrationConfig,
 }
 
 /// Unified matching engine orchestrating all components
@@ -52,6 +55,8 @@ pub struct MatchingEngine {
     outlier_detector: OutlierDetector,
     /// Dynamic confidence manager
     confidence_manager: ConfidenceManager,
+    /// Confidence calibrator
+    calibrator: ConfidenceCalibrator,
     /// Configuration
     config: RwLock<MatchingEngineConfig>,
     /// Current sample count for warm start
@@ -83,6 +88,7 @@ impl MatchingEngine {
         let ab_test = ABTestManager::new(config.weights.clone());
         let outlier_detector = OutlierDetector::new(config.outlier_detector.clone());
         let confidence_manager = ConfidenceManager::new(config.confidence.clone());
+        let calibrator = ConfidenceCalibrator::new(config.calibration.clone());
 
         Self {
             scorer,
@@ -91,6 +97,7 @@ impl MatchingEngine {
             ab_test,
             outlier_detector,
             confidence_manager,
+            calibrator,
             config: RwLock::new(config),
             sample_count: RwLock::new(0),
             scheduler_handle: RwLock::new(None),
@@ -202,7 +209,7 @@ impl MatchingEngine {
     // =========================================================================
 
     /// Record operator feedback (confirm/reject)
-    /// Uses: OutlierDetector + ABTest + SampleCount
+    /// Uses: OutlierDetector + ABTest + SampleCount + Calibrator
     pub async fn record_feedback(
         &self,
         user_id: &str,
@@ -225,6 +232,9 @@ impl MatchingEngine {
         // Record for A/B testing
         self.ab_test
             .record_feedback(user_id, confirmed, total_score);
+
+        // Record for calibration (prediction-outcome pair)
+        self.calibrator.record_outcome(total_score, confirmed);
 
         // Increment sample count
         {
@@ -517,6 +527,50 @@ impl MatchingEngine {
     }
 
     // =========================================================================
+    // Calibration
+    // =========================================================================
+
+    /// Calibrate a raw confidence score based on historical outcomes
+    pub fn calibrate_score(&self, raw_score: f64) -> f64 {
+        self.calibrator.calibrate(raw_score)
+    }
+
+    /// Get calibration report with ECE, MCE, and bin statistics
+    pub fn get_calibration_report(&self) -> CalibrationReport {
+        self.calibrator.get_report()
+    }
+
+    /// Get calibration configuration
+    pub fn get_calibration_config(&self) -> CalibrationConfig {
+        self.calibrator.get_config()
+    }
+
+    /// Update calibration configuration
+    pub fn set_calibration_config(&self, config: CalibrationConfig) {
+        self.calibrator.set_config(config);
+    }
+
+    /// Enable or disable calibration
+    pub fn enable_calibration(&self, enabled: bool) {
+        self.calibrator.enable(enabled);
+    }
+
+    /// Set calibration smoothing factor (0.0 = raw, 1.0 = full calibration)
+    pub fn set_calibration_smoothing(&self, factor: f64) {
+        self.calibrator.set_smoothing_factor(factor);
+    }
+
+    /// Reset all calibration data
+    pub fn reset_calibration(&self) {
+        self.calibrator.reset();
+    }
+
+    /// Check if calibration is enabled
+    pub fn is_calibration_enabled(&self) -> bool {
+        self.calibrator.is_enabled()
+    }
+
+    // =========================================================================
     // Configuration
     // =========================================================================
 
@@ -539,6 +593,13 @@ impl MatchingEngine {
         // Update outlier detector
         self.outlier_detector
             .set_config(config.outlier_detector.clone());
+
+        // Update confidence manager
+        self.confidence_manager
+            .set_config(config.confidence.clone());
+
+        // Update calibrator
+        self.calibrator.set_config(config.calibration.clone());
 
         // Update A/B test base weights
         self.ab_test.set_base_weights(config.weights.clone());
