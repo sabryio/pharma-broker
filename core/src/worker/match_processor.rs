@@ -26,7 +26,6 @@ pub struct MatchProcessor {
     match_repo: Arc<dyn MatchRepository>,
     audit_log_repo: Arc<dyn AuditLogRepository>,
     matching_engine: Arc<MatchingEngine>,
-    #[allow(dead_code)]
     ai_parser: Arc<PharmaParser>,
     ws_tx: broadcast::Sender<WsEvent>,
     worker_id: String,

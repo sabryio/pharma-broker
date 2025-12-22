@@ -207,7 +207,6 @@ pub enum Offers {
     UrgencyLevel,
     ExpiryInfo,
     AiConfidence,
-    #[allow(dead_code)]
     ContentEmbedding,
     CreatedAt,
     UpdatedAt,

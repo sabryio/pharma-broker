@@ -40,6 +40,11 @@ pub use pharma_db::traits::{
 // Re-export enums
 pub use pharma_db::traits::{ItemStatus, MatchStatus, QueueStatus, ReviewStatus, UrgencyLevel};
 
+pub use pharma_db::params::{
+    AuditByEntityParams, FindDuplicateParams, SemanticDuplicateParams, UpdateMatchStatusParams,
+    UpdateReviewStatusParams,
+};
+
 /// Create a SeaORM database connection
 pub async fn create_connection(database_url: &str) -> Result<DatabaseConnection, pharma_db::DbErr> {
     pharma_db::Database::connect(database_url).await

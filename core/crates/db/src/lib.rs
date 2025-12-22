@@ -21,6 +21,7 @@
 pub mod audit_types;
 pub mod entity;
 pub mod migration;
+pub mod params;
 pub mod repo;
 pub mod service;
 pub mod traits;

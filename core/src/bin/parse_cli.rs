@@ -175,7 +175,6 @@ fn get_config_interactive() -> Config {
 struct TestMessage {
     id: String,
     #[serde(default)]
-    #[allow(dead_code)]
     group_jid: String,
     #[serde(default)]
     group_name: String,

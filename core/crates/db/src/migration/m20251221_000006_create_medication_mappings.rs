@@ -106,9 +106,7 @@ pub enum MedicationMappings {
     Id,
     ArabicName,
     EnglishName,
-    #[allow(dead_code)]
     Synonyms,
-    #[allow(dead_code)]
     Embedding,
     CreatedAt,
     UpdatedAt,

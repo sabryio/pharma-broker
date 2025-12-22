@@ -4,10 +4,14 @@
 //! These traits are designed to be compatible with the core domain types.
 
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
+use crate::params::{
+    AuditByEntityParams, FindDuplicateParams, SemanticDuplicateParams, UpdateMatchStatusParams,
+    UpdateReviewStatusParams,
+};
 
 // Re-export entity types for consumers
 pub use crate::entity::audit_log::Model as AuditLogModel;
@@ -34,17 +38,13 @@ pub trait OfferRepository: Send + Sync {
     async fn count_active(&self) -> Result<i64>;
     async fn find_recent_duplicate(
         &self,
-        sender_phone: &str,
-        medication: &str,
-        within: Duration,
+        params: FindDuplicateParams<'_>,
     ) -> Result<Option<OfferModel>>;
     async fn save(&self, offer: &OfferModel) -> Result<OfferModel>;
     async fn update_status(&self, id: &str, status: ItemStatus) -> Result<OfferModel>;
     async fn find_semantic_duplicates(
         &self,
-        embedding: &[f32],
-        threshold: f64,
-        within: Duration,
+        params: SemanticDuplicateParams<'_>,
     ) -> Result<Vec<OfferModel>>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
 }
@@ -58,17 +58,13 @@ pub trait RequestRepository: Send + Sync {
     async fn count_active(&self) -> Result<i64>;
     async fn find_recent_duplicate(
         &self,
-        sender_phone: &str,
-        medication: &str,
-        within: Duration,
+        params: FindDuplicateParams<'_>,
     ) -> Result<Option<RequestModel>>;
     async fn save(&self, request: &RequestModel) -> Result<RequestModel>;
     async fn update_status(&self, id: &str, status: ItemStatus) -> Result<RequestModel>;
     async fn find_semantic_duplicates(
         &self,
-        embedding: &[f32],
-        threshold: f64,
-        within: Duration,
+        params: SemanticDuplicateParams<'_>,
     ) -> Result<Vec<RequestModel>>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
 }
@@ -81,13 +77,7 @@ pub trait MatchRepository: Send + Sync {
     async fn count_pending(&self) -> Result<i64>;
     async fn exists(&self, offer_id: &str, request_id: &str) -> Result<bool>;
     async fn save(&self, m: &MatchModel) -> Result<MatchModel>;
-    async fn update_status(
-        &self,
-        id: &str,
-        status: MatchStatus,
-        matched_by: &str,
-        notes: &str,
-    ) -> Result<MatchModel>;
+    async fn update_status(&self, params: UpdateMatchStatusParams<'_>) -> Result<MatchModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
 }
 
@@ -181,13 +171,8 @@ pub trait ReviewQueueRepository: Send + Sync {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<ReviewQueueModel>>;
-    async fn update_status(
-        &self,
-        id: &str,
-        status: ReviewStatus,
-        reviewed_by: &str,
-        notes: Option<&str>,
-    ) -> Result<ReviewQueueModel>;
+    async fn update_status(&self, params: UpdateReviewStatusParams<'_>)
+    -> Result<ReviewQueueModel>;
     async fn get_stats(&self) -> Result<ReviewQueueStats>;
     async fn count_pending(&self) -> Result<i64>;
     async fn exists_for_message(&self, raw_message_id: &str) -> Result<bool>;
@@ -220,12 +205,7 @@ pub trait MedicationMappingRepository: Send + Sync {
 #[async_trait]
 pub trait AuditLogRepository: Send + Sync {
     async fn save(&self, log: &AuditLogModel) -> Result<AuditLogModel>;
-    async fn get_by_entity(
-        &self,
-        entity_type: &str,
-        entity_id: &str,
-        limit: i64,
-    ) -> Result<Vec<AuditLogModel>>;
+    async fn get_by_entity(&self, params: AuditByEntityParams<'_>) -> Result<Vec<AuditLogModel>>;
     async fn get_by_actor(&self, actor: &str, limit: i64) -> Result<Vec<AuditLogModel>>;
     async fn get_by_action(&self, action: &str, limit: i64) -> Result<Vec<AuditLogModel>>;
     async fn get_recent(&self, limit: i64, offset: i64) -> Result<Vec<AuditLogModel>>;

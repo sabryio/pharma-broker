@@ -64,25 +64,22 @@ impl MatchRepository for SeaOrmMatchRepo {
 
     async fn update_status(
         &self,
-        id: &str,
-        status: MatchStatus,
-        matched_by: &str,
-        notes: &str,
+        params: crate::params::UpdateMatchStatusParams<'_>,
     ) -> Result<match_::Model> {
-        let m = Match::find_by_id(id)
+        let m = Match::find_by_id(params.id)
             .one(&self.db)
             .await?
-            .ok_or_else(|| Error::NotFound(format!("Match not found: {}", id)))?;
+            .ok_or_else(|| Error::NotFound(format!("Match not found: {}", params.id)))?;
 
         let mut active: match_::ActiveModel = m.into();
-        active.status = Set(status.clone());
-        if !matched_by.is_empty() {
-            active.matched_by = Set(Some(matched_by.to_string()));
+        active.status = Set(params.status.clone());
+        if !params.matched_by.is_empty() {
+            active.matched_by = Set(Some(params.matched_by.to_string()));
         }
-        if !notes.is_empty() {
-            active.notes = Set(Some(notes.to_string()));
+        if !params.notes.is_empty() {
+            active.notes = Set(Some(params.notes.to_string()));
         }
-        if status == MatchStatus::Confirmed {
+        if params.status == MatchStatus::Confirmed {
             active.confirmed_at = Set(Some(Utc::now()));
         }
         active.update(&self.db).await.map_err(Error::from)

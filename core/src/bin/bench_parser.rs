@@ -106,7 +106,6 @@ fn get_config_interactive() -> Config {
 
 #[derive(Debug, Clone)]
 struct LegacyMessage {
-    #[allow(dead_code)]
     id: String,
     content: String,
     sender_name: Option<String>,

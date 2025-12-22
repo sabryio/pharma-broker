@@ -109,7 +109,6 @@ pub struct Janitor {
 
 impl Janitor {
     /// Create a new janitor worker
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: JanitorConfig,
         raw_message_repo: Arc<dyn RawMessageRepository>,

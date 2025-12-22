@@ -165,7 +165,12 @@ where
     // Update the status
     state
         .review_queue_repo
-        .update_status(&id, status.clone(), &req.reviewed_by, req.notes.as_deref())
+        .update_status(crate::repository::UpdateReviewStatusParams::new(
+            &id,
+            status.clone(),
+            &req.reviewed_by,
+            req.notes.as_deref(),
+        ))
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

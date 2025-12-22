@@ -197,7 +197,6 @@ pub enum Requests {
     Notes,
     RawMessage,
     Status,
-    #[allow(dead_code)]
     ContentEmbedding,
     CreatedAt,
     UpdatedAt,

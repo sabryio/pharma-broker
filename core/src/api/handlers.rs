@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use super::routes::AppState;
 use crate::domain::{AuditLog, FeedbackRecord, ItemStatus, MatchStatus};
 use crate::metrics;
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{
+    AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository, UpdateMatchStatusParams,
+};
 use crate::ws::{MatchStatusEvent, WsEvent};
 
 /// Pagination query parameters
@@ -265,7 +267,12 @@ where
     // Update match status
     state
         .match_repo
-        .update_status(&id, MatchStatus::Confirmed, &req.matched_by, &req.notes)
+        .update_status(UpdateMatchStatusParams::new(
+            &id,
+            MatchStatus::Confirmed,
+            &req.matched_by,
+            &req.notes,
+        ))
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -365,7 +372,12 @@ where
     // Update match status
     state
         .match_repo
-        .update_status(&id, MatchStatus::Rejected, &req.matched_by, &req.reason)
+        .update_status(UpdateMatchStatusParams::new(
+            &id,
+            MatchStatus::Rejected,
+            &req.matched_by,
+            &req.reason,
+        ))
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

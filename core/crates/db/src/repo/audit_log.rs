@@ -28,15 +28,13 @@ impl AuditLogRepository for SeaOrmAuditLogRepo {
 
     async fn get_by_entity(
         &self,
-        entity_type: &str,
-        entity_id: &str,
-        limit: i64,
+        params: crate::params::AuditByEntityParams<'_>,
     ) -> Result<Vec<audit_log::Model>> {
         AuditLog::find()
-            .filter(audit_log::Column::EntityType.eq(entity_type))
-            .filter(audit_log::Column::EntityId.eq(entity_id))
+            .filter(audit_log::Column::EntityType.eq(params.entity_type))
+            .filter(audit_log::Column::EntityId.eq(params.entity_id))
             .order_by_desc(audit_log::Column::CreatedAt)
-            .limit(limit as u64)
+            .limit(params.limit as u64)
             .all(&self.db)
             .await
             .map_err(Error::from)

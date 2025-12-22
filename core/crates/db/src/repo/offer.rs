@@ -1,7 +1,7 @@
 //! Offer repository implementation
 
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use sea_orm::*;
 
 use crate::entity::offer::{self, Entity as Offer, Status};
@@ -62,14 +62,12 @@ impl OfferRepository for SeaOrmOfferRepo {
 
     async fn find_recent_duplicate(
         &self,
-        sender_phone: &str,
-        medication: &str,
-        within: Duration,
+        params: crate::params::FindDuplicateParams<'_>,
     ) -> Result<Option<offer::Model>> {
-        let cutoff = Utc::now() - within;
+        let cutoff = Utc::now() - params.within;
         Offer::find()
-            .filter(offer::Column::SourcePhone.eq(sender_phone))
-            .filter(offer::Column::Medication.eq(medication))
+            .filter(offer::Column::SourcePhone.eq(params.sender_phone))
+            .filter(offer::Column::Medication.eq(params.medication))
             .filter(offer::Column::Status.eq(Status::Active))
             .filter(offer::Column::CreatedAt.gte(cutoff))
             .one(&self.db)
@@ -96,14 +94,13 @@ impl OfferRepository for SeaOrmOfferRepo {
 
     async fn find_semantic_duplicates(
         &self,
-        embedding: &[f32],
-        threshold: f64,
-        within: Duration,
+        params: crate::params::SemanticDuplicateParams<'_>,
     ) -> Result<Vec<offer::Model>> {
-        let cutoff = Utc::now() - within;
+        let cutoff = Utc::now() - params.within;
         let embedding_str = format!(
             "[{}]",
-            embedding
+            params
+                .embedding
                 .iter()
                 .map(|f| f.to_string())
                 .collect::<Vec<_>>()
@@ -121,7 +118,11 @@ impl OfferRepository for SeaOrmOfferRepo {
                 AND 1 - (content_embedding <=> $1::vector) > $2
                 ORDER BY content_embedding <=> $1::vector
                 "#,
-                [embedding_str.into(), threshold.into(), cutoff.into()],
+                [
+                    embedding_str.into(),
+                    params.similarity_threshold.into(),
+                    cutoff.into(),
+                ],
             ))
             .all(&self.db)
             .await

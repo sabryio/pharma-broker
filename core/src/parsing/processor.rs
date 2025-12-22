@@ -55,7 +55,6 @@ pub struct BatchProcessor {
 
 impl BatchProcessor {
     /// Create a new batch processor
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: BatchConfig,
         multi_pass_config: MultiPassConfig,

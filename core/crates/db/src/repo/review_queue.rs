@@ -64,23 +64,20 @@ impl ReviewQueueRepository for SeaOrmReviewQueueRepo {
 
     async fn update_status(
         &self,
-        id: &str,
-        status: ReviewStatus,
-        reviewed_by: &str,
-        notes: Option<&str>,
+        params: crate::params::UpdateReviewStatusParams<'_>,
     ) -> Result<review_queue::Model> {
-        let uuid = uuid::Uuid::parse_str(id)
-            .map_err(|_| Error::Validation(format!("Invalid UUID: {}", id)))?;
+        let uuid = uuid::Uuid::parse_str(params.id)
+            .map_err(|_| Error::Validation(format!("Invalid UUID: {}", params.id)))?;
 
         let item = ReviewQueue::find_by_id(uuid)
             .one(&self.db)
             .await?
-            .ok_or_else(|| Error::NotFound(format!("Review item not found: {}", id)))?;
+            .ok_or_else(|| Error::NotFound(format!("Review item not found: {}", params.id)))?;
 
         let mut active: review_queue::ActiveModel = item.into();
-        active.status = Set(status);
-        active.reviewed_by = Set(Some(reviewed_by.to_string()));
-        active.review_notes = Set(notes.map(|s| s.to_string()));
+        active.status = Set(params.status);
+        active.reviewed_by = Set(Some(params.reviewed_by.to_string()));
+        active.review_notes = Set(params.notes.map(|s| s.to_string()));
         active.reviewed_at = Set(Some(Utc::now()));
         active.update(&self.db).await.map_err(Error::from)
     }

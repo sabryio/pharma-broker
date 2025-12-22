@@ -201,7 +201,6 @@ struct GroupItem {
 
 #[derive(Debug, Clone)]
 struct ConfigItem {
-    #[allow(dead_code)]
     key: String,
     label: String,
     description: String,

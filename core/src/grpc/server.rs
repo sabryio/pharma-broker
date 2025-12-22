@@ -30,9 +30,9 @@ use crate::domain::{
 use crate::matching::AutoActionHandler;
 use crate::matching::MatchingEngine;
 use crate::repository::{
-    AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
-    MedicationMappingRepository, OfferRepository, RawMessageRepository, RequestRepository,
-    ReviewQueueRepository,
+    AuditLogRepository, FeedbackRepository, FindDuplicateParams, GroupRepository,
+    MatchQueueRepository, MatchRepository, MedicationMappingRepository, OfferRepository,
+    RawMessageRepository, RequestRepository, ReviewQueueRepository, SemanticDuplicateParams,
 };
 
 /// The gRPC service implementation
@@ -75,7 +75,6 @@ where
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         offer_repo: Arc<O>,
         request_repo: Arc<R>,
@@ -389,11 +388,11 @@ where
 
                             // 1. Exact match check
                             if let Ok(Some(existing)) = offer_repo
-                                .find_recent_duplicate(
+                                .find_recent_duplicate(FindDuplicateParams::new(
                                     &offer.source_phone,
                                     &offer.medication,
                                     chrono::Duration::minutes(10),
-                                )
+                                ))
                                 .await
                             {
                                 tracing::info!(id = %offer.id, existing = %existing.id, "Duplicate offer detected (exact)");
@@ -402,11 +401,11 @@ where
                             // 2. Semantic match check
                             else if let Some(emb) = &offer.content_embedding
                                 && let Ok(semantic_dups) = offer_repo
-                                    .find_semantic_duplicates(
+                                    .find_semantic_duplicates(SemanticDuplicateParams::new(
                                         emb.as_slice(),
                                         0.95,
                                         chrono::Duration::minutes(10),
-                                    )
+                                    ))
                                     .await
                             {
                                 // Filter by same sender
@@ -475,11 +474,11 @@ where
 
                             // 1. Exact match check
                             if let Ok(Some(existing)) = request_repo
-                                .find_recent_duplicate(
+                                .find_recent_duplicate(FindDuplicateParams::new(
                                     &request.source_phone,
                                     &request.medication,
                                     chrono::Duration::minutes(10),
-                                )
+                                ))
                                 .await
                             {
                                 tracing::info!(id = %request.id, existing = %existing.id, "Duplicate request detected (exact)");
@@ -488,11 +487,11 @@ where
                             // 2. Semantic match check
                             else if let Some(emb) = &request.content_embedding
                                 && let Ok(semantic_dups) = request_repo
-                                    .find_semantic_duplicates(
+                                    .find_semantic_duplicates(SemanticDuplicateParams::new(
                                         emb.as_slice(),
                                         0.95,
                                         chrono::Duration::minutes(10),
-                                    )
+                                    ))
                                     .await
                             {
                                 // Filter by same sender
