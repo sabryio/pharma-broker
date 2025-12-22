@@ -1,167 +1,90 @@
-# Data Quality & Table Activation Plan
+# Data Quality & Maintenance Plan
 
-> **Goal**: Fix duplicates, activate unused tables, improve AI parsing quality.
-> **Last Updated**: 2025-12-19
+> **Goal**: Ensure data quality, prevent duplicates, manage cleanup tasks.  
+> **Last Updated**: December 22, 2025  
+> **Architecture**: Rust Core
 
 ## Overview
 
-| Phase | Task                         | Priority | Status                 |
-| ----- | ---------------------------- | -------- | ---------------------- |
-| 1     | Investigate Duplicate Offers | High     | ✅ Done                |
-| 2     | Cleanup Duplicate Offers     | High     | ⏳ Dev mode (deferred) |
-| 3     | Prevent Future Duplicates    | High     | ✅ Done                |
-| 4     | Activate Audit Logs          | Medium   | ✅ Done                |
-| 5     | Activate Match Feedback      | Medium   | ✅ Done                |
-| 6     | Activate Weight History      | Low      | ✅ Done                |
-| 7     | Audit Log Retention          | Medium   | ✅ Done                |
-| 8     | AI Parsing Quality           | Medium   | ✅ Done                |
-| 9     | Review Unmapped Medications  | Medium   | 🔜 Ready               |
-| 10    | Process Review Queue         | Medium   | 🔜 Ready               |
+| Phase | Task                         | Priority | Status      |
+| ----- | ---------------------------- | -------- | ----------- |
+| 1     | Investigate Duplicate Offers | High     | ✅ Done     |
+| 2     | Cleanup Duplicate Offers     | High     | ⏳ Deferred |
+| 3     | Prevent Future Duplicates    | High     | ✅ Done     |
+| 4     | Activate Audit Logs          | Medium   | ✅ Done     |
+| 5     | Activate Match Feedback      | Medium   | ✅ Done     |
+| 6     | Activate Weight History      | Low      | ✅ Done     |
+| 7     | Audit Log Retention          | Medium   | ✅ Done     |
+| 8     | AI Parsing Quality           | Medium   | ✅ Done     |
+| 9     | Review Unmapped Medications  | Medium   | 🔜 Ready    |
+| 10    | Process Review Queue         | Medium   | 🔜 Ready    |
 
 ---
 
-## Phase 1: Investigate Duplicate Offers ✅
+## Data Prevention (Rust Core)
 
-**Script**: `analysis/scripts/10_investigate_duplicates.py`
+### Duplicate Prevention
 
-**Findings** (2025-12-19):
+**Implementation** (`core/src/ai/pharma_parser.rs`):
 
-- 3,394 duplicate groups identified (way more than initial 106 estimate)
-- Most are cross-posts (same message to multiple groups)
-- Average duplication rate: ~2.4x
-
----
-
-## Phase 2: Cleanup Duplicate Offers ⏳
-
-**Script**: `analysis/scripts/11_cleanup_duplicates.py`
-
-**Status**: Deferred (dev mode - cleanup not critical while prevention is active)
-
----
-
-## Phase 3: Prevent Future Duplicates ✅
-
-**Implementation**:
-
-- `FindRecentDuplicate()` method in OfferRepo
-- Dedup check in `processor.go` before saving
-- Configurable via `parser.dedup_window` (default: 10m)
-- Set to `0` to disable
+- Deduplication check before saving offers/requests
+- Configurable dedup window via environment
 - Metric: `pharma_duplicates_skipped_total`
 
----
+### Audit Logging
 
-## Phase 4: Activate Audit Logs ✅
+**Implementation** (`core/crates/db/src/repo/audit_log.rs`):
 
-**Status**: Already active via `logAudit()` calls in MatchHandler
-
-**Events logged**:
-
-- `MATCH_CONFIRMED` - Match confirmed
-- `MATCH_REJECTED` - Match rejected
+- All match confirmations/rejections logged
+- Entity changes tracked
+- Configurable retention period
 
 ---
 
-## Phase 5: Activate Match Feedback ✅
+## Janitor Worker (Rust Core)
 
-**Implementation** (2025-12-19):
+**Location**: `core/src/worker/janitor.rs`
 
-- Added `feedbackRepo` to MatchHandler
-- Added `recordFeedback()` helper function
-- Auto-records on confirm/reject
+**Tasks**:
 
-**Data captured**:
-
-- Match ID, Operator ID, Decision
-- Original score, Confidence band
-- Notes/reason
+- Clean expired matches
+- Purge old audit logs (90 day retention)
+- Archive stale offers/requests
 
 ---
 
-## Phase 6: Activate Weight History ✅
+## Analysis Scripts
 
-**Status**: Already active via `WeightLearner.ApplyWeights()`
+**Location**: `analysis/scripts/`
 
-- Saves to `weight_history` table on weight changes
-- Includes metrics, source, notes
+| Script                         | Purpose            | Status   |
+| ------------------------------ | ------------------ | -------- |
+| `07_ai_parsing_quality.py`     | Parsing metrics    | ✅ Ready |
+| `10_investigate_duplicates.py` | Duplicate analysis | ✅ Ready |
+| `11_cleanup_duplicates.py`     | Duplicate cleanup  | ✅ Ready |
+| `12_review_unmapped.py`        | Fix mappings       | 🔜 Run   |
+| `13_process_review_queue.py`   | Clear queue        | 🔜 Run   |
+| `14_stale_matches.py`          | Stale analysis     | ✅ Ready |
 
----
+### Running Scripts
 
-## Phase 7: Audit Log Retention ✅
-
-**Implementation** (2025-12-19):
-
-- `DeleteOlderThan()` method in AuditRepository
-- Janitor extended to clean audit logs daily
-- Config: `database.audit_retention_days` (default: 90)
-
----
-
-## Phase 8: AI Parsing Quality ✅
-
-**Analysis Script**: `analysis/scripts/07_ai_parsing_quality.py`
-
-**Findings** (2025-12-19):
-| Metric | Offers | Requests |
-|--------|--------|----------|
-| Medication | 100% | 100% |
-| Unit | 88% | 81% |
-| Quantity | 32% | 17% |
-| Price | 31% | 0% |
-
-> Note: Low price extraction is expected - most messages don't include prices.
-
-**Prompt Enhancement** (2025-12-19):
-
-- Updated `ai/prompts/templates.go`
-- Added stricter quantity/price extraction rules
-- More Arabic number words and price patterns
+```bash
+cd analysis
+uv run python scripts/07_ai_parsing_quality.py
+```
 
 ---
 
-## Phase 9: Review Unmapped Medications 🔜
+## Current Metrics
 
-**Script**: `analysis/scripts/12_review_unmapped.py`
-
-**Issue**: Wrong Arabic→English mappings detected:
-
-- ريبلسيس → Revolade (should be Rybelsus)
-- ميوكوستا → Mycostatin (should be Mucosta)
-- سيبراليكس → Ceftriaxone (should be Cipralex)
-
-**Action**: Run script to review and fix mappings
+| Metric               | Status     |
+| -------------------- | ---------- |
+| Duplicate prevention | ✅ Active  |
+| Audit logs           | ✅ Active  |
+| Match feedback       | ✅ Active  |
+| Weight history       | ✅ Active  |
+| Janitor worker       | ✅ Running |
 
 ---
 
-## Phase 10: Process Review Queue 🔜
-
-**Script**: `analysis/scripts/13_process_review_queue.py`
-
-**Status**: 172 items pending review (0.0 avg confidence)
-
----
-
-## Phase 11: Stale Matches 🟢
-
-**Script**: `analysis/scripts/14_stale_matches.py`
-
-**Status** (2025-12-19): Healthy!
-
-- 2,337 pending matches (all 1-3 days old)
-- No stale matches (>7 days)
-- No cleanup needed
-
----
-
-## Success Metrics
-
-| Metric                | Before | Current | Target |
-| --------------------- | ------ | ------- | ------ |
-| Duplicate prevention  | ❌     | ✅      | ✅     |
-| Audit logs active     | ❌     | ✅      | ✅     |
-| Match feedback active | ❌     | ✅      | ✅     |
-| Weight history active | ✅     | ✅      | ✅     |
-| Audit retention       | ❌     | ✅      | ✅     |
-| Unmapped reviewed     | ❌     | 🔜      | ✅     |
-| Review queue cleared  | ❌     | 🔜      | ✅     |
+_Last updated: December 22, 2025_

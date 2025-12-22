@@ -1,8 +1,11 @@
 # AI-Powered Conversational Bot System
 
+> **Target Architecture**: Rust Core with MCP Integration  
+> **Last Updated**: December 22, 2025
+
 ## Overview
 
-A comprehensive system enabling natural language communication with the PharmaBroker bot, powered by AI for intelligent task execution via MCP (Model Context Protocol).
+A comprehensive system enabling natural language communication with PharmaBroker, powered by AI for intelligent task execution via MCP (Model Context Protocol).
 
 ```mermaid
 flowchart TB
@@ -12,12 +15,12 @@ flowchart TB
         API[REST API] --> Gateway
     end
 
-    subgraph Core["AI Core Engine"]
+    subgraph Core["Rust AI Core Engine"]
         Gateway[Message Gateway] --> Auth[Authentication]
         Auth --> NLU[Natural Language Understanding]
         NLU --> Intent[Intent Classifier]
         Intent --> Context[Context Manager]
-        Context --> Executor[Task Executor]
+        Context --> Executor[Tool Executor]
     end
 
     subgraph MCP["MCP Tool Layer"]
@@ -41,71 +44,76 @@ flowchart TB
 
 ## Architecture Components
 
-### 1. Message Gateway
+### 1. Message Gateway (Rust)
 
 Unified entry point for all messaging platforms.
 
-```go
-type MessageGateway struct {
-    whatsapp  *whatsapp.Manager
-    telegram  *telegram.Bot
-    aiEngine  *AIEngine
-    sessions  *SessionManager
+```rust
+// core/src/bot/gateway.rs
+
+pub struct MessageGateway {
+    whatsapp_rx: mpsc::Receiver<UnifiedMessage>,
+    telegram_rx: mpsc::Receiver<UnifiedMessage>,
+    ai_engine: Arc<AIEngine>,
+    sessions: Arc<RwLock<SessionManager>>,
 }
 
-type UnifiedMessage struct {
-    Platform    string    // "whatsapp" | "telegram" | "api"
-    UserID      string    // Normalized user identifier
-    ChatID      string    // Chat/Group ID
-    Content     string    // Raw message content
-    ReplyTo     string    // Reply context
-    Timestamp   time.Time
-    Attachments []Attachment
+#[derive(Debug, Clone)]
+pub struct UnifiedMessage {
+    pub platform: Platform,       // WhatsApp | Telegram | API
+    pub user_id: String,          // Normalized user identifier
+    pub chat_id: String,          // Chat/Group ID
+    pub content: String,          // Raw message content
+    pub reply_to: Option<String>, // Reply context
+    pub timestamp: DateTime<Utc>,
+    pub attachments: Vec<Attachment>,
 }
 ```
 
-### 2. Authentication Layer
+### 2. Authentication Layer (Rust)
 
 Secure multi-tier access control.
 
-```go
-type AuthLevel int
+```rust
+// core/src/bot/auth.rs
 
-const (
-    AuthPublic   AuthLevel = 0  // Read-only stats
-    AuthOperator AuthLevel = 1  // Confirm/reject matches
-    AuthAdmin    AuthLevel = 2  // Config, user management
-    AuthOwner    AuthLevel = 3  // Full system control
-)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AuthLevel {
+    Public = 0,    // Read-only stats
+    Operator = 1,  // Confirm/reject matches
+    Admin = 2,     // Config, user management
+    Owner = 3,     // Full system control
+}
 
-type UserSession struct {
-    UserID       string
-    Platform     string
-    AuthLevel    AuthLevel
-    Preferences  UserPrefs
-    Context      ConversationContext
-    LastActive   time.Time
-    RateLimit    *RateLimiter
+pub struct UserSession {
+    pub user_id: String,
+    pub platform: Platform,
+    pub auth_level: AuthLevel,
+    pub preferences: UserPrefs,
+    pub context: ConversationContext,
+    pub last_active: DateTime<Utc>,
+    pub rate_limiter: RateLimiter,
 }
 ```
 
-### 3. Natural Language Understanding (NLU)
+### 3. Natural Language Understanding (Rust + LLM)
 
 AI-powered intent recognition and entity extraction.
 
-```go
-type NLUEngine struct {
-    aiProvider   ai.AIProvider
-    intentModel  IntentClassifier
-    entityExtractor EntityExtractor
-    contextWindow []Message  // Last N messages for context
+```rust
+// core/src/bot/nlu.rs
+
+pub struct NLUEngine {
+    ai_client: Arc<AiClient>,
+    context_window: VecDeque<Message>,  // Last N messages
 }
 
-type ParsedIntent struct {
-    Intent      string            // "confirm_match", "search_medication", etc.
-    Confidence  float64           // 0.0 - 1.0
-    Entities    map[string]string // Extracted entities
-    RawQuery    string
+#[derive(Debug, Clone)]
+pub struct ParsedIntent {
+    pub intent: IntentType,
+    pub confidence: f64,
+    pub entities: HashMap<String, String>,
+    pub raw_query: String,
 }
 ```
 
@@ -122,15 +130,12 @@ type ParsedIntent struct {
 | `generate_report`   | "daily report", "تقرير اليوم"        | period           |
 | `configure`         | "set threshold to 0.8"               | key, value       |
 | `help`              | "what can you do?", "ممكن تعمل ايه؟" | topic            |
-| `unknown`           | (fallback)                           | -                |
 
 ---
 
 ## MCP Tool Definitions
 
 Model Context Protocol tools for AI task execution.
-
-### Tool Schema
 
 ```json
 {
@@ -144,10 +149,7 @@ Model Context Protocol tools for AI task execution.
       "name": "search_medications",
       "description": "Search for offers or requests by medication name",
       "parameters": {
-        "medication": {
-          "type": "string",
-          "description": "Medication name (Arabic or English)"
-        },
+        "medication": { "type": "string" },
         "type": { "type": "string", "enum": ["offer", "request", "both"] },
         "limit": { "type": "integer", "default": 10 }
       }
@@ -165,25 +167,16 @@ Model Context Protocol tools for AI task execution.
       "name": "confirm_match",
       "description": "Confirm a pending match by ID",
       "parameters": {
-        "match_id": {
-          "type": "string",
-          "description": "Full or partial match ID"
-        },
-        "note": {
-          "type": "string",
-          "description": "Optional confirmation note"
-        }
+        "match_id": { "type": "string" },
+        "note": { "type": "string" }
       }
     },
     {
       "name": "reject_match",
       "description": "Reject a pending match by ID",
       "parameters": {
-        "match_id": {
-          "type": "string",
-          "description": "Full or partial match ID"
-        },
-        "reason": { "type": "string", "description": "Rejection reason" }
+        "match_id": { "type": "string" },
+        "reason": { "type": "string" }
       }
     },
     {
@@ -196,25 +189,6 @@ Model Context Protocol tools for AI task execution.
         },
         "format": { "type": "string", "enum": ["text", "csv"] }
       }
-    },
-    {
-      "name": "update_config",
-      "description": "Update system configuration (admin only)",
-      "parameters": {
-        "key": { "type": "string" },
-        "value": { "type": "string" }
-      }
-    },
-    {
-      "name": "manage_groups",
-      "description": "Manage monitored WhatsApp groups",
-      "parameters": {
-        "action": {
-          "type": "string",
-          "enum": ["list", "monitor", "unmonitor"]
-        },
-        "group_id": { "type": "string" }
-      }
     }
   ]
 }
@@ -222,9 +196,7 @@ Model Context Protocol tools for AI task execution.
 
 ---
 
-## Conversation Flow
-
-### Natural Conversation Example
+## Conversation Example
 
 ```
 User: مرحبا
@@ -245,47 +217,11 @@ User: اكد الأولى
 Bot: ✅ تم تأكيد مطابقة Augmentin 1g (abc123)
    البائع: صيدلية النور
    المشتري: د. أحمد
-
-هل فيه حاجة تانية؟
-
-User: ابحث عن بانادول
-Bot: 🔍 نتائج البحث عن "بانادول":
-
-📦 *عروض (3)*:
-1. Panadol Extra - 50 علبة @ 40 ج.م
-2. Panadol Night - 20 علبة @ 55 ج.م
-
-📋 *طلبات (2)*:
-1. Panadol Extra - 30 علبة (عاجل 🔥)
-
-هل تحب تعرف تفاصيل أكتر؟
 ```
 
 ---
 
 ## Security Model
-
-### Authentication Flow
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant G as Gateway
-    participant A as Auth
-    participant AI as AI Engine
-
-    U->>G: Message
-    G->>A: Validate User
-    alt First Time User
-        A->>U: Request verification code
-        U->>A: Provide code
-        A->>A: Create session
-    end
-    A->>G: Session + AuthLevel
-    G->>AI: Process with permissions
-    AI->>G: Response
-    G->>U: Formatted message
-```
 
 ### Permission Matrix
 
@@ -299,15 +235,14 @@ sequenceDiagram
 | Manage groups    | ❌     | ❌       | ✅    | ✅    |
 | Config changes   | ❌     | ❌       | ✅    | ✅    |
 | User management  | ❌     | ❌       | ❌    | ✅    |
-| System control   | ❌     | ❌       | ❌    | ✅    |
 
 ### Rate Limiting
 
-```go
-type RateLimits struct {
-    MessagesPerMinute  int // Default: 20
-    ToolCallsPerMinute int // Default: 10
-    ReportsPerHour     int // Default: 5
+```rust
+pub struct RateLimits {
+    pub messages_per_minute: u32,   // Default: 20
+    pub tool_calls_per_minute: u32, // Default: 10
+    pub reports_per_hour: u32,      // Default: 5
 }
 ```
 
@@ -317,11 +252,11 @@ type RateLimits struct {
 
 ### Phase 1: Core Infrastructure
 
-- [ ] Create `internal/bot/gateway.go` - Unified message gateway
-- [ ] Create `internal/bot/session.go` - Session management
-- [ ] Create `internal/bot/auth.go` - Authentication layer
-- [ ] Create `internal/bot/nlu.go` - NLU engine wrapper
-- [ ] Define MCP tool schemas in `internal/bot/tools/`
+- [ ] Create `core/src/bot/gateway.rs` - Unified message gateway
+- [ ] Create `core/src/bot/session.rs` - Session management
+- [ ] Create `core/src/bot/auth.rs` - Authentication layer
+- [ ] Create `core/src/bot/nlu.rs` - NLU engine wrapper
+- [ ] Define MCP tool schemas in `core/src/bot/tools/`
 
 ### Phase 2: Intent & Entity Extraction
 
@@ -332,59 +267,40 @@ type RateLimits struct {
 
 ### Phase 3: MCP Tool Implementation
 
-- [ ] `tools/status.go` - System status tool
-- [ ] `tools/search.go` - Medication search tool
-- [ ] `tools/matches.go` - Match management tools
-- [ ] `tools/reports.go` - Report generation tool
-- [ ] `tools/config.go` - Configuration tool
-- [ ] `tools/groups.go` - Group management tool
+- [ ] `tools/status.rs` - System status tool
+- [ ] `tools/search.rs` - Medication search tool
+- [ ] `tools/matches.rs` - Match management tools
+- [ ] `tools/reports.rs` - Report generation tool
+- [ ] `tools/config.rs` - Configuration tool
 
-### Phase 4: Conversation Management
+### Phase 4: Platform Integration
 
-- [ ] Implement context windowing (last 10 messages)
-- [ ] Add conversation state machine
-- [ ] Create response templates (AR/EN)
-- [ ] Add personality configuration
-
-### Phase 5: Platform Integration
-
-- [ ] Extend WhatsApp bot commands
-- [ ] Implement Telegram bot with inline keyboards
+- [ ] Extend WhatsApp bridge with bot commands
+- [ ] Implement Telegram bot (optional)
 - [ ] Add webhook endpoint for API access
-- [ ] Create unified message formatter
-
-### Phase 6: Security & Monitoring
-
-- [ ] Implement auth code verification
-- [ ] Add rate limiting middleware
-- [ ] Create audit logging for all actions
-- [ ] Add usage analytics
 
 ---
 
 ## Code Structure
 
 ```
-internal/
+core/src/
 ├── bot/
-│   ├── gateway.go         # Message gateway
-│   ├── session.go         # Session management
-│   ├── auth.go            # Authentication
-│   ├── nlu.go             # NLU engine
-│   ├── executor.go        # Tool executor
-│   ├── response.go        # Response generator
+│   ├── mod.rs            # Module exports
+│   ├── gateway.rs        # Message gateway
+│   ├── session.rs        # Session management
+│   ├── auth.rs           # Authentication
+│   ├── nlu.rs            # NLU engine
+│   ├── executor.rs       # Tool executor
+│   ├── response.rs       # Response generator
 │   └── tools/
-│       ├── schema.go      # MCP tool definitions
-│       ├── status.go      # Status tool
-│       ├── search.go      # Search tool
-│       ├── matches.go     # Match tools
-│       ├── reports.go     # Report tools
-│       ├── config.go      # Config tools
-│       └── groups.go      # Group tools
-├── whatsapp/
-│   └── ai_handler.go      # AI-powered message handler
-└── telegram/
-    └── ai_handler.go      # AI-powered message handler
+│       ├── mod.rs        # Tool registry
+│       ├── schema.rs     # MCP tool definitions
+│       ├── status.rs     # Status tool
+│       ├── search.rs     # Search tool
+│       ├── matches.rs    # Match tools
+│       ├── reports.rs    # Report tools
+│       └── config.rs     # Config tools
 ```
 
 ---
@@ -421,5 +337,5 @@ If unsure, ask for clarification. Be helpful and professional.
 
 ---
 
-_Document Version: 1.0_  
-_Last Updated: December 2024_
+_Document Version: 2.0 (Rust)_  
+_Last Updated: December 22, 2025_
