@@ -1,234 +1,445 @@
-# PharmaBroker
+<p align="center">
+  <img src="assets/logo.png" alt="PharmaBroker Logo" width="200"/>
+</p>
 
-> **AI-Powered Pharmaceutical Trading Platform for Egyptian WhatsApp Groups**
+<h1 align="center">🏥 PharmaBroker</h1>
 
-[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://golang.org)
-[![Rust](https://img.shields.io/badge/Rust-1.75+-DEA584?style=flat&logo=rust)](https://www.rust-lang.org)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18+-336791?style=flat&logo=postgresql)](https://www.postgresql.org)
-[![gRPC](https://img.shields.io/badge/gRPC-Protocol-244c5a?style=flat&logo=grpc)](https://grpc.io)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <strong>🌍 AI-Powered Pharmaceutical Trading Platform for Egyptian WhatsApp Groups</strong>
+</p>
 
-PharmaBroker is a polyglot microservices platform that ingests Arabic WhatsApp messages, extracts medication offers/requests using local AI models, and matches supply with demand via an intelligent 24-module matching engine.
+<p align="center">
+  <em>Bridging the gap between medication supply and demand through intelligent automation</em>
+</p>
+
+<p align="center">
+  <img src="assets/hero_banner.png" alt="PharmaBroker Hero" width="800"/>
+</p>
+
+<p align="center">
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go"></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-1.75+-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust"></a>
+  <a href="https://www.postgresql.org"><img src="https://img.shields.io/badge/PostgreSQL-18+-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL"></a>
+  <a href="https://grpc.io"><img src="https://img.shields.io/badge/gRPC-Protocol-244c5a?style=flat-square&logo=grpc&logoColor=white" alt="gRPC"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License"></a>
+</p>
+
+<p align="center">
+  <a href="#-features">Features</a> •
+  <a href="#-architecture">Architecture</a> •
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-api-reference">API</a> •
+  <a href="#-contributing">Contributing</a>
+</p>
+
+---
+
+## 📖 Overview
+
+**PharmaBroker** is an enterprise-grade, polyglot microservices platform designed to revolutionize pharmaceutical trading in Egypt. The system seamlessly integrates with WhatsApp groups where pharmacists and distributors exchange medication offers and requests in Arabic.
+
+Using advanced **Natural Language Processing** powered by local AI models, PharmaBroker automatically extracts structured medication data from informal Arabic text, then employs a sophisticated **24-module matching engine** to connect supply with demand in real-time.
+
+### 🎯 The Problem We Solve
+
+In Egypt's pharmaceutical market, medication shortages are common. Pharmacists rely on WhatsApp groups to find medications, but:
+
+- **Manual monitoring** of hundreds of daily messages is exhausting
+- **Missed opportunities** when matching offers/requests aren't seen in time
+- **No tracking** of historical trades or pricing trends
+- **Language barriers** - informal Arabic text is hard to parse programmatically
+
+### 💡 Our Solution
+
+PharmaBroker provides an **intelligent automation layer** that:
+
+1. **Ingests** WhatsApp messages in real-time
+2. **Parses** informal Arabic using local LLMs (no data leaves your infrastructure)
+3. **Matches** offers with requests using ML-optimized scoring
+4. **Learns** from operator feedback to continuously improve
+5. **Notifies** operators of high-confidence matches for quick action
 
 ---
 
 ## ✨ Features
 
-| Category                 | Features                                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------- |
-| **AI Parsing**           | Arabic NLP extraction from informal Egyptian text using local LLMs (Qwen, Ministral, Gemma) |
-| **Intelligent Matching** | 24-module engine with ensemble strategies, A/B testing, confidence calibration              |
-| **Adaptive Learning**    | Self-optimizing weights based on operator feedback with warm-start support                  |
-| **Resilience**           | Circuit breaker, rate limiting, deduplication, retry buffers                                |
-| **Real-time**            | WebSocket updates, SSE streaming, gRPC inter-service communication                          |
-| **Observability**        | Prometheus metrics, structured logging, audit trails                                        |
+<table>
+<tr>
+<td width="50%">
+
+### 🤖 Intelligent AI Parsing
+
+- **Arabic NLP** extraction from informal Egyptian dialect
+- **Multi-model support**: Qwen, Ministral, Gemma
+- **Local inference** via Docker Model Runner
+- **Feedback loop** for continuous improvement
+
+</td>
+<td width="50%">
+
+### ⚖️ Advanced Matching Engine
+
+- **24 specialized modules** working in harmony
+- **Ensemble strategies**: fuzzy, embedding, full-text
+- **A/B testing framework** for strategy optimization
+- **Confidence calibration** using Platt scaling
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 🧠 Adaptive Learning
+
+- **Gradient descent** weight optimization
+- **Warm-start manager** for new deployments
+- **Outlier detection** for data quality
+- **Historical affinity** learning
+
+</td>
+<td width="50%">
+
+### 🛡️ Enterprise Resilience
+
+- **Circuit breaker** pattern (Open/Closed/Half-Open)
+- **Token rate limiting** with burst support
+- **Message deduplication** with LRU cache
+- **Retry buffer** with exponential backoff
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 📊 Real-time Observability
+
+- **WebSocket** live updates
+- **Prometheus metrics** integration
+- **Structured logging** (zerolog/tracing)
+- **Comprehensive audit trail**
+
+</td>
+<td width="50%">
+
+### 🔒 Production Ready
+
+- **Graceful shutdown** with drain periods
+- **Health checks** and readiness probes
+- **Docker Compose** orchestration
+- **Horizontal scalability**
+
+</td>
+</tr>
+</table>
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ Architecture
 
-PharmaBroker uses a **polyglot microservices architecture** with a Go WhatsApp Bridge communicating via gRPC to a Rust Core Engine.
+PharmaBroker employs a **polyglot microservices architecture** that leverages the strengths of both Go and Rust:
+
+| Component           | Language   | Responsibility                                                |
+| ------------------- | ---------- | ------------------------------------------------------------- |
+| **WhatsApp Bridge** | Go         | Real-time message ingestion, resilience patterns, gRPC client |
+| **Core Engine**     | Rust       | AI parsing, matching, business logic, REST/gRPC servers       |
+| **Database**        | PostgreSQL | Persistent storage with pgvector for embeddings               |
+| **Cache**           | Redis      | Distributed caching and pub/sub (future)                      |
+
+### System Overview
 
 ```mermaid
 flowchart TB
-    subgraph External["External Systems"]
-        WA[("📱 WhatsApp Web")]
-        AI["🤖 Docker Model Runner<br/>(Qwen, Ministral, Gemma)"]
+    subgraph External["☁️ External Systems"]
+        direction LR
+        WA["📱 WhatsApp Web<br/><small>Real-time messaging</small>"]
+        AI["🤖 Docker Model Runner<br/><small>Qwen • Ministral • Gemma</small>"]
     end
 
-    subgraph Bridge["Go WhatsApp Bridge"]
+    subgraph Bridge["🟦 Go WhatsApp Bridge"]
         direction TB
-        WM[whatsmeow Client]
-        DEDUP[Deduplicator]
-        RL[Rate Limiter]
-        CB[Circuit Breaker]
-        RETRY[Retry Buffer]
+        WM["<b>whatsmeow</b><br/><small>WA Web Protocol</small>"]
+        DEDUP["<b>Deduplicator</b><br/><small>LRU Cache + TTL</small>"]
+        RL["<b>Rate Limiter</b><br/><small>Token Bucket</small>"]
+        CB["<b>Circuit Breaker</b><br/><small>Failure Protection</small>"]
+        RETRY["<b>Retry Buffer</b><br/><small>Exponential Backoff</small>"]
+
+        WM --> DEDUP
+        DEDUP --> RL
+        RL --> CB
+        CB -.->|"On Failure"| RETRY
     end
 
-    subgraph Core["Rust Core Engine"]
+    subgraph Core["🟧 Rust Core Engine"]
         direction TB
-        GRPC[Tonic gRPC Server]
-        API[Axum REST API]
-        PARSER[AI Parser]
-        MATCH[Matching Engine<br/>24 Modules]
-        WORKERS[Background Workers<br/>Janitor • MatchProcessor]
+        GRPC["<b>Tonic gRPC Server</b><br/><small>Proto Contract</small>"]
+        API["<b>Axum REST API</b><br/><small>JSON Endpoints</small>"]
+        PARSER["<b>AI Parser</b><br/><small>Prompt Engineering</small>"]
+        MATCH["<b>Matching Engine</b><br/><small>24 Modules</small>"]
+        WORKERS["<b>Background Workers</b><br/><small>Janitor • MatchProcessor</small>"]
+
+        GRPC --> PARSER
+        PARSER --> MATCH
+        MATCH --> WORKERS
     end
 
-    subgraph Storage["Data Layer"]
-        PG[("PostgreSQL 18<br/>+ pgvector")]
-        REDIS[("Redis 8<br/>Cache/PubSub")]
+    subgraph Storage["💾 Data Layer"]
+        direction LR
+        PG[("🐘 <b>PostgreSQL 18</b><br/><small>pgvector enabled</small>")]
+        REDIS[("🔴 <b>Redis 8</b><br/><small>Cache & PubSub</small>")]
     end
 
-    WA -->|Messages| WM
-    WM --> DEDUP --> RL --> CB
-    CB -->|gRPC| GRPC
-    CB -.->|Retry| RETRY
-    RETRY -.->|gRPC| GRPC
-
-    GRPC --> PARSER
-    PARSER -->|API Call| AI
-    AI -->|Parsed Items| PARSER
-    PARSER --> MATCH
-    MATCH --> WORKERS
-
+    WA ==>|"Messages"| WM
+    CB ==>|"gRPC"| GRPC
+    RETRY -.->|"Retry"| GRPC
+    PARSER <-->|"Inference"| AI
     GRPC --> PG
     API --> PG
     WORKERS --> PG
     Core -.-> REDIS
 
-    style Bridge fill:#00ADD8,color:#fff
-    style Core fill:#DEA584,color:#000
-    style Storage fill:#336791,color:#fff
+    style External fill:#2d3748,color:#fff,stroke:#4a5568
+    style Bridge fill:#00ADD8,color:#fff,stroke:#0891b2
+    style Core fill:#DEA584,color:#000,stroke:#c2410c
+    style Storage fill:#1e3a5f,color:#fff,stroke:#3b82f6
 ```
 
 ---
 
-## 📨 Message Processing Flow
+## 📨 Message Processing Pipeline
 
-The complete lifecycle of a WhatsApp message through the system:
+Every WhatsApp message flows through a carefully orchestrated pipeline, from ingestion to match notification:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant WA as WhatsApp
-    participant Bridge as Go Bridge
-    participant gRPC as gRPC Channel
-    participant Core as Rust Core
-    participant AI as Local LLM
-    participant DB as PostgreSQL
-    participant WS as WebSocket
 
-    WA->>Bridge: New Message
-    Bridge->>Bridge: Dedup Check
-    alt Duplicate
-        Bridge--xBridge: Drop Message
-    else Unique
-        Bridge->>Bridge: Rate Limit Check
-        Bridge->>Bridge: Group Filter (monitored?)
-        Bridge->>gRPC: ProcessMessage RPC
-        gRPC->>Core: RawMessage Proto
-        Core->>DB: Save raw_messages
-        Core->>AI: Parse Arabic Text
-        AI-->>Core: ParsedItem[]
-        Core->>Core: Normalize (enforceMappings)
-        Core->>DB: Save offers/requests
-        Core->>Core: Queue for Matching
-        Core->>Core: MatchProcessor polls queue
-        Core->>Core: Score (5 dimensions)
-        Core->>DB: Save matches
-        Core->>WS: Broadcast update
+    box rgb(45, 55, 72) External
+        participant WA as 📱 WhatsApp
+    end
+
+    box rgb(0, 173, 216) Go Bridge
+        participant B as 🌉 Bridge
+        participant D as 🔄 Dedup
+        participant R as ⚡ RateLimiter
+        participant C as 🔌 CircuitBreaker
+    end
+
+    box rgb(222, 165, 132) Rust Core
+        participant G as 📡 gRPC Server
+        participant P as 🤖 AI Parser
+        participant M as ⚖️ Matcher
+        participant W as 👷 Workers
+    end
+
+    box rgb(51, 103, 145) Storage
+        participant DB as 🐘 PostgreSQL
+    end
+
+    WA->>B: New Message Event
+    B->>D: Check Duplicate
+
+    alt Is Duplicate
+        D--xB: Drop (seen before)
+    else Is Unique
+        D->>R: Pass Through
+        R->>R: Check Token Bucket
+
+        alt Rate Limited
+            R--xB: Drop (throttled)
+        else Allowed
+            R->>C: Forward Message
+            C->>C: Check Circuit State
+
+            alt Circuit Open
+                C--xB: Queue for Retry
+            else Circuit Closed
+                C->>G: ProcessMessage RPC
+                G->>DB: INSERT raw_messages
+                G->>P: Parse Arabic Text
+                P->>P: Build Prompt + Few-Shot
+                P-->>G: ParsedItem[]
+                G->>G: Normalize Medications
+                G->>DB: INSERT offers/requests
+                G->>W: Queue for Matching
+                W->>M: Calculate Scores
+                M->>M: 5-Dimension Scoring
+                M-->>W: MatchScore + Confidence
+                W->>DB: INSERT matches
+                W-->>B: WebSocket Broadcast
+            end
+        end
     end
 ```
 
 ---
 
-## ⚖️ Matching Engine Architecture
+## ⚖️ Matching Engine Deep Dive
 
-The 24-module matching engine provides intelligent, self-optimizing matching:
+The heart of PharmaBroker is its **24-module matching engine**, a sophisticated system that combines multiple strategies for optimal match quality.
+
+### Scoring Dimensions
+
+The matcher evaluates offer-request pairs across five weighted dimensions:
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'pie1': '#22c55e', 'pie2': '#3b82f6', 'pie3': '#8b5cf6', 'pie4': '#f59e0b', 'pie5': '#ec4899'}}}%%
+pie showData
+    title Default Scoring Weights
+    "Medication (40%)" : 40
+    "Quantity (20%)" : 20
+    "Dosage (15%)" : 15
+    "Price (15%)" : 15
+    "Recency (10%)" : 10
+```
+
+| Dimension         | Weight | Algorithm                | Description                                                          |
+| ----------------- | ------ | ------------------------ | -------------------------------------------------------------------- |
+| **💊 Medication** | 40%    | Fuzzy + Embedding Cosine | Matches medication names using edit distance and semantic similarity |
+| **📦 Quantity**   | 20%    | Fulfillment Ratio        | Calculates `min(offered, requested) / requested`                     |
+| **💉 Dosage**     | 15%    | Normalized Comparison    | Parses units (mg, g, ml) and compares numerically                    |
+| **💰 Price**      | 15%    | Budget Fit               | Score = 1.0 if `offer_price ≤ max_price`, else scaled                |
+| **⏰ Recency**    | 10%    | Exponential Decay        | Fresher items score higher (24h half-life default)                   |
+
+### Ensemble Architecture
+
+The matching engine doesn't rely on a single strategy. Instead, it uses an **ensemble of strategies** that are weighted and combined:
 
 ```mermaid
 flowchart LR
-    subgraph Input["Match Queue"]
-        OFFER[("Offer")]
-        REQUEST[("Request")]
+    subgraph Input["📥 Input"]
+        OFFER["Offer"]
+        REQUEST["Request"]
     end
 
-    subgraph Scoring["Multi-Dimensional Scoring"]
-        MED["💊 Medication<br/>40%"]
-        DOS["💉 Dosage<br/>15%"]
-        QTY["📦 Quantity<br/>20%"]
-        PRICE["💰 Price<br/>15%"]
-        REC["⏰ Recency<br/>10%"]
+    subgraph Strategies["🎯 Matching Strategies"]
+        direction TB
+        FUZZY["<b>Fuzzy Matcher</b><br/><small>Levenshtein Distance</small>"]
+        EMBED["<b>Embedding Matcher</b><br/><small>Cosine Similarity</small>"]
+        FTS["<b>Full-Text Search</b><br/><small>PostgreSQL tsvector</small>"]
+        HYBRID["<b>Hybrid Filter</b><br/><small>Combined Approach</small>"]
     end
 
-    subgraph Ensemble["Ensemble Strategies"]
-        FUZZY[Fuzzy Match]
-        EMBED[Embedding Similarity]
-        FTS[Full-Text Search]
-        HYBRID[Hybrid Filter]
+    subgraph Intelligence["🧠 Intelligence Layer"]
+        direction TB
+        ENSEMBLE["<b>Ensemble Combiner</b><br/><small>Weighted Average</small>"]
+        CAL["<b>Confidence Calibrator</b><br/><small>Platt Scaling</small>"]
+        ABTEST["<b>A/B Test Manager</b><br/><small>Strategy Comparison</small>"]
     end
 
-    subgraph Intelligence["Learning & Calibration"]
-        LEARNER["Weight Learner<br/>(Gradient Descent)"]
-        CAL["Confidence Calibrator<br/>(Platt Scaling)"]
-        WARM["Warm-Start Manager"]
-        ABTEST["A/B Test Framework"]
+    subgraph Output["📤 Output"]
+        SCORE["Final Score<br/>0.0 - 1.0"]
+        BAND["Confidence Band"]
     end
 
-    subgraph Output["Confidence Bands"]
-        AUTO["🟢 AUTO ≥0.90<br/>Auto-Confirm"]
-        SUG["🟡 SUGGEST 0.70-0.89<br/>Operator Review"]
-        REV["🟠 REVIEW 0.50-0.69<br/>Manual Queue"]
-        NONE["🔴 NONE <0.50<br/>No Match"]
-    end
+    OFFER --> Strategies
+    REQUEST --> Strategies
+    FUZZY & EMBED & FTS & HYBRID --> ENSEMBLE
+    ENSEMBLE --> CAL
+    ABTEST -.->|"Monitors"| ENSEMBLE
+    CAL --> SCORE
+    SCORE --> BAND
 
-    OFFER --> Scoring
-    REQUEST --> Scoring
-    MED & DOS & QTY & PRICE & REC --> Ensemble
-    Ensemble --> Intelligence
-    LEARNER --> CAL
-    CAL --> Output
-
-    style AUTO fill:#22c55e,color:#fff
-    style SUG fill:#eab308,color:#000
-    style REV fill:#f97316,color:#fff
-    style NONE fill:#ef4444,color:#fff
+    style Input fill:#3b82f6,color:#fff
+    style Output fill:#22c55e,color:#fff
+    style Strategies fill:#8b5cf6,color:#fff
+    style Intelligence fill:#f59e0b,color:#000
 ```
 
-### Matching Engine Modules
+### Confidence Bands & Actions
 
-| Module            | Purpose                                      |
-| ----------------- | -------------------------------------------- |
-| `scorer`          | Multi-dimensional weighted scoring           |
-| `learner`         | Gradient descent weight optimization         |
-| `calibration`     | Platt scaling for probability calibration    |
-| `confidence`      | Confidence band classification               |
-| `ensemble`        | Strategy combination (fuzzy, embedding, FTS) |
-| `abtest`          | A/B testing framework for strategies         |
-| `warm_start`      | Bootstrap from historical data               |
-| `historical`      | Medication affinity learning                 |
-| `filter`          | Pre-match filtering rules                    |
-| `hybrid_filter`   | Combined filtering strategies                |
-| `fts_search`      | PostgreSQL full-text search                  |
-| `embedding_cache` | Vector embedding cache with synonyms         |
-| `thresholds`      | Smooth threshold calculation                 |
-| `audit`           | Action logging and audit trail               |
-| `scheduler`       | Learning job scheduling (cron)               |
+Based on the final calibrated score, matches are routed to different actions:
+
+| Band |   Score Range   | Action      | Description                                  |
+| :--: | :-------------: | ----------- | -------------------------------------------- |
+|  🟢  |   **≥ 0.90**    | **AUTO**    | Automatically confirmed - highest confidence |
+|  🟡  | **0.70 - 0.89** | **SUGGEST** | Suggested to operator for quick approval     |
+|  🟠  | **0.50 - 0.69** | **REVIEW**  | Queued for detailed manual review            |
+|  🔴  |   **< 0.50**    | **NONE**    | No match - scores too low                    |
+
+### Module Reference
+
+The matching engine comprises 24 specialized modules:
+
+<details>
+<summary><strong>📋 Click to expand full module list</strong></summary>
+
+| Module            | File                 | Purpose                                   |
+| ----------------- | -------------------- | ----------------------------------------- |
+| `scorer`          | `scorer.rs`          | Multi-dimensional weighted scoring        |
+| `learner`         | `learner.rs`         | Gradient descent weight optimization      |
+| `calibration`     | `calibration.rs`     | Platt scaling for probability calibration |
+| `confidence`      | `confidence.rs`      | Confidence band classification            |
+| `ensemble`        | `ensemble.rs`        | Strategy combination framework            |
+| `abtest`          | `abtest.rs`          | A/B testing infrastructure                |
+| `warm_start`      | `warm_start.rs`      | Bootstrap from historical patterns        |
+| `historical`      | `historical.rs`      | Medication affinity learning              |
+| `filter`          | `filter.rs`          | Pre-match filtering rules                 |
+| `hybrid_filter`   | `hybrid_filter.rs`   | Combined filtering strategies             |
+| `fts_search`      | `fts_search.rs`      | PostgreSQL full-text search               |
+| `embedding_cache` | `embedding_cache.rs` | Vector cache with synonyms                |
+| `thresholds`      | `thresholds.rs`      | Smooth threshold calculation              |
+| `audit`           | `audit.rs`           | Action logging                            |
+| `scheduler`       | `scheduler.rs`       | Learning job scheduling                   |
+| `weights`         | `weights.rs`         | Weight configuration                      |
+| `score_types`     | `score_types.rs`     | Type definitions                          |
+| `actions`         | `actions.rs`         | Auto-action handlers                      |
+| `arabic`          | `arabic.rs`          | Arabic text normalization                 |
+| `dosage`          | `dosage.rs`          | Dosage parsing and comparison             |
+| `fuzzy`           | `fuzzy.rs`           | Fuzzy string matching                     |
+| `service`         | `service.rs`         | Matching service interface                |
+| `engine`          | `engine.rs`          | Core engine orchestration                 |
+| `mod`             | `mod.rs`             | Module exports                            |
+
+</details>
 
 ---
 
-## 🛡️ Resilience Architecture
+## 🛡️ Resilience Patterns
 
-The Go Bridge implements enterprise-grade resilience patterns:
+The Go Bridge implements **battle-tested resilience patterns** to ensure reliable operation even under adverse conditions:
+
+### Circuit Breaker State Machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Closed: Init
+    [*] --> Closed: System Start
 
-    state CircuitBreaker {
-        Closed --> Open: failures ≥ maxFailures
-        Open --> HalfOpen: timeout elapsed
-        HalfOpen --> Closed: success
-        HalfOpen --> Open: failure
+    state Closed {
+        [*] --> Healthy: Normal Operation
+        Healthy --> Healthy: Success
+        Healthy --> Degraded: Failure
+        Degraded --> Healthy: Success (reset count)
+        Degraded --> Trigger: failures ≥ threshold
     }
 
-    state MessageFlow {
-        Receive --> Dedup: New Message
-        Dedup --> RateLimit: Unique
-        Dedup --> Drop: Duplicate
-        RateLimit --> Forward: Allowed
-        RateLimit --> Drop: Limited
-        Forward --> RetryBuffer: CB Open
-        RetryBuffer --> Forward: CB Closed
+    Closed --> Open: Trigger
+
+    state Open {
+        [*] --> Blocking: Reject All Calls
+        Blocking --> Blocking: Immediate Fail
+        Blocking --> Timeout: Wait resetTimeout
     }
+
+    Open --> HalfOpen: Timeout
+
+    state HalfOpen {
+        [*] --> Testing: Allow One Call
+        Testing --> Success: Call Succeeds
+        Testing --> Failure: Call Fails
+    }
+
+    HalfOpen --> Closed: Success
+    HalfOpen --> Open: Failure
 ```
 
-| Pattern             | Implementation                        | Purpose                                   |
-| ------------------- | ------------------------------------- | ----------------------------------------- |
-| **Circuit Breaker** | `resilience/circuit_breaker.go`       | Prevents cascade failures to Core         |
-| **Rate Limiter**    | `resilience/rate_limiter.go`          | Token bucket with burst support           |
-| **Deduplicator**    | `deduplicator/deduplicator.go`        | LRU cache with TTL, same-sender detection |
-| **Retry Buffer**    | `adapters/resilience/retry_sender.go` | Exponential backoff with jitter           |
+### Resilience Components
+
+| Component           | Pattern             | Configuration             | Purpose                           |
+| ------------------- | ------------------- | ------------------------- | --------------------------------- |
+| **Circuit Breaker** | Fail-Fast           | 5 failures → 30s timeout  | Prevents cascade failures to Core |
+| **Rate Limiter**    | Token Bucket        | 100/min, burst 20         | Protects against message floods   |
+| **Deduplicator**    | LRU Cache           | 10k entries, 5min TTL     | Filters duplicate messages        |
+| **Retry Buffer**    | Exponential Backoff | 1000 msg buffer, 5s flush | Handles temporary failures        |
 
 ---
 
@@ -236,57 +447,87 @@ stateDiagram-v2
 
 ```
 pharma-broker/
-├── bridge/                     # 🟦 Go WhatsApp Bridge (Hexagonal Architecture)
-│   ├── adapters/
-│   │   ├── grpc/              # gRPC client to Rust Core
-│   │   ├── qr/                # QR code HTTP handler
-│   │   ├── resilience/        # Retry sender adapter
-│   │   └── whatsapp/          # whatsmeow adapter
-│   ├── app/                   # Bridge orchestration logic
-│   ├── domain/                # Strong types (JID, MessageID, Phone)
-│   ├── ports/                 # Inbound/Outbound interfaces
-│   ├── resilience/            # Circuit breaker, rate limiter
-│   ├── deduplicator/          # Message deduplication
-│   └── cmd/bridge/            # Entry point
 │
-├── core/                       # 🟧 Rust Core Engine
+├── 🟦 bridge/                      # Go WhatsApp Bridge
+│   ├── adapters/                   # Infrastructure adapters
+│   │   ├── grpc/                   # → gRPC client to Rust Core
+│   │   ├── qr/                     # → QR code HTTP handler
+│   │   ├── resilience/             # → Retry sender
+│   │   └── whatsapp/               # → whatsmeow adapter
+│   ├── app/                        # Application orchestration
+│   │   └── bridge.go               # → Core bridge logic
+│   ├── domain/                     # Domain models
+│   │   ├── message.go              # → Message entity
+│   │   └── types.go                # → Strong types (JID, Phone)
+│   ├── ports/                      # Interface definitions
+│   │   ├── inbound.go              # → MessageSource, QRHandler
+│   │   ├── outbound.go             # → MessageSink, GroupRepo
+│   │   └── policies.go             # → Resilience interfaces
+│   ├── resilience/                 # Resilience implementations
+│   │   ├── circuit_breaker.go      # → Circuit breaker
+│   │   └── rate_limiter.go         # → Token bucket limiter
+│   ├── deduplicator/               # Message deduplication
+│   └── cmd/bridge/                 # Entry point
+│
+├── 🟧 core/                        # Rust Core Engine
 │   ├── crates/
-│   │   ├── db/                # SeaORM database layer
-│   │   │   ├── entity/        # ORM entities
-│   │   │   ├── migration/     # Database migrations
-│   │   │   ├── repo/          # Repository implementations
-│   │   │   └── traits/        # Repository interfaces
-│   │   └── ai-client/         # Generic AI client library
+│   │   ├── db/                     # Database layer (SeaORM)
+│   │   │   ├── entity/             # → ORM entities
+│   │   │   ├── migration/          # → Schema migrations
+│   │   │   ├── repo/               # → Repository implementations
+│   │   │   ├── traits/             # → Repository interfaces
+│   │   │   └── service/            # → Business services
+│   │   └── ai-client/              # Generic AI client library
 │   ├── src/
-│   │   ├── ai/                # AI parsing, feedback loop, token batcher
-│   │   ├── api/               # Axum REST handlers
-│   │   ├── grpc/              # Tonic gRPC server
-│   │   ├── matching/          # 24-module matching engine
-│   │   ├── worker/            # Background workers
-│   │   └── main.rs            # Entry point
-│   └── tests/                 # Integration tests
+│   │   ├── ai/                     # AI subsystem
+│   │   │   ├── pharma_parser.rs    # → Message parser
+│   │   │   ├── feedback_loop.rs    # → Learning from corrections
+│   │   │   └── token_batcher.rs    # → Efficient batching
+│   │   ├── api/                    # REST API (Axum)
+│   │   │   ├── handlers.rs         # → Endpoint handlers
+│   │   │   └── routes.rs           # → Router configuration
+│   │   ├── grpc/                   # gRPC server (Tonic)
+│   │   │   ├── server.rs           # → Service implementation
+│   │   │   └── params.rs           # → Request/Response types
+│   │   ├── matching/               # Matching engine (24 modules)
+│   │   ├── worker/                 # Background workers
+│   │   │   ├── janitor.rs          # → Data cleanup
+│   │   │   └── match_processor.rs  # → Queue processing
+│   │   └── main.rs                 # → Application entry
+│   └── tests/                      # Integration tests
 │
-├── proto/                      # 📜 Shared gRPC Definitions
-│   └── pharma.proto           # Service contract
+├── 📜 proto/                       # gRPC Definitions
+│   └── pharma.proto                # → Service contract
 │
-├── migrations/                 # 🗃️ SQL Migrations (init-db.sh)
-├── docker-compose.yaml        # 🐳 Full stack orchestration
-└── Taskfile.yml               # 📋 Development automation
+├── 🗃️ migrations/                  # SQL migrations
+├── 📊 monitoring/                  # Prometheus/Grafana configs
+├── 🐳 docker-compose.yaml          # Full stack orchestration
+└── 📋 Taskfile.yml                 # Development automation
 ```
 
 ---
 
-## 🔌 gRPC API
+## 🔌 gRPC Service Contract
 
-The Rust Core exposes a gRPC service defined in `proto/pharma.proto`:
+The Rust Core exposes a well-defined gRPC service (`proto/pharma.proto`):
 
-| RPC Method           | Request                  | Response                  | Description                                   |
-| -------------------- | ------------------------ | ------------------------- | --------------------------------------------- |
-| `ProcessMessage`     | `RawMessage`             | `ProcessResponse`         | Process incoming WhatsApp message             |
-| `GetStats`           | `StatsRequest`           | `StatsResponse`           | System statistics (offers, requests, matches) |
-| `HealthCheck`        | `HealthRequest`          | `HealthResponse`          | Service health and version                    |
-| `GetMonitoredGroups` | `MonitoredGroupsRequest` | `MonitoredGroupsResponse` | List of monitored group JIDs                  |
-| `SyncGroups`         | `SyncGroupsRequest`      | `SyncGroupsResponse`      | Sync WhatsApp groups to database              |
+```protobuf
+service PharmaCore {
+    rpc ProcessMessage(RawMessage) returns (ProcessResponse);
+    rpc GetStats(StatsRequest) returns (StatsResponse);
+    rpc HealthCheck(HealthRequest) returns (HealthResponse);
+    rpc GetMonitoredGroups(MonitoredGroupsRequest) returns (MonitoredGroupsResponse);
+    rpc SyncGroups(SyncGroupsRequest) returns (SyncGroupsResponse);
+}
+```
+
+| RPC                    | Description                            | Use Case                         |
+| ---------------------- | -------------------------------------- | -------------------------------- |
+| **ProcessMessage**     | Processes an incoming WhatsApp message | Bridge → Core message forwarding |
+| **GetStats**           | Returns system statistics              | Dashboard metrics                |
+| **HealthCheck**        | Verifies service health                | Kubernetes probes                |
+| **GetMonitoredGroups** | Lists monitored group JIDs             | Bridge group filtering           |
+| **SyncGroups**         | Syncs WhatsApp groups to DB            | Initial group discovery          |
 
 ---
 
@@ -294,99 +535,144 @@ The Rust Core exposes a gRPC service defined in `proto/pharma.proto`:
 
 ### Prerequisites
 
-- [Go 1.25+](https://golang.org/dl/)
-- [Rust 1.75+](https://rustup.rs/)
-- [Task](https://taskfile.dev/) (task runner)
-- [Docker](https://www.docker.com/) with Docker Compose v2
-- [Docker Model Runner](https://docs.docker.com/desktop/features/model-runner/) (for local AI)
+| Tool                                                                          | Version | Purpose            |
+| ----------------------------------------------------------------------------- | ------- | ------------------ |
+| [Go](https://golang.org/dl/)                                                  | 1.25+   | WhatsApp Bridge    |
+| [Rust](https://rustup.rs/)                                                    | 1.75+   | Core Engine        |
+| [Docker](https://www.docker.com/)                                             | 24+     | Container runtime  |
+| [Task](https://taskfile.dev/)                                                 | 3+      | Build automation   |
+| [Docker Model Runner](https://docs.docker.com/desktop/features/model-runner/) | Latest  | Local AI inference |
 
-### 1. Clone & Setup
+### 1. Clone & Configure
 
 ```bash
+# Clone the repository
 git clone https://github.com/sabry-awad97/pharma-broker.git
 cd pharma-broker
 
-# Copy environment template
+# Copy environment configuration
 cp .env.example .env
+
+# Review and customize settings
+nano .env
 ```
 
 ### 2. Start Infrastructure
 
 ```bash
-# Start PostgreSQL, Redis, and pull AI models
+# Start PostgreSQL and Redis
 docker compose up -d postgres redis
 
-# Pull AI models (first time only)
+# Wait for PostgreSQL to be healthy
+docker compose logs -f postgres
+
+# Pull AI models (first time only, ~3-5GB total)
 docker model pull ai/qwen3-vl:latest
 docker model pull ai/embeddinggemma:latest
 ```
 
-### 3. Build & Run
+### 3. Run the Application
+
+<details>
+<summary><strong>🐳 Option A: Docker Compose (Recommended)</strong></summary>
 
 ```bash
-# Option A: Docker Compose (recommended)
+# Start all services
 docker compose up -d
 
-# Option B: Local development
-task dev:core    # Terminal 1: Rust Core
-task dev:bridge  # Terminal 2: Go Bridge
+# View logs
+docker compose logs -f core bridge
+
+# Access services
+# REST API:  http://localhost:8080
+# gRPC:      grpc://localhost:50051
+# QR Code:   http://localhost:5050/qr
 ```
 
-### 4. Access Services
+</details>
 
-| Service  | URL                          | Description         |
-| -------- | ---------------------------- | ------------------- |
-| REST API | http://localhost:8080        | Axum REST endpoints |
-| gRPC     | grpc://localhost:50051       | Tonic gRPC server   |
-| QR Code  | http://localhost:5050/qr     | WhatsApp pairing    |
-| Health   | http://localhost:5050/health | Bridge health check |
-
----
-
-## 📋 Available Commands
+<details>
+<summary><strong>💻 Option B: Local Development</strong></summary>
 
 ```bash
-# Root Taskfile (full stack)
-task                    # Build everything
-task dev:core           # Run Rust Core (dev mode)
-task dev:bridge         # Run Go Bridge (dev mode)
-task db:reset           # Reset database
-task test               # Run all tests
+# Terminal 1: Start Rust Core
+cd core
+cargo run --release
 
-# Core-specific (from core/ directory)
-task check              # cargo check --all-targets
-task test               # cargo test
-task clippy             # cargo clippy --fix
-task build              # cargo build --release
+# Terminal 2: Start Go Bridge
+cd bridge
+go run ./cmd/bridge
+
+# Access QR code at http://localhost:5050/qr
+```
+
+</details>
+
+### 4. Connect WhatsApp
+
+1. Open http://localhost:5050/qr in your browser
+2. Scan the QR code with WhatsApp on your phone
+3. The bridge will start receiving messages
+
+---
+
+## 📋 Task Runner Commands
+
+PharmaBroker uses [Task](https://taskfile.dev/) for build automation:
+
+```bash
+# Full stack commands (root directory)
+task                      # Build everything
+task up                   # docker compose up -d
+task down                 # docker compose down
+task logs                 # View all logs
+task dev:core             # Run Rust Core (dev mode)
+task dev:bridge           # Run Go Bridge (dev mode)
+
+# Core-specific commands (core/ directory)
+task check                # cargo check --all-targets
+task test                 # cargo test
+task clippy               # cargo clippy --fix
+task build                # cargo build --release
+task clean                # cargo clean
 ```
 
 ---
 
-## ⚙️ Configuration
+## ⚙️ Configuration Reference
 
 ### Environment Variables
 
-| Variable                     | Description                  | Default                                                    |
-| ---------------------------- | ---------------------------- | ---------------------------------------------------------- |
-| `DATABASE_URL`               | PostgreSQL connection string | `postgres://...`                                           |
-| `GRPC_PORT`                  | Rust Core gRPC port          | `50051`                                                    |
-| `API_PORT`                   | Rust Core REST port          | `8080`                                                     |
-| `AI_BASE_URL`                | Docker Model Runner URL      | `http://model-runner.docker.internal/engines/llama.cpp/v1` |
-| `LEARNING_SCHEDULER_ENABLED` | Enable weight learning cron  | `false`                                                    |
-| `JANITOR_INTERVAL_SECS`      | Cleanup worker interval      | `3600`                                                     |
+| Variable                     | Default                  | Description                                 |
+| ---------------------------- | ------------------------ | ------------------------------------------- |
+| `DATABASE_URL`               | `postgres://...`         | PostgreSQL connection string                |
+| `REDIS_URL`                  | `redis://localhost:6379` | Redis connection string                     |
+| `API_PORT`                   | `8080`                   | REST API port                               |
+| `GRPC_PORT`                  | `50051`                  | gRPC server port                            |
+| `RUST_LOG`                   | `info`                   | Log level (trace, debug, info, warn, error) |
+| `AI_BASE_URL`                | Docker internal          | AI model endpoint                           |
+| `AI_MODEL`                   | `ai/qwen3-vl:latest`     | Primary LLM model                           |
+| `LEARNING_SCHEDULER_ENABLED` | `false`                  | Enable weight learning cron                 |
+| `LEARNING_SCHEDULER_CRON`    | `0 0 3 * * *`            | Learning schedule (3 AM daily)              |
+| `JANITOR_INTERVAL_SECS`      | `3600`                   | Cleanup worker interval                     |
+| `JANITOR_RETENTION_DAYS`     | `30`                     | Data retention period                       |
 
 ### Bridge Configuration (`bridge/config.yml`)
 
 ```yaml
+# gRPC connection to Rust Core
 grpc:
   core_addr: "localhost:50051"
   connect_timeout: 5s
 
+# WhatsApp settings
 whatsapp:
   store_path: "./data/whatsapp.db"
   qr_terminal: true
   qr_timeout: 60s
+  qr_retries: 3
 
+# Resilience configuration
 resilience:
   circuit_breaker:
     max_failures: 5
@@ -395,129 +681,243 @@ resilience:
     max_size: 1000
     flush_interval: 5s
 
+# Rate limiting
 rate_limit:
   enabled: true
   per_minute: 100
   burst_size: 20
+
+# Message processing
+processing:
+  skip_own_messages: true
+  worker_count: 20
+  worker_queue_size: 100
+
+# Group synchronization
+group_sync:
+  interval: 5m
+
+# Deduplication
+dedup:
+  window: 30s
+  cache_size: 10000
+  cache_ttl: 5m
+  cleanup_interval: 1m
 ```
 
 ---
 
-## 🔗 API Endpoints
+## 🔗 REST API Reference
 
-### Core Resources
+### Core Endpoints
 
-| Method | Endpoint                    | Description             |
-| ------ | --------------------------- | ----------------------- |
-| `GET`  | `/api/offers`               | List active offers      |
-| `GET`  | `/api/requests`             | List active requests    |
-| `GET`  | `/api/matches`              | List pending matches    |
-| `POST` | `/api/matches/{id}/confirm` | Confirm a match         |
-| `POST` | `/api/matches/{id}/reject`  | Reject a match          |
-| `GET`  | `/api/stats`                | Dashboard statistics    |
-| `GET`  | `/api/groups`               | List monitored groups   |
-| `POST` | `/api/groups/{jid}/monitor` | Enable group monitoring |
+<details>
+<summary><strong>📦 Offers & Requests</strong></summary>
 
-### Review Queue
+| Method | Path                | Description                          |
+| ------ | ------------------- | ------------------------------------ |
+| `GET`  | `/api/offers`       | List active offers with pagination   |
+| `GET`  | `/api/offers/:id`   | Get offer by ID                      |
+| `GET`  | `/api/requests`     | List active requests with pagination |
+| `GET`  | `/api/requests/:id` | Get request by ID                    |
 
-| Method | Endpoint                   | Description              |
-| ------ | -------------------------- | ------------------------ |
-| `GET`  | `/api/review/queue`        | Pending review items     |
-| `POST` | `/api/review/{id}/approve` | Approve with corrections |
-| `POST` | `/api/review/{id}/reject`  | Reject item              |
+</details>
 
-### Matching Engine
+<details>
+<summary><strong>🤝 Matches</strong></summary>
 
-| Method | Endpoint                 | Description              |
+| Method | Path                       | Description          |
+| ------ | -------------------------- | -------------------- |
+| `GET`  | `/api/matches`             | List pending matches |
+| `GET`  | `/api/matches/:id`         | Get match details    |
+| `POST` | `/api/matches/:id/confirm` | Confirm a match      |
+| `POST` | `/api/matches/:id/reject`  | Reject a match       |
+| `GET`  | `/api/matches/stats`       | Match statistics     |
+
+</details>
+
+<details>
+<summary><strong>👥 Groups</strong></summary>
+
+| Method   | Path                       | Description           |
+| -------- | -------------------------- | --------------------- |
+| `GET`    | `/api/groups`              | List all groups       |
+| `GET`    | `/api/groups/monitored`    | List monitored groups |
+| `POST`   | `/api/groups/:jid/monitor` | Enable monitoring     |
+| `DELETE` | `/api/groups/:jid/monitor` | Disable monitoring    |
+
+</details>
+
+<details>
+<summary><strong>⚖️ Matching Engine</strong></summary>
+
+| Method | Path                     | Description              |
 | ------ | ------------------------ | ------------------------ |
 | `GET`  | `/api/weights`           | Current matching weights |
-| `POST` | `/api/weights/learn`     | Trigger weight learning  |
-| `GET`  | `/api/calibration/stats` | Calibration statistics   |
+| `PUT`  | `/api/weights`           | Update weights           |
+| `POST` | `/api/weights/learn`     | Trigger learning job     |
+| `GET`  | `/api/calibration/stats` | Calibration metrics      |
 | `GET`  | `/api/abtest/stats`      | A/B test results         |
+| `POST` | `/api/abtest/create`     | Create A/B test          |
 
-### Real-time
+</details>
 
-| Method | Endpoint   | Description           |
-| ------ | ---------- | --------------------- |
-| `GET`  | `/api/ws`  | WebSocket connection  |
-| `GET`  | `/metrics` | Prometheus metrics    |
-| `GET`  | `/health`  | Health check endpoint |
+<details>
+<summary><strong>🔍 Review Queue</strong></summary>
+
+| Method | Path                      | Description              |
+| ------ | ------------------------- | ------------------------ |
+| `GET`  | `/api/review/queue`       | Pending reviews          |
+| `POST` | `/api/review/:id/approve` | Approve with corrections |
+| `POST` | `/api/review/:id/reject`  | Reject item              |
+| `GET`  | `/api/review/stats`       | Queue statistics         |
+
+</details>
+
+<details>
+<summary><strong>📊 System</strong></summary>
+
+| Method | Path         | Description          |
+| ------ | ------------ | -------------------- |
+| `GET`  | `/health`    | Health check         |
+| `GET`  | `/metrics`   | Prometheus metrics   |
+| `GET`  | `/api/stats` | Dashboard statistics |
+| `GET`  | `/api/audit` | Audit log entries    |
+
+</details>
+
+### WebSocket Events
+
+Connect to `/api/ws` for real-time updates:
+
+```json
+{ "type": "match_created", "data": { "id": "...", "score": 0.92 } }
+{ "type": "match_confirmed", "data": { "id": "...", "operator": "..." } }
+{ "type": "new_offer", "data": { "id": "...", "medication": "..." } }
+{ "type": "new_request", "data": { "id": "...", "medication": "..." } }
+```
 
 ---
 
 ## 🧪 Testing
 
+### Unit Tests
+
 ```bash
-# Unit tests (both languages)
-task test:unit
+# Go tests
+cd bridge && go test ./... -v
 
-# Integration tests (requires Docker)
-task test:integration
+# Rust tests
+cd core && cargo test
 
-# Rust tests with coverage
+# With coverage
 cd core && cargo llvm-cov --html
-
-# Go tests with coverage
-cd bridge && go test ./... -cover
+open target/llvm-cov/html/index.html
 ```
 
----
+### Integration Tests
 
-## 📊 Matching Algorithm Details
+```bash
+# Requires Docker (testcontainers)
+cd core && cargo test --features integration-tests
 
-### Scoring Dimensions
+# Specific test
+cargo test test_matching_engine --features integration-tests
+```
 
-| Factor         | Weight | Algorithm                           |
-| -------------- | ------ | ----------------------------------- |
-| **Medication** | 40%    | Fuzzy + embedding cosine similarity |
-| **Dosage**     | 15%    | Normalized numeric comparison       |
-| **Quantity**   | 20%    | Fulfillment ratio calculation       |
-| **Price**      | 15%    | Budget fit (offer ≤ max_price)      |
-| **Recency**    | 10%    | Exponential decay (24h half-life)   |
+### Load Testing
 
-### Confidence Bands
-
-| Band       | Score Range | Action         | Auto Rate |
-| ---------- | ----------- | -------------- | --------- |
-| 🟢 AUTO    | ≥ 0.90      | Auto-confirm   | ~15%      |
-| 🟡 SUGGEST | 0.70 - 0.89 | Quick approval | ~45%      |
-| 🟠 REVIEW  | 0.50 - 0.69 | Manual review  | ~30%      |
-| 🔴 NONE    | < 0.50      | No match       | ~10%      |
-
-### Learning System
-
-The matching engine continuously improves through:
-
-1. **Feedback Collection**: Operator confirmations/rejections feed the learner
-2. **Gradient Descent**: Optimizer adjusts weights based on feedback scores
-3. **Warm-Start**: New deployments bootstrap from historical patterns
-4. **A/B Testing**: Strategy variants compared in production
-5. **Calibration**: Platt scaling ensures accurate probability estimates
+```bash
+# Using k6 (install: https://k6.io)
+k6 run tests/load/matching.js
+```
 
 ---
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing`)
-3. Run tests (`task test`)
-4. Commit changes (`git commit -m 'Add amazing feature'`)
-5. Push to branch (`git push origin feature/amazing`)
-6. Open a Pull Request
+We welcome contributions! Please follow these steps:
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Write** tests for your changes
+4. **Run** the test suite (`task test`)
+5. **Commit** with conventional commits (`git commit -m 'feat: add amazing feature'`)
+6. **Push** to your branch (`git push origin feature/amazing-feature`)
+7. **Open** a Pull Request
+
+### Code Style
+
+- **Go**: Follow [Effective Go](https://golang.org/doc/effective_go) and use `gofmt`
+- **Rust**: Follow [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) and use `cargo fmt`
 
 ---
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
 ## 🙏 Acknowledgments
 
-- [whatsmeow](https://github.com/tulir/whatsmeow) - WhatsApp Web Go library
-- [SeaORM](https://www.sea-ql.org/SeaORM/) - Async ORM for Rust
-- [Axum](https://github.com/tokio-rs/axum) - Web framework for Rust
-- [Tonic](https://github.com/hyperium/tonic) - gRPC for Rust
-- [Uber FX](https://github.com/uber-go/fx) - Dependency injection for Go
-- [Docker Model Runner](https://docs.docker.com/desktop/features/model-runner/) - Local AI inference
+<table>
+<tr>
+<td align="center">
+<a href="https://github.com/tulir/whatsmeow">
+<strong>whatsmeow</strong><br/>
+<sub>WhatsApp Web Go library</sub>
+</a>
+</td>
+<td align="center">
+<a href="https://www.sea-ql.org/SeaORM/">
+<strong>SeaORM</strong><br/>
+<sub>Async ORM for Rust</sub>
+</a>
+</td>
+<td align="center">
+<a href="https://github.com/tokio-rs/axum">
+<strong>Axum</strong><br/>
+<sub>Web framework for Rust</sub>
+</a>
+</td>
+<td align="center">
+<a href="https://github.com/hyperium/tonic">
+<strong>Tonic</strong><br/>
+<sub>gRPC for Rust</sub>
+</a>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="https://github.com/uber-go/fx">
+<strong>Uber FX</strong><br/>
+<sub>DI framework for Go</sub>
+</a>
+</td>
+<td align="center">
+<a href="https://docs.docker.com/desktop/features/model-runner/">
+<strong>Docker Model Runner</strong><br/>
+<sub>Local AI inference</sub>
+</a>
+</td>
+<td align="center">
+<a href="https://github.com/pgvector/pgvector">
+<strong>pgvector</strong><br/>
+<sub>Vector similarity for PostgreSQL</sub>
+</a>
+</td>
+<td align="center">
+<a href="https://github.com/rs/zerolog">
+<strong>zerolog</strong><br/>
+<sub>Fast structured logging</sub>
+</a>
+</td>
+</tr>
+</table>
+
+---
+
+<p align="center">
+  Made with ❤️ for the Egyptian pharmaceutical community
+</p>
