@@ -1,5 +1,7 @@
 //! AuditLog repository implementation
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::*;
@@ -10,11 +12,11 @@ use crate::{Error, Result};
 
 /// SeaORM-based audit log repository
 pub struct SeaOrmAuditLogRepo {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl SeaOrmAuditLogRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
     }
 }
@@ -23,7 +25,7 @@ impl SeaOrmAuditLogRepo {
 impl AuditLogRepository for SeaOrmAuditLogRepo {
     async fn save(&self, model: &audit_log::Model) -> Result<audit_log::Model> {
         let active: audit_log::ActiveModel = model.clone().into();
-        active.insert(&self.db).await.map_err(Error::from)
+        active.insert(&*self.db).await.map_err(Error::from)
     }
 
     async fn get_by_entity(
@@ -35,7 +37,7 @@ impl AuditLogRepository for SeaOrmAuditLogRepo {
             .filter(audit_log::Column::EntityId.eq(params.entity_id))
             .order_by_desc(audit_log::Column::CreatedAt)
             .limit(params.limit as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -45,7 +47,7 @@ impl AuditLogRepository for SeaOrmAuditLogRepo {
             .filter(audit_log::Column::Actor.eq(actor))
             .order_by_desc(audit_log::Column::CreatedAt)
             .limit(limit as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -55,7 +57,7 @@ impl AuditLogRepository for SeaOrmAuditLogRepo {
             .filter(audit_log::Column::Action.eq(action))
             .order_by_desc(audit_log::Column::CreatedAt)
             .limit(limit as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -65,7 +67,7 @@ impl AuditLogRepository for SeaOrmAuditLogRepo {
             .order_by_desc(audit_log::Column::CreatedAt)
             .limit(limit as u64)
             .offset(offset as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -81,14 +83,14 @@ impl AuditLogRepository for SeaOrmAuditLogRepo {
             .filter(audit_log::Column::CreatedAt.lte(end))
             .order_by_desc(audit_log::Column::CreatedAt)
             .limit(limit as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
 
     async fn count(&self) -> Result<i64> {
         AuditLog::find()
-            .count(&self.db)
+            .count(&*self.db)
             .await
             .map(|c| c as i64)
             .map_err(Error::from)
@@ -97,7 +99,7 @@ impl AuditLogRepository for SeaOrmAuditLogRepo {
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64> {
         let result = AuditLog::delete_many()
             .filter(audit_log::Column::CreatedAt.lt(*cutoff))
-            .exec(&self.db)
+            .exec(&*self.db)
             .await?;
         Ok(result.rows_affected)
     }
@@ -114,13 +116,13 @@ mod tests {
         let log = new_test_audit_log(action, entity_id);
         let id = log.id.clone().unwrap();
         audit_log::Entity::insert(log)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert audit log");
 
         audit_log::Entity::find()
             .filter(audit_log::Column::Id.eq(id))
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find audit log")
             .expect("Audit log should exist")

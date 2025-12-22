@@ -1,5 +1,7 @@
 //! MedicationMapping repository implementation
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use sea_orm::*;
 
@@ -9,11 +11,11 @@ use crate::{Error, Result};
 
 /// SeaORM-based medication mapping repository
 pub struct SeaOrmMedicationMappingRepo {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl SeaOrmMedicationMappingRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
     }
 }
@@ -22,14 +24,14 @@ impl SeaOrmMedicationMappingRepo {
 impl MedicationMappingRepository for SeaOrmMedicationMappingRepo {
     async fn save(&self, model: &medication_mapping::Model) -> Result<medication_mapping::Model> {
         let existing = MedicationMapping::find_by_id(&model.id)
-            .one(&self.db)
+            .one(&*self.db)
             .await?;
         let active: medication_mapping::ActiveModel = model.clone().into();
 
         if existing.is_some() {
-            active.update(&self.db).await.map_err(Error::from)
+            active.update(&*self.db).await.map_err(Error::from)
         } else {
-            active.insert(&self.db).await.map_err(Error::from)
+            active.insert(&*self.db).await.map_err(Error::from)
         }
     }
 
@@ -47,7 +49,7 @@ impl MedicationMappingRepository for SeaOrmMedicationMappingRepo {
             )
             .order_by_asc(medication_mapping::Column::EnglishName)
             .limit(limit as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -77,7 +79,7 @@ impl MedicationMappingRepository for SeaOrmMedicationMappingRepo {
                 "#,
                 [embedding_str.into(), limit.into()],
             ))
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -87,14 +89,14 @@ impl MedicationMappingRepository for SeaOrmMedicationMappingRepo {
             .order_by_asc(medication_mapping::Column::EnglishName)
             .limit(limit as u64)
             .offset(offset as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
 
     async fn count(&self) -> Result<i64> {
         MedicationMapping::find()
-            .count(&self.db)
+            .count(&*self.db)
             .await
             .map(|c| c as i64)
             .map_err(Error::from)
@@ -105,7 +107,7 @@ impl MedicationMappingRepository for SeaOrmMedicationMappingRepo {
             .filter(medication_mapping::Column::Embedding.is_null())
             .order_by_asc(medication_mapping::Column::CreatedAt)
             .limit(limit as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -113,7 +115,7 @@ impl MedicationMappingRepository for SeaOrmMedicationMappingRepo {
     async fn count_needing_embeddings(&self) -> Result<i64> {
         MedicationMapping::find()
             .filter(medication_mapping::Column::Embedding.is_null())
-            .count(&self.db)
+            .count(&*self.db)
             .await
             .map(|c| c as i64)
             .map_err(Error::from)
@@ -130,12 +132,12 @@ mod tests {
         let mapping = new_test_medication_mapping(arabic, english);
         let id = mapping.id.clone().unwrap();
         medication_mapping::Entity::insert(mapping)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert mapping");
 
         medication_mapping::Entity::find_by_id(&id)
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find mapping")
             .expect("Mapping should exist")

@@ -257,7 +257,7 @@ async fn load_messages_from_database(limit: i64) -> anyhow::Result<Vec<TestMessa
 
     let db = create_connection(&database_url).await?;
 
-    let db_messages = RawMessage::find().limit(limit as u64).all(&db).await?;
+    let db_messages = RawMessage::find().limit(limit as u64).all(&*db).await?;
 
     let messages: Vec<TestMessage> = db_messages
         .into_iter()

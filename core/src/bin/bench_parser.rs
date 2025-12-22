@@ -138,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Fetch legacy messages
     println!("\n📥 Fetching messages from database...");
-    let db_messages = RawMessage::find().limit(limit as u64).all(&db).await?;
+    let db_messages = RawMessage::find().limit(limit as u64).all(&*db).await?;
 
     let messages: Vec<LegacyMessage> = db_messages
         .into_iter()

@@ -894,7 +894,7 @@ async fn main() -> anyhow::Result<()> {
     let db_messages = RawMessage::find()
         .order_by_asc(raw_message::Column::Timestamp)
         .limit(config.limit as u64)
-        .all(&db)
+        .all(&*db)
         .await?;
 
     let messages: Vec<TestMessage> = db_messages

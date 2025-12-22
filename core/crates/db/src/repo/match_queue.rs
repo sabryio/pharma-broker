@@ -1,5 +1,7 @@
 //! MatchQueue repository implementation
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::*;
@@ -10,11 +12,11 @@ use crate::{Error, Result};
 
 /// SeaORM-based match queue repository
 pub struct SeaOrmMatchQueueRepo {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl SeaOrmMatchQueueRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
     }
 }
@@ -33,7 +35,7 @@ impl MatchQueueRepository for SeaOrmMatchQueueRepo {
             created_at: Set(Utc::now()),
             updated_at: Set(Utc::now()),
         };
-        model.insert(&self.db).await.map_err(Error::from)
+        model.insert(&*self.db).await.map_err(Error::from)
     }
 
     async fn fetch_batch(&self, limit: i64) -> Result<Vec<match_queue::Model>> {
@@ -44,7 +46,7 @@ impl MatchQueueRepository for SeaOrmMatchQueueRepo {
             .order_by_desc(match_queue::Column::Priority)
             .order_by_asc(match_queue::Column::CreatedAt)
             .limit(limit as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await?;
 
         // Mark them as processing
@@ -52,7 +54,7 @@ impl MatchQueueRepository for SeaOrmMatchQueueRepo {
             let mut active: match_queue::ActiveModel = item.clone().into();
             active.status = Set(QueueStatus::Processing);
             active.updated_at = Set(Utc::now());
-            active.update(&self.db).await?;
+            active.update(&*self.db).await?;
         }
 
         Ok(items)
@@ -60,20 +62,20 @@ impl MatchQueueRepository for SeaOrmMatchQueueRepo {
 
     async fn complete(&self, id: &uuid::Uuid) -> Result<()> {
         let item = MatchQueue::find_by_id(*id)
-            .one(&self.db)
+            .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Queue item not found: {}", id)))?;
 
         let mut active: match_queue::ActiveModel = item.into();
         active.status = Set(QueueStatus::Completed);
         active.updated_at = Set(Utc::now());
-        active.update(&self.db).await?;
+        active.update(&*self.db).await?;
         Ok(())
     }
 
     async fn fail(&self, id: &uuid::Uuid, error: &str) -> Result<()> {
         let item = MatchQueue::find_by_id(*id)
-            .one(&self.db)
+            .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Queue item not found: {}", id)))?;
 
@@ -89,14 +91,14 @@ impl MatchQueueRepository for SeaOrmMatchQueueRepo {
             QueueStatus::Pending
         });
         active.updated_at = Set(Utc::now());
-        active.update(&self.db).await?;
+        active.update(&*self.db).await?;
         Ok(())
     }
 
     async fn count_pending(&self) -> Result<i64> {
         MatchQueue::find()
             .filter(match_queue::Column::Status.eq(QueueStatus::Pending))
-            .count(&self.db)
+            .count(&*self.db)
             .await
             .map(|c| c as i64)
             .map_err(Error::from)
@@ -106,7 +108,7 @@ impl MatchQueueRepository for SeaOrmMatchQueueRepo {
         let result = MatchQueue::delete_many()
             .filter(match_queue::Column::Status.eq(QueueStatus::Completed))
             .filter(match_queue::Column::UpdatedAt.lt(*cutoff))
-            .exec(&self.db)
+            .exec(&*self.db)
             .await?;
         Ok(result.rows_affected)
     }
@@ -124,13 +126,13 @@ mod tests {
 
         // Create group
         let group_am = new_test_group("test-group@g.us", "Test Group", true);
-        group::Entity::insert(group_am).exec(&db.db).await.ok();
+        group::Entity::insert(group_am).exec(&*db.db).await.ok();
 
         // Create raw message
         let msg = new_test_raw_message();
         let msg_id = msg.id.clone().unwrap();
         raw_message::Entity::insert(msg)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert msg");
 
@@ -138,7 +140,7 @@ mod tests {
         let req = new_test_request(&msg_id);
         let req_id = req.id.clone().unwrap();
         request::Entity::insert(req)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert request");
 
@@ -208,7 +210,7 @@ mod tests {
 
         // Check status changed
         let found = match_queue::Entity::find_by_id(item.id)
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find")
             .expect("Should exist");
@@ -226,7 +228,7 @@ mod tests {
         // First failure - should still be pending (retry)
         repo.fail(&item.id, "Error 1").await.expect("Fail 1");
         let found = match_queue::Entity::find_by_id(item.id)
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find")
             .unwrap();
@@ -240,7 +242,7 @@ mod tests {
         // Second failure
         repo.fail(&item.id, "Error 2").await.expect("Fail 2");
         let found = match_queue::Entity::find_by_id(item.id)
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find")
             .unwrap();
@@ -249,7 +251,7 @@ mod tests {
         // Third failure
         repo.fail(&item.id, "Error 3").await.expect("Fail 3");
         let found = match_queue::Entity::find_by_id(item.id)
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find")
             .unwrap();

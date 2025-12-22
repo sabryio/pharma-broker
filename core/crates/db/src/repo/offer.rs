@@ -1,5 +1,7 @@
 //! Offer repository implementation
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::*;
@@ -10,11 +12,11 @@ use crate::{Error, Result};
 
 /// SeaORM-based offer repository
 pub struct SeaOrmOfferRepo {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl SeaOrmOfferRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
     }
 }
@@ -23,7 +25,7 @@ impl SeaOrmOfferRepo {
 impl OfferRepository for SeaOrmOfferRepo {
     async fn get_by_id(&self, id: &str) -> Result<Option<offer::Model>> {
         Offer::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -34,7 +36,7 @@ impl OfferRepository for SeaOrmOfferRepo {
             .order_by_desc(offer::Column::CreatedAt)
             .limit(limit as u64)
             .offset(offset as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -46,7 +48,7 @@ impl OfferRepository for SeaOrmOfferRepo {
             .filter(offer::Column::Medication.like(&pattern))
             .order_by_desc(offer::Column::CreatedAt)
             .limit(limit as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -54,7 +56,7 @@ impl OfferRepository for SeaOrmOfferRepo {
     async fn count_active(&self) -> Result<i64> {
         Offer::find()
             .filter(offer::Column::Status.eq(Status::Active))
-            .count(&self.db)
+            .count(&*self.db)
             .await
             .map(|c| c as i64)
             .map_err(Error::from)
@@ -70,26 +72,26 @@ impl OfferRepository for SeaOrmOfferRepo {
             .filter(offer::Column::Medication.eq(params.medication))
             .filter(offer::Column::Status.eq(Status::Active))
             .filter(offer::Column::CreatedAt.gte(cutoff))
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(Error::from)
     }
 
     async fn save(&self, model: &offer::Model) -> Result<offer::Model> {
         let active: offer::ActiveModel = model.clone().into();
-        active.insert(&self.db).await.map_err(Error::from)
+        active.insert(&*self.db).await.map_err(Error::from)
     }
 
     async fn update_status(&self, id: &str, status: Status) -> Result<offer::Model> {
         let offer = Offer::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Offer not found: {}", id)))?;
 
         let mut active: offer::ActiveModel = offer.into();
         active.status = Set(status);
         active.updated_at = Set(Utc::now());
-        active.update(&self.db).await.map_err(Error::from)
+        active.update(&*self.db).await.map_err(Error::from)
     }
 
     async fn find_semantic_duplicates(
@@ -124,7 +126,7 @@ impl OfferRepository for SeaOrmOfferRepo {
                     cutoff.into(),
                 ],
             ))
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -132,7 +134,7 @@ impl OfferRepository for SeaOrmOfferRepo {
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64> {
         let result = Offer::delete_many()
             .filter(offer::Column::CreatedAt.lt(*cutoff))
-            .exec(&self.db)
+            .exec(&*self.db)
             .await?;
         Ok(result.rows_affected)
     }
@@ -150,13 +152,13 @@ mod tests {
 
         // Create group first (FK constraint)
         let group = new_test_group("test-group@g.us", "Test Group", true);
-        group::Entity::insert(group).exec(&db.db).await.ok(); // Ignore if already exists
+        group::Entity::insert(group).exec(&*db.db).await.ok(); // Ignore if already exists
 
         // Create raw message
         let msg = new_test_raw_message();
         let msg_id = msg.id.clone().unwrap();
         raw_message::Entity::insert(msg)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Save raw message");
 
@@ -164,12 +166,12 @@ mod tests {
         let offer_am = new_test_offer(&msg_id);
         let offer_id = offer_am.id.clone().unwrap();
         offer::Entity::insert(offer_am)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Save offer");
 
         offer::Entity::find_by_id(&offer_id)
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find offer")
             .expect("Offer should exist")

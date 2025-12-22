@@ -1,5 +1,7 @@
 //! Group repository implementation
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use sea_orm::{prelude::Expr, *};
 
@@ -9,11 +11,11 @@ use crate::{Error, Result};
 
 /// SeaORM-based group repository
 pub struct SeaOrmGroupRepo {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl SeaOrmGroupRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
     }
 }
@@ -23,20 +25,20 @@ impl GroupRepository for SeaOrmGroupRepo {
     async fn get_all(&self) -> Result<Vec<group::Model>> {
         Group::find()
             .order_by_asc(group::Column::Name)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
 
     async fn get_by_jid(&self, jid: &str) -> Result<Option<group::Model>> {
         Group::find_by_id(jid)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(Error::from)
     }
 
     async fn is_monitored(&self, jid: &str) -> Result<bool> {
-        let group = Group::find_by_id(jid).one(&self.db).await?;
+        let group = Group::find_by_id(jid).one(&*self.db).await?;
         Ok(group.map(|g| g.monitored).unwrap_or(false))
     }
 
@@ -44,36 +46,36 @@ impl GroupRepository for SeaOrmGroupRepo {
         Group::find()
             .filter(group::Column::Monitored.eq(true))
             .order_by_asc(group::Column::Name)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
 
     async fn save(&self, model: &group::Model) -> Result<group::Model> {
-        let existing = Group::find_by_id(&model.jid).one(&self.db).await?;
+        let existing = Group::find_by_id(&model.jid).one(&*self.db).await?;
         let active: group::ActiveModel = model.clone().into();
 
         if existing.is_some() {
-            active.update(&self.db).await.map_err(Error::from)
+            active.update(&*self.db).await.map_err(Error::from)
         } else {
-            active.insert(&self.db).await.map_err(Error::from)
+            active.insert(&*self.db).await.map_err(Error::from)
         }
     }
 
     async fn update_monitored(&self, jid: &str, monitored: bool) -> Result<()> {
         let group = Group::find_by_id(jid)
-            .one(&self.db)
+            .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Group not found: {}", jid)))?;
 
         let mut active: group::ActiveModel = group.into();
         active.monitored = Set(monitored);
-        active.update(&self.db).await?;
+        active.update(&*self.db).await?;
         Ok(())
     }
 
     async fn delete(&self, jid: &str) -> Result<bool> {
-        let result = Group::delete_by_id(jid).exec(&self.db).await?;
+        let result = Group::delete_by_id(jid).exec(&*self.db).await?;
         Ok(result.rows_affected > 0)
     }
 
@@ -81,7 +83,7 @@ impl GroupRepository for SeaOrmGroupRepo {
         Group::update_many()
             .col_expr(group::Column::LastMessage, Expr::current_timestamp().into())
             .filter(group::Column::Jid.eq(jid))
-            .exec(&self.db)
+            .exec(&*self.db)
             .await?;
         Ok(())
     }
@@ -93,7 +95,7 @@ impl GroupRepository for SeaOrmGroupRepo {
                 Expr::col(group::Column::MessageCount).add(1),
             )
             .filter(group::Column::Jid.eq(jid))
-            .exec(&self.db)
+            .exec(&*self.db)
             .await?;
         Ok(())
     }
@@ -108,12 +110,12 @@ mod tests {
     async fn create_group(db: &TestDb, jid: &str, name: &str, monitored: bool) -> group::Model {
         let group_am = new_test_group(jid, name, monitored);
         group::Entity::insert(group_am)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert group");
 
         group::Entity::find_by_id(jid)
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find group")
             .expect("Group should exist")

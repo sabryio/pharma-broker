@@ -100,7 +100,7 @@ pub struct CleanupStats {
 /// Janitor worker for scheduled cleanup
 pub struct Janitor {
     config: JanitorConfig,
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
     repos: JanitorRepositories,
     stats: tokio::sync::RwLock<CleanupStats>,
 }
@@ -116,7 +116,11 @@ pub struct JanitorRepositories {
 
 impl Janitor {
     /// Create a new janitor worker
-    pub fn new(config: JanitorConfig, db: DatabaseConnection, repos: JanitorRepositories) -> Self {
+    pub fn new(
+        config: JanitorConfig,
+        db: Arc<DatabaseConnection>,
+        repos: JanitorRepositories,
+    ) -> Self {
         Self {
             config,
             db,
@@ -250,14 +254,277 @@ impl Janitor {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::{
+        repository::*,
+        worker::janitor::{CleanupStats, Janitor, JanitorConfig, JanitorRepositories},
+    };
+    use async_trait::async_trait;
+    use chrono::{DateTime, Utc};
+    use pharma_db::Result as DbResult;
+    use sea_orm::{MockDatabase, MockExecResult};
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicU64, Ordering},
+        },
+        time::Duration,
+    };
+
+    struct MockRepo {
+        deleted_count: u64,
+        call_count: Arc<AtomicU64>,
+    }
+
+    impl MockRepo {
+        fn new(count: u64) -> (Arc<MockRepo>, Arc<AtomicU64>) {
+            let call_count = Arc::new(AtomicU64::new(0));
+            (
+                Arc::new(MockRepo {
+                    deleted_count: count,
+                    call_count: call_count.clone(),
+                }),
+                call_count,
+            )
+        }
+    }
+
+    #[async_trait]
+    impl RawMessageRepository for MockRepo {
+        async fn save(&self, _: &RawMessageModel) -> DbResult<RawMessageModel> {
+            unimplemented!()
+        }
+        async fn get_by_id(&self, _: &str) -> DbResult<Option<RawMessageModel>> {
+            unimplemented!()
+        }
+        async fn get_unprocessed(&self, _: i64) -> DbResult<Vec<RawMessageModel>> {
+            unimplemented!()
+        }
+        async fn mark_processed(&self, _: &str, _: Option<&str>) -> DbResult<RawMessageModel> {
+            unimplemented!()
+        }
+        async fn delete_before(&self, _: &DateTime<Utc>) -> DbResult<u64> {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            Ok(self.deleted_count)
+        }
+    }
+
+    #[async_trait]
+    impl AuditLogRepository for MockRepo {
+        async fn save(&self, _: &AuditLogModel) -> DbResult<AuditLogModel> {
+            unimplemented!()
+        }
+        async fn get_by_entity(&self, _: AuditByEntityParams<'_>) -> DbResult<Vec<AuditLogModel>> {
+            unimplemented!()
+        }
+        async fn get_by_actor(&self, _: &str, _: i64) -> DbResult<Vec<AuditLogModel>> {
+            unimplemented!()
+        }
+        async fn get_by_action(&self, _: &str, _: i64) -> DbResult<Vec<AuditLogModel>> {
+            unimplemented!()
+        }
+        async fn get_recent(&self, _: i64, _: i64) -> DbResult<Vec<AuditLogModel>> {
+            unimplemented!()
+        }
+        async fn get_by_date_range(
+            &self,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+            _: i64,
+        ) -> DbResult<Vec<AuditLogModel>> {
+            unimplemented!()
+        }
+        async fn count(&self) -> DbResult<i64> {
+            unimplemented!()
+        }
+        async fn delete_before(&self, _: &DateTime<Utc>) -> DbResult<u64> {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            Ok(self.deleted_count)
+        }
+    }
+
+    #[async_trait]
+    impl OfferRepository for MockRepo {
+        async fn get_by_id(&self, _: &str) -> DbResult<Option<OfferModel>> {
+            unimplemented!()
+        }
+        async fn get_active(&self, _: i64, _: i64) -> DbResult<Vec<OfferModel>> {
+            unimplemented!()
+        }
+        async fn search(&self, _: &str, _: i64, _: i64) -> DbResult<Vec<OfferModel>> {
+            unimplemented!()
+        }
+        async fn count_active(&self) -> DbResult<i64> {
+            unimplemented!()
+        }
+        async fn find_recent_duplicate(
+            &self,
+            _: FindDuplicateParams<'_>,
+        ) -> DbResult<Option<OfferModel>> {
+            unimplemented!()
+        }
+        async fn save(&self, _: &OfferModel) -> DbResult<OfferModel> {
+            unimplemented!()
+        }
+        async fn update_status(&self, _: &str, _: ItemStatus) -> DbResult<OfferModel> {
+            unimplemented!()
+        }
+        async fn find_semantic_duplicates(
+            &self,
+            _: SemanticDuplicateParams<'_>,
+        ) -> DbResult<Vec<OfferModel>> {
+            unimplemented!()
+        }
+        async fn delete_before(&self, _: &DateTime<Utc>) -> DbResult<u64> {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            Ok(self.deleted_count)
+        }
+    }
+
+    #[async_trait]
+    impl RequestRepository for MockRepo {
+        async fn get_by_id(&self, _: &str) -> DbResult<Option<RequestModel>> {
+            unimplemented!()
+        }
+        async fn get_active(&self, _: i64, _: i64) -> DbResult<Vec<RequestModel>> {
+            unimplemented!()
+        }
+        async fn search(&self, _: &str, _: i64, _: i64) -> DbResult<Vec<RequestModel>> {
+            unimplemented!()
+        }
+        async fn count_active(&self) -> DbResult<i64> {
+            unimplemented!()
+        }
+        async fn find_recent_duplicate(
+            &self,
+            _: FindDuplicateParams<'_>,
+        ) -> DbResult<Option<RequestModel>> {
+            unimplemented!()
+        }
+        async fn save(&self, _: &RequestModel) -> DbResult<RequestModel> {
+            unimplemented!()
+        }
+        async fn update_status(&self, _: &str, _: ItemStatus) -> DbResult<RequestModel> {
+            unimplemented!()
+        }
+        async fn find_semantic_duplicates(
+            &self,
+            _: SemanticDuplicateParams<'_>,
+        ) -> DbResult<Vec<RequestModel>> {
+            unimplemented!()
+        }
+        async fn delete_before(&self, _: &DateTime<Utc>) -> DbResult<u64> {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            Ok(self.deleted_count)
+        }
+    }
+
+    #[async_trait]
+    impl MatchRepository for MockRepo {
+        async fn get_by_id(&self, _: &str) -> DbResult<Option<MatchModel>> {
+            unimplemented!()
+        }
+        async fn get_pending(&self, _: i64, _: i64) -> DbResult<Vec<MatchModel>> {
+            unimplemented!()
+        }
+        async fn count_pending(&self) -> DbResult<i64> {
+            unimplemented!()
+        }
+        async fn exists(&self, _: &str, _: &str) -> DbResult<bool> {
+            unimplemented!()
+        }
+        async fn save(&self, _: &MatchModel) -> DbResult<MatchModel> {
+            unimplemented!()
+        }
+        async fn update_status(&self, _: UpdateMatchStatusParams<'_>) -> DbResult<MatchModel> {
+            unimplemented!()
+        }
+        async fn delete_before(&self, _: &DateTime<Utc>) -> DbResult<u64> {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            Ok(self.deleted_count)
+        }
+    }
+
+    #[async_trait]
+    impl MatchQueueRepository for MockRepo {
+        async fn enqueue(&self, _: &str, _: i32) -> DbResult<MatchQueueModel> {
+            unimplemented!()
+        }
+        async fn fetch_batch(&self, _: i64) -> DbResult<Vec<MatchQueueModel>> {
+            unimplemented!()
+        }
+        async fn complete(&self, _: &uuid::Uuid) -> DbResult<()> {
+            unimplemented!()
+        }
+        async fn fail(&self, _: &uuid::Uuid, _: &str) -> DbResult<()> {
+            unimplemented!()
+        }
+        async fn count_pending(&self) -> DbResult<i64> {
+            unimplemented!()
+        }
+        async fn delete_before(&self, _: &DateTime<Utc>) -> DbResult<u64> {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            Ok(self.deleted_count)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_janitor_run_cleanup() {
+        let (raw_msg_repo, raw_msg_calls) = MockRepo::new(5);
+        let (offer_repo, offer_calls) = MockRepo::new(2);
+        let (request_repo, request_calls) = MockRepo::new(3);
+        let (match_repo, _match_calls) = MockRepo::new(1);
+        let (match_queue_repo, _match_queue_calls) = MockRepo::new(4);
+        let (audit_log_repo, audit_log_calls) = MockRepo::new(10);
+
+        let repos = JanitorRepositories {
+            raw_message: raw_msg_repo,
+            offer: offer_repo,
+            request: request_repo,
+            match_repo,
+            match_queue: match_queue_repo,
+            audit_log: audit_log_repo,
+        };
+
+        // Mock database for partitioning
+        let db = MockDatabase::new(sea_orm::DatabaseBackend::Postgres)
+            .append_exec_results([
+                MockExecResult {
+                    last_insert_id: 0,
+                    rows_affected: 1,
+                },
+                MockExecResult {
+                    last_insert_id: 0,
+                    rows_affected: 1,
+                },
+            ])
+            .into_connection();
+
+        let config = JanitorConfig::default();
+        let janitor = Janitor::new(config, db.into(), repos);
+
+        let result = janitor.run_cleanup().await;
+        assert!(result.is_ok());
+
+        // Verify counts from delete_before
+        assert_eq!(raw_msg_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(audit_log_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(offer_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(request_calls.load(Ordering::SeqCst), 1);
+
+        // Verify statistics
+        let stats = janitor.stats().await;
+        assert_eq!(stats.run_count, 1);
+        assert_eq!(stats.raw_messages_deleted, 5);
+        assert_eq!(stats.audit_logs_deleted, 10);
+        assert_eq!(stats.offers_deleted, 2);
+        assert_eq!(stats.requests_deleted, 3);
+    }
 
     #[test]
     fn test_config_defaults() {
         let config = JanitorConfig::default();
         assert_eq!(config.interval, Duration::from_secs(3600));
-        assert_eq!(config.raw_message_retention_days, 30);
-        assert_eq!(config.offer_retention_days, 90);
+        assert_eq!(config.raw_message_retention_days, 14);
         assert!(config.enabled);
     }
 

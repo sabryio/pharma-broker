@@ -32,6 +32,8 @@ pub mod traits;
 #[cfg(all(test, feature = "integration-tests"))]
 pub mod testing;
 
+use std::sync::Arc;
+
 pub use migration::run_migrations;
 pub use sea_orm::{Database, DatabaseConnection, DbErr};
 
@@ -79,9 +81,12 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Create a SeaORM database connection
-pub async fn create_connection(database_url: &str) -> Result<DatabaseConnection> {
+pub async fn create_connection(database_url: &str) -> Result<Arc<DatabaseConnection>> {
     use sea_orm::ConnectOptions;
     let mut opt = ConnectOptions::new(database_url.to_owned());
     opt.sqlx_logging(false);
-    Database::connect(opt).await.map_err(Error::Database)
+    Database::connect(opt)
+        .await
+        .map_err(Error::Database)
+        .map(Arc::new)
 }

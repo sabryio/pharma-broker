@@ -1,5 +1,7 @@
 //! Feedback repository implementation
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::*;
@@ -10,11 +12,11 @@ use crate::{Error, Result};
 
 /// SeaORM-based feedback repository
 pub struct SeaOrmFeedbackRepo {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl SeaOrmFeedbackRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
     }
 }
@@ -23,14 +25,14 @@ impl SeaOrmFeedbackRepo {
 impl FeedbackRepository for SeaOrmFeedbackRepo {
     async fn save(&self, model: &feedback_record::Model) -> Result<feedback_record::Model> {
         let active: feedback_record::ActiveModel = model.clone().into();
-        active.insert(&self.db).await.map_err(Error::from)
+        active.insert(&*self.db).await.map_err(Error::from)
     }
 
     async fn get_by_match(&self, match_id: &str) -> Result<Vec<feedback_record::Model>> {
         FeedbackRecord::find()
             .filter(feedback_record::Column::MatchId.eq(match_id))
             .order_by_desc(feedback_record::Column::CreatedAt)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -44,7 +46,7 @@ impl FeedbackRepository for SeaOrmFeedbackRepo {
             .filter(feedback_record::Column::CreatedAt.gte(start))
             .filter(feedback_record::Column::CreatedAt.lte(end))
             .order_by_desc(feedback_record::Column::CreatedAt)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -117,7 +119,7 @@ impl FeedbackRepository for SeaOrmFeedbackRepo {
 
     async fn count(&self) -> Result<i64> {
         FeedbackRecord::find()
-            .count(&self.db)
+            .count(&*self.db)
             .await
             .map(|c| c as i64)
             .map_err(Error::from)
@@ -126,7 +128,7 @@ impl FeedbackRepository for SeaOrmFeedbackRepo {
     async fn get_by_match_id(&self, match_id: &str) -> Result<Option<feedback_record::Model>> {
         FeedbackRecord::find()
             .filter(feedback_record::Column::MatchId.eq(match_id))
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -148,20 +150,20 @@ mod tests {
 
         // Create group
         let group_am = new_test_group("test-group@g.us", "Test Group", true);
-        group::Entity::insert(group_am).exec(&db.db).await.ok();
+        group::Entity::insert(group_am).exec(&*db.db).await.ok();
 
         // Create raw messages
         let msg1 = new_test_raw_message();
         let msg1_id = msg1.id.clone().unwrap();
         raw_message::Entity::insert(msg1)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert msg1");
 
         let msg2 = new_test_raw_message();
         let msg2_id = msg2.id.clone().unwrap();
         raw_message::Entity::insert(msg2)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert msg2");
 
@@ -169,14 +171,14 @@ mod tests {
         let offer_am = new_test_offer(&msg1_id);
         let offer_id = offer_am.id.clone().unwrap();
         offer::Entity::insert(offer_am)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert offer");
 
         let request_am = new_test_request(&msg2_id);
         let request_id = request_am.id.clone().unwrap();
         request::Entity::insert(request_am)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert request");
 
@@ -184,7 +186,7 @@ mod tests {
         let match_am = new_test_match(&offer_id, &request_id);
         let match_id = match_am.id.clone().unwrap();
         match_::Entity::insert(match_am)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert match");
 
@@ -192,12 +194,12 @@ mod tests {
         let feedback_am = new_test_feedback(&match_id, confirmed);
         let feedback_id = feedback_am.id.clone().unwrap();
         feedback_record::Entity::insert(feedback_am)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert feedback");
 
         feedback_record::Entity::find_by_id(feedback_id)
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find feedback")
             .expect("Feedback should exist")

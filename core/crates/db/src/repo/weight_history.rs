@@ -1,5 +1,7 @@
 //! WeightHistory repository implementation
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use sea_orm::*;
 
@@ -9,11 +11,11 @@ use crate::{Error, Result};
 
 /// SeaORM-based weight history repository
 pub struct SeaOrmWeightHistoryRepo {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl SeaOrmWeightHistoryRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
     }
 }
@@ -22,13 +24,13 @@ impl SeaOrmWeightHistoryRepo {
 impl WeightHistoryRepository for SeaOrmWeightHistoryRepo {
     async fn save(&self, model: &weight_history::Model) -> Result<weight_history::Model> {
         let active: weight_history::ActiveModel = model.clone().into();
-        active.insert(&self.db).await.map_err(Error::from)
+        active.insert(&*self.db).await.map_err(Error::from)
     }
 
     async fn get_current(&self) -> Result<Option<weight_history::Model>> {
         WeightHistory::find()
             .order_by_desc(weight_history::Column::CreatedAt)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -37,7 +39,7 @@ impl WeightHistoryRepository for SeaOrmWeightHistoryRepo {
         WeightHistory::find()
             .order_by_desc(weight_history::Column::CreatedAt)
             .limit(limit as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -46,14 +48,14 @@ impl WeightHistoryRepository for SeaOrmWeightHistoryRepo {
         let uuid = uuid::Uuid::parse_str(id)
             .map_err(|_| Error::Validation(format!("Invalid UUID: {}", id)))?;
         WeightHistory::find_by_id(uuid)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(Error::from)
     }
 
     async fn count(&self) -> Result<i64> {
         WeightHistory::find()
-            .count(&self.db)
+            .count(&*self.db)
             .await
             .map(|c| c as i64)
             .map_err(Error::from)
@@ -70,12 +72,12 @@ mod tests {
         let wh = new_test_weight_history(source);
         let id = wh.id.clone().unwrap();
         weight_history::Entity::insert(wh)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert weight history");
 
         weight_history::Entity::find_by_id(id)
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find weight history")
             .expect("Weight history should exist")

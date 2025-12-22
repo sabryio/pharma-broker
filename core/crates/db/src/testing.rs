@@ -3,7 +3,10 @@
 //! Uses testcontainers to spin up a pgvector-enabled PostgreSQL container
 
 use sea_orm::{Database, DatabaseConnection};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 use testcontainers::{
     ContainerAsync, GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
@@ -19,7 +22,7 @@ static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Test database wrapper with container lifecycle management
 pub struct TestDb {
-    pub db: DatabaseConnection,
+    pub db: Arc<DatabaseConnection>,
     _schema_name: String,
     _container: ContainerAsync<GenericImage>,
 }
@@ -81,7 +84,7 @@ impl TestDb {
             .expect("Failed to run migrations");
 
         TestDb {
-            db,
+            db: Arc::new(db),
             _schema_name: schema_name,
             _container: container,
         }

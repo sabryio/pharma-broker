@@ -248,7 +248,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Fetch test messages
     println!("\n📥 Loading {} test messages from database...", limit);
-    let db_messages = RawMessage::find().limit(limit as u64).all(&db).await?;
+    let db_messages = RawMessage::find().limit(limit as u64).all(&*db).await?;
 
     let messages: Vec<TestMessage> = db_messages
         .into_iter()

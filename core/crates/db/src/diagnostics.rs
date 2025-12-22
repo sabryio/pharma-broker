@@ -438,7 +438,7 @@ mod tests {
     #[tokio::test]
     async fn test_explain_analyze() {
         let db = TestDb::new().await;
-        let plan = DbDiagnostics::explain_analyze(&db.db, "SELECT 1")
+        let plan = DbDiagnostics::explain_analyze(&*db.db, "SELECT 1")
             .await
             .unwrap();
         assert!(plan.contains("Execution Time") || plan.contains("Result"));
@@ -447,7 +447,7 @@ mod tests {
     #[tokio::test]
     async fn test_is_using_index_false_for_constant() {
         let db = TestDb::new().await;
-        let is_using = DbDiagnostics::is_using_index(&db.db, "SELECT 1")
+        let is_using = DbDiagnostics::is_using_index(&*db.db, "SELECT 1")
             .await
             .unwrap();
         assert!(!is_using);
@@ -456,7 +456,7 @@ mod tests {
     #[tokio::test]
     async fn test_analyze_query() {
         let db = TestDb::new().await;
-        let analysis = DbDiagnostics::analyze_query(&db.db, "SELECT 1")
+        let analysis = DbDiagnostics::analyze_query(&*db.db, "SELECT 1")
             .await
             .unwrap();
         assert!(!analysis.uses_index);
@@ -466,7 +466,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_table_stats() {
         let db = TestDb::new().await;
-        let stats = DbDiagnostics::get_table_stats(&db.db).await.unwrap();
+        let stats = DbDiagnostics::get_table_stats(&*db.db).await.unwrap();
         // Should have some tables from migrations
         assert!(!stats.is_empty());
     }
@@ -474,14 +474,14 @@ mod tests {
     #[tokio::test]
     async fn test_get_database_size() {
         let db = TestDb::new().await;
-        let size = DbDiagnostics::get_database_size(&db.db).await.unwrap();
+        let size = DbDiagnostics::get_database_size(&*db.db).await.unwrap();
         assert!(!size.is_empty());
     }
 
     #[tokio::test]
     async fn test_get_cache_hit_ratio() {
         let db = TestDb::new().await;
-        let ratio = DbDiagnostics::get_cache_hit_ratio(&db.db).await.unwrap();
+        let ratio = DbDiagnostics::get_cache_hit_ratio(&*db.db).await.unwrap();
         assert!(ratio >= 0.0 && ratio <= 100.0);
     }
 }

@@ -1,0 +1,34 @@
+version: "3"
+
+tasks:
+  check:
+    desc: Run cargo check with all features
+    cmds:
+      - cargo check --workspace --all-targets --all-features
+
+  test:
+    desc: Run all tests in the workspace
+    cmds:
+      - cargo test --workspace
+
+  clippy:
+    desc: Run clippy and apply fixes where possible
+    cmds:
+      - cargo clippy --workspace --all-targets --all-features --fix --allow-dirty --allow-staged
+
+  build:
+    desc: Build the entire workspace
+    cmds:
+      - cargo build --workspace
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - cargo clean
+
+  full-check:
+    desc: Complete verification (check, clippy, test)
+    cmds:
+      - task: check
+      - task: clippy
+      - task: test

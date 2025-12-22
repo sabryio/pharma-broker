@@ -1,5 +1,7 @@
 //! Match repository implementation
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::*;
@@ -10,11 +12,11 @@ use crate::{Error, Result};
 
 /// SeaORM-based match repository
 pub struct SeaOrmMatchRepo {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl SeaOrmMatchRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
     }
 }
@@ -23,7 +25,7 @@ impl SeaOrmMatchRepo {
 impl MatchRepository for SeaOrmMatchRepo {
     async fn get_by_id(&self, id: &str) -> Result<Option<match_::Model>> {
         Match::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -34,7 +36,7 @@ impl MatchRepository for SeaOrmMatchRepo {
             .order_by_desc(match_::Column::Score)
             .limit(limit as u64)
             .offset(offset as u64)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(Error::from)
     }
@@ -42,7 +44,7 @@ impl MatchRepository for SeaOrmMatchRepo {
     async fn count_pending(&self) -> Result<i64> {
         Match::find()
             .filter(match_::Column::Status.eq(MatchStatus::Pending))
-            .count(&self.db)
+            .count(&*self.db)
             .await
             .map(|c| c as i64)
             .map_err(Error::from)
@@ -52,14 +54,14 @@ impl MatchRepository for SeaOrmMatchRepo {
         let count = Match::find()
             .filter(match_::Column::OfferId.eq(offer_id))
             .filter(match_::Column::RequestId.eq(request_id))
-            .count(&self.db)
+            .count(&*self.db)
             .await?;
         Ok(count > 0)
     }
 
     async fn save(&self, model: &match_::Model) -> Result<match_::Model> {
         let active: match_::ActiveModel = model.clone().into();
-        active.insert(&self.db).await.map_err(Error::from)
+        active.insert(&*self.db).await.map_err(Error::from)
     }
 
     async fn update_status(
@@ -67,7 +69,7 @@ impl MatchRepository for SeaOrmMatchRepo {
         params: crate::params::UpdateMatchStatusParams<'_>,
     ) -> Result<match_::Model> {
         let m = Match::find_by_id(params.id)
-            .one(&self.db)
+            .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Match not found: {}", params.id)))?;
 
@@ -82,13 +84,13 @@ impl MatchRepository for SeaOrmMatchRepo {
         if params.status == MatchStatus::Confirmed {
             active.confirmed_at = Set(Some(Utc::now()));
         }
-        active.update(&self.db).await.map_err(Error::from)
+        active.update(&*self.db).await.map_err(Error::from)
     }
 
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64> {
         let result = Match::delete_many()
             .filter(match_::Column::CreatedAt.lt(*cutoff))
-            .exec(&self.db)
+            .exec(&*self.db)
             .await?;
         Ok(result.rows_affected)
     }
@@ -110,20 +112,20 @@ mod tests {
 
         // Create group first (FK constraint)
         let group_am = new_test_group("test-group@g.us", "Test Group", true);
-        group::Entity::insert(group_am).exec(&db.db).await.ok(); // Ignore if exists
+        group::Entity::insert(group_am).exec(&*db.db).await.ok(); // Ignore if exists
 
         // Create raw messages
         let msg1 = new_test_raw_message();
         let msg1_id = msg1.id.clone().unwrap();
         raw_message::Entity::insert(msg1)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert raw message 1");
 
         let msg2 = new_test_raw_message();
         let msg2_id = msg2.id.clone().unwrap();
         raw_message::Entity::insert(msg2)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert raw message 2");
 
@@ -131,7 +133,7 @@ mod tests {
         let offer_am = new_test_offer(&msg1_id);
         let offer_id = offer_am.id.clone().unwrap();
         offer::Entity::insert(offer_am)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert offer");
 
@@ -139,7 +141,7 @@ mod tests {
         let request_am = new_test_request(&msg2_id);
         let request_id = request_am.id.clone().unwrap();
         request::Entity::insert(request_am)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert request");
 
@@ -147,12 +149,12 @@ mod tests {
         let match_am = new_test_match(&offer_id, &request_id);
         let match_id = match_am.id.clone().unwrap();
         match_::Entity::insert(match_am)
-            .exec(&db.db)
+            .exec(&*db.db)
             .await
             .expect("Insert match");
 
         match_::Entity::find_by_id(&match_id)
-            .one(&db.db)
+            .one(&*db.db)
             .await
             .expect("Find match")
             .expect("Match should exist")
