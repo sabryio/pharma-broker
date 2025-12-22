@@ -91,21 +91,23 @@ async fn test_get_active_urgent_first() {
     let db = TestDb::new().await;
     let repo = PostgresRequestRepo::new(db.pool.clone());
 
+    use crate::domain::UrgencyLevel;
+
     // Create non-urgent request first
     let mut non_urgent = create_request_with_raw_message(&db).await;
-    non_urgent.urgent = false;
+    non_urgent.urgency_level = UrgencyLevel::Normal;
     repo.save(&non_urgent).await.expect("Save non-urgent");
 
     // Create urgent request second
     let mut urgent = create_request_with_raw_message(&db).await;
-    urgent.urgent = true;
+    urgent.urgency_level = UrgencyLevel::Urgent;
     repo.save(&urgent).await.expect("Save urgent");
 
-    // Get active - urgent should come first
+    // Get active - urgent should come first (ordered by urgency_level DESC)
     let active = repo.get_active(10, 0).await.expect("GetActive");
     assert_eq!(active.len(), 2, "Should have 2 requests");
-    assert!(active[0].urgent, "First should be urgent");
-    assert!(!active[1].urgent, "Second should be non-urgent");
+    assert!(active[0].is_urgent(), "First should be urgent");
+    assert!(!active[1].is_urgent(), "Second should be non-urgent");
 }
 
 /// Test GetActive pagination
@@ -206,21 +208,23 @@ async fn test_get_active_urgent_then_by_created_at() {
     let db = TestDb::new().await;
     let repo = PostgresRequestRepo::new(db.pool.clone());
 
+    use crate::domain::UrgencyLevel;
+
     let now = Utc::now();
 
     // Create older urgent
     let mut older_urgent = create_request_with_raw_message(&db).await;
-    older_urgent.urgent = true;
+    older_urgent.urgency_level = UrgencyLevel::Urgent;
     older_urgent.created_at = now - Duration::hours(2);
 
     // Create newer urgent
     let mut newer_urgent = create_request_with_raw_message(&db).await;
-    newer_urgent.urgent = true;
+    newer_urgent.urgency_level = UrgencyLevel::Urgent;
     newer_urgent.created_at = now;
 
     // Create non-urgent
     let mut non_urgent = create_request_with_raw_message(&db).await;
-    non_urgent.urgent = false;
+    non_urgent.urgency_level = UrgencyLevel::Normal;
     non_urgent.created_at = now - Duration::hours(1);
 
     repo.save(&older_urgent).await.expect("Save older urgent");

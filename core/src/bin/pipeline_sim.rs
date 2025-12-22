@@ -655,7 +655,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("   ... and {} more", requests.len() - 5);
                 break;
             }
-            let urgent = if r.urgent { " 🔥" } else { "" };
+            let urgent = if r.is_urgent() { " 🔥" } else { "" };
             println!("   - {} ({:.0} units){}", r.medication, r.quantity.unwrap_or_default(), urgent);
         }
     }

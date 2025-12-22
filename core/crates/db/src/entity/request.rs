@@ -17,7 +17,6 @@ pub struct Model {
     pub source_phone: String,
     pub source_name: Option<String>,
     pub source_group: String,
-    pub group_name: String,
     pub medication: String,
     pub medication_raw: String,
     #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
@@ -26,13 +25,10 @@ pub struct Model {
     #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
     pub max_price: Option<Decimal>,
     pub currency: Option<String>,
-    /// Deprecated: Use urgency_level instead
-    pub urgent: bool,
     pub urgency_level: UrgencyLevel,
     pub expiry_requirement: Option<String>,
     pub ai_confidence: f64,
     pub notes: Option<String>,
-    pub raw_message: Option<String>,
     pub status: Status,
     pub content_embedding: Option<PgVector>, // Vector(384) for semantic search
     pub created_at: DateTimeUtc,
@@ -74,19 +70,16 @@ impl Default for Model {
             source_phone: String::new(),
             source_name: None,
             source_group: String::new(),
-            group_name: String::new(),
             medication: String::new(),
             medication_raw: String::new(),
             quantity: None,
             unit: None,
             max_price: None,
             currency: None,
-            urgent: false,
             urgency_level: UrgencyLevel::Normal,
             expiry_requirement: None,
             ai_confidence: 0.0,
             notes: None,
-            raw_message: None,
             status: Status::Active,
             content_embedding: None,
             created_at: Utc::now(),
@@ -152,7 +145,6 @@ pub struct RequestBuilder {
     source_group: String,
     // Optional fields
     source_name: Option<String>,
-    group_name: Option<String>,
     medication_raw: Option<String>,
     quantity: Option<Decimal>,
     unit: Option<String>,
@@ -162,7 +154,6 @@ pub struct RequestBuilder {
     expiry_requirement: Option<String>,
     ai_confidence: f64,
     notes: Option<String>,
-    raw_message: Option<String>,
     content_embedding: Option<PgVector>,
 }
 
@@ -181,7 +172,6 @@ impl RequestBuilder {
             source_phone: source_phone.into(),
             source_group: source_group.into(),
             source_name: None,
-            group_name: None,
             medication_raw: Some(medication),
             quantity: None,
             unit: None,
@@ -191,7 +181,6 @@ impl RequestBuilder {
             expiry_requirement: None,
             ai_confidence: 0.0,
             notes: None,
-            raw_message: None,
             content_embedding: None,
         }
     }
@@ -199,12 +188,6 @@ impl RequestBuilder {
     /// Set the source name
     pub fn source_name(mut self, name: impl Into<String>) -> Self {
         self.source_name = Some(name.into());
-        self
-    }
-
-    /// Set the group name
-    pub fn group_name(mut self, name: impl Into<String>) -> Self {
-        self.group_name = Some(name.into());
         self
     }
 
@@ -288,12 +271,6 @@ impl RequestBuilder {
         self
     }
 
-    /// Set the raw message content
-    pub fn raw_message(mut self, msg: impl Into<String>) -> Self {
-        self.raw_message = Some(msg.into());
-        self
-    }
-
     /// Set content embedding
     pub fn embedding(mut self, embedding: Vec<f32>) -> Self {
         self.content_embedding = Some(PgVector::from(embedding));
@@ -310,20 +287,17 @@ impl RequestBuilder {
             raw_message_id: self.raw_message_id,
             source_phone: self.source_phone,
             source_name: self.source_name,
-            source_group: self.source_group.clone(),
-            group_name: self.group_name.unwrap_or(self.source_group),
+            source_group: self.source_group,
             medication: self.medication.clone(),
             medication_raw: self.medication_raw.unwrap_or(self.medication),
             quantity: self.quantity,
             unit: self.unit,
             max_price: self.max_price,
             currency: self.currency,
-            urgent: self.urgency_level.is_urgent(),
             urgency_level: self.urgency_level,
             expiry_requirement: self.expiry_requirement,
             ai_confidence: self.ai_confidence,
             notes: self.notes,
-            raw_message: self.raw_message,
             status: Status::Active,
             content_embedding: self.content_embedding,
             created_at: now,
@@ -344,7 +318,7 @@ mod tests {
         assert_eq!(request.medication, "Ozempic 1mg");
         assert_eq!(request.source_phone, "+201234567890");
         assert_eq!(request.status, Status::Active);
-        assert!(!request.urgent);
+        assert!(!request.is_urgent());
     }
 
     #[test]
@@ -352,7 +326,6 @@ mod tests {
         let request =
             RequestBuilder::new("msg-2", "Insulin Lantus", "+201111111111", "pharma@g.us")
                 .source_name("Pharmacy ABC")
-                .group_name("Pharma Exchange")
                 .quantity(3.0)
                 .max_price(500.0)
                 .unit("pens")
@@ -366,7 +339,7 @@ mod tests {
         assert_eq!(request.source_name, Some("Pharmacy ABC".to_string()));
         assert!(request.quantity.is_some());
         assert!(request.max_price.is_some());
-        assert!(request.urgent);
+        assert!(request.is_urgent());
         assert_eq!(request.urgency_level, UrgencyLevel::Critical);
         assert_eq!(
             request.expiry_requirement,

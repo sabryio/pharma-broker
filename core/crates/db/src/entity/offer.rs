@@ -17,7 +17,6 @@ pub struct Model {
     pub source_phone: String,
     pub source_name: Option<String>,
     pub source_group: String,
-    pub group_name: String,
     pub medication: String,
     pub medication_raw: String,
     #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
@@ -29,10 +28,7 @@ pub struct Model {
     pub expiry_date: Option<Date>,
     pub batch_number: Option<String>,
     pub notes: Option<String>,
-    pub raw_message: Option<String>,
     pub status: Status,
-    /// Deprecated: Use urgency_level instead
-    pub urgent: bool,
     pub urgency_level: UrgencyLevel,
     pub expiry_info: Option<String>,
     pub ai_confidence: f64,
@@ -76,7 +72,6 @@ impl Default for Model {
             source_phone: String::new(),
             source_name: None,
             source_group: String::new(),
-            group_name: String::new(),
             medication: String::new(),
             medication_raw: String::new(),
             quantity: None,
@@ -86,9 +81,7 @@ impl Default for Model {
             expiry_date: None,
             batch_number: None,
             notes: None,
-            raw_message: None,
             status: Status::Active,
-            urgent: false,
             urgency_level: UrgencyLevel::Normal,
             expiry_info: None,
             ai_confidence: 0.0,
@@ -153,7 +146,6 @@ pub struct OfferBuilder {
     source_group: String,
     // Optional fields
     source_name: Option<String>,
-    group_name: Option<String>,
     medication_raw: Option<String>,
     quantity: Option<Decimal>,
     unit: Option<String>,
@@ -162,7 +154,6 @@ pub struct OfferBuilder {
     expiry_date: Option<Date>,
     batch_number: Option<String>,
     notes: Option<String>,
-    raw_message: Option<String>,
     urgency_level: UrgencyLevel,
     expiry_info: Option<String>,
     ai_confidence: f64,
@@ -184,7 +175,6 @@ impl OfferBuilder {
             source_phone: source_phone.into(),
             source_group: source_group.into(),
             source_name: None,
-            group_name: None,
             medication_raw: Some(medication),
             quantity: None,
             unit: None,
@@ -193,7 +183,6 @@ impl OfferBuilder {
             expiry_date: None,
             batch_number: None,
             notes: None,
-            raw_message: None,
             urgency_level: UrgencyLevel::Normal,
             expiry_info: None,
             ai_confidence: 0.0,
@@ -204,12 +193,6 @@ impl OfferBuilder {
     /// Set the source name
     pub fn source_name(mut self, name: impl Into<String>) -> Self {
         self.source_name = Some(name.into());
-        self
-    }
-
-    /// Set the group name
-    pub fn group_name(mut self, name: impl Into<String>) -> Self {
-        self.group_name = Some(name.into());
         self
     }
 
@@ -275,12 +258,6 @@ impl OfferBuilder {
         self
     }
 
-    /// Set the raw message content
-    pub fn raw_message(mut self, msg: impl Into<String>) -> Self {
-        self.raw_message = Some(msg.into());
-        self
-    }
-
     /// Set the urgency level
     pub fn urgency_level(mut self, level: UrgencyLevel) -> Self {
         self.urgency_level = level;
@@ -321,8 +298,7 @@ impl OfferBuilder {
             raw_message_id: self.raw_message_id,
             source_phone: self.source_phone,
             source_name: self.source_name,
-            source_group: self.source_group.clone(),
-            group_name: self.group_name.unwrap_or(self.source_group),
+            source_group: self.source_group,
             medication: self.medication.clone(),
             medication_raw: self.medication_raw.unwrap_or(self.medication),
             quantity: self.quantity,
@@ -332,9 +308,7 @@ impl OfferBuilder {
             expiry_date: self.expiry_date,
             batch_number: self.batch_number,
             notes: self.notes,
-            raw_message: self.raw_message,
             status: Status::Active,
-            urgent: self.urgency_level.is_urgent(),
             urgency_level: self.urgency_level,
             expiry_info: self.expiry_info,
             ai_confidence: self.ai_confidence,
@@ -357,14 +331,13 @@ mod tests {
         assert_eq!(offer.medication, "Aspirin 100mg");
         assert_eq!(offer.source_phone, "+201234567890");
         assert_eq!(offer.status, Status::Active);
-        assert!(!offer.urgent);
+        assert!(!offer.is_urgent());
     }
 
     #[test]
     fn test_offer_builder_full() {
         let offer = OfferBuilder::new("msg-2", "Ozempic 1mg", "+201111111111", "pharma@g.us")
             .source_name("Dr. Ahmed")
-            .group_name("Pharma Exchange")
             .quantity(5.0)
             .price(1500.0)
             .unit("boxes")
@@ -375,11 +348,10 @@ mod tests {
 
         assert_eq!(offer.medication, "Ozempic 1mg");
         assert_eq!(offer.source_name, Some("Dr. Ahmed".to_string()));
-        assert_eq!(offer.group_name, "Pharma Exchange");
         assert!(offer.quantity.is_some());
         assert!(offer.price.is_some());
         assert_eq!(offer.unit, Some("boxes".to_string()));
-        assert!(offer.urgent);
+        assert!(offer.is_urgent());
         assert_eq!(offer.urgency_level, UrgencyLevel::Urgent);
         assert!((offer.ai_confidence - 0.95).abs() < 0.001);
     }

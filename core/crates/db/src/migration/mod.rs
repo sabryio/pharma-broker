@@ -16,6 +16,7 @@ mod m20251221_000008_create_review_queue;
 mod m20251221_000009_create_audit_logs;
 mod m20251221_000010_create_feedback_records;
 mod m20251221_000011_create_weight_history;
+mod m20251222_000001_remove_deprecated_fields;
 
 pub struct Migrator;
 
@@ -34,6 +35,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20251221_000009_create_audit_logs::Migration),
             Box::new(m20251221_000010_create_feedback_records::Migration),
             Box::new(m20251221_000011_create_weight_history::Migration),
+            Box::new(m20251222_000001_remove_deprecated_fields::Migration),
         ]
     }
 }
