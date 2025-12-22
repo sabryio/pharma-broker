@@ -17,17 +17,19 @@ use crate::params::{
 pub use crate::entity::audit_log::Model as AuditLogModel;
 pub use crate::entity::feedback_record::Model as FeedbackModel;
 pub use crate::entity::group::Model as GroupModel;
-pub use crate::entity::match_::MatchStatus;
 pub use crate::entity::match_::Model as MatchModel;
 pub use crate::entity::match_queue::Model as MatchQueueModel;
 pub use crate::entity::match_queue::QueueStatus;
 pub use crate::entity::medication_mapping::Model as MedicationMappingModel;
-pub use crate::entity::offer::{Model as OfferModel, Status as ItemStatus, UrgencyLevel};
+pub use crate::entity::offer::Model as OfferModel;
 pub use crate::entity::raw_message::Model as RawMessageModel;
 pub use crate::entity::request::Model as RequestModel;
 pub use crate::entity::review_queue::Model as ReviewQueueModel;
 pub use crate::entity::review_queue::ReviewStatus;
 pub use crate::entity::weight_history::Model as WeightHistoryModel;
+
+// Re-export common types from centralized location
+pub use crate::entity::common::{ItemStatus, MatchStatus, UrgencyLevel};
 
 /// Offer repository trait
 #[async_trait]

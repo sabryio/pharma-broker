@@ -19,6 +19,7 @@ mod historical;
 mod hybrid_filter;
 mod learner;
 mod scheduler;
+mod score_types;
 mod scorer;
 mod service;
 mod thresholds;
@@ -113,6 +114,11 @@ pub use thresholds::{SmoothConfidenceResult, SmoothThresholdCalculator, SmoothTh
 
 // --- warm_start ---
 pub use warm_start::{OutlierDetector, OutlierDetectorConfig, WarmStartConfig, WarmStartManager};
+
+// --- score_types ---
+pub use score_types::{
+    ComponentScore, ConfidenceScore, NormalizedWeights, ScoreBreakdown, Weight, WeightError,
+};
 
 // =============================================================================
 // Types defined in this module

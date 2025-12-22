@@ -263,36 +263,6 @@ impl AutoActionHandler {
 }
 
 // ============================================================================
-// Action Result
-// ============================================================================
-
-/// Result of taking an action
-#[derive(Debug, Clone, Serialize)]
-pub struct ActionResult {
-    pub action: MatchAction,
-    pub executed: bool,
-    pub message: String,
-}
-
-impl ActionResult {
-    pub fn success(action: MatchAction, message: impl Into<String>) -> Self {
-        Self {
-            action,
-            executed: true,
-            message: message.into(),
-        }
-    }
-
-    pub fn skipped(action: MatchAction, message: impl Into<String>) -> Self {
-        Self {
-            action,
-            executed: false,
-            message: message.into(),
-        }
-    }
-}
-
-// ============================================================================
 // Tests
 // ============================================================================
 

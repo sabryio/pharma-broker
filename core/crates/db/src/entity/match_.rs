@@ -1,24 +1,12 @@
 //! Match entity - Offer-Request matches
+//!
+//! Represents potential or confirmed matches between offers and requests.
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Match status enum
-#[derive(
-    Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Default, Serialize, Deserialize,
-)]
-#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
-pub enum MatchStatus {
-    #[default]
-    #[sea_orm(string_value = "PENDING")]
-    Pending,
-    #[sea_orm(string_value = "CONFIRMED")]
-    Confirmed,
-    #[sea_orm(string_value = "REJECTED")]
-    Rejected,
-    #[sea_orm(string_value = "EXPIRED")]
-    Expired,
-}
+// Re-export common types for backward compatibility
+pub use super::common::MatchStatus;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "matches")]
@@ -94,8 +82,23 @@ impl Default for Model {
 }
 
 impl Model {
-    /// Get reasoning or default
+    /// Get reasoning or default empty string
     pub fn reasoning_str(&self) -> &str {
         self.reasoning.as_deref().unwrap_or("")
+    }
+
+    /// Check if the match is still pending
+    pub fn is_pending(&self) -> bool {
+        self.status.is_pending()
+    }
+
+    /// Check if the match was confirmed
+    pub fn is_confirmed(&self) -> bool {
+        self.status.is_confirmed()
+    }
+
+    /// Get score as a percentage string
+    pub fn score_percentage(&self) -> String {
+        format!("{:.1}%", self.score * 100.0)
     }
 }

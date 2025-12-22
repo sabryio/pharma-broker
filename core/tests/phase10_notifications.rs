@@ -109,7 +109,7 @@ async fn test_null_notifier() {
 /// Test CompositeNotifier chains notifiers
 #[tokio::test]
 async fn test_composite_notifier() {
-    let notifier = CompositeNotifier::new().add(NullNotifier).add(NullNotifier);
+    let notifier = CompositeNotifier::new().with_notifier(NullNotifier).with_notifier(NullNotifier);
 
     // Should call both notifiers without error
     let result = notifier

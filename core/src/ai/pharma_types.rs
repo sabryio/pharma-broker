@@ -1,13 +1,20 @@
 //! Pharma-specific AI types with JSON Schema support
 //!
 //! These types derive `schemars::JsonSchema` for structured output via the AI client.
+//!
+//! Note: `UrgencyLevel` is defined here with `JsonSchema` for AI parsing.
+//! The database entity version in `pharma_db::entity::common` is used for persistence.
+//! Conversion methods are provided for interoperability.
 
 use std::fmt;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Urgency level for medication requests/offers
+/// Urgency level for medication requests/offers (AI parsing version)
+///
+/// This version includes `JsonSchema` for AI structured output.
+/// Use `to_db_urgency()` to convert to the database entity version.
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum UrgencyLevel {
@@ -55,11 +62,43 @@ impl UrgencyLevel {
             UrgencyLevel::Critical => 1.0,
         }
     }
+
+    /// Convert to database entity UrgencyLevel
+    pub fn to_db_urgency(&self) -> pharma_db::entity::common::UrgencyLevel {
+        match self {
+            UrgencyLevel::Normal => pharma_db::entity::common::UrgencyLevel::Normal,
+            UrgencyLevel::Soon => pharma_db::entity::common::UrgencyLevel::Soon,
+            UrgencyLevel::Urgent => pharma_db::entity::common::UrgencyLevel::Urgent,
+            UrgencyLevel::Critical => pharma_db::entity::common::UrgencyLevel::Critical,
+        }
+    }
+
+    /// Convert from database entity UrgencyLevel
+    pub fn from_db_urgency(db: pharma_db::entity::common::UrgencyLevel) -> Self {
+        match db {
+            pharma_db::entity::common::UrgencyLevel::Normal => UrgencyLevel::Normal,
+            pharma_db::entity::common::UrgencyLevel::Soon => UrgencyLevel::Soon,
+            pharma_db::entity::common::UrgencyLevel::Urgent => UrgencyLevel::Urgent,
+            pharma_db::entity::common::UrgencyLevel::Critical => UrgencyLevel::Critical,
+        }
+    }
 }
 
 impl fmt::Display for UrgencyLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_str())
+    }
+}
+
+impl From<UrgencyLevel> for pharma_db::entity::common::UrgencyLevel {
+    fn from(ai: UrgencyLevel) -> Self {
+        ai.to_db_urgency()
+    }
+}
+
+impl From<pharma_db::entity::common::UrgencyLevel> for UrgencyLevel {
+    fn from(db: pharma_db::entity::common::UrgencyLevel) -> Self {
+        UrgencyLevel::from_db_urgency(db)
     }
 }
 
@@ -256,5 +295,33 @@ mod tests {
         assert_eq!(item.expiry, None);
         assert_eq!(item.quantity, 0.0);
         assert_eq!(item.price, 0.0);
+    }
+
+    #[test]
+    fn test_urgency_level_db_conversion() {
+        use pharma_db::entity::common::UrgencyLevel as DbUrgency;
+
+        // AI to DB
+        assert!(matches!(
+            UrgencyLevel::Normal.to_db_urgency(),
+            DbUrgency::Normal
+        ));
+        assert!(matches!(
+            UrgencyLevel::Critical.to_db_urgency(),
+            DbUrgency::Critical
+        ));
+
+        // DB to AI
+        assert_eq!(
+            UrgencyLevel::from_db_urgency(DbUrgency::Urgent),
+            UrgencyLevel::Urgent
+        );
+
+        // Via From trait
+        let ai: UrgencyLevel = DbUrgency::Soon.into();
+        assert_eq!(ai, UrgencyLevel::Soon);
+
+        let db: DbUrgency = UrgencyLevel::Critical.into();
+        assert!(matches!(db, DbUrgency::Critical));
     }
 }

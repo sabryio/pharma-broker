@@ -4,9 +4,13 @@
 //! Ported from legacy/parsing/processor.go
 
 mod config;
+mod params;
 mod processor;
 
 pub use config::{BatchConfig, MultiPassConfig, ParsePass};
+pub use params::{
+    BatchProcessorBuilder, BatchProcessorConfig, BatchProcessorDeps, BatchProcessorRepositories,
+};
 pub use processor::BatchProcessor;
 
 use crate::domain::RawMessage;

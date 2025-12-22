@@ -467,23 +467,6 @@ pub trait MessageContent {
     fn reply_content(&self) -> Option<&str>;
 }
 
-/// Simple message struct for testing
-#[derive(Debug, Clone)]
-pub struct SimpleMessage {
-    pub content: String,
-    pub reply_to_content: Option<String>,
-}
-
-impl MessageContent for SimpleMessage {
-    fn content(&self) -> &str {
-        &self.content
-    }
-
-    fn reply_content(&self) -> Option<&str> {
-        self.reply_to_content.as_deref()
-    }
-}
-
 /// Medication mapping result from search
 #[derive(Debug, Clone)]
 pub struct MedicationSearchResult {
@@ -509,6 +492,23 @@ pub trait MedicationSearchRepository: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Simple message struct for testing
+    #[derive(Debug, Clone)]
+    pub struct SimpleMessage {
+        pub content: String,
+        pub reply_to_content: Option<String>,
+    }
+
+    impl MessageContent for SimpleMessage {
+        fn content(&self) -> &str {
+            &self.content
+        }
+
+        fn reply_content(&self) -> Option<&str> {
+            self.reply_to_content.as_deref()
+        }
+    }
 
     // =========================================================================
     // Sanitization Tests

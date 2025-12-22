@@ -5,7 +5,7 @@
 
 use chrono::Duration;
 
-use super::entity::match_::MatchStatus;
+use super::entity::common::MatchStatus;
 use super::entity::review_queue::ReviewStatus;
 
 /// Parameters for updating match status

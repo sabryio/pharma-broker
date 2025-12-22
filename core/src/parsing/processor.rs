@@ -88,6 +88,30 @@ impl BatchProcessor {
         }
     }
 
+    /// Create a new batch processor from structured parameter objects
+    ///
+    /// This is the preferred constructor as it uses descriptive parameter structs
+    /// instead of many individual arguments.
+    pub fn from_parts(
+        config: super::params::BatchProcessorConfig,
+        repos: super::params::BatchProcessorRepositories,
+        deps: super::params::BatchProcessorDeps,
+    ) -> Self {
+        Self::new(
+            config.batch,
+            config.multi_pass,
+            deps.ai_client,
+            repos.raw_message,
+            repos.offer,
+            repos.request,
+            repos.medication_mapping,
+            repos.review_queue,
+            repos.audit_log,
+            repos.match_queue,
+            deps.ws_tx,
+        )
+    }
+
     /// Get sender for submitting messages
     pub fn sender(&self) -> mpsc::Sender<ParseJob> {
         self.input_tx.clone()

@@ -366,30 +366,30 @@ impl AuditLogger for MemoryAuditLogger {
 
         for entry in entries.iter().rev() {
             // Apply filters
-            if let Some(ref match_id) = filter.match_id {
-                if entry.match_id.as_ref() != Some(match_id) {
-                    continue;
-                }
+            if let Some(ref match_id) = filter.match_id
+                && entry.match_id.as_ref() != Some(match_id)
+            {
+                continue;
             }
-            if let Some(event_type) = filter.event_type {
-                if entry.event_type != event_type {
-                    continue;
-                }
+            if let Some(event_type) = filter.event_type
+                && entry.event_type != event_type
+            {
+                continue;
             }
-            if let Some(ref actor) = filter.actor {
-                if &entry.actor != actor {
-                    continue;
-                }
+            if let Some(ref actor) = filter.actor
+                && &entry.actor != actor
+            {
+                continue;
             }
-            if let Some(start) = filter.start_time {
-                if entry.timestamp < start {
-                    continue;
-                }
+            if let Some(start) = filter.start_time
+                && entry.timestamp < start
+            {
+                continue;
             }
-            if let Some(end) = filter.end_time {
-                if entry.timestamp > end {
-                    continue;
-                }
+            if let Some(end) = filter.end_time
+                && entry.timestamp > end
+            {
+                continue;
             }
 
             results.push(entry.clone());

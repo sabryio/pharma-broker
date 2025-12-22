@@ -175,7 +175,7 @@ async fn test_e2e_websocket_broadcast() {
 /// Test notification dispatch in E2E flow
 #[tokio::test]
 async fn test_e2e_notification_dispatch() {
-    let notifier = CompositeNotifier::new().add(NullNotifier);
+    let notifier = CompositeNotifier::new().with_notifier(NullNotifier);
 
     let offer = create_offer();
     let request = create_matching_request();

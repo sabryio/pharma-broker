@@ -20,6 +20,7 @@
 
 pub mod audit_types;
 pub mod entity;
+pub mod feedback_params;
 pub mod migration;
 pub mod params;
 pub mod repo;
@@ -38,6 +39,11 @@ pub mod prelude {
         AuditLog, FeedbackRecord, Group, Match, MatchQueue, MedicationMapping, Offer, RawMessage,
         Request, ReviewQueue, WeightHistory,
     };
+    pub use super::entity::{
+        GroupJid, MatchId, MedicationMappingId, OfferId, RawMessageId, RequestId, UserJid,
+    };
+    pub use super::entity::{ItemStatus, MatchStatus, UrgencyLevel};
+    pub use super::feedback_params::{CreateFeedbackParams, FeedbackScores, RecordFeedbackParams};
     pub use super::service::{
         AuditLogService, FeedbackService, GroupService, MatchQueueService, MatchService,
         MedicationMappingService, OfferService, RawMessageService, RequestService,

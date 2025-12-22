@@ -3,7 +3,7 @@
 //! Provides distance and similarity metrics for medication names.
 
 use super::arabic::normalize_for_matching;
-use strsim::{jaro_winkler, levenshtein};
+use strsim::jaro_winkler;
 
 /// Calculate similarity between two medication names (0.0 to 1.0)
 ///
@@ -23,13 +23,6 @@ pub fn medication_similarity(a: &str, b: &str) -> f64 {
     // Otherwise use Jaro-Winkler for fuzzy similarity
     // Jaro-Winkler is preferred for short strings/names over Levenshtein
     jaro_winkler(&norm_a, &norm_b)
-}
-
-/// Calculate Levenshtein distance between two strings
-pub fn fuzzy_distance(a: &str, b: &str) -> usize {
-    let norm_a = normalize_for_matching(a);
-    let norm_b = normalize_for_matching(b);
-    levenshtein(&norm_a, &norm_b)
 }
 
 #[cfg(test)]

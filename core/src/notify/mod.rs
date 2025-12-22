@@ -135,8 +135,8 @@ impl CompositeNotifier {
         }
     }
 
-    /// Add a notifier to the composite
-    pub fn add(mut self, notifier: impl MatchNotifier + 'static) -> Self {
+    /// Add a notifier to the composite (builder pattern)
+    pub fn with_notifier(mut self, notifier: impl MatchNotifier + 'static) -> Self {
         self.notifiers.push(Box::new(notifier));
         self
     }
