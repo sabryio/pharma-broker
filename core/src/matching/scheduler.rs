@@ -9,7 +9,7 @@ use super::{LearningConfig, PerformanceMetrics, WeightLearner, Weights};
 
 /// Job execution status
 /// Ported from Go: JobStatus (scheduler.go:34-43)
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum JobStatus {
     /// Initial state
     #[default]

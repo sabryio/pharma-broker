@@ -110,8 +110,11 @@ async fn main() -> anyhow::Result<()> {
     engine_config.scheduler.enabled = scheduler_enabled;
     engine_config.scheduler.schedule = scheduler_schedule.clone();
 
-    let matching_engine = Arc::new(MatchingEngine::new(engine_config));
-    tracing::info!("⚖️ Matching engine initialized");
+    // Create matching engine and set repositories for learning job
+    let mut matching_engine = MatchingEngine::new(engine_config);
+    matching_engine.set_repositories(feedback_repo.clone(), audit_log_repo.clone());
+    let matching_engine = Arc::new(matching_engine);
+    tracing::info!("⚖️ Matching engine initialized with feedback repository");
 
     // Start the learning scheduler if enabled
     if scheduler_enabled {

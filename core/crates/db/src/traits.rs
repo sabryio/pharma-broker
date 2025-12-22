@@ -228,6 +228,10 @@ pub trait MedicationMappingRepository: Send + Sync {
     ) -> Result<Vec<MedicationMappingModel>>;
     async fn get_all(&self, limit: i64, offset: i64) -> Result<Vec<MedicationMappingModel>>;
     async fn count(&self) -> Result<i64>;
+    /// Get mappings that need embeddings (embedding is NULL)
+    async fn get_needing_embeddings(&self, limit: i64) -> Result<Vec<MedicationMappingModel>>;
+    /// Count mappings that need embeddings
+    async fn count_needing_embeddings(&self) -> Result<i64>;
 }
 
 /// Audit log repository trait

@@ -70,7 +70,7 @@ pub use fuzzy::medication_similarity;
 pub use embedding_cache::{EmbeddingCache, EmbeddingCacheStatsSnapshot, SynonymIndex};
 
 // --- engine ---
-pub use engine::{MatchingEngine, MatchingEngineConfig};
+pub use engine::{MatchingEngine, MatchingEngineConfig, SchedulerStats};
 
 // --- ensemble ---
 pub use ensemble::{

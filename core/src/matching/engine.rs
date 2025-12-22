@@ -13,6 +13,7 @@
 //! - HistoricalLearner (medication pair affinity learning)
 
 use crate::repository::{AuditLogRepository, FeedbackRepository};
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
@@ -21,11 +22,34 @@ use super::{
     ABTestConfig, ABTestManager, ABTestResult, AuditTrail, AuditTrailConfig, AutoActionHandler,
     CalibrationConfig, CalibrationReport, ConfidenceCalibrator, ConfidenceConfig,
     ConfidenceManager, ConfidenceManagerStats, EmbeddingCache, EmbeddingCacheStatsSnapshot,
-    HistoricalLearner, HistoricalLearnerStats, HistoricalLearningConfig, LearnerError, MatchAction,
-    MatchFilter, MatchFilterConfig, MatchFilterStatsSnapshot, MatchScore, MedicationAffinity,
-    OutlierDetector, OutlierDetectorConfig, PerformanceMetrics, SchedulerConfig, SchedulerStatus,
-    Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
+    HistoricalLearner, HistoricalLearnerStats, HistoricalLearningConfig, JobStatus, LearnerError,
+    MatchAction, MatchFilter, MatchFilterConfig, MatchFilterStatsSnapshot, MatchScore,
+    MedicationAffinity, OutlierDetector, OutlierDetectorConfig, PerformanceMetrics,
+    SchedulerConfig, SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner,
+    Weights,
 };
+
+/// Runtime state for the learning scheduler job
+#[derive(Debug, Default)]
+struct SchedulerState {
+    last_run: Option<DateTime<Utc>>,
+    last_status: JobStatus,
+    last_error: Option<String>,
+    last_metrics: Option<PerformanceMetrics>,
+    run_count: u64,
+    success_count: u64,
+    failure_count: u64,
+}
+
+/// Public scheduler statistics for monitoring
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SchedulerStats {
+    pub run_count: u64,
+    pub success_count: u64,
+    pub failure_count: u64,
+    pub last_run: Option<DateTime<Utc>>,
+    pub last_status: JobStatus,
+}
 use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackStats, MedicationMapping};
 use crate::domain::{Match as MatchEntity, Offer, Request};
 use crate::notify::MatchNotifier;
@@ -83,6 +107,8 @@ pub struct MatchingEngine {
     sample_count: RwLock<usize>,
     /// Cron scheduler handle
     scheduler_handle: RwLock<Option<JobScheduler>>,
+    /// Scheduler runtime state (job tracking)
+    scheduler_state: Arc<RwLock<SchedulerState>>,
     /// Auto action handler
     pub auto_action: AutoActionHandler,
     /// Notification sender
@@ -129,6 +155,7 @@ impl MatchingEngine {
             config: RwLock::new(config),
             sample_count: RwLock::new(0),
             scheduler_handle: RwLock::new(None),
+            scheduler_state: Arc::new(RwLock::new(SchedulerState::default())),
             auto_action: AutoActionHandler::from_env(),
             notifier: Arc::new(crate::notify::NullNotifier), // Default to null, can be replaced
             feedback_repo: None,
@@ -417,15 +444,51 @@ impl MatchingEngine {
         // Create scheduler
         let scheduler = JobScheduler::new().await.map_err(|e| e.to_string())?;
 
-        // Add the learning job
+        // Add the learning job with state tracking
         let engine = self.clone();
+        let state = self.scheduler_state.clone();
         let job = Job::new_async(schedule.as_str(), move |_uuid, _lock| {
             let engine = engine.clone();
+            let state = state.clone();
             Box::pin(async move {
-                tracing::info!("Learning job triggered by scheduler");
-                if let Err(e) = engine.run_learning_job().await {
-                    tracing::error!(error = %e, "Learning job failed");
+                tracing::info!("📅 Learning job triggered by scheduler");
+
+                // Update state: job started
+                {
+                    let mut s = state.write().await;
+                    s.run_count += 1;
+                    s.last_run = Some(Utc::now());
+                    s.last_status = JobStatus::Running;
+                    s.last_error = None;
                 }
+
+                // Execute the learning job
+                let result = engine.run_learning_job_internal().await;
+
+                // Update state based on result
+                {
+                    let mut s = state.write().await;
+                    match &result {
+                        Ok(metrics) => {
+                            s.last_status = JobStatus::Success;
+                            s.last_metrics = Some(metrics.clone());
+                            s.success_count += 1;
+                            tracing::info!("✅ Learning job completed successfully");
+                        }
+                        Err(e) => {
+                            s.last_status = JobStatus::Failed;
+                            s.last_error = Some(e.to_string());
+                            s.failure_count += 1;
+                            tracing::error!(error = %e, "❌ Learning job failed");
+
+                            // Record failure in metrics
+                            metrics::counter!("learning_job_failures_total").increment(1);
+                        }
+                    }
+                }
+
+                // Record job completion metric
+                metrics::counter!("learning_job_runs_total").increment(1);
             })
         })
         .map_err(|e| e.to_string())?;
@@ -435,18 +498,18 @@ impl MatchingEngine {
 
         *self.scheduler_handle.write().await = Some(scheduler);
 
-        tracing::info!(schedule = schedule, "Learning scheduler started");
+        tracing::info!(schedule = %schedule, "📅 Learning scheduler started");
         Ok(())
     }
 
-    /// Primary learning job: updates weights and thresholds
-    pub async fn run_learning_job(&self) -> crate::Result<()> {
+    /// Internal learning job implementation (returns metrics for tracking)
+    async fn run_learning_job_internal(&self) -> crate::Result<PerformanceMetrics> {
         let feedback_repo = self.feedback_repo.as_ref().ok_or_else(|| {
             crate::Error::Internal("Feedback repository not set in matching engine".to_owned())
         })?;
 
         // 1. Get stats for the last 30 days
-        let end = chrono::Utc::now();
+        let end = Utc::now();
         let start = end - chrono::Duration::days(30);
         let stats = feedback_repo.get_stats(start, end).await?;
 
@@ -455,7 +518,11 @@ impl MatchingEngine {
                 count = stats.total_feedback,
                 "Not enough feedback for learning (minimum 50)"
             );
-            return Ok(());
+            // Return default metrics for skipped job
+            return Ok(PerformanceMetrics {
+                sample_size: stats.total_feedback,
+                ..Default::default()
+            });
         }
 
         // 2. Calculate new weights
@@ -465,11 +532,9 @@ impl MatchingEngine {
             .map_err(|e| crate::Error::Internal(format!("Weight calculation failed: {}", e)))?;
 
         // 3. Adjust thresholds based on confirmation rate
-        // If confirmation rate is high, we can be more aggressive with auto-actions
         let calculator = self.auto_action.calculator();
         let mut threshold_config = calculator.config().read().await.clone();
 
-        // Simple heuristic: adjust auto threshold based on metrics
         if metrics.confirmation_rate > 0.95 {
             threshold_config.auto_threshold = (threshold_config.auto_threshold - 0.01).max(0.85);
         } else if metrics.confirmation_rate < 0.85 {
@@ -496,7 +561,16 @@ impl MatchingEngine {
             let _ = audit_repo.save(&audit_log).await;
         }
 
-        tracing::info!("✅ Learning job completed successfully");
+        // 6. Record success metrics
+        metrics::gauge!("learning_job_confirmation_rate").set(metrics.confirmation_rate);
+        metrics::gauge!("learning_job_sample_size").set(stats.total_feedback as f64);
+
+        Ok(metrics)
+    }
+
+    /// Primary learning job: updates weights and thresholds (public wrapper)
+    pub async fn run_learning_job(&self) -> crate::Result<()> {
+        self.run_learning_job_internal().await?;
         Ok(())
     }
 
@@ -504,23 +578,71 @@ impl MatchingEngine {
     pub async fn stop_scheduler(&self) {
         if let Some(mut scheduler) = self.scheduler_handle.write().await.take() {
             scheduler.shutdown().await.ok();
-            tracing::info!("Learning scheduler stopped");
+            tracing::info!("📅 Learning scheduler stopped");
         }
     }
 
-    /// Get scheduler status
+    /// Get scheduler status with real-time job tracking
     pub async fn scheduler_status(&self) -> SchedulerStatus {
         let config = self.config.read().await;
+        let state = self.scheduler_state.read().await;
+
         SchedulerStatus {
             enabled: config.scheduler.enabled,
             schedule: config.scheduler.schedule.clone(),
-            last_run: None, // Would be tracked in production
-            last_status: super::JobStatus::Pending,
-            last_error: None,
-            last_metrics: None,
+            last_run: state.last_run,
+            last_status: state.last_status,
+            last_error: state.last_error.clone(),
+            last_metrics: state.last_metrics.clone(),
             pending_apply: None,
             pending_reason: None,
         }
+    }
+
+    /// Get detailed scheduler statistics
+    pub async fn scheduler_stats(&self) -> SchedulerStats {
+        let state = self.scheduler_state.read().await;
+        SchedulerStats {
+            run_count: state.run_count,
+            success_count: state.success_count,
+            failure_count: state.failure_count,
+            last_run: state.last_run,
+            last_status: state.last_status,
+        }
+    }
+
+    /// Manually trigger the learning job (for testing or admin use)
+    pub async fn trigger_learning_job(&self) -> crate::Result<PerformanceMetrics> {
+        tracing::info!("📅 Learning job manually triggered");
+
+        // Update state
+        {
+            let mut s = self.scheduler_state.write().await;
+            s.run_count += 1;
+            s.last_run = Some(Utc::now());
+            s.last_status = JobStatus::Running;
+        }
+
+        let result = self.run_learning_job_internal().await;
+
+        // Update state based on result
+        {
+            let mut s = self.scheduler_state.write().await;
+            match &result {
+                Ok(metrics) => {
+                    s.last_status = JobStatus::Success;
+                    s.last_metrics = Some(metrics.clone());
+                    s.success_count += 1;
+                }
+                Err(e) => {
+                    s.last_status = JobStatus::Failed;
+                    s.last_error = Some(e.to_string());
+                    s.failure_count += 1;
+                }
+            }
+        }
+
+        result
     }
 
     // =========================================================================

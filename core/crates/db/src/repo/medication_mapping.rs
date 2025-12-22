@@ -99,6 +99,25 @@ impl MedicationMappingRepository for SeaOrmMedicationMappingRepo {
             .map(|c| c as i64)
             .map_err(Error::from)
     }
+
+    async fn get_needing_embeddings(&self, limit: i64) -> Result<Vec<medication_mapping::Model>> {
+        MedicationMapping::find()
+            .filter(medication_mapping::Column::Embedding.is_null())
+            .order_by_asc(medication_mapping::Column::CreatedAt)
+            .limit(limit as u64)
+            .all(&self.db)
+            .await
+            .map_err(Error::from)
+    }
+
+    async fn count_needing_embeddings(&self) -> Result<i64> {
+        MedicationMapping::find()
+            .filter(medication_mapping::Column::Embedding.is_null())
+            .count(&self.db)
+            .await
+            .map(|c| c as i64)
+            .map_err(Error::from)
+    }
 }
 
 #[cfg(all(test, feature = "integration-tests"))]
