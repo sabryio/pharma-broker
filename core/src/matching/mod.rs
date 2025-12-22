@@ -4,7 +4,7 @@
 
 mod abtest;
 mod actions;
-pub mod arabic;
+mod arabic;
 mod audit;
 mod calibration;
 mod confidence;
@@ -14,7 +14,7 @@ mod engine;
 mod ensemble;
 mod filter;
 mod fts_search;
-pub mod fuzzy;
+mod fuzzy;
 mod historical;
 mod hybrid_filter;
 mod learner;
@@ -25,27 +25,98 @@ mod thresholds;
 mod warm_start;
 mod weights;
 
-pub use abtest::*;
-pub use actions::*;
-pub use arabic::*;
-pub use audit::*;
-pub use calibration::*;
-pub use confidence::*;
-pub use dosage::*;
-pub use embedding_cache::*;
-pub use engine::*;
-pub use ensemble::*;
-pub use filter::*;
-pub use fts_search::*;
-pub use fuzzy::*;
-pub use historical::*;
-pub use hybrid_filter::*;
-pub use learner::*;
-pub use scheduler::*;
-pub use scorer::*;
-pub use service::*;
-pub use warm_start::*;
-pub use weights::*;
+// =============================================================================
+// Explicit Re-exports
+// =============================================================================
+
+// --- weights ---
+pub use weights::{Thresholds, Weights};
+
+// --- scorer ---
+pub use scorer::{MatchScore, Scorer};
+
+// --- actions ---
+pub use actions::{AutoActionConfig, AutoActionHandler, MatchAction, ParseAction};
+
+// --- abtest ---
+pub use abtest::{ABTestConfig, ABTestManager, ABTestResult, ABTestStats};
+
+// --- audit ---
+pub use audit::{
+    ActionType, AuditEntry, AuditError, AuditEventType, AuditFilter, AuditLogger, AuditTrail,
+    AuditTrailConfig, MemoryAuditLogger,
+};
+
+// --- calibration ---
+pub use calibration::{
+    CalibrationBin, CalibrationConfig, CalibrationReport, CalibrationStatsSnapshot,
+    ConfidenceCalibrator,
+};
+
+// --- confidence ---
+pub use confidence::{ConfidenceConfig, ConfidenceManager, ConfidenceManagerStats};
+
+// --- dosage ---
+pub use dosage::{Dosage, compare_dosages, is_same_dosage, parse_dosage};
+
+// --- arabic ---
+pub use arabic::normalize_arabic;
+
+// --- fuzzy ---
+pub use fuzzy::medication_similarity;
+
+// --- embedding_cache ---
+pub use embedding_cache::{EmbeddingCache, EmbeddingCacheStatsSnapshot, SynonymIndex};
+
+// --- engine ---
+pub use engine::{MatchingEngine, MatchingEngineConfig};
+
+// --- ensemble ---
+pub use ensemble::{
+    EnsembleConfig, EnsembleMatcher, MatchExplanation, MatchingStrategy, StrategyContext,
+    StrategyScore,
+};
+
+// --- filter ---
+pub use filter::{
+    FilterReason, FilterResult, MatchFilter, MatchFilterConfig, MatchFilterStatsSnapshot,
+};
+
+// --- fts_search ---
+pub use fts_search::{FtsSearchConfig, FtsSearchStatsSnapshot, FtsTokenSearcher};
+
+// --- historical ---
+pub use historical::{
+    HistoricalLearner, HistoricalLearnerStats, HistoricalLearningConfig, MedicationAffinity,
+};
+
+// --- hybrid_filter ---
+pub use hybrid_filter::{HybridFilterConfig, HybridFilterStatsSnapshot, HybridMappingFilter};
+
+// --- learner ---
+pub use learner::{
+    FeedbackRecordRepository, LearnerError, LearningConfig, PerformanceMetrics, WeightHistory,
+    WeightHistoryRepository, WeightLearner, WeightSource,
+};
+
+// --- scheduler ---
+pub use scheduler::{
+    AutoApplyConfig, JobStatus, LearningScheduler, NotificationConfig, SchedulerConfig,
+    SchedulerStatus,
+};
+
+// --- service ---
+pub use service::{MatchingError, MatchingService};
+
+// --- thresholds ---
+pub use thresholds::{SmoothConfidenceResult, SmoothThresholdCalculator, SmoothThresholdConfig};
+
+// --- warm_start ---
+pub use warm_start::{OutlierDetector, OutlierDetectorConfig, WarmStartConfig, WarmStartManager};
+
+// =============================================================================
+// Types defined in this module
+// =============================================================================
 
 /// Type of recency decay curve
 /// Ported from Go: DecayType (interface.go:93-99)

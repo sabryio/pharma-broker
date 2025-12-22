@@ -106,15 +106,14 @@ pub struct ConfidenceStats {
 }
 
 impl ConfidenceStats {
-    /// Get a snapshot of current statistics
-    /// Ported from Go: ConfidenceStats.GetStats (confidence.go:55-62)
-    pub fn snapshot(&self) -> ConfidenceStatsSnapshot {
-        ConfidenceStatsSnapshot {
-            total_evaluations: self.total_evaluations.load(Ordering::Relaxed),
-            accepted_items: self.accepted_items.load(Ordering::Relaxed),
-            rejected_items: self.rejected_items.load(Ordering::Relaxed),
-            threshold_adjustments: self.threshold_adjustments.load(Ordering::Relaxed),
-        }
+    /// Get atomic values for building manager stats
+    pub(super) fn get_values(&self) -> (u64, u64, u64, u64) {
+        (
+            self.total_evaluations.load(Ordering::Relaxed),
+            self.accepted_items.load(Ordering::Relaxed),
+            self.rejected_items.load(Ordering::Relaxed),
+            self.threshold_adjustments.load(Ordering::Relaxed),
+        )
     }
 
     /// Get current acceptance rate
@@ -145,15 +144,6 @@ impl ConfidenceStats {
         self.threshold_adjustments.store(0, Ordering::Relaxed);
         self.confidence_sum.store(0, Ordering::Relaxed);
     }
-}
-
-/// Snapshot of confidence statistics (for serialization)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConfidenceStatsSnapshot {
-    pub total_evaluations: u64,
-    pub accepted_items: u64,
-    pub rejected_items: u64,
-    pub threshold_adjustments: u64,
 }
 
 // =============================================================================
@@ -377,13 +367,14 @@ impl ConfidenceManager {
     /// Ported from Go: ConfidenceManager.GetStats (confidence.go:263-277)
     pub fn get_stats(&self) -> ConfidenceManagerStats {
         let config = self.config.read().unwrap();
-        let snapshot = self.stats.snapshot();
+        let (total_evaluations, accepted_items, rejected_items, threshold_adjustments) =
+            self.stats.get_values();
 
         ConfidenceManagerStats {
-            total_evaluations: snapshot.total_evaluations,
-            accepted_items: snapshot.accepted_items,
-            rejected_items: snapshot.rejected_items,
-            threshold_adjustments: snapshot.threshold_adjustments,
+            total_evaluations,
+            accepted_items,
+            rejected_items,
+            threshold_adjustments,
             acceptance_rate: self.stats.acceptance_rate(),
             average_confidence: self.stats.average_confidence(),
             current_strict: self.strict_threshold(),
@@ -870,22 +861,6 @@ mod tests {
     // =========================================================================
     // Statistics Tests
     // =========================================================================
-
-    #[test]
-    fn test_stats_snapshot() {
-        let stats = ConfidenceStats::default();
-
-        stats.total_evaluations.store(100, Ordering::Relaxed);
-        stats.accepted_items.store(75, Ordering::Relaxed);
-        stats.rejected_items.store(25, Ordering::Relaxed);
-        stats.threshold_adjustments.store(3, Ordering::Relaxed);
-
-        let snapshot = stats.snapshot();
-        assert_eq!(snapshot.total_evaluations, 100);
-        assert_eq!(snapshot.accepted_items, 75);
-        assert_eq!(snapshot.rejected_items, 25);
-        assert_eq!(snapshot.threshold_adjustments, 3);
-    }
 
     #[rstest]
     #[case(100, 75, 0.75)]
