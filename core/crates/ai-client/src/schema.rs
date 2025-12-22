@@ -1,6 +1,6 @@
 //! JSON Schema generation helpers
 
-use schemars::{schema_for, JsonSchema};
+use schemars::{JsonSchema, schema_for};
 use serde_json::Value;
 
 /// Generate a JSON schema for the given type
@@ -31,17 +31,11 @@ fn sanitize_for_openai(value: &mut Value) {
 
         // Set additionalProperties to false for objects
         if obj.get("type") == Some(&Value::String("object".to_string())) {
-            obj.insert(
-                "additionalProperties".to_string(),
-                Value::Bool(false),
-            );
+            obj.insert("additionalProperties".to_string(), Value::Bool(false));
 
             // Make all properties required
             if let Some(Value::Object(props)) = obj.get("properties") {
-                let required: Vec<Value> = props
-                    .keys()
-                    .map(|k| Value::String(k.clone()))
-                    .collect();
+                let required: Vec<Value> = props.keys().map(|k| Value::String(k.clone())).collect();
                 if !required.is_empty() {
                     obj.insert("required".to_string(), Value::Array(required));
                 }
@@ -75,7 +69,7 @@ mod tests {
     fn test_generate_schema() {
         let schema = generate_schema::<TestOutput>();
         assert!(schema.is_object());
-        
+
         let obj = schema.as_object().unwrap();
         assert_eq!(obj.get("type"), Some(&Value::String("object".to_string())));
         assert_eq!(obj.get("additionalProperties"), Some(&Value::Bool(false)));

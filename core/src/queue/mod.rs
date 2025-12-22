@@ -243,9 +243,7 @@ mod tests {
 
         // Fill the queue
         for i in 0..3 {
-            let msg = TestMessage {
-                id: i.to_string(),
-            };
+            let msg = TestMessage { id: i.to_string() };
             queue.try_enqueue(msg).await.unwrap();
         }
 
@@ -274,9 +272,7 @@ mod tests {
 
         // Enqueue 5 messages
         for i in 0..5 {
-            let msg = TestMessage {
-                id: i.to_string(),
-            };
+            let msg = TestMessage { id: i.to_string() };
             queue.try_enqueue(msg).await.unwrap();
         }
 
@@ -330,9 +326,7 @@ mod tests {
         let queue = MessageQueue::new(QueueConfig::default());
 
         for i in 0..3 {
-            let msg = TestMessage {
-                id: i.to_string(),
-            };
+            let msg = TestMessage { id: i.to_string() };
             queue.try_enqueue(msg).await.unwrap();
         }
 

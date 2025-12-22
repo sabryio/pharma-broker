@@ -100,3 +100,112 @@ impl MedicationMappingRepository for SeaOrmMedicationMappingRepo {
             .map_err(Error::from)
     }
 }
+
+#[cfg(all(test, feature = "integration-tests"))]
+mod tests {
+    use super::*;
+    use crate::testing::{TestDb, new_test_medication_mapping};
+    use sea_orm::EntityTrait;
+
+    async fn create_mapping(db: &TestDb, arabic: &str, english: &str) -> medication_mapping::Model {
+        let mapping = new_test_medication_mapping(arabic, english);
+        let id = mapping.id.clone().unwrap();
+        medication_mapping::Entity::insert(mapping)
+            .exec(&db.db)
+            .await
+            .expect("Insert mapping");
+
+        medication_mapping::Entity::find_by_id(&id)
+            .one(&db.db)
+            .await
+            .expect("Find mapping")
+            .expect("Mapping should exist")
+    }
+
+    #[tokio::test]
+    async fn test_save_insert() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmMedicationMappingRepo::new(db.db.clone());
+
+        let mapping = create_mapping(&db, "أسبرين", "Aspirin").await;
+
+        // Verify via find_relevant
+        let found = repo
+            .find_relevant("Aspirin", 10)
+            .await
+            .expect("FindRelevant");
+        assert!(!found.is_empty(), "Should find the mapping");
+        assert!(
+            found.iter().any(|m| m.id == mapping.id),
+            "Should contain the mapping"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_find_relevant_by_arabic() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmMedicationMappingRepo::new(db.db.clone());
+
+        create_mapping(&db, "أوجمنتين", "Augmentin").await;
+        create_mapping(&db, "باراسيتامول", "Paracetamol").await;
+
+        let results = repo
+            .find_relevant("أوجمنتين", 10)
+            .await
+            .expect("FindRelevant");
+        assert_eq!(results.len(), 1, "Should find 1 mapping");
+        assert_eq!(results[0].english_name, "Augmentin");
+    }
+
+    #[tokio::test]
+    async fn test_find_relevant_by_english() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmMedicationMappingRepo::new(db.db.clone());
+
+        create_mapping(&db, "أوجمنتين", "Augmentin").await;
+        create_mapping(&db, "باراسيتامول", "Paracetamol").await;
+
+        let results = repo.find_relevant("Para", 10).await.expect("FindRelevant");
+        assert_eq!(results.len(), 1, "Should find 1 mapping");
+        assert_eq!(results[0].english_name, "Paracetamol");
+    }
+
+    #[tokio::test]
+    async fn test_get_all_pagination() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmMedicationMappingRepo::new(db.db.clone());
+
+        // Create 5 mappings
+        create_mapping(&db, "أ", "Alpha").await;
+        create_mapping(&db, "ب", "Beta").await;
+        create_mapping(&db, "ج", "Charlie").await;
+        create_mapping(&db, "د", "Delta").await;
+        create_mapping(&db, "ه", "Echo").await;
+
+        // Get first page
+        let page1 = repo.get_all(2, 0).await.expect("GetAll page 1");
+        assert_eq!(page1.len(), 2, "Should have 2 items on first page");
+
+        // Get second page
+        let page2 = repo.get_all(2, 2).await.expect("GetAll page 2");
+        assert_eq!(page2.len(), 2, "Should have 2 items on second page");
+    }
+
+    #[tokio::test]
+    async fn test_count() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmMedicationMappingRepo::new(db.db.clone());
+
+        assert_eq!(repo.count().await.expect("Count"), 0, "Initially 0");
+
+        create_mapping(&db, "أ", "A").await;
+        create_mapping(&db, "ب", "B").await;
+        create_mapping(&db, "ج", "C").await;
+
+        assert_eq!(
+            repo.count().await.expect("Count"),
+            3,
+            "Should count 3 mappings"
+        );
+    }
+}

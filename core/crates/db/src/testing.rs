@@ -1,3 +1,4 @@
+#![cfg(feature = "integration-tests")]
 //! Test infrastructure for repository integration tests
 //! Uses testcontainers to spin up a pgvector-enabled PostgreSQL container
 

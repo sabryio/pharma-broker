@@ -102,3 +102,108 @@ impl AuditLogRepository for SeaOrmAuditLogRepo {
         Ok(result.rows_affected)
     }
 }
+
+#[cfg(all(test, feature = "integration-tests"))]
+mod tests {
+    use super::*;
+    use crate::params::AuditByEntityParams;
+    use crate::testing::{TestDb, new_test_audit_log};
+    use sea_orm::EntityTrait;
+
+    async fn create_audit_log(db: &TestDb, action: &str, entity_id: &str) -> audit_log::Model {
+        let log = new_test_audit_log(action, entity_id);
+        let id = log.id.clone().unwrap();
+        audit_log::Entity::insert(log)
+            .exec(&db.db)
+            .await
+            .expect("Insert audit log");
+
+        audit_log::Entity::find_by_id(id)
+            .one(&db.db)
+            .await
+            .expect("Find audit log")
+            .expect("Audit log should exist")
+    }
+
+    #[tokio::test]
+    async fn test_get_by_entity() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmAuditLogRepo::new(db.db.clone());
+
+        create_audit_log(&db, "confirm", "match-123").await;
+        create_audit_log(&db, "reject", "match-123").await;
+        create_audit_log(&db, "confirm", "match-other").await;
+
+        let logs = repo
+            .get_by_entity(AuditByEntityParams {
+                entity_type: "match",
+                entity_id: "match-123",
+                limit: 10,
+            })
+            .await
+            .expect("GetByEntity");
+
+        assert_eq!(logs.len(), 2, "Should find 2 logs for match-123");
+    }
+
+    #[tokio::test]
+    async fn test_get_by_actor() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmAuditLogRepo::new(db.db.clone());
+
+        // All test logs have actor "test-user"
+        create_audit_log(&db, "action1", "e1").await;
+        create_audit_log(&db, "action2", "e2").await;
+
+        let logs = repo
+            .get_by_actor("test-user", 10)
+            .await
+            .expect("GetByActor");
+        assert_eq!(logs.len(), 2, "Should find 2 logs for test-user");
+    }
+
+    #[tokio::test]
+    async fn test_get_by_action() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmAuditLogRepo::new(db.db.clone());
+
+        create_audit_log(&db, "confirm", "e1").await;
+        create_audit_log(&db, "confirm", "e2").await;
+        create_audit_log(&db, "reject", "e3").await;
+
+        let confirms = repo
+            .get_by_action("confirm", 10)
+            .await
+            .expect("GetByAction");
+        assert_eq!(confirms.len(), 2, "Should find 2 confirm actions");
+    }
+
+    #[tokio::test]
+    async fn test_get_recent_pagination() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmAuditLogRepo::new(db.db.clone());
+
+        for i in 0..5 {
+            create_audit_log(&db, &format!("action{}", i), &format!("e{}", i)).await;
+        }
+
+        let page1 = repo.get_recent(2, 0).await.expect("GetRecent page 1");
+        assert_eq!(page1.len(), 2, "Should have 2 on first page");
+
+        let page2 = repo.get_recent(2, 2).await.expect("GetRecent page 2");
+        assert_eq!(page2.len(), 2, "Should have 2 on second page");
+    }
+
+    #[tokio::test]
+    async fn test_count() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmAuditLogRepo::new(db.db.clone());
+
+        assert_eq!(repo.count().await.expect("Count"), 0, "Initially 0");
+
+        create_audit_log(&db, "a", "e").await;
+        create_audit_log(&db, "b", "e").await;
+
+        assert_eq!(repo.count().await.expect("Count"), 2, "Should count 2");
+    }
+}

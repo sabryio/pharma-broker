@@ -131,3 +131,136 @@ impl FeedbackRepository for SeaOrmFeedbackRepo {
             .map_err(Error::from)
     }
 }
+
+#[cfg(all(test, feature = "integration-tests"))]
+mod tests {
+    use super::*;
+    use crate::testing::{
+        TestDb, new_test_feedback, new_test_group, new_test_match, new_test_offer,
+        new_test_raw_message, new_test_request,
+    };
+    use chrono::Duration;
+    use sea_orm::EntityTrait;
+
+    /// Helper to create feedback with all dependencies
+    async fn create_feedback_with_deps(db: &TestDb, confirmed: bool) -> feedback_record::Model {
+        use crate::entity::{group, match_, offer, raw_message, request};
+
+        // Create group
+        let group_am = new_test_group("test-group@g.us", "Test Group", true);
+        group::Entity::insert(group_am).exec(&db.db).await.ok();
+
+        // Create raw messages
+        let msg1 = new_test_raw_message();
+        let msg1_id = msg1.id.clone().unwrap();
+        raw_message::Entity::insert(msg1)
+            .exec(&db.db)
+            .await
+            .expect("Insert msg1");
+
+        let msg2 = new_test_raw_message();
+        let msg2_id = msg2.id.clone().unwrap();
+        raw_message::Entity::insert(msg2)
+            .exec(&db.db)
+            .await
+            .expect("Insert msg2");
+
+        // Create offer and request
+        let offer_am = new_test_offer(&msg1_id);
+        let offer_id = offer_am.id.clone().unwrap();
+        offer::Entity::insert(offer_am)
+            .exec(&db.db)
+            .await
+            .expect("Insert offer");
+
+        let request_am = new_test_request(&msg2_id);
+        let request_id = request_am.id.clone().unwrap();
+        request::Entity::insert(request_am)
+            .exec(&db.db)
+            .await
+            .expect("Insert request");
+
+        // Create match
+        let match_am = new_test_match(&offer_id, &request_id);
+        let match_id = match_am.id.clone().unwrap();
+        match_::Entity::insert(match_am)
+            .exec(&db.db)
+            .await
+            .expect("Insert match");
+
+        // Create feedback
+        let feedback_am = new_test_feedback(&match_id, confirmed);
+        let feedback_id = feedback_am.id.clone().unwrap();
+        feedback_record::Entity::insert(feedback_am)
+            .exec(&db.db)
+            .await
+            .expect("Insert feedback");
+
+        feedback_record::Entity::find_by_id(feedback_id)
+            .one(&db.db)
+            .await
+            .expect("Find feedback")
+            .expect("Feedback should exist")
+    }
+
+    #[tokio::test]
+    async fn test_get_by_match_id_found() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmFeedbackRepo::new(db.db.clone());
+
+        let feedback = create_feedback_with_deps(&db, true).await;
+
+        let found = repo
+            .get_by_match_id(&feedback.match_id)
+            .await
+            .expect("GetByMatchId");
+        assert!(found.is_some(), "Should find feedback");
+        assert_eq!(found.unwrap().id, feedback.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_by_match_id_not_found() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmFeedbackRepo::new(db.db.clone());
+
+        let found = repo
+            .get_by_match_id("non-existent")
+            .await
+            .expect("GetByMatchId");
+        assert!(found.is_none(), "Should return None");
+    }
+
+    #[tokio::test]
+    async fn test_count() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmFeedbackRepo::new(db.db.clone());
+
+        assert_eq!(repo.count().await.expect("Count"), 0, "Initially 0");
+
+        create_feedback_with_deps(&db, true).await;
+        create_feedback_with_deps(&db, false).await;
+        create_feedback_with_deps(&db, true).await;
+
+        assert_eq!(repo.count().await.expect("Count"), 3, "Should count 3");
+    }
+
+    #[tokio::test]
+    async fn test_get_stats() {
+        let db = TestDb::new().await;
+        let repo = SeaOrmFeedbackRepo::new(db.db.clone());
+
+        // Create 2 confirmed and 1 rejected
+        create_feedback_with_deps(&db, true).await;
+        create_feedback_with_deps(&db, true).await;
+        create_feedback_with_deps(&db, false).await;
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        let stats = repo.get_stats(start, end).await.expect("GetStats");
+
+        assert_eq!(stats.total_feedback, 3);
+        assert_eq!(stats.confirmed_count, 2);
+        assert_eq!(stats.rejected_count, 1);
+        assert!((stats.confirmation_rate - 0.666).abs() < 0.01);
+    }
+}

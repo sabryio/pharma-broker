@@ -27,7 +27,7 @@ pub mod repo;
 pub mod service;
 pub mod traits;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 pub mod testing;
 
 pub use migration::run_migrations;
