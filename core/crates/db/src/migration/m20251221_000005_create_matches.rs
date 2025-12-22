@@ -63,6 +63,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_matches_offer_request_unique")
                     .table(Matches::Table)
                     .col(Matches::OfferId)
@@ -76,6 +77,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_matches_status")
                     .table(Matches::Table)
                     .col(Matches::Status)
@@ -86,6 +88,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_matches_offer_id")
                     .table(Matches::Table)
                     .col(Matches::OfferId)
@@ -96,6 +99,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_matches_request_id")
                     .table(Matches::Table)
                     .col(Matches::RequestId)

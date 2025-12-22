@@ -124,6 +124,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_offers_medication")
                     .table(Offers::Table)
                     .col(Offers::Medication)
@@ -134,6 +135,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_offers_status")
                     .table(Offers::Table)
                     .col(Offers::Status)
@@ -144,6 +146,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_offers_source_phone")
                     .table(Offers::Table)
                     .col(Offers::SourcePhone)
@@ -154,6 +157,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_offers_created_at")
                     .table(Offers::Table)
                     .col(Offers::CreatedAt)
@@ -164,6 +168,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_offers_urgency_level")
                     .table(Offers::Table)
                     .col(Offers::UrgencyLevel)

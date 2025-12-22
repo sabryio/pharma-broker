@@ -41,6 +41,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_audit_logs_entity")
                     .table(AuditLogs::Table)
                     .col(AuditLogs::EntityType)
@@ -52,6 +53,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_audit_logs_actor")
                     .table(AuditLogs::Table)
                     .col(AuditLogs::Actor)
@@ -62,6 +64,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_audit_logs_action")
                     .table(AuditLogs::Table)
                     .col(AuditLogs::Action)
@@ -72,6 +75,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_audit_logs_created_at")
                     .table(AuditLogs::Table)
                     .col((AuditLogs::CreatedAt, IndexOrder::Desc))

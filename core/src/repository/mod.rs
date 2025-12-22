@@ -50,7 +50,5 @@ pub use pharma_db::params::{
     UpdateReviewStatusParams,
 };
 
-/// Create a SeaORM database connection
-pub async fn create_connection(database_url: &str) -> Result<DatabaseConnection, pharma_db::DbErr> {
-    pharma_db::Database::connect(database_url).await
-}
+// Re-export db create_connection function
+pub use pharma_db::create_connection;

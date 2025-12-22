@@ -16,11 +16,12 @@ use colored::Colorize;
 use dialoguer::{Input, theme::ColorfulTheme};
 use prettytable::format::consts::FORMAT_BOX_CHARS;
 use prettytable::{Table, row};
-use sqlx::postgres::PgPoolOptions;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use pharma_core::ai::{PharmaParser, PharmaParserConfig};
-
+use pharma_core::repository::create_connection;
+use pharma_db::entity::raw_message::Entity as RawMessage;
+use sea_orm::{EntityTrait, QuerySelect};
 // ============================================================================
 // Interactive Config
 // ============================================================================
@@ -243,20 +244,20 @@ async fn main() -> anyhow::Result<()> {
     // Connect to database
     let database_url = config.database_url;
 
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
+    let db = create_connection(&database_url).await?;
 
     // Fetch test messages
     println!("\n📥 Loading {} test messages from database...", limit);
-    let messages: Vec<TestMessage> = sqlx::query_as!(
-        TestMessage,
-        r#"SELECT content, sender_name, group_name FROM raw_messages LIMIT $1"#,
-        limit
-    )
-    .fetch_all(&pool)
-    .await?;
+    let db_messages = RawMessage::find().limit(limit as u64).all(&db).await?;
+
+    let messages: Vec<TestMessage> = db_messages
+        .into_iter()
+        .map(|m| TestMessage {
+            content: m.content,
+            sender_name: m.sender_name,
+            group_name: Some(m.group_name),
+        })
+        .collect();
 
     if messages.is_empty() {
         println!("❌ No messages found in database.");

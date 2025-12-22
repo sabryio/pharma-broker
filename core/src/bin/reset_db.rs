@@ -19,9 +19,8 @@ use pharma_core::domain::MedicationMapping;
 use pharma_core::repository::{
     MedicationMappingRepository, SeaOrmMedicationMappingRepo, create_connection,
 };
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::Deserialize;
-use sqlx::PgPool;
-use sqlx::postgres::PgPoolOptions;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 // ============================================================================
@@ -104,10 +103,13 @@ fn load_medications_json() -> anyhow::Result<HashMap<String, MedicationEntry>> {
 }
 
 /// Truncate all tables
-async fn truncate_tables(pool: &PgPool) -> anyhow::Result<()> {
+async fn truncate_tables(db: &DatabaseConnection) -> anyhow::Result<()> {
     for table in TABLES {
-        let query = format!("TRUNCATE TABLE {} CASCADE", table);
-        match sqlx::query(&query).execute(pool).await {
+        let sql = format!("TRUNCATE TABLE {} CASCADE", table);
+        match db
+            .execute(Statement::from_string(db.get_database_backend(), sql))
+            .await
+        {
             Ok(_) => {
                 println!("  {} Truncated {}", "✓".green(), table);
             }
@@ -220,10 +222,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!();
     println!("🗄️  Connecting to database...");
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
+    let db = create_connection(&database_url).await?;
 
     // Truncate tables
     println!();
@@ -237,7 +236,7 @@ async fn main() -> anyhow::Result<()> {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
     );
 
-    truncate_tables(&pool).await?;
+    truncate_tables(&db).await?;
 
     println!();
     println!("{}", "✓ Tables truncated successfully".green());
@@ -254,7 +253,6 @@ async fn main() -> anyhow::Result<()> {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
     );
 
-    let db = create_connection(&database_url).await?;
     let repo = SeaOrmMedicationMappingRepo::new(db);
     let (count, synonym_count) = seed_medications(&repo).await?;
 

@@ -146,6 +146,23 @@ tasks:
     cmds:
       - docker compose down
 
+  build:
+    desc: Build all services
+    cmds:
+      - docker compose build
+
+  rebuild:
+    desc: Fully rebuild and restart all services
+    cmds:
+      - task: down
+      - task: build
+      - task: up
+
+  restart:
+    desc: Restart all services
+    cmds:
+      - docker compose restart
+
   logs:
     desc: View logs from all services
     cmds:

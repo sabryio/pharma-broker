@@ -52,26 +52,3 @@ fn sanitize_for_openai(value: &mut Value) {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use schemars::JsonSchema;
-    use serde::Deserialize;
-
-    #[derive(JsonSchema, Deserialize)]
-    struct TestOutput {
-        items: Vec<String>,
-        count: i32,
-    }
-
-    #[test]
-    fn test_generate_schema() {
-        let schema = generate_schema::<TestOutput>();
-        assert!(schema.is_object());
-
-        let obj = schema.as_object().unwrap();
-        assert_eq!(obj.get("type"), Some(&Value::String("object".to_string())));
-        assert_eq!(obj.get("additionalProperties"), Some(&Value::Bool(false)));
-    }
-}

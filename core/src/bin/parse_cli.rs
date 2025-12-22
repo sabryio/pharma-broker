@@ -17,11 +17,13 @@ use chrono::{DateTime, Utc};
 use colored::Colorize;
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::PgPoolOptions;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use pharma_core::ai::{ParsedItem, PharmaParser, PharmaParserConfig};
+use pharma_core::repository::create_connection;
+use pharma_db::entity::raw_message::Entity as RawMessage;
+use sea_orm::{EntityTrait, QuerySelect};
 
 // ============================================================================
 // Interactive Config
@@ -183,15 +185,6 @@ struct TestMessage {
     reply_to: Option<String>,
 }
 
-/// Database row for raw_messages
-#[derive(Debug, Clone)]
-struct DbMessage {
-    id: String,
-    content: String,
-    sender_name: Option<String>,
-    group_name: Option<String>,
-}
-
 /// Test result for a single message
 #[derive(Debug, Clone, Serialize)]
 struct TestResult {
@@ -262,24 +255,15 @@ async fn load_messages_from_database(limit: i64) -> anyhow::Result<Vec<TestMessa
     let database_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
 
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
+    let db = create_connection(&database_url).await?;
 
-    let db_messages: Vec<DbMessage> = sqlx::query_as!(
-        DbMessage,
-        r#"SELECT id, content, sender_name, group_name FROM raw_messages LIMIT $1"#,
-        limit
-    )
-    .fetch_all(&pool)
-    .await?;
+    let db_messages = RawMessage::find().limit(limit as u64).all(&db).await?;
 
     let messages: Vec<TestMessage> = db_messages
         .into_iter()
         .map(|m| TestMessage {
             id: m.id,
-            group_name: m.group_name.unwrap_or_default(),
+            group_name: m.group_name,
             content: m.content,
             sender_name: m.sender_name,
             reply_to: None,

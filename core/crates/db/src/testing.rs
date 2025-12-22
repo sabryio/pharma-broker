@@ -58,7 +58,9 @@ impl TestDb {
             "postgres://postgres:password@127.0.0.1:{}/pharmabroker_test?sslmode=disable",
             host_port
         );
-        let setup_db = Database::connect(&base_url)
+        let mut setup_opt = sea_orm::ConnectOptions::new(base_url);
+        setup_opt.sqlx_logging(false);
+        let setup_db = Database::connect(setup_opt)
             .await
             .expect("Failed to connect for setup");
 
@@ -67,7 +69,9 @@ impl TestDb {
         setup_db.close().await.ok();
 
         // Connect with schema in search path
-        let db = Database::connect(&connection_string)
+        let mut opt = sea_orm::ConnectOptions::new(connection_string);
+        opt.sqlx_logging(false);
+        let db = Database::connect(opt)
             .await
             .expect("Failed to connect to test database");
 

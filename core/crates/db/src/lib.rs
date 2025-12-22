@@ -72,3 +72,11 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Create a SeaORM database connection
+pub async fn create_connection(database_url: &str) -> Result<DatabaseConnection> {
+    use sea_orm::ConnectOptions;
+    let mut opt = ConnectOptions::new(database_url.to_owned());
+    opt.sqlx_logging(false);
+    Database::connect(opt).await.map_err(Error::Database)
+}

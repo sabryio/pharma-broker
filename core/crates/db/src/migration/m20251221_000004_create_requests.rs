@@ -110,6 +110,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_requests_medication")
                     .table(Requests::Table)
                     .col(Requests::Medication)
@@ -120,6 +121,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_requests_status")
                     .table(Requests::Table)
                     .col(Requests::Status)
@@ -130,6 +132,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_requests_source_phone")
                     .table(Requests::Table)
                     .col(Requests::SourcePhone)
@@ -140,6 +143,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_requests_created_at")
                     .table(Requests::Table)
                     .col(Requests::CreatedAt)
@@ -150,6 +154,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_requests_urgency_level")
                     .table(Requests::Table)
                     .col(Requests::UrgencyLevel)

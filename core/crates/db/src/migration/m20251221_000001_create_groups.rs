@@ -48,6 +48,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_groups_monitored")
                     .table(Groups::Table)
                     .col(Groups::Monitored)

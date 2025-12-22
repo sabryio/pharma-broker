@@ -66,6 +66,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_weight_history_created_at")
                     .table(WeightHistory::Table)
                     .col((WeightHistory::CreatedAt, IndexOrder::Desc))

@@ -20,11 +20,13 @@ use colored::Colorize;
 use dialoguer::{Input, theme::ColorfulTheme};
 use prettytable::format::consts::FORMAT_BOX_CHARS;
 use prettytable::{Table, row};
+use sea_orm::{EntityTrait, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::PgPoolOptions;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use pharma_core::ai::{Intent, ParsedItem, PharmaParser, PharmaParserConfig};
+use pharma_core::repository::create_connection;
+use pharma_db::entity::raw_message::{self, Entity as RawMessage};
 
 // ============================================================================
 // Configuration
@@ -882,23 +884,28 @@ async fn main() -> anyhow::Result<()> {
     config_table.printstd();
 
     // Connect to database
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&config.database_url)
-        .await?;
+    let db = create_connection(&config.database_url).await?;
 
     // Fetch test messages
     println!(
         "\n📥 Loading {} test messages from database...",
         config.limit
     );
-    let messages: Vec<TestMessage> = sqlx::query_as!(
-        TestMessage,
-        r#"SELECT id, content, sender_name, group_name FROM raw_messages LIMIT $1"#,
-        config.limit
-    )
-    .fetch_all(&pool)
-    .await?;
+    let db_messages = RawMessage::find()
+        .order_by_asc(raw_message::Column::Timestamp)
+        .limit(config.limit as u64)
+        .all(&db)
+        .await?;
+
+    let messages: Vec<TestMessage> = db_messages
+        .into_iter()
+        .map(|m| TestMessage {
+            id: m.id,
+            content: m.content,
+            sender_name: m.sender_name,
+            group_name: Some(m.group_name),
+        })
+        .collect();
 
     if messages.is_empty() {
         println!("❌ No messages found in database.");

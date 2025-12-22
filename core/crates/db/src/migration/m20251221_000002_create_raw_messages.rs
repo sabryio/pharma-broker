@@ -58,6 +58,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_raw_messages_group_jid")
                     .table(RawMessages::Table)
                     .col(RawMessages::GroupJid)
@@ -68,6 +69,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_raw_messages_processed_at")
                     .table(RawMessages::Table)
                     .col(RawMessages::ProcessedAt)
@@ -78,6 +80,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_raw_messages_timestamp")
                     .table(RawMessages::Table)
                     .col(RawMessages::Timestamp)

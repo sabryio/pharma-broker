@@ -11,9 +11,6 @@ pub enum Error {
     #[error("Entity not found: {0}")]
     NotFound(String),
 
-    #[error("Database error: {0}")]
-    Database(#[from] sqlx::Error),
-
     #[error("SeaORM database error: {0}")]
     SeaOrm(#[from] pharma_db::Error),
 

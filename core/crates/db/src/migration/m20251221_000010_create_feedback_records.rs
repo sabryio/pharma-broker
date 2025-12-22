@@ -84,6 +84,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_feedback_records_created_at")
                     .table(FeedbackRecords::Table)
                     .col(FeedbackRecords::CreatedAt)
@@ -94,6 +95,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_feedback_records_confirmed")
                     .table(FeedbackRecords::Table)
                     .col(FeedbackRecords::Confirmed)
@@ -104,6 +106,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_feedback_records_match_id")
                     .table(FeedbackRecords::Table)
                     .col(FeedbackRecords::MatchId)
@@ -115,6 +118,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_feedback_records_match_unique")
                     .table(FeedbackRecords::Table)
                     .col(FeedbackRecords::MatchId)

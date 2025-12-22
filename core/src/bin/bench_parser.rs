@@ -17,7 +17,9 @@ use dialoguer::{Input, theme::ColorfulTheme};
 use pharma_core::ai::{
     BatchMessage, Intent, PharmaParser, PharmaParserConfig, TokenBatchConfig, TokenBatcher,
 };
-use sqlx::postgres::PgPoolOptions;
+use pharma_core::repository::create_connection;
+use pharma_db::entity::raw_message::Entity as RawMessage;
+use sea_orm::{EntityTrait, QuerySelect};
 use tokio::sync::Semaphore;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -132,20 +134,21 @@ async fn main() -> anyhow::Result<()> {
     let concurrency = config.concurrency;
     let database_url = config.database_url;
 
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
+    let db = create_connection(&database_url).await?;
 
     // Fetch legacy messages
     println!("\n📥 Fetching messages from database...");
-    let messages: Vec<LegacyMessage> = sqlx::query_as!(
-        LegacyMessage,
-        r#"SELECT id, content, sender_name, group_name FROM raw_messages LIMIT $1"#,
-        limit
-    )
-    .fetch_all(&pool)
-    .await?;
+    let db_messages = RawMessage::find().limit(limit as u64).all(&db).await?;
+
+    let messages: Vec<LegacyMessage> = db_messages
+        .into_iter()
+        .map(|m| LegacyMessage {
+            id: m.id,
+            content: m.content,
+            sender_name: m.sender_name,
+            group_name: Some(m.group_name),
+        })
+        .collect();
 
     if messages.is_empty() {
         println!("❌ No messages found in database.");
@@ -229,7 +232,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Sort by index to maintain order
-    results.sort_by_key(|(idx, _, _, _, _)| *idx);
+    results.sort_by_key(|(idx, _, _, _, _): &(usize, String, String, _, u128)| *idx);
 
     // Print results
     println!("{}", "=".repeat(100));

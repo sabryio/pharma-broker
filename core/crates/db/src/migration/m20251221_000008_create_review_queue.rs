@@ -59,6 +59,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_review_queue_status")
                     .table(ReviewQueue::Table)
                     .col(ReviewQueue::Status)
@@ -69,6 +70,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_review_queue_created_at")
                     .table(ReviewQueue::Table)
                     .col(ReviewQueue::CreatedAt)
@@ -79,6 +81,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_review_queue_raw_message_id")
                     .table(ReviewQueue::Table)
                     .col(ReviewQueue::RawMessageId)
@@ -89,6 +92,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_review_queue_confidence")
                     .table(ReviewQueue::Table)
                     .col(ReviewQueue::Confidence)

@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// Categorizes incoming WhatsApp messages
 /// Ported from Go: MessageType (entity.go:8)
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "VARCHAR", rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MessageType {
     Offer,
     Request,
@@ -18,8 +17,7 @@ pub enum MessageType {
 
 /// Operator's decision on a match
 /// Ported from Go: FeedbackDecision (entity.go:46)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "VARCHAR", rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FeedbackDecision {
     Confirmed,
     Rejected,
