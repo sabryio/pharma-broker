@@ -10,7 +10,6 @@
 //! - MCE (Maximum Calibration Error): Worst-case bin error
 //! - Bins: Confidence ranges that track predicted vs actual outcome rates
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -185,29 +184,6 @@ impl CalibrationBin {
 }
 
 // =============================================================================
-// Outcome Record (for windowed tracking)
-// =============================================================================
-
-/// Single prediction-outcome pair
-/// Ported from Go: outcomeRecord (calibration.go:107-111)
-#[derive(Debug, Clone)]
-struct OutcomeRecord {
-    predicted: f64,
-    actual: bool,
-    timestamp: DateTime<Utc>,
-}
-
-impl Default for OutcomeRecord {
-    fn default() -> Self {
-        Self {
-            predicted: 0.0,
-            actual: false,
-            timestamp: Utc::now(),
-        }
-    }
-}
-
-// =============================================================================
 // Confidence Calibrator
 // =============================================================================
 
@@ -217,9 +193,6 @@ pub struct ConfidenceCalibrator {
     config: RwLock<CalibrationConfig>,
     stats: CalibrationStats,
     bins: RwLock<Vec<CalibrationBin>>,
-    /// Circular buffer for recent outcomes
-    recent_outcomes: RwLock<Vec<OutcomeRecord>>,
-    recent_idx: RwLock<usize>,
 }
 
 impl Default for ConfidenceCalibrator {
@@ -237,11 +210,6 @@ impl ConfidenceCalibrator {
         } else {
             config.num_bins
         };
-        let window_size = if config.window_size == 0 {
-            1000
-        } else {
-            config.window_size
-        };
 
         // Initialize bins
         let bin_width = 1.0 / num_bins as f64;
@@ -253,8 +221,6 @@ impl ConfidenceCalibrator {
             config: RwLock::new(config),
             stats: CalibrationStats::default(),
             bins: RwLock::new(bins),
-            recent_outcomes: RwLock::new(vec![OutcomeRecord::default(); window_size]),
-            recent_idx: RwLock::new(0),
         }
     }
 
@@ -328,23 +294,6 @@ impl ConfidenceCalibrator {
             self.stats
                 .underconfident_hits
                 .fetch_add(1, Ordering::Relaxed);
-        }
-
-        // Store in recent window (circular buffer)
-        let config = self.config.read().unwrap();
-        let window_size = config.window_size;
-        drop(config);
-
-        let mut outcomes = self.recent_outcomes.write().unwrap();
-        let mut idx = self.recent_idx.write().unwrap();
-
-        if !outcomes.is_empty() {
-            outcomes[*idx] = OutcomeRecord {
-                predicted: predicted_confidence,
-                actual: actual_positive,
-                timestamp: Utc::now(),
-            };
-            *idx = (*idx + 1) % window_size;
         }
 
         // Log periodically
@@ -533,7 +482,6 @@ impl ConfidenceCalibrator {
         // Reset bins
         let config = self.config.read().unwrap();
         let num_bins = config.num_bins;
-        let window_size = config.window_size;
         drop(config);
 
         let bin_width = 1.0 / num_bins as f64;
@@ -545,10 +493,6 @@ impl ConfidenceCalibrator {
 
         // Reset stats
         self.stats.reset();
-
-        // Reset recent outcomes
-        *self.recent_outcomes.write().unwrap() = vec![OutcomeRecord::default(); window_size];
-        *self.recent_idx.write().unwrap() = 0;
 
         tracing::info!("Calibration data reset");
     }

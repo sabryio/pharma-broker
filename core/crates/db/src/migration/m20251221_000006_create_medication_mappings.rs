@@ -106,8 +106,7 @@ pub enum MedicationMappings {
     Id,
     ArabicName,
     EnglishName,
-    Synonyms,
-    Embedding,
+    // Synonyms and Embedding are added via raw SQL for special type support
     CreatedAt,
     UpdatedAt,
 }

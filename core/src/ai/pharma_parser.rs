@@ -344,7 +344,9 @@ impl PharmaParser {
 
         for batch in batches {
             for msg in batch {
-                let result = self.parse(&msg.content, None, &msg.group_name, None, None).await;
+                let result = self
+                    .parse(&msg.content, None, &msg.group_name, None, None)
+                    .await;
                 results.push(BatchParseResult {
                     message_id: msg.id,
                     result,
@@ -419,35 +421,25 @@ impl PharmaParser {
         self.feedback_loop.record_feedback(feedback);
     }
 
-    /// Record a correct extraction (shorthand for positive feedback)
-    pub fn record_correct_extraction(
-        &self,
-        message_id: &str,
-        message_content: &str,
-        medication: &str,
-        medication_raw: &str,
-        item_type: &str,
-        quantity: f64,
-        price: f64,
-        ai_confidence: f64,
-    ) {
+    /// Record a correct extraction using structured params
+    pub fn record_correct_extraction(&self, data: super::params::ExtractionData) {
         let feedback = ExtractionFeedback {
-            message_id: message_id.to_string(),
-            message_content: message_content.to_string(),
+            message_id: data.message_id,
+            message_content: data.message_content,
             ai_extraction: AIExtraction {
-                medication: Some(medication.to_string()),
-                medication_raw: Some(medication_raw.to_string()),
-                item_type: Some(item_type.to_string()),
-                quantity: Some(quantity),
-                price: Some(price),
-                confidence: ai_confidence,
+                medication: Some(data.medication.clone()),
+                medication_raw: Some(data.medication_raw.clone()),
+                item_type: Some(data.item_type.clone()),
+                quantity: Some(data.quantity),
+                price: Some(data.price),
+                confidence: data.ai_confidence,
             },
             correct_extraction: CorrectExtraction {
-                medication: medication.to_string(),
-                medication_raw: medication_raw.to_string(),
-                item_type: item_type.to_string(),
-                quantity,
-                price,
+                medication: data.medication,
+                medication_raw: data.medication_raw,
+                item_type: data.item_type,
+                quantity: data.quantity,
+                price: data.price,
             },
             feedback_type: FeedbackType::Correct,
             feedback_source: "operator".to_string(),
@@ -457,35 +449,24 @@ impl PharmaParser {
     }
 
     /// Record a medication correction (AI got the medication name wrong)
-    pub fn record_medication_correction(
-        &self,
-        message_id: &str,
-        message_content: &str,
-        ai_medication: &str,
-        correct_medication: &str,
-        medication_raw: &str,
-        item_type: &str,
-        quantity: f64,
-        price: f64,
-        ai_confidence: f64,
-    ) {
+    pub fn record_medication_correction(&self, data: super::params::MedicationCorrectionData) {
         let feedback = ExtractionFeedback {
-            message_id: message_id.to_string(),
-            message_content: message_content.to_string(),
+            message_id: data.message_id,
+            message_content: data.message_content,
             ai_extraction: AIExtraction {
-                medication: Some(ai_medication.to_string()),
-                medication_raw: Some(medication_raw.to_string()),
-                item_type: Some(item_type.to_string()),
-                quantity: Some(quantity),
-                price: Some(price),
-                confidence: ai_confidence,
+                medication: Some(data.ai_medication),
+                medication_raw: Some(data.medication_raw.clone()),
+                item_type: Some(data.item_type.clone()),
+                quantity: Some(data.quantity),
+                price: Some(data.price),
+                confidence: data.ai_confidence,
             },
             correct_extraction: CorrectExtraction {
-                medication: correct_medication.to_string(),
-                medication_raw: medication_raw.to_string(),
-                item_type: item_type.to_string(),
-                quantity,
-                price,
+                medication: data.correct_medication,
+                medication_raw: data.medication_raw,
+                item_type: data.item_type,
+                quantity: data.quantity,
+                price: data.price,
             },
             feedback_type: FeedbackType::WrongMedication,
             feedback_source: "operator".to_string(),
@@ -495,19 +476,10 @@ impl PharmaParser {
     }
 
     /// Record a missed extraction (AI didn't find an item that exists)
-    pub fn record_missed_extraction(
-        &self,
-        message_id: &str,
-        message_content: &str,
-        medication: &str,
-        medication_raw: &str,
-        item_type: &str,
-        quantity: f64,
-        price: f64,
-    ) {
+    pub fn record_missed_extraction(&self, data: super::params::MissedExtractionData) {
         let feedback = ExtractionFeedback {
-            message_id: message_id.to_string(),
-            message_content: message_content.to_string(),
+            message_id: data.message_id,
+            message_content: data.message_content,
             ai_extraction: AIExtraction {
                 medication: None,
                 medication_raw: None,
@@ -517,11 +489,11 @@ impl PharmaParser {
                 confidence: 0.0,
             },
             correct_extraction: CorrectExtraction {
-                medication: medication.to_string(),
-                medication_raw: medication_raw.to_string(),
-                item_type: item_type.to_string(),
-                quantity,
-                price,
+                medication: data.medication,
+                medication_raw: data.medication_raw,
+                item_type: data.item_type,
+                quantity: data.quantity,
+                price: data.price,
             },
             feedback_type: FeedbackType::Missed,
             feedback_source: "operator".to_string(),
@@ -632,6 +604,7 @@ pub struct BatchParseResult {
 
 #[cfg(test)]
 mod tests {
+    use super::super::params::{ExtractionData, MedicationCorrectionData, MissedExtractionData};
     use super::*;
     use rstest::rstest;
 
@@ -657,16 +630,16 @@ mod tests {
     fn test_record_correct_extraction() {
         let parser = PharmaParser::new(PharmaParserConfig::default());
 
-        parser.record_correct_extraction(
-            "msg-1",
-            "متوفر اوجمنتين 1 جم",
-            "Augmentin 1g",
-            "اوجمنتين 1 جم",
-            "OFFER",
-            1.0,
-            300.0,
-            0.95,
-        );
+        parser.record_correct_extraction(ExtractionData {
+            message_id: "msg-1".to_string(),
+            message_content: "متوفر اوجمنتين 1 جم".to_string(),
+            medication: "Augmentin 1g".to_string(),
+            medication_raw: "اوجمنتين 1 جم".to_string(),
+            item_type: "OFFER".to_string(),
+            quantity: 1.0,
+            price: 300.0,
+            ai_confidence: 0.95,
+        });
 
         let stats = parser.feedback_stats();
         assert_eq!(stats.total_feedback_received, 1);
@@ -677,17 +650,17 @@ mod tests {
     fn test_record_medication_correction() {
         let parser = PharmaParser::new(PharmaParserConfig::default());
 
-        parser.record_medication_correction(
-            "msg-1",
-            "متوفر بروفين",
-            "Brofen",      // AI got it wrong
-            "Brufen",      // Correct name
-            "بروفين",
-            "OFFER",
-            1.0,
-            100.0,
-            0.8,
-        );
+        parser.record_medication_correction(MedicationCorrectionData {
+            message_id: "msg-1".to_string(),
+            message_content: "متوفر بروفين".to_string(),
+            ai_medication: "Brofen".to_string(), // AI got it wrong
+            correct_medication: "Brufen".to_string(), // Correct name
+            medication_raw: "بروفين".to_string(),
+            item_type: "OFFER".to_string(),
+            quantity: 1.0,
+            price: 100.0,
+            ai_confidence: 0.8,
+        });
 
         let stats = parser.feedback_stats();
         assert_eq!(stats.wrong_extractions, 1);
@@ -698,15 +671,15 @@ mod tests {
     fn test_record_missed_extraction() {
         let parser = PharmaParser::new(PharmaParserConfig::default());
 
-        parser.record_missed_extraction(
-            "msg-1",
-            "محتاج فلاجيل",
-            "Flagyl",
-            "فلاجيل",
-            "REQUEST",
-            1.0,
-            0.0,
-        );
+        parser.record_missed_extraction(MissedExtractionData {
+            message_id: "msg-1".to_string(),
+            message_content: "محتاج فلاجيل".to_string(),
+            medication: "Flagyl".to_string(),
+            medication_raw: "فلاجيل".to_string(),
+            item_type: "REQUEST".to_string(),
+            quantity: 1.0,
+            price: 0.0,
+        });
 
         let stats = parser.feedback_stats();
         assert_eq!(stats.missed_extractions, 1);
@@ -720,7 +693,7 @@ mod tests {
         parser.record_false_positive(
             "msg-1",
             "مرحبا كيف الحال",
-            "مرحبا",  // AI incorrectly extracted this as medication
+            "مرحبا", // AI incorrectly extracted this as medication
             0.6,
         );
 
@@ -769,15 +742,15 @@ mod tests {
         let parser1 = PharmaParser::new(PharmaParserConfig::default());
 
         // Record some feedback to generate examples
-        parser1.record_missed_extraction(
-            "msg-1",
-            "متوفر دواء",
-            "Medicine",
-            "دواء",
-            "OFFER",
-            1.0,
-            100.0,
-        );
+        parser1.record_missed_extraction(MissedExtractionData {
+            message_id: "msg-1".to_string(),
+            message_content: "متوفر دواء".to_string(),
+            medication: "Medicine".to_string(),
+            medication_raw: "دواء".to_string(),
+            item_type: "OFFER".to_string(),
+            quantity: 1.0,
+            price: 100.0,
+        });
 
         let examples = parser1.export_learned_examples();
         assert!(!examples.is_empty());
@@ -792,17 +765,17 @@ mod tests {
     fn test_export_import_corrections() {
         let parser1 = PharmaParser::new(PharmaParserConfig::default());
 
-        parser1.record_medication_correction(
-            "msg-1",
-            "Test",
-            "Wrong",
-            "Correct",
-            "raw",
-            "OFFER",
-            1.0,
-            100.0,
-            0.8,
-        );
+        parser1.record_medication_correction(MedicationCorrectionData {
+            message_id: "msg-1".to_string(),
+            message_content: "Test".to_string(),
+            ai_medication: "Wrong".to_string(),
+            correct_medication: "Correct".to_string(),
+            medication_raw: "raw".to_string(),
+            item_type: "OFFER".to_string(),
+            quantity: 1.0,
+            price: 100.0,
+            ai_confidence: 0.8,
+        });
 
         let corrections = parser1.export_medication_corrections();
         assert!(!corrections.is_empty());
@@ -816,26 +789,26 @@ mod tests {
     fn test_clear_learned_data() {
         let parser = PharmaParser::new(PharmaParserConfig::default());
 
-        parser.record_missed_extraction(
-            "msg-1",
-            "Test",
-            "Med",
-            "raw",
-            "OFFER",
-            1.0,
-            100.0,
-        );
-        parser.record_medication_correction(
-            "msg-2",
-            "Test",
-            "Wrong",
-            "Correct",
-            "raw",
-            "OFFER",
-            1.0,
-            100.0,
-            0.8,
-        );
+        parser.record_missed_extraction(MissedExtractionData {
+            message_id: "msg-1".to_string(),
+            message_content: "Test".to_string(),
+            medication: "Med".to_string(),
+            medication_raw: "raw".to_string(),
+            item_type: "OFFER".to_string(),
+            quantity: 1.0,
+            price: 100.0,
+        });
+        parser.record_medication_correction(MedicationCorrectionData {
+            message_id: "msg-2".to_string(),
+            message_content: "Test".to_string(),
+            ai_medication: "Wrong".to_string(),
+            correct_medication: "Correct".to_string(),
+            medication_raw: "raw".to_string(),
+            item_type: "OFFER".to_string(),
+            quantity: 1.0,
+            price: 100.0,
+            ai_confidence: 0.8,
+        });
 
         assert!(parser.learned_example_count() > 0);
         assert!(parser.learned_correction_count() > 0);
@@ -904,29 +877,29 @@ mod tests {
 
         // Record 8 correct, 2 wrong
         for i in 0..8 {
-            parser.record_correct_extraction(
-                &format!("msg-{}", i),
-                "Test",
-                "Med",
-                "raw",
-                "OFFER",
-                1.0,
-                100.0,
-                0.9,
-            );
+            parser.record_correct_extraction(ExtractionData {
+                message_id: format!("msg-{}", i),
+                message_content: "Test".to_string(),
+                medication: "Med".to_string(),
+                medication_raw: "raw".to_string(),
+                item_type: "OFFER".to_string(),
+                quantity: 1.0,
+                price: 100.0,
+                ai_confidence: 0.9,
+            });
         }
         for i in 0..2 {
-            parser.record_medication_correction(
-                &format!("msg-wrong-{}", i),
-                "Test",
-                "Wrong",
-                "Correct",
-                "raw",
-                "OFFER",
-                1.0,
-                100.0,
-                0.8,
-            );
+            parser.record_medication_correction(MedicationCorrectionData {
+                message_id: format!("msg-wrong-{}", i),
+                message_content: "Test".to_string(),
+                ai_medication: "Wrong".to_string(),
+                correct_medication: "Correct".to_string(),
+                medication_raw: "raw".to_string(),
+                item_type: "OFFER".to_string(),
+                quantity: 1.0,
+                price: 100.0,
+                ai_confidence: 0.8,
+            });
         }
 
         let stats = parser.feedback_stats();
@@ -941,7 +914,10 @@ mod tests {
     fn test_circuit_state_accessible() {
         let parser = PharmaParser::new(PharmaParserConfig::default());
         let state = parser.circuit_state();
-        assert!(matches!(state, super::super::circuit_breaker::CircuitState::Closed));
+        assert!(matches!(
+            state,
+            super::super::circuit_breaker::CircuitState::Closed
+        ));
     }
 
     // =========================================================================

@@ -796,8 +796,10 @@ mod tests {
 
     #[test]
     fn test_feedback_loop_disabled() {
-        let mut config = FeedbackLoopConfig::default();
-        config.enabled = false;
+        let config = FeedbackLoopConfig {
+            enabled: false,
+            ..Default::default()
+        };
         let loop_ = LLMFeedbackLoop::new(config);
 
         let feedback = create_test_feedback(FeedbackType::Correct);

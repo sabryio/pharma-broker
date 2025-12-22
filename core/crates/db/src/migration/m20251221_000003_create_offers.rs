@@ -2,6 +2,7 @@
 
 use sea_orm_migration::prelude::*;
 
+use super::m20251221_000001_create_groups::Groups;
 use super::m20251221_000002_create_raw_messages::RawMessages;
 
 #[derive(DeriveMigrationName)]
@@ -14,6 +15,12 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared("CREATE EXTENSION IF NOT EXISTS vector")
+            .await?;
+
+        // Enable pg_trgm extension for trigram search
+        manager
+            .get_connection()
+            .execute_unprepared("CREATE EXTENSION IF NOT EXISTS pg_trgm")
             .await?;
 
         manager
@@ -39,7 +46,6 @@ impl MigrationTrait for Migration {
                             .string_len(50)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Offers::GroupName).string_len(100))
                     .col(
                         ColumnDef::new(Offers::Medication)
                             .string_len(200)
@@ -57,18 +63,11 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Offers::ExpiryDate).date())
                     .col(ColumnDef::new(Offers::BatchNumber).string_len(50))
                     .col(ColumnDef::new(Offers::Notes).text())
-                    .col(ColumnDef::new(Offers::RawMessage).text())
                     .col(
                         ColumnDef::new(Offers::Status)
                             .string_len(20)
                             .not_null()
                             .default("ACTIVE"),
-                    )
-                    .col(
-                        ColumnDef::new(Offers::Urgent)
-                            .boolean()
-                            .not_null()
-                            .default(false),
                     )
                     .col(
                         ColumnDef::new(Offers::UrgencyLevel)
@@ -102,6 +101,13 @@ impl MigrationTrait for Migration {
                             .to(RawMessages::Table, RawMessages::Id)
                             .on_delete(ForeignKeyAction::SetNull),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_offers_source_group")
+                            .from(Offers::Table, Offers::SourceGroup)
+                            .to(Groups::Table, Groups::Jid)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -114,7 +120,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Indexes
+        // B-tree Indexes
         manager
             .create_index(
                 Index::create()
@@ -158,14 +164,30 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_offers_urgent")
+                    .name("idx_offers_urgency_level")
                     .table(Offers::Table)
-                    .col(Offers::Urgent)
+                    .col(Offers::UrgencyLevel)
                     .to_owned(),
             )
             .await?;
 
-        // Vector similarity index (HNSW for better performance)
+        // GIN index for trigram similarity search on medication names
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "CREATE INDEX IF NOT EXISTS idx_offers_medication_trgm ON offers USING gin (medication gin_trgm_ops)",
+            )
+            .await?;
+
+        // GIN index for trigram search on medication_raw
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "CREATE INDEX IF NOT EXISTS idx_offers_medication_raw_trgm ON offers USING gin (medication_raw gin_trgm_ops)",
+            )
+            .await?;
+
+        // HNSW index for vector similarity search (cosine distance)
         manager
             .get_connection()
             .execute_unprepared(
@@ -191,7 +213,6 @@ pub enum Offers {
     SourcePhone,
     SourceName,
     SourceGroup,
-    GroupName,
     Medication,
     MedicationRaw,
     Quantity,
@@ -201,13 +222,11 @@ pub enum Offers {
     ExpiryDate,
     BatchNumber,
     Notes,
-    RawMessage,
     Status,
-    Urgent,
     UrgencyLevel,
     ExpiryInfo,
     AiConfidence,
-    ContentEmbedding,
+    // ContentEmbedding is added via raw SQL for vector type support
     CreatedAt,
     UpdatedAt,
 }

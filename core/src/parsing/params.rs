@@ -168,7 +168,7 @@ impl BatchProcessorBuilder {
         let repos = self.repos.expect("repositories are required");
         let deps = self.deps.expect("dependencies are required");
 
-        super::processor::BatchProcessor::from_parts(config, repos, deps)
+        super::processor::BatchProcessor::new(config, repos, deps)
     }
 
     /// Try to build the BatchProcessor, returning an error if fields are missing
@@ -177,9 +177,7 @@ impl BatchProcessorBuilder {
         let repos = self.repos.ok_or("repositories are required")?;
         let deps = self.deps.ok_or("dependencies are required")?;
 
-        Ok(super::processor::BatchProcessor::from_parts(
-            config, repos, deps,
-        ))
+        Ok(super::processor::BatchProcessor::new(config, repos, deps))
     }
 }
 

@@ -2,6 +2,7 @@
 
 use sea_orm_migration::prelude::*;
 
+use super::m20251221_000001_create_groups::Groups;
 use super::m20251221_000002_create_raw_messages::RawMessages;
 
 #[derive(DeriveMigrationName)]
@@ -33,7 +34,6 @@ impl MigrationTrait for Migration {
                             .string_len(50)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Requests::GroupName).string_len(100))
                     .col(
                         ColumnDef::new(Requests::Medication)
                             .string_len(200)
@@ -49,12 +49,6 @@ impl MigrationTrait for Migration {
                             .default("EGP"),
                     )
                     .col(
-                        ColumnDef::new(Requests::Urgent)
-                            .boolean()
-                            .not_null()
-                            .default(false),
-                    )
-                    .col(
                         ColumnDef::new(Requests::UrgencyLevel)
                             .string_len(20)
                             .not_null()
@@ -68,7 +62,6 @@ impl MigrationTrait for Migration {
                             .default(0.0),
                     )
                     .col(ColumnDef::new(Requests::Notes).text())
-                    .col(ColumnDef::new(Requests::RawMessage).text())
                     .col(
                         ColumnDef::new(Requests::Status)
                             .string_len(20)
@@ -94,6 +87,13 @@ impl MigrationTrait for Migration {
                             .to(RawMessages::Table, RawMessages::Id)
                             .on_delete(ForeignKeyAction::SetNull),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_requests_source_group")
+                            .from(Requests::Table, Requests::SourceGroup)
+                            .to(Groups::Table, Groups::Jid)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -106,7 +106,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Indexes
+        // B-tree Indexes
         manager
             .create_index(
                 Index::create()
@@ -150,14 +150,30 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_requests_urgent")
+                    .name("idx_requests_urgency_level")
                     .table(Requests::Table)
-                    .col(Requests::Urgent)
+                    .col(Requests::UrgencyLevel)
                     .to_owned(),
             )
             .await?;
 
-        // Vector similarity index
+        // GIN index for trigram similarity search on medication names
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "CREATE INDEX IF NOT EXISTS idx_requests_medication_trgm ON requests USING gin (medication gin_trgm_ops)",
+            )
+            .await?;
+
+        // GIN index for trigram search on medication_raw
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "CREATE INDEX IF NOT EXISTS idx_requests_medication_raw_trgm ON requests USING gin (medication_raw gin_trgm_ops)",
+            )
+            .await?;
+
+        // HNSW index for vector similarity search (cosine distance)
         manager
             .get_connection()
             .execute_unprepared(
@@ -183,21 +199,18 @@ pub enum Requests {
     SourcePhone,
     SourceName,
     SourceGroup,
-    GroupName,
     Medication,
     MedicationRaw,
     Quantity,
     Unit,
     MaxPrice,
     Currency,
-    Urgent,
     UrgencyLevel,
     ExpiryRequirement,
     AiConfidence,
     Notes,
-    RawMessage,
     Status,
-    ContentEmbedding,
+    // ContentEmbedding is added via raw SQL for vector type support
     CreatedAt,
     UpdatedAt,
 }

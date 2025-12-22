@@ -35,7 +35,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use pharma_core::ai::{PharmaParser, PharmaParserConfig, TokenBatchConfig, TokenBatcher};
 use pharma_core::domain::{Group, RawMessage};
-use pharma_core::parsing::{BatchConfig, BatchProcessor, MultiPassConfig, ParseJob};
+use pharma_core::parsing::{
+    BatchConfig, BatchProcessor, BatchProcessorConfig, BatchProcessorDeps,
+    BatchProcessorRepositories, MultiPassConfig, ParseJob,
+};
 use pharma_core::repository::{
     GroupRepository, MatchRepository, OfferRepository, RawMessageRepository, RequestRepository,
     SeaOrmAuditLogRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
@@ -484,17 +487,23 @@ async fn main() -> anyhow::Result<()> {
     let multi_pass_config = MultiPassConfig::default();
 
     let processor = Arc::new(BatchProcessor::new(
-        batch_config.clone(),
-        multi_pass_config,
-        ai_client.clone(),
-        raw_message_repo.clone(),
-        offer_repo.clone(),
-        request_repo.clone(),
-        medication_mapping_repo,
-        review_queue_repo,
-        audit_log_repo,
-        match_queue_repo,
-        ws_tx,
+        BatchProcessorConfig {
+            batch: batch_config.clone(),
+            multi_pass: multi_pass_config,
+        },
+        BatchProcessorRepositories {
+            raw_message: raw_message_repo.clone(),
+            offer: offer_repo.clone(),
+            request: request_repo.clone(),
+            medication_mapping: medication_mapping_repo,
+            review_queue: review_queue_repo,
+            audit_log: audit_log_repo,
+            match_queue: match_queue_repo,
+        },
+        BatchProcessorDeps {
+            ai_client: ai_client.clone(),
+            ws_tx,
+        },
     ));
 
     // Start processor in background
@@ -643,7 +652,9 @@ async fn main() -> anyhow::Result<()> {
             }
             println!(
                 "   - {} ({:.0} units @ {:.0} EGP)",
-                o.medication, o.quantity.unwrap_or_default(), o.price.unwrap_or_default()
+                o.medication,
+                o.quantity.unwrap_or_default(),
+                o.price.unwrap_or_default()
             );
         }
     }
@@ -656,7 +667,12 @@ async fn main() -> anyhow::Result<()> {
                 break;
             }
             let urgent = if r.is_urgent() { " 🔥" } else { "" };
-            println!("   - {} ({:.0} units){}", r.medication, r.quantity.unwrap_or_default(), urgent);
+            println!(
+                "   - {} ({:.0} units){}",
+                r.medication,
+                r.quantity.unwrap_or_default(),
+                urgent
+            );
         }
     }
 

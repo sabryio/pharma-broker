@@ -2,6 +2,11 @@
 //!
 //! Type-safe repository interfaces for database operations.
 //! These traits are designed to be compatible with the core domain types.
+//!
+//! ## ID Newtypes
+//! Repository methods accept `&str` for ID parameters to maintain dyn-compatibility.
+//! Call sites can use ID newtypes (OfferId, RequestId, etc.) by calling `.as_ref()`
+//! or `.as_str()` when passing them to repository methods.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -12,6 +17,9 @@ use crate::params::{
     AuditByEntityParams, FindDuplicateParams, SemanticDuplicateParams, UpdateMatchStatusParams,
     UpdateReviewStatusParams,
 };
+
+// Re-export ID newtypes for consumers
+pub use crate::entity::{GroupJid, MatchId, MedicationMappingId, OfferId, RawMessageId, RequestId};
 
 // Re-export entity types for consumers
 pub use crate::entity::audit_log::Model as AuditLogModel;
@@ -34,6 +42,7 @@ pub use crate::entity::common::{ItemStatus, MatchStatus, UrgencyLevel};
 /// Offer repository trait
 #[async_trait]
 pub trait OfferRepository: Send + Sync {
+    /// Get an offer by its ID
     async fn get_by_id(&self, id: &str) -> Result<Option<OfferModel>>;
     async fn get_active(&self, limit: i64, offset: i64) -> Result<Vec<OfferModel>>;
     async fn search(&self, query: &str, limit: i64, offset: i64) -> Result<Vec<OfferModel>>;
@@ -43,6 +52,7 @@ pub trait OfferRepository: Send + Sync {
         params: FindDuplicateParams<'_>,
     ) -> Result<Option<OfferModel>>;
     async fn save(&self, offer: &OfferModel) -> Result<OfferModel>;
+    /// Update the status of an offer by its ID
     async fn update_status(&self, id: &str, status: ItemStatus) -> Result<OfferModel>;
     async fn find_semantic_duplicates(
         &self,
@@ -54,6 +64,7 @@ pub trait OfferRepository: Send + Sync {
 /// Request repository trait
 #[async_trait]
 pub trait RequestRepository: Send + Sync {
+    /// Get a request by its ID
     async fn get_by_id(&self, id: &str) -> Result<Option<RequestModel>>;
     async fn get_active(&self, limit: i64, offset: i64) -> Result<Vec<RequestModel>>;
     async fn search(&self, query: &str, limit: i64, offset: i64) -> Result<Vec<RequestModel>>;
@@ -63,6 +74,7 @@ pub trait RequestRepository: Send + Sync {
         params: FindDuplicateParams<'_>,
     ) -> Result<Option<RequestModel>>;
     async fn save(&self, request: &RequestModel) -> Result<RequestModel>;
+    /// Update the status of a request by its ID
     async fn update_status(&self, id: &str, status: ItemStatus) -> Result<RequestModel>;
     async fn find_semantic_duplicates(
         &self,
@@ -74,9 +86,11 @@ pub trait RequestRepository: Send + Sync {
 /// Match repository trait
 #[async_trait]
 pub trait MatchRepository: Send + Sync {
+    /// Get a match by its ID
     async fn get_by_id(&self, id: &str) -> Result<Option<MatchModel>>;
     async fn get_pending(&self, limit: i64, offset: i64) -> Result<Vec<MatchModel>>;
     async fn count_pending(&self) -> Result<i64>;
+    /// Check if a match exists between an offer and request
     async fn exists(&self, offer_id: &str, request_id: &str) -> Result<bool>;
     async fn save(&self, m: &MatchModel) -> Result<MatchModel>;
     async fn update_status(&self, params: UpdateMatchStatusParams<'_>) -> Result<MatchModel>;
@@ -87,8 +101,10 @@ pub trait MatchRepository: Send + Sync {
 #[async_trait]
 pub trait RawMessageRepository: Send + Sync {
     async fn save(&self, message: &RawMessageModel) -> Result<RawMessageModel>;
+    /// Get a raw message by its ID
     async fn get_by_id(&self, id: &str) -> Result<Option<RawMessageModel>>;
     async fn get_unprocessed(&self, limit: i64) -> Result<Vec<RawMessageModel>>;
+    /// Mark a message as processed
     async fn mark_processed(&self, id: &str, error: Option<&str>) -> Result<RawMessageModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
 }
@@ -97,13 +113,19 @@ pub trait RawMessageRepository: Send + Sync {
 #[async_trait]
 pub trait GroupRepository: Send + Sync {
     async fn get_all(&self) -> Result<Vec<GroupModel>>;
+    /// Get a group by its JID
     async fn get_by_jid(&self, jid: &str) -> Result<Option<GroupModel>>;
+    /// Check if a group is monitored
     async fn is_monitored(&self, jid: &str) -> Result<bool>;
     async fn get_monitored(&self) -> Result<Vec<GroupModel>>;
     async fn save(&self, group: &GroupModel) -> Result<GroupModel>;
+    /// Update the monitored status of a group
     async fn update_monitored(&self, jid: &str, monitored: bool) -> Result<()>;
+    /// Delete a group by its JID
     async fn delete(&self, jid: &str) -> Result<bool>;
+    /// Update the last message timestamp for a group
     async fn update_last_message(&self, jid: &str) -> Result<()>;
+    /// Increment the message count for a group
     async fn increment_message_count(&self, jid: &str) -> Result<()>;
 }
 
@@ -111,6 +133,7 @@ pub trait GroupRepository: Send + Sync {
 #[async_trait]
 pub trait FeedbackRepository: Send + Sync {
     async fn save(&self, record: &FeedbackModel) -> Result<FeedbackModel>;
+    /// Get feedback records for a match
     async fn get_by_match(&self, match_id: &str) -> Result<Vec<FeedbackModel>>;
     async fn get_by_date_range(
         &self,
@@ -119,6 +142,7 @@ pub trait FeedbackRepository: Send + Sync {
     ) -> Result<Vec<FeedbackModel>>;
     async fn get_stats(&self, start: DateTime<Utc>, end: DateTime<Utc>) -> Result<FeedbackStats>;
     async fn count(&self) -> Result<i64>;
+    /// Get a single feedback record by match ID
     async fn get_by_match_id(&self, match_id: &str) -> Result<Option<FeedbackModel>>;
 }
 
@@ -157,6 +181,7 @@ pub trait WeightHistoryRepository: Send + Sync {
     async fn save(&self, history: &WeightHistoryModel) -> Result<WeightHistoryModel>;
     async fn get_current(&self) -> Result<Option<WeightHistoryModel>>;
     async fn get_history(&self, limit: i64) -> Result<Vec<WeightHistoryModel>>;
+    /// Get weight history by ID
     async fn get_by_id(&self, id: &str) -> Result<Option<WeightHistoryModel>>;
     async fn count(&self) -> Result<i64>;
 }
@@ -165,6 +190,7 @@ pub trait WeightHistoryRepository: Send + Sync {
 #[async_trait]
 pub trait ReviewQueueRepository: Send + Sync {
     async fn save(&self, item: &ReviewQueueModel) -> Result<ReviewQueueModel>;
+    /// Get a review queue item by ID
     async fn get_by_id(&self, id: &str) -> Result<Option<ReviewQueueModel>>;
     async fn get_pending(&self, limit: i64, offset: i64) -> Result<Vec<ReviewQueueModel>>;
     async fn get_by_status(
@@ -177,6 +203,7 @@ pub trait ReviewQueueRepository: Send + Sync {
     -> Result<ReviewQueueModel>;
     async fn get_stats(&self) -> Result<ReviewQueueStats>;
     async fn count_pending(&self) -> Result<i64>;
+    /// Check if a review queue item exists for a message
     async fn exists_for_message(&self, raw_message_id: &str) -> Result<bool>;
 }
 
@@ -224,6 +251,7 @@ pub trait AuditLogRepository: Send + Sync {
 /// Match queue repository trait
 #[async_trait]
 pub trait MatchQueueRepository: Send + Sync {
+    /// Enqueue a request for matching
     async fn enqueue(&self, request_id: &str, priority: i32) -> Result<MatchQueueModel>;
     async fn fetch_batch(&self, limit: i64) -> Result<Vec<MatchQueueModel>>;
     async fn complete(&self, id: &uuid::Uuid) -> Result<()>;

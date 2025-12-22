@@ -139,7 +139,6 @@ fn get_config_interactive() -> Config {
 
 #[derive(Debug, Clone)]
 struct TestMessage {
-    id: String,
     content: String,
     sender_name: Option<String>,
     group_name: Option<String>,
@@ -253,7 +252,7 @@ async fn main() -> anyhow::Result<()> {
     println!("\n📥 Loading {} test messages from database...", limit);
     let messages: Vec<TestMessage> = sqlx::query_as!(
         TestMessage,
-        r#"SELECT id, content, sender_name, group_name FROM raw_messages LIMIT $1"#,
+        r#"SELECT content, sender_name, group_name FROM raw_messages LIMIT $1"#,
         limit
     )
     .fetch_all(&pool)

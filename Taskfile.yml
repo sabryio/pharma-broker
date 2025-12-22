@@ -3,7 +3,6 @@ version: "3"
 vars:
   CORE_DIR: core
   BRIDGE_DIR: bridge
-  GATEWAY_DIR: gateway
 
 tasks:
   default:
@@ -11,7 +10,6 @@ tasks:
     cmds:
       - task: core:build
       - task: bridge:build
-      - task: gateway:build
 
   # ============================================================================
   # Core (Rust)
@@ -46,6 +44,68 @@ tasks:
     cmds:
       - cargo test
 
+  # --- Core Binaries ---
+
+  core:analyze-models:
+    desc: Deep AI model quality analysis across multiple LLMs
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --bin analyze-models
+
+  core:bench-parser:
+    desc: AI parser benchmark with concurrent performance testing
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --bin bench-parser
+
+  core:bench-hybrid-rag:
+    desc: Benchmark hybrid RAG filtering performance impact
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --bin bench-hybrid-rag
+
+  core:compare-models:
+    desc: Compare AI parsing across multiple LLM models
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --bin compare-models
+
+  core:monitor:
+    desc: Interactive TUI for group monitoring and config
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --bin monitor
+
+  core:parse-cli:
+    desc: Interactive CLI for testing AI parsing with messages
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --bin parse-cli
+
+  core:pipeline-sim:
+    desc: Full end-to-end pipeline simulation (ingestion to matching)
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --bin pipeline-sim
+
+  core:refresh-embeddings:
+    desc: Seed medications from JSON and refresh embeddings
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --bin refresh-embeddings
+
+  core:reset-db:
+    desc: "DANGER: Reset database (truncate and reseed)"
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --bin reset-db
+
+  core:vector-search:
+    desc: Vector similarity search playground (RAG testing)
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --bin vector-search
+
   # ============================================================================
   # Bridge (Go)
   # ============================================================================
@@ -73,25 +133,6 @@ tasks:
       - go test ./...
 
   # ============================================================================
-  # Gateway (TypeScript)
-  # ============================================================================
-
-  gateway:build:
-    desc: Build the TypeScript gateway
-    dir: "{{.GATEWAY_DIR}}"
-    cmds:
-      - bun install
-    sources:
-      - "{{.GATEWAY_DIR}}/src/**/*.ts"
-      - "{{.GATEWAY_DIR}}/package.json"
-
-  gateway:dev:
-    desc: Run TypeScript gateway
-    dir: "{{.GATEWAY_DIR}}"
-    cmds:
-      - bun run src/index.ts
-
-  # ============================================================================
   # Docker Compose
   # ============================================================================
 
@@ -108,19 +149,18 @@ tasks:
   logs:
     desc: View logs from all services
     cmds:
-      - docker compose logs -f core bridge gateway
+      - docker compose logs -f core bridge
 
   # ============================================================================
   # Development
   # ============================================================================
 
   dev:
-    desc: Run all services locally (requires 3 terminals)
+    desc: Run all services locally (requires 2 terminals)
     cmds:
-      - echo "Run in separate terminals:"
-      - echo "  Terminal 1: task core:dev"
-      - echo "  Terminal 2: task bridge:dev"
-      - echo "  Terminal 3: task gateway:dev"
+      - msg "Run in separate terminals:"
+      - msg "  Terminal 1 - task core:dev"
+      - msg "  Terminal 2 - task bridge:dev"
 
   # ============================================================================
   # Database
@@ -147,13 +187,9 @@ tasks:
         platforms: [windows]
       - cmd: powershell -Command "Invoke-RestMethod http://localhost:5050/health | ConvertTo-Json"
         platforms: [windows]
-      - cmd: powershell -Command "Invoke-RestMethod http://localhost:3000/health | ConvertTo-Json"
-        platforms: [windows]
       - cmd: curl -s http://localhost:8080/health | jq
         platforms: [linux, darwin]
       - cmd: curl -s http://localhost:5050/health | jq
-        platforms: [linux, darwin]
-      - cmd: curl -s http://localhost:3000/health | jq
         platforms: [linux, darwin]
 
   # ============================================================================
@@ -169,19 +205,3 @@ tasks:
         platforms: [windows]
       - cmd: rm -rf core/target bridge/pharma-bridge
         platforms: [linux, darwin]
-
-  # ============================================================================
-  # Legacy (for reference)
-  # ============================================================================
-
-  legacy:build:
-    desc: Build legacy Go monolith
-    dir: legacy
-    cmds:
-      - go build -o pharmabroker.exe ./cmd/app
-
-  legacy:test:
-    desc: Run legacy Go tests
-    dir: legacy
-    cmds:
-      - go test ./...

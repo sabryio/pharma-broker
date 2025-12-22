@@ -9,7 +9,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use pharma_core::api::handlers::init_start_time;
 use pharma_core::api::{create_router, routes::AppState};
-use pharma_core::grpc::{PharmaCoreService, start_grpc_server};
+use pharma_core::grpc::{GrpcDependencies, GrpcRepositories, PharmaCoreService, start_grpc_server};
 use pharma_core::matching::{MatchingEngine, MatchingEngineConfig};
 use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
@@ -119,7 +119,6 @@ async fn main() -> anyhow::Result<()> {
         match_repo.clone(),
         audit_log_repo.clone(),
         matching_engine.clone(),
-        ai_client.clone(),
         ws_tx.clone(),
     );
     let worker_handle = tokio::spawn(async move {
@@ -163,21 +162,24 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🔌 gRPC server listening on grpc://{}", grpc_addr);
 
     // Create gRPC service with all repositories and AI client
-    let grpc_service = PharmaCoreService::new(
-        offer_repo,
-        request_repo,
-        raw_message_repo,
-        group_repo,
-        feedback_repo,
-        review_queue_repo,
-        audit_log_repo,
-        match_queue_repo.clone(),
-        medication_mapping_repo,
-        match_repo.clone(),
+    let grpc_repos = GrpcRepositories {
+        offer: offer_repo,
+        request: request_repo,
+        raw_message: raw_message_repo,
+        group: group_repo,
+        feedback: feedback_repo,
+        review_queue: review_queue_repo,
+        audit_log: audit_log_repo,
+        match_queue: match_queue_repo.clone(),
+        medication_mapping: medication_mapping_repo,
+        match_repo: match_repo.clone(),
+    };
+    let grpc_deps = GrpcDependencies {
         ai_client,
-        ws_tx.clone(),
-        matching_engine.clone(),
-    );
+        ws_tx: ws_tx.clone(),
+        matching_engine: matching_engine.clone(),
+    };
+    let grpc_service = PharmaCoreService::new(grpc_repos, grpc_deps);
 
     // Shutdown signal for graceful termination (Ctrl+C and SIGTERM)
     let shutdown = async {

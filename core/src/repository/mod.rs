@@ -40,6 +40,11 @@ pub use pharma_db::traits::{
 // Re-export enums
 pub use pharma_db::traits::{ItemStatus, MatchStatus, QueueStatus, ReviewStatus, UrgencyLevel};
 
+// Re-export ID newtypes for type-safe entity references
+pub use pharma_db::traits::{
+    GroupJid, MatchId, MedicationMappingId, OfferId, RawMessageId, RequestId,
+};
+
 pub use pharma_db::params::{
     AuditByEntityParams, FindDuplicateParams, SemanticDuplicateParams, UpdateMatchStatusParams,
     UpdateReviewStatusParams,

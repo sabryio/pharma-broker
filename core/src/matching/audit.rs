@@ -64,6 +64,23 @@ impl std::fmt::Display for AuditEventType {
 }
 
 // =============================================================================
+// Match Action Parameters
+// =============================================================================
+
+/// Parameters for logging a match action (preferred API)
+#[derive(Debug, Clone)]
+pub struct MatchActionParams {
+    pub match_id: String,
+    pub offer_id: String,
+    pub request_id: String,
+    pub action: ActionType,
+    pub score: f64,
+    pub status: MatchStatus,
+    pub reason: String,
+    pub metadata: Option<serde_json::Value>,
+}
+
+// =============================================================================
 // Audit Entry
 // =============================================================================
 
@@ -475,25 +492,15 @@ impl<L: AuditLogger> AuditTrail<L> {
     // Match Action Logging
     // =========================================================================
 
-    /// Log a match action
+    /// Log a match action using structured params
     /// Ported from Go: AuditTrail.LogMatchAction (audit.go:170-207)
-    pub async fn log_match_action(
-        &self,
-        match_id: &str,
-        offer_id: &str,
-        request_id: &str,
-        action: ActionType,
-        score: f64,
-        status: MatchStatus,
-        reason: &str,
-        metadata: Option<serde_json::Value>,
-    ) -> Result<(), AuditError> {
+    pub async fn log_match_action(&self, params: MatchActionParams) -> Result<(), AuditError> {
         if !self.is_enabled() {
             return Ok(());
         }
 
-        let event_type = action_to_event_type(action);
-        let actor = if action == ActionType::AutoConfirm {
+        let event_type = action_to_event_type(params.action);
+        let actor = if params.action == ActionType::AutoConfirm {
             "AUTO"
         } else {
             "SYSTEM"
@@ -503,26 +510,26 @@ impl<L: AuditLogger> AuditTrail<L> {
         if self.should_trace() {
             tracing::info!(
                 event_type = %event_type,
-                match_id = %match_id,
-                action = ?action,
-                score = %score,
-                status = ?&status,
+                match_id = %params.match_id,
+                action = ?params.action,
+                score = %params.score,
+                status = ?&params.status,
                 actor = %actor,
-                reason = %reason,
+                reason = %params.reason,
                 "📝 Audit: Match action logged"
             );
         }
 
         let entry = AuditEntry::new(event_type, actor)
-            .with_match_id(match_id)
-            .with_offer_id(offer_id)
-            .with_request_id(request_id)
-            .with_action(action)
-            .with_score(score)
-            .with_status(status)
-            .with_reason(reason);
+            .with_match_id(&params.match_id)
+            .with_offer_id(&params.offer_id)
+            .with_request_id(&params.request_id)
+            .with_action(params.action)
+            .with_score(params.score)
+            .with_status(params.status)
+            .with_reason(&params.reason);
 
-        let entry = if let Some(meta) = metadata {
+        let entry = if let Some(meta) = params.metadata {
             entry.with_metadata(meta)
         } else {
             entry
@@ -867,16 +874,16 @@ mod tests {
         let trail = AuditTrail::new(AuditTrailConfig::default());
 
         trail
-            .log_match_action(
-                "match-123",
-                "offer-456",
-                "request-789",
-                ActionType::AutoConfirm,
-                0.95,
-                MatchStatus::Confirmed,
-                "High confidence",
-                None,
-            )
+            .log_match_action(MatchActionParams {
+                match_id: "match-123".to_string(),
+                offer_id: "offer-456".to_string(),
+                request_id: "request-789".to_string(),
+                action: ActionType::AutoConfirm,
+                score: 0.95,
+                status: MatchStatus::Confirmed,
+                reason: "High confidence".to_string(),
+                metadata: None,
+            })
             .await
             .unwrap();
 
@@ -915,16 +922,16 @@ mod tests {
         let trail = AuditTrail::new(config);
 
         trail
-            .log_match_action(
-                "match-123",
-                "offer-456",
-                "request-789",
-                ActionType::AutoConfirm,
-                0.95,
-                MatchStatus::Confirmed,
-                "Test",
-                None,
-            )
+            .log_match_action(MatchActionParams {
+                match_id: "match-123".to_string(),
+                offer_id: "offer-456".to_string(),
+                request_id: "request-789".to_string(),
+                action: ActionType::AutoConfirm,
+                score: 0.95,
+                status: MatchStatus::Confirmed,
+                reason: "Test".to_string(),
+                metadata: None,
+            })
             .await
             .unwrap();
 

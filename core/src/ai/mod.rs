@@ -5,6 +5,7 @@
 
 mod circuit_breaker;
 mod feedback_loop;
+mod params;
 mod pharma_parser;
 mod pharma_prompts;
 mod pharma_types;
@@ -19,6 +20,9 @@ pub use feedback_loop::{
     FeedbackLoopConfig, FeedbackLoopStats, FeedbackType, FewShotExample, LLMFeedbackLoop, Language,
     MedicationCorrection,
 };
+
+// Parameter structs for clean APIs
+pub use params::{ExtractionData, MedicationCorrectionData, MissedExtractionData};
 
 // Token batching for efficient AI calls
 pub use token_batcher::{

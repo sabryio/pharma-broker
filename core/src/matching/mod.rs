@@ -45,7 +45,7 @@ pub use abtest::{ABTestConfig, ABTestManager, ABTestResult, ABTestStats};
 // --- audit ---
 pub use audit::{
     ActionType, AuditEntry, AuditError, AuditEventType, AuditFilter, AuditLogger, AuditTrail,
-    AuditTrailConfig, MemoryAuditLogger,
+    AuditTrailConfig, MatchActionParams, MemoryAuditLogger,
 };
 
 // --- calibration ---

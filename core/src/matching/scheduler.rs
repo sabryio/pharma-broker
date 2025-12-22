@@ -246,35 +246,6 @@ impl LearningScheduler {
         }
     }
 
-    /// Record job start
-    fn record_job_start(&self) {
-        *self.last_run.write().unwrap() = Some(Utc::now());
-        *self.last_status.write().unwrap() = JobStatus::Running;
-        *self.last_error.write().unwrap() = None;
-    }
-
-    /// Record job success
-    fn record_success(&self, metrics: PerformanceMetrics) {
-        *self.last_status.write().unwrap() = JobStatus::Success;
-        *self.last_metrics.write().unwrap() = Some(metrics);
-        *self.pending_apply.write().unwrap() = None;
-        *self.pending_reason.write().unwrap() = None;
-    }
-
-    /// Record job as recommended (needs manual review)
-    fn record_recommended(&self, metrics: PerformanceMetrics, weights: Weights, reason: String) {
-        *self.last_status.write().unwrap() = JobStatus::Recommended;
-        *self.last_metrics.write().unwrap() = Some(metrics);
-        *self.pending_apply.write().unwrap() = Some(weights);
-        *self.pending_reason.write().unwrap() = Some(reason);
-    }
-
-    /// Record job failure
-    fn record_failure(&self, error: String) {
-        *self.last_status.write().unwrap() = JobStatus::Failed;
-        *self.last_error.write().unwrap() = Some(error);
-    }
-
     /// Get analysis date range
     pub fn get_analysis_range(&self) -> (DateTime<Utc>, DateTime<Utc>) {
         let config = self.config.read().unwrap();
@@ -587,37 +558,5 @@ mod tests {
         assert!((metrics.confirmation_rate - 0.5).abs() < 0.001);
         assert!((metrics.avg_score_confirmed - 0.7).abs() < 0.001);
         assert!((metrics.avg_score_rejected - 0.3).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_record_job_states() {
-        let scheduler = LearningScheduler::default();
-
-        // Test record start
-        scheduler.record_job_start();
-        assert_eq!(*scheduler.last_status.read().unwrap(), JobStatus::Running);
-        assert!(scheduler.last_run.read().unwrap().is_some());
-
-        // Test record success
-        let metrics = PerformanceMetrics {
-            sample_size: 100,
-            ..Default::default()
-        };
-        scheduler.record_success(metrics.clone());
-        assert_eq!(*scheduler.last_status.read().unwrap(), JobStatus::Success);
-
-        // Test record failure
-        scheduler.record_failure("test error".to_string());
-        assert_eq!(*scheduler.last_status.read().unwrap(), JobStatus::Failed);
-        assert!(scheduler.last_error.read().unwrap().is_some());
-
-        // Test record recommended
-        let weights = Weights::default();
-        scheduler.record_recommended(metrics, weights, "needs review".to_string());
-        assert_eq!(
-            *scheduler.last_status.read().unwrap(),
-            JobStatus::Recommended
-        );
-        assert!(scheduler.pending_apply.read().unwrap().is_some());
     }
 }

@@ -201,7 +201,6 @@ struct GroupItem {
 
 #[derive(Debug, Clone)]
 struct ConfigItem {
-    key: String,
     label: String,
     description: String,
     enabled: bool,
@@ -234,13 +233,11 @@ impl App {
 
         let configs = vec![
             ConfigItem {
-                key: "skip_own_messages".to_string(),
                 label: "Skip Own Messages".to_string(),
                 description: "Don't process messages sent by this account".to_string(),
                 enabled: true,
             },
             ConfigItem {
-                key: "auto_parse_enabled".to_string(),
                 label: "Auto Parse Enabled".to_string(),
                 description: "Automatically parse incoming messages with AI".to_string(),
                 enabled: true,

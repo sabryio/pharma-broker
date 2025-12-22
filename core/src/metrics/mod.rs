@@ -148,43 +148,6 @@ pub fn set_confirmation_rate(rate: f64) {
 // Timer Helper
 // ============================================================================
 
-/// A guard that records duration when dropped
-pub struct Timer {
-    start: Instant,
-    metric_fn: Box<dyn FnOnce(f64) + Send>,
-}
-
-impl Timer {
-    pub fn new<F>(metric_fn: F) -> Self
-    where
-        F: FnOnce(f64) + Send + 'static,
-    {
-        Self {
-            start: Instant::now(),
-            metric_fn: Box::new(metric_fn),
-        }
-    }
-
-    pub fn message_processing() -> Self {
-        Self::new(record_message_duration)
-    }
-
-    pub fn ai_parse() -> Self {
-        Self::new(record_ai_parse_duration)
-    }
-
-    pub fn db_query() -> Self {
-        Self::new(record_db_query_duration)
-    }
-}
-
-impl Drop for Timer {
-    fn drop(&mut self) {
-        // Note: We can't move out of self in Drop, so we use a dummy closure
-        // In practice, create a new timer each time
-    }
-}
-
 /// Start a timer that records duration when finished
 pub fn start_timer<F>(metric_fn: F) -> impl FnOnce()
 where

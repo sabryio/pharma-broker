@@ -72,7 +72,7 @@ impl MatchRepository for SeaOrmMatchRepo {
             .ok_or_else(|| Error::NotFound(format!("Match not found: {}", params.id)))?;
 
         let mut active: match_::ActiveModel = m.into();
-        active.status = Set(params.status.clone());
+        active.status = Set(params.status);
         if !params.matched_by.is_empty() {
             active.matched_by = Set(Some(params.matched_by.to_string()));
         }

@@ -609,8 +609,10 @@ mod tests {
 
     #[test]
     fn test_learner_disabled() {
-        let mut config = HistoricalLearningConfig::default();
-        config.enabled = false;
+        let config = HistoricalLearningConfig {
+            enabled: false,
+            ..Default::default()
+        };
         let learner = HistoricalLearner::new(config);
 
         learner.record_feedback("A", "B", true);
@@ -632,10 +634,12 @@ mod tests {
 
     #[test]
     fn test_learner_historical_bonus_sufficient_confirmations() {
-        let mut config = HistoricalLearningConfig::default();
-        config.min_confirmations = 3;
-        config.confidence_threshold = 3;
-        config.historical_weight = 0.10;
+        let config = HistoricalLearningConfig {
+            min_confirmations: 3,
+            confidence_threshold: 3,
+            historical_weight: 0.10,
+            ..Default::default()
+        };
         let learner = HistoricalLearner::new(config);
 
         // Record 5 confirmations
@@ -650,10 +654,12 @@ mod tests {
 
     #[test]
     fn test_learner_historical_penalty() {
-        let mut config = HistoricalLearningConfig::default();
-        config.min_confirmations = 0; // Allow penalty without confirmations
-        config.confidence_threshold = 3;
-        config.historical_weight = 0.10;
+        let config = HistoricalLearningConfig {
+            min_confirmations: 0, // Allow penalty without confirmations
+            confidence_threshold: 3,
+            historical_weight: 0.10,
+            ..Default::default()
+        };
         let learner = HistoricalLearner::new(config);
 
         // Record 5 rejections
@@ -840,9 +846,11 @@ mod tests {
 
     #[test]
     fn test_learner_realistic_scenario() {
-        let mut config = HistoricalLearningConfig::default();
-        config.min_confirmations = 5;
-        config.confidence_threshold = 5;
+        let config = HistoricalLearningConfig {
+            min_confirmations: 5,
+            confidence_threshold: 5,
+            ..Default::default()
+        };
         let learner = HistoricalLearner::new(config);
 
         // Simulate real usage: Brufen and Ibuprofen are often confirmed together

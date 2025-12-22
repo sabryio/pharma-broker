@@ -864,18 +864,18 @@ impl MatchingEngine {
         };
 
         self.audit_trail
-            .log_match_action(
-                &match_entity.id,
-                &match_entity.offer_id,
-                &match_entity.request_id,
-                action_type,
-                match_entity.score,
-                match_entity.status.clone(),
-                reason,
-                Some(serde_json::json!({
+            .log_match_action(super::MatchActionParams {
+                match_id: match_entity.id.clone(),
+                offer_id: match_entity.offer_id.clone(),
+                request_id: match_entity.request_id.clone(),
+                action: action_type,
+                score: match_entity.score,
+                status: match_entity.status,
+                reason: reason.to_string(),
+                metadata: Some(serde_json::json!({
                     "reasoning": &match_entity.reasoning,
                 })),
-            )
+            })
             .await
     }
 

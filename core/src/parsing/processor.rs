@@ -54,62 +54,30 @@ pub struct BatchProcessor {
 }
 
 impl BatchProcessor {
-    /// Create a new batch processor
-    pub fn new(
-        config: BatchConfig,
-        multi_pass_config: MultiPassConfig,
-        ai_client: Arc<PharmaParser>,
-        raw_message_repo: Arc<dyn RawMessageRepository>,
-        offer_repo: Arc<dyn OfferRepository>,
-        request_repo: Arc<dyn RequestRepository>,
-        medication_mapping_repo: Arc<dyn MedicationMappingRepository>,
-        review_queue_repo: Arc<dyn ReviewQueueRepository>,
-        audit_log_repo: Arc<dyn AuditLogRepository>,
-        match_queue_repo: Arc<dyn MatchQueueRepository>,
-        ws_tx: broadcast::Sender<WsEvent>,
-    ) -> Self {
-        let (input_tx, input_rx) = mpsc::channel(config.channel_buffer);
-
-        Self {
-            config,
-            multi_pass_config,
-            ai_client,
-            raw_message_repo,
-            offer_repo,
-            request_repo,
-            medication_mapping_repo,
-            review_queue_repo,
-            audit_log_repo,
-            match_queue_repo,
-            ws_tx,
-            input_tx,
-            input_rx: RwLock::new(Some(input_rx)),
-            stats: RwLock::new(BatchStats::default()),
-        }
-    }
-
     /// Create a new batch processor from structured parameter objects
-    ///
-    /// This is the preferred constructor as it uses descriptive parameter structs
-    /// instead of many individual arguments.
-    pub fn from_parts(
+    pub fn new(
         config: super::params::BatchProcessorConfig,
         repos: super::params::BatchProcessorRepositories,
         deps: super::params::BatchProcessorDeps,
     ) -> Self {
-        Self::new(
-            config.batch,
-            config.multi_pass,
-            deps.ai_client,
-            repos.raw_message,
-            repos.offer,
-            repos.request,
-            repos.medication_mapping,
-            repos.review_queue,
-            repos.audit_log,
-            repos.match_queue,
-            deps.ws_tx,
-        )
+        let (input_tx, input_rx) = mpsc::channel(config.batch.channel_buffer);
+
+        Self {
+            config: config.batch,
+            multi_pass_config: config.multi_pass,
+            ai_client: deps.ai_client,
+            raw_message_repo: repos.raw_message,
+            offer_repo: repos.offer,
+            request_repo: repos.request,
+            medication_mapping_repo: repos.medication_mapping,
+            review_queue_repo: repos.review_queue,
+            audit_log_repo: repos.audit_log,
+            match_queue_repo: repos.match_queue,
+            ws_tx: deps.ws_tx,
+            input_tx,
+            input_rx: RwLock::new(Some(input_rx)),
+            stats: RwLock::new(BatchStats::default()),
+        }
     }
 
     /// Get sender for submitting messages

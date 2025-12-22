@@ -175,8 +175,6 @@ fn get_config_interactive() -> Config {
 struct TestMessage {
     id: String,
     #[serde(default)]
-    group_jid: String,
-    #[serde(default)]
     group_name: String,
     content: String,
     #[serde(default)]
@@ -281,7 +279,6 @@ async fn load_messages_from_database(limit: i64) -> anyhow::Result<Vec<TestMessa
         .into_iter()
         .map(|m| TestMessage {
             id: m.id,
-            group_jid: String::new(),
             group_name: m.group_name.unwrap_or_default(),
             content: m.content,
             sender_name: m.sender_name,

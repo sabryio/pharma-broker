@@ -208,7 +208,6 @@ mod tests {
     #[derive(Debug, Clone)]
     struct TestMessage {
         id: String,
-        content: String,
     }
 
     impl QueueMessage for TestMessage {
@@ -223,7 +222,6 @@ mod tests {
 
         let msg = TestMessage {
             id: "1".to_string(),
-            content: "test".to_string(),
         };
 
         queue.try_enqueue(msg.clone()).await.unwrap();
@@ -247,7 +245,6 @@ mod tests {
         for i in 0..3 {
             let msg = TestMessage {
                 id: i.to_string(),
-                content: format!("msg{}", i),
             };
             queue.try_enqueue(msg).await.unwrap();
         }
@@ -255,7 +252,6 @@ mod tests {
         // Queue should now be full
         let msg = TestMessage {
             id: "overflow".to_string(),
-            content: "should fail".to_string(),
         };
 
         let result = queue.try_enqueue(msg).await;
@@ -280,7 +276,6 @@ mod tests {
         for i in 0..5 {
             let msg = TestMessage {
                 id: i.to_string(),
-                content: format!("msg{}", i),
             };
             queue.try_enqueue(msg).await.unwrap();
         }
@@ -324,7 +319,6 @@ mod tests {
 
         let msg = TestMessage {
             id: "1".to_string(),
-            content: "test".to_string(),
         };
 
         let result = queue.try_enqueue(msg).await;
@@ -338,7 +332,6 @@ mod tests {
         for i in 0..3 {
             let msg = TestMessage {
                 id: i.to_string(),
-                content: format!("msg{}", i),
             };
             queue.try_enqueue(msg).await.unwrap();
         }

@@ -298,7 +298,6 @@ impl MatchingStrategy for EmbeddingStrategy {
 pub struct FuzzyStringStrategy {
     weight: RwLock<f64>,
     enabled: RwLock<bool>,
-    min_threshold: f64,
 }
 
 impl Default for FuzzyStringStrategy {
@@ -306,7 +305,6 @@ impl Default for FuzzyStringStrategy {
         Self {
             weight: RwLock::new(0.25),
             enabled: RwLock::new(true),
-            min_threshold: 0.6,
         }
     }
 }
@@ -316,7 +314,6 @@ impl FuzzyStringStrategy {
         Self {
             weight: RwLock::new(weight),
             enabled: RwLock::new(true),
-            min_threshold: 0.6,
         }
     }
 
@@ -441,14 +438,6 @@ pub struct HistoricalStrategy {
 }
 
 impl HistoricalStrategy {
-    pub fn new(weight: f64, learner: Arc<HistoricalLearner>) -> Self {
-        Self {
-            weight: RwLock::new(weight),
-            enabled: RwLock::new(true),
-            learner,
-        }
-    }
-
     pub fn with_default_learner(weight: f64) -> Self {
         Self {
             weight: RwLock::new(weight),

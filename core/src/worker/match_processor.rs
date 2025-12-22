@@ -1,7 +1,7 @@
-use chrono::Utc;
 use crate::repository::{
     AuditLogRepository, MatchQueueRepository, MatchRepository, OfferRepository, RequestRepository,
 };
+use chrono::Utc;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
@@ -10,7 +10,6 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::Result;
-use crate::ai::PharmaParser;
 use crate::domain::{
     AuditAction, AuditLog, ConfidenceBand, EntityType, Match as MatchEntity, MatchQueueItem,
     MatchStatus, Offer, Request,
@@ -26,7 +25,6 @@ pub struct MatchProcessor {
     match_repo: Arc<dyn MatchRepository>,
     audit_log_repo: Arc<dyn AuditLogRepository>,
     matching_engine: Arc<MatchingEngine>,
-    ai_parser: Arc<PharmaParser>,
     ws_tx: broadcast::Sender<WsEvent>,
     worker_id: String,
 }
@@ -39,7 +37,6 @@ impl MatchProcessor {
         match_repo: Arc<dyn MatchRepository>,
         audit_log_repo: Arc<dyn AuditLogRepository>,
         matching_engine: Arc<MatchingEngine>,
-        ai_parser: Arc<PharmaParser>,
         ws_tx: broadcast::Sender<WsEvent>,
     ) -> Self {
         Self {
@@ -49,7 +46,6 @@ impl MatchProcessor {
             match_repo,
             audit_log_repo,
             matching_engine,
-            ai_parser,
             ws_tx,
             worker_id: Uuid::new_v4().to_string(),
         }
@@ -154,7 +150,9 @@ impl MatchProcessor {
 
             // Calculate similarity (Logic ported from server.rs)
             let med_score = match (&offer.content_embedding, &request.content_embedding) {
-                (Some(o), Some(r)) => crate::matching::cosine_similarity(o.as_slice(), r.as_slice()).unwrap_or(0.0),
+                (Some(o), Some(r)) => {
+                    crate::matching::cosine_similarity(o.as_slice(), r.as_slice()).unwrap_or(0.0)
+                }
                 _ => self.fallback_similarity(&offer, &request),
             };
 

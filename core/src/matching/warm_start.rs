@@ -387,8 +387,10 @@ mod tests {
 
     #[test]
     fn test_warm_start_disabled() {
-        let mut config = WarmStartConfig::default();
-        config.enabled = false;
+        let config = WarmStartConfig {
+            enabled: false,
+            ..Default::default()
+        };
         let manager = WarmStartManager::new(config);
 
         let learned = Weights {
@@ -476,8 +478,10 @@ mod tests {
 
     #[test]
     fn test_outlier_detector_disabled() {
-        let mut config = OutlierDetectorConfig::default();
-        config.enabled = false;
+        let config = OutlierDetectorConfig {
+            enabled: false,
+            ..Default::default()
+        };
         let detector = OutlierDetector::new(config);
 
         for _ in 0..30 {

@@ -1,16 +1,13 @@
 //! Test infrastructure for repository integration tests
-//! Uses testcontainers to spin up a pgvector-enabled PostgreSQL container
+//!
+//! Uses pharma_db's TestDb which handles container lifecycle and migrations.
+//! This module provides domain-level test factories that return domain types
+//! (as opposed to pharma_db::testing which returns ActiveModel types).
 //!
 //! Mirrors: legacy/storage/gorm/testing.go
 
 use chrono::{DateTime, Duration, Utc};
 use sqlx::{PgPool, postgres::PgPoolOptions};
-use std::sync::atomic::{AtomicU64, Ordering};
-use testcontainers::{
-    ContainerAsync, GenericImage, ImageExt,
-    core::{IntoContainerPort, WaitFor},
-    runners::AsyncRunner,
-};
 use uuid::Uuid;
 
 use crate::domain::{
@@ -18,422 +15,54 @@ use crate::domain::{
     ReviewQueueItem, ReviewStatus, UrgencyLevel, WeightHistory,
 };
 
-/// Global counter for unique schema names
-static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
+// Re-export pharma_db's TestDb for SeaORM-based tests
+pub use pharma_db::testing::TestDb as SeaOrmTestDb;
 
-/// Test database wrapper with container lifecycle management
-/// Each test gets its own schema for isolation
+/// Test database wrapper for sqlx-based repository tests
+/// Uses pharma_db migrations via SeaORM, then provides a sqlx pool
 pub struct TestDb {
     pub pool: PgPool,
-    _schema_name: String,
-    _container: ContainerAsync<GenericImage>,
+    _seaorm_db: SeaOrmTestDb,
 }
 
 impl TestDb {
     /// Creates a new test database with pgvector PostgreSQL
-    /// Uses pgvector/pgvector:pg18-trixie for full vector extension support (same as Go tests)
-    /// Each test gets a unique schema for isolation when running concurrently
+    /// Uses pharma_db's TestDb for container and migration management,
+    /// then creates a sqlx pool pointing to the same database
     pub async fn new() -> Self {
-        // Generate unique schema name using counter + random UUID to avoid collisions
-        // with reused containers from previous test runs
-        let counter = SCHEMA_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let unique_id = Uuid::new_v4().simple().to_string();
-        let schema_name = format!("t{}_{}", counter, &unique_id[..8]);
+        // Use pharma_db's TestDb which handles container + migrations
+        let seaorm_db = SeaOrmTestDb::new().await;
 
-        // Start PostgreSQL container with pgvector support
-        // Using the official pgvector image (matches Go: pgvector/pgvector:pg18-trixie)
-        let container = GenericImage::new("pgvector/pgvector", "pg18-trixie")
-            .with_exposed_port(5432.tcp())
-            .with_wait_for(WaitFor::message_on_stderr(
-                "database system is ready to accept connections",
-            ))
-            .with_env_var("POSTGRES_USER", "postgres")
-            .with_env_var("POSTGRES_PASSWORD", "password")
-            .with_env_var("POSTGRES_DB", "pharmabroker_test")
-            .with_container_name("pharmabroker-test-postgres")
-            .with_reuse(testcontainers::core::ReuseDirective::Always)
-            .start()
-            .await
-            .expect("Failed to start PostgreSQL container");
+        // Extract connection URL from SeaORM connection
+        // SeaORM's DatabaseConnection doesn't expose the URL directly,
+        // so we need to get it from the underlying sqlx pool
+        let seaorm_pool = seaorm_db
+            .db
+            .get_postgres_connection_pool()
+            .expect("Expected Postgres connection");
 
-        let host_port = container
-            .get_host_port_ipv4(5432)
-            .await
-            .expect("Failed to get container port");
-
-        // First connect without schema to create it
-        let base_connection_string = format!(
-            "postgres://postgres:password@127.0.0.1:{}/pharmabroker_test",
-            host_port
-        );
-
-        let setup_pool = PgPoolOptions::new()
-            .max_connections(1)
-            .connect(&base_connection_string)
-            .await
-            .expect("Failed to connect to test database for setup");
-
-        // Create unique schema for this test
-        Self::setup_schema(&setup_pool, &schema_name).await;
-
-        // Close setup pool
-        setup_pool.close().await;
-
-        // Now connect with search_path set to our schema via connection options
-        let connection_string = format!(
-            "postgres://postgres:password@127.0.0.1:{}/pharmabroker_test?options=-c%20search_path%3D{},public",
-            host_port, schema_name
-        );
-
+        // Create our own sqlx pool using the same connection options
         let pool = PgPoolOptions::new()
             .max_connections(5)
-            .connect(&connection_string)
+            .connect_with(seaorm_pool.connect_options().clone())
             .await
-            .expect("Failed to connect to test database with schema");
+            .expect("Failed to create sqlx pool");
 
         TestDb {
             pool,
-            _schema_name: schema_name,
-            _container: container,
+            _seaorm_db: seaorm_db,
         }
     }
 
-    /// Sets up the database schema and extensions in a unique schema
-    async fn setup_schema(pool: &PgPool, schema_name: &str) {
-        // Enable pgvector extension (only needs to be done once per database)
-        sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
-            .execute(pool)
-            .await
-            .expect("Failed to create vector extension");
-
-        // Enable pg_trgm extension for fuzzy search
-        sqlx::query("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-            .execute(pool)
-            .await
-            .expect("Failed to create pg_trgm extension");
-
-        // Create unique schema for this test
-        let create_schema = format!("CREATE SCHEMA IF NOT EXISTS {}", schema_name);
-        sqlx::query(&create_schema)
-            .execute(pool)
-            .await
-            .expect("Failed to create test schema");
-
-        // Create urgency_level enum type in the schema
-        sqlx::query(&format!(
-            r#"
-            DO $$ BEGIN
-                CREATE TYPE {}.urgency_level AS ENUM ('NORMAL', 'SOON', 'URGENT', 'CRITICAL');
-            EXCEPTION
-                WHEN duplicate_object THEN null;
-            END $$
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create urgency_level enum");
-
-        // Create raw_messages table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.raw_messages (
-                id TEXT PRIMARY KEY,
-                external_id TEXT UNIQUE NOT NULL,
-                group_jid TEXT NOT NULL,
-                group_name TEXT NOT NULL,
-                sender_jid TEXT NOT NULL,
-                sender_phone TEXT NOT NULL,
-                sender_name TEXT NOT NULL,
-                content TEXT NOT NULL,
-                timestamp TIMESTAMPTZ NOT NULL,
-                processed_at TIMESTAMPTZ,
-                error TEXT,
-                reply_to_id TEXT,
-                reply_to_content TEXT,
-                reply_to_sender TEXT
-            )
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create raw_messages table");
-
-        // Create offers table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.offers (
-                id TEXT PRIMARY KEY,
-                raw_message_id TEXT REFERENCES {}.raw_messages(id),
-                source_phone TEXT NOT NULL,
-                source_name TEXT NOT NULL,
-                source_group TEXT NOT NULL,
-                group_name TEXT NOT NULL,
-                medication TEXT NOT NULL,
-                medication_raw TEXT NOT NULL,
-                quantity DOUBLE PRECISION NOT NULL DEFAULT 0,
-                unit TEXT,
-                price DOUBLE PRECISION NOT NULL DEFAULT 0,
-                currency TEXT,
-                expiry_date TIMESTAMPTZ,
-                batch_number TEXT,
-                notes TEXT,
-                raw_message TEXT NOT NULL,
-                status VARCHAR NOT NULL DEFAULT 'ACTIVE',
-                content_embedding vector(768),
-                urgent BOOLEAN NOT NULL DEFAULT FALSE,
-                urgency_level {}.urgency_level NOT NULL DEFAULT 'NORMAL',
-                expiry_info VARCHAR(50),
-                ai_confidence DOUBLE PRECISION DEFAULT 0,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            "#,
-            schema_name, schema_name, schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create offers table");
-
-        // Create requests table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.requests (
-                id TEXT PRIMARY KEY,
-                raw_message_id TEXT REFERENCES {}.raw_messages(id),
-                source_phone TEXT NOT NULL,
-                source_name TEXT NOT NULL,
-                source_group TEXT NOT NULL,
-                group_name TEXT NOT NULL,
-                medication TEXT NOT NULL,
-                medication_raw TEXT NOT NULL,
-                quantity DOUBLE PRECISION NOT NULL DEFAULT 0,
-                unit TEXT,
-                max_price DOUBLE PRECISION NOT NULL DEFAULT 0,
-                currency TEXT,
-                urgent BOOLEAN NOT NULL DEFAULT FALSE,
-                urgency_level {}.urgency_level NOT NULL DEFAULT 'NORMAL',
-                expiry_requirement VARCHAR(50),
-                ai_confidence DOUBLE PRECISION DEFAULT 0,
-                notes TEXT,
-                raw_message TEXT NOT NULL,
-                status VARCHAR NOT NULL DEFAULT 'ACTIVE',
-                content_embedding vector(768),
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            "#,
-            schema_name, schema_name, schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create requests table");
-
-        // Create matches table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.matches (
-                id TEXT PRIMARY KEY,
-                offer_id TEXT NOT NULL REFERENCES {}.offers(id),
-                request_id TEXT NOT NULL REFERENCES {}.requests(id),
-                score DOUBLE PRECISION NOT NULL,
-                reasoning TEXT NOT NULL,
-                matched_by TEXT,
-                status VARCHAR NOT NULL DEFAULT 'PENDING',
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                confirmed_at TIMESTAMPTZ,
-                notes TEXT,
-                UNIQUE(offer_id, request_id)
-            )
-            "#,
-            schema_name, schema_name, schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create matches table");
-
-        // Create groups table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.groups (
-                jid TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                description TEXT,
-                monitored BOOLEAN NOT NULL DEFAULT FALSE,
-                added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                last_message TIMESTAMPTZ,
-                message_count BIGINT NOT NULL DEFAULT 0
-            )
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create groups table");
-
-        // Create medication_mappings table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.medication_mappings (
-                id TEXT PRIMARY KEY,
-                arabic_name TEXT NOT NULL,
-                english_name TEXT NOT NULL,
-                synonyms TEXT[],
-                embedding vector(768),
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create medication_mappings table");
-
-        // Create audit_logs table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.audit_logs (
-                id UUID PRIMARY KEY,
-                action TEXT NOT NULL,
-                entity_type TEXT NOT NULL,
-                entity_id TEXT NOT NULL,
-                actor TEXT NOT NULL,
-                details JSONB,
-                ip_address TEXT,
-                user_agent TEXT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create audit_logs table");
-
-        // Create feedback_records table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.feedback_records (
-                id UUID PRIMARY KEY,
-                match_id UUID NOT NULL,
-                user_id TEXT NOT NULL,
-                confirmed BOOLEAN NOT NULL,
-                medication_score DOUBLE PRECISION NOT NULL,
-                dosage_score DOUBLE PRECISION NOT NULL,
-                quantity_score DOUBLE PRECISION NOT NULL,
-                price_score DOUBLE PRECISION NOT NULL,
-                recency_score DOUBLE PRECISION NOT NULL,
-                total_score DOUBLE PRECISION NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create feedback_records table");
-
-        // Create weight_history table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.weight_history (
-                id UUID PRIMARY KEY,
-                medication_weight DOUBLE PRECISION NOT NULL,
-                dosage_weight DOUBLE PRECISION NOT NULL,
-                quantity_weight DOUBLE PRECISION NOT NULL,
-                price_weight DOUBLE PRECISION NOT NULL,
-                recency_weight DOUBLE PRECISION NOT NULL,
-                source TEXT NOT NULL,
-                sample_count INTEGER NOT NULL DEFAULT 0,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create weight_history table");
-
-        // Create review_queue table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.review_queue (
-                id UUID PRIMARY KEY,
-                raw_message_id TEXT NOT NULL,
-                ai_result JSONB NOT NULL,
-                confidence DOUBLE PRECISION NOT NULL,
-                reason TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                reviewed_by TEXT,
-                review_notes TEXT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                reviewed_at TIMESTAMPTZ
-            )
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create review_queue table");
-
-        // Create match_queue_items table
-        sqlx::query(&format!(
-            r#"
-            CREATE TABLE {}.match_queue_items (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                request_id UUID NOT NULL,
-                status TEXT NOT NULL DEFAULT 'PENDING',
-                priority INTEGER NOT NULL DEFAULT 0,
-                attempts INTEGER NOT NULL DEFAULT 0,
-                last_error TEXT,
-                next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .expect("Failed to create match_queue_items table");
-
-        // Create trigram indexes for fuzzy search
-        sqlx::query(&format!(
-            r#"
-            CREATE INDEX IF NOT EXISTS idx_medication_mappings_arabic_trgm 
-            ON {}.medication_mappings USING GIN(arabic_name gin_trgm_ops)
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .ok();
-
-        sqlx::query(&format!(
-            r#"
-            CREATE INDEX IF NOT EXISTS idx_medication_mappings_english_trgm 
-            ON {}.medication_mappings USING GIN(english_name gin_trgm_ops)
-            "#,
-            schema_name
-        ))
-        .execute(pool)
-        .await
-        .ok();
-    }
-}
-
-impl Drop for TestDb {
-    fn drop(&mut self) {
-        // Schema cleanup happens asynchronously - we can't await in Drop
-        // The schema will be cleaned up on next test run or container restart
-        // This is acceptable for test isolation
+    /// Get the underlying SeaORM database connection
+    pub fn seaorm_db(&self) -> &sea_orm::DatabaseConnection {
+        &self._seaorm_db.db
     }
 }
 
 // =============================================================================
 // Test Data Factories (mirrors Go testing.go)
+// Returns domain types for use in repository tests
 // =============================================================================
 
 /// Creates a test RawMessage with default values
@@ -441,12 +70,12 @@ impl Drop for TestDb {
 pub fn new_test_raw_message() -> RawMessage {
     RawMessage {
         id: Uuid::new_v4().to_string(),
-        external_id: Uuid::new_v4().to_string(),
+        external_id: Some(Uuid::new_v4().to_string()),
         group_jid: "test-group@g.us".to_string(),
         group_name: "Test Group".to_string(),
         sender_jid: "sender@s.whatsapp.net".to_string(),
-        sender_phone: "+201234567890".to_string(),
-        sender_name: "Test Sender".to_string(),
+        sender_phone: Some("+201234567890".to_string()),
+        sender_name: Some("Test Sender".to_string()),
         content: "Test message content".to_string(),
         timestamp: Utc::now(),
         processed_at: None,
@@ -454,6 +83,7 @@ pub fn new_test_raw_message() -> RawMessage {
         reply_to_id: None,
         reply_to_content: None,
         reply_to_sender: None,
+        created_at: Utc::now(),
     }
 }
 
@@ -465,22 +95,19 @@ pub fn new_test_offer(raw_message_id: &str) -> Offer {
         id: Uuid::new_v4().to_string(),
         raw_message_id: raw_message_id.to_string(),
         source_phone: "+201234567890".to_string(),
-        source_name: "Test Seller".to_string(),
+        source_name: Some("Test Seller".to_string()),
         source_group: "test-group@g.us".to_string(),
-        group_name: "Test Group".to_string(),
         medication: "Augmentin 1g".to_string(),
         medication_raw: "أوجمنتين 1 جم".to_string(),
-        quantity: 50.0,
+        quantity: Some(rust_decimal::Decimal::from(50)),
         unit: Some("boxes".to_string()),
-        price: 150.0,
+        price: Some(rust_decimal::Decimal::from(150)),
         currency: Some("EGP".to_string()),
         expiry_date: None,
         batch_number: None,
         notes: None,
-        raw_message: "للبيع: Augmentin 1g - 50 علبة".to_string(),
         status: ItemStatus::Active,
         content_embedding: None,
-        urgent: false,
         urgency_level: UrgencyLevel::Normal,
         expiry_info: None,
         ai_confidence: 0.9,
@@ -497,21 +124,18 @@ pub fn new_test_request(raw_message_id: &str) -> Request {
         id: Uuid::new_v4().to_string(),
         raw_message_id: raw_message_id.to_string(),
         source_phone: "+201098765432".to_string(),
-        source_name: "Test Buyer".to_string(),
+        source_name: Some("Test Buyer".to_string()),
         source_group: "test-group@g.us".to_string(),
-        group_name: "Test Group".to_string(),
         medication: "Augmentin 1g".to_string(),
         medication_raw: "أوجمنتين 1 جرام".to_string(),
-        quantity: 20.0,
+        quantity: Some(rust_decimal::Decimal::from(20)),
         unit: Some("boxes".to_string()),
-        max_price: 160.0,
+        max_price: Some(rust_decimal::Decimal::from(160)),
         currency: Some("EGP".to_string()),
-        urgent: false,
         urgency_level: UrgencyLevel::Normal,
         expiry_requirement: None,
         ai_confidence: 0.9,
         notes: None,
-        raw_message: "مطلوب: أوجمنتين 1 جرام - 20 علبة".to_string(),
         status: ItemStatus::Active,
         content_embedding: None,
         created_at: now,
@@ -527,7 +151,7 @@ pub fn new_test_match(offer_id: &str, request_id: &str) -> Match {
         offer_id: offer_id.to_string(),
         request_id: request_id.to_string(),
         score: 0.85,
-        reasoning: "Strong medication match".to_string(),
+        reasoning: Some("Strong medication match".to_string()),
         matched_by: Some("AUTO".to_string()),
         status: MatchStatus::Pending,
         created_at: Utc::now(),
@@ -566,10 +190,10 @@ pub fn new_test_audit_log(action: &str, entity_id: &str) -> AuditLog {
 }
 
 /// Creates a test FeedbackRecord with default values
-pub fn new_test_feedback_record(match_id: Uuid, confirmed: bool) -> FeedbackRecord {
+pub fn new_test_feedback_record(match_id: impl ToString, confirmed: bool) -> FeedbackRecord {
     FeedbackRecord {
         id: Uuid::new_v4(),
-        match_id,
+        match_id: match_id.to_string(),
         user_id: "test-user".to_string(),
         confirmed,
         medication_score: 0.9,
