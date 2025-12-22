@@ -143,7 +143,7 @@ struct TestMessage {
     id: String,
     content: String,
     sender_name: Option<String>,
-    group_name: String,
+    group_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -324,8 +324,13 @@ async fn main() -> anyhow::Result<()> {
             let handle = tokio::spawn(async move {
                 let _permit = permit.await.unwrap();
                 let start = Instant::now();
-                let parse_fut =
-                    parser.parse(&content, sender.as_deref(), &group, None, None);
+                let parse_fut = parser.parse(
+                    &content,
+                    sender.as_deref(),
+                    group.as_deref().unwrap_or_default(),
+                    None,
+                    None,
+                );
 
                 let result =
                     tokio::time::timeout(Duration::from_secs(timeout_secs), parse_fut).await;

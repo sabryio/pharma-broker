@@ -4,6 +4,8 @@
 //! See: docs/phases/12-e2e-testing.md
 
 use chrono::Utc;
+use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 use tokio::sync::broadcast;
 
 use pharma_core::domain::{
@@ -17,12 +19,12 @@ use pharma_core::ws::WsEvent;
 fn create_raw_message() -> RawMessage {
     RawMessage {
         id: uuid::Uuid::new_v4().to_string(),
-        external_id: uuid::Uuid::new_v4().to_string(),
+        external_id: Some(uuid::Uuid::new_v4().to_string()),
         group_jid: "pharmacy-group@g.us".to_string(),
         group_name: "Pharmacy Exchange".to_string(),
         sender_jid: "sender@s.whatsapp.net".to_string(),
-        sender_phone: "+201234567890".to_string(),
-        sender_name: "Test Pharmacist".to_string(),
+        sender_phone: Some("+201234567890".to_string()),
+        sender_name: Some("Test Pharmacist".to_string()),
         content: "Selling Augmentin 1g - 50 boxes at 150 EGP each".to_string(),
         timestamp: Utc::now(),
         processed_at: None,
@@ -30,6 +32,7 @@ fn create_raw_message() -> RawMessage {
         reply_to_id: None,
         reply_to_content: None,
         reply_to_sender: None,
+        created_at: Utc::now(),
     }
 }
 
@@ -40,19 +43,19 @@ fn create_offer() -> Offer {
         id: uuid::Uuid::new_v4().to_string(),
         raw_message_id: uuid::Uuid::new_v4().to_string(),
         source_phone: "+201234567890".to_string(),
-        source_name: "Test Seller".to_string(),
+        source_name: Some("Test Seller".to_string()),
         source_group: "pharmacy-group@g.us".to_string(),
         group_name: "Pharmacy Exchange".to_string(),
         medication: "Augmentin 1g".to_string(),
         medication_raw: "أوجمنتين 1 جم".to_string(),
-        quantity: 50.0,
+        quantity: Decimal::from_f64(50.0),
         unit: Some("boxes".to_string()),
-        price: 150.0,
+        price: Decimal::from_f64(150.0),
         currency: Some("EGP".to_string()),
         expiry_date: None,
         batch_number: None,
         notes: None,
-        raw_message: "Selling Augmentin 1g - 50 boxes at 150 EGP".to_string(),
+        raw_message: Some("Selling Augmentin 1g - 50 boxes at 150 EGP".to_string()),
         status: ItemStatus::Active,
         content_embedding: None,
         urgent: false,
@@ -71,21 +74,21 @@ fn create_matching_request() -> Request {
         id: uuid::Uuid::new_v4().to_string(),
         raw_message_id: uuid::Uuid::new_v4().to_string(),
         source_phone: "+201098765432".to_string(),
-        source_name: "Test Buyer".to_string(),
+        source_name: Some("Test Buyer".to_string()),
         source_group: "pharmacy-group@g.us".to_string(),
         group_name: "Pharmacy Exchange".to_string(),
-        medication: "Augmentin 1g".to_string(), // Same medication
+        medication: "Augmentin 1g".to_string(),
         medication_raw: "أوجمنتين 1 جرام".to_string(),
-        quantity: 30.0, // Partial quantity
+        quantity: Decimal::from_f64(30.0),
         unit: Some("boxes".to_string()),
-        max_price: 160.0, // Higher than offer price
+        max_price: Decimal::from_f64(160.0),
         currency: Some("EGP".to_string()),
         urgent: false,
         urgency_level: UrgencyLevel::Normal,
         expiry_requirement: None,
         ai_confidence: 0.9,
         notes: None,
-        raw_message: "Looking for Augmentin 1g - need 30 boxes".to_string(),
+        raw_message: Some("Looking for Augmentin 1g - need 30 boxes".to_string()),
         status: ItemStatus::Active,
         content_embedding: None,
         created_at: now,
@@ -100,10 +103,10 @@ fn create_match(offer: &Offer, request: &Request, score: f64) -> Match {
         offer_id: offer.id.clone(),
         request_id: request.id.clone(),
         score,
-        reasoning: format!(
+        reasoning: Some(format!(
             "Medication match: {} vs {}",
             offer.medication, request.medication
-        ),
+        )),
         matched_by: Some("AUTO".to_string()),
         status: MatchStatus::Pending,
         created_at: Utc::now(),
@@ -127,16 +130,16 @@ fn test_e2e_message_to_match_flow() {
     // Step 2: Parse into offer
     let offer = create_offer();
     assert_eq!(offer.medication, "Augmentin 1g");
-    assert_eq!(offer.quantity, 50.0);
-    assert_eq!(offer.price, 150.0);
+    assert_eq!(offer.quantity_f64(), 50.0);
+    assert_eq!(offer.price_f64(), 150.0);
     assert_eq!(offer.status, ItemStatus::Active);
 
     // Step 3: Create matching request
     let request = create_matching_request();
-    assert_eq!(request.medication, offer.medication); // Same medication
+    assert_eq!(request.medication, offer.medication);
 
     // Step 4: Calculate match score
-    let score = 0.85; // Simulated high score
+    let score = 0.85;
     let match_entity = create_match(&offer, &request, score);
 
     // Verify match entity
@@ -261,11 +264,11 @@ fn test_e2e_full_scoring() {
     let weights = Weights::default();
 
     // Simulate component scores
-    let medication_score = 1.0; // Exact match
-    let dosage_score = 0.9; // Close match
-    let quantity_score = 0.6; // Offer has 50, request wants 30
-    let price_score = 1.0; // Request max > offer price
-    let recency_score = 0.8; // Recent
+    let medication_score = 1.0;
+    let dosage_score = 0.9;
+    let quantity_score = 0.6;
+    let price_score = 1.0;
+    let recency_score = 0.8;
 
     // Calculate weighted score
     let total = medication_score * weights.medication

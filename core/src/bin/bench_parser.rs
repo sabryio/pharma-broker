@@ -110,7 +110,7 @@ struct LegacyMessage {
     id: String,
     content: String,
     sender_name: Option<String>,
-    group_name: String,
+    group_name: Option<String>,
 }
 
 // ============================================================================
@@ -142,7 +142,7 @@ async fn main() -> anyhow::Result<()> {
     println!("\n📥 Fetching messages from database...");
     let messages: Vec<LegacyMessage> = sqlx::query_as!(
         LegacyMessage,
-        r#"SELECT id, content, sender_name, COALESCE(group_name, '') as group_name FROM raw_messages LIMIT $1"#,
+        r#"SELECT id, content, sender_name, group_name FROM raw_messages LIMIT $1"#,
         limit
     )
     .fetch_all(&pool)
@@ -176,7 +176,9 @@ async fn main() -> anyhow::Result<()> {
             if let Some(ref sender) = m.sender_name {
                 msg = msg.with_sender(sender);
             }
-            msg = msg.with_group(m.group_name);
+            if let Some(ref group) = m.group_name {
+                msg = msg.with_group(group);
+            }
             msg
         })
         .collect();
@@ -204,7 +206,13 @@ async fn main() -> anyhow::Result<()> {
             let start = Instant::now();
 
             let result = p
-                .parse(&content, sender.as_deref(), &group, None, None)
+                .parse(
+                    &content,
+                    sender.as_deref(),
+                    group.as_deref().unwrap_or(""),
+                    None,
+                    None,
+                )
                 .await;
 
             let latency = start.elapsed().as_millis();

@@ -16,7 +16,7 @@ fn create_test_match() -> Match {
         offer_id: "offer-1".to_string(),
         request_id: "request-1".to_string(),
         score: 0.85,
-        reasoning: "High medication similarity".to_string(),
+        reasoning: Some("High medication similarity".to_string()),
         matched_by: Some("AUTO".to_string()),
         status: MatchStatus::Pending,
         created_at: Utc::now(),
