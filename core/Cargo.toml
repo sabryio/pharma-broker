@@ -53,6 +53,10 @@ path = "src/bin/reset_db.rs"
 name = "monitor"
 path = "src/bin/monitor.rs"
 
+[[bin]]
+name = "db-health"
+path = "src/bin/db_health.rs"
+
 [dependencies]
 # Async runtime
 tokio = { version = "1.48.0", features = ["full", "tracing"] }

@@ -14,8 +14,8 @@ use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::broadcast;
 
 use super::{
-    audit_trail, calibration, confidence, embedding_cache, groups, handlers, match_filter,
-    review_queue, weights,
+    audit_trail, calibration, confidence, diagnostics, embedding_cache, groups, handlers,
+    match_filter, review_queue, weights,
 };
 use crate::matching::MatchingEngine;
 use crate::repository::{
@@ -252,6 +252,23 @@ where
         .route(
             "/api/audit-trail/recent",
             get(audit_trail::get_recent_actions::<RQ, A, MM>),
+        )
+        // Database Diagnostics
+        .route(
+            "/api/diagnostics/health",
+            get(diagnostics::get_health::<RQ, A, MM>),
+        )
+        .route(
+            "/api/diagnostics/tables",
+            get(diagnostics::get_table_stats::<RQ, A, MM>),
+        )
+        .route(
+            "/api/diagnostics/indexes",
+            get(diagnostics::get_index_stats::<RQ, A, MM>),
+        )
+        .route(
+            "/api/diagnostics/queries",
+            get(diagnostics::analyze_queries::<RQ, A, MM>),
         )
         // WebSocket
         .route("/ws", get(ws::ws_handler::<RQ, A, MM>))

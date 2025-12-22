@@ -103,18 +103,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_index(
-                Index::create()
-                    .if_not_exists()
-                    .name("idx_feedback_records_match_id")
-                    .table(FeedbackRecords::Table)
-                    .col(FeedbackRecords::MatchId)
-                    .to_owned(),
-            )
-            .await?;
-
-        // Unique constraint: one feedback per match
+        // Unique constraint: one feedback per match (this also serves as an index for match_id Lookups)
         manager
             .create_index(
                 Index::create()
@@ -124,6 +113,14 @@ impl MigrationTrait for Migration {
                     .col(FeedbackRecords::MatchId)
                     .unique()
                     .to_owned(),
+            )
+            .await?;
+
+        // Covering index for statistics queries
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "CREATE INDEX IF NOT EXISTS idx_feedback_records_stats_covering ON feedback_records (created_at, total_score)",
             )
             .await?;
 

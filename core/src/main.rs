@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use pharma_core::ai::PharmaParser;
+use pharma_db::migration;
 #[cfg(not(feature = "tokio-console"))]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -16,7 +17,7 @@ use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
     SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
     SeaOrmMedicationMappingRepo, SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo,
-    SeaOrmReviewQueueRepo, create_connection, pharma_db,
+    SeaOrmReviewQueueRepo, create_connection,
 };
 use pharma_core::worker::match_processor::MatchProcessor;
 
@@ -71,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Run migrations
     tracing::info!("🔄 Running database migrations...");
-    pharma_db::migration::run_migrations(&db).await?;
+    migration::run_migrations(&db).await?;
     tracing::info!("✅ Migrations complete");
 
     // Create repositories (SeaORM)
@@ -132,6 +133,8 @@ async fn main() -> anyhow::Result<()> {
     // Initialize and start MatchProcessor (background worker)
     // Create shutdown channel for worker coordination
     let (worker_shutdown_tx, worker_shutdown_rx) = tokio::sync::watch::channel(false);
+    let rx_match = worker_shutdown_rx.clone();
+    let rx_janitor = worker_shutdown_rx.clone();
 
     let processor = MatchProcessor::new(
         match_queue_repo.clone(),
@@ -143,7 +146,23 @@ async fn main() -> anyhow::Result<()> {
         ws_tx.clone(),
     );
     let worker_handle = tokio::spawn(async move {
-        processor.run(worker_shutdown_rx).await;
+        processor.run(rx_match).await;
+    });
+
+    // Initialize and start Janitor (cleanup & partitioning worker)
+    let janitor_config = pharma_core::worker::janitor::JanitorConfig::from_env();
+    let janitor_repos = pharma_core::worker::janitor::JanitorRepositories {
+        raw_message: raw_message_repo.clone(),
+        offer: offer_repo.clone(),
+        request: request_repo.clone(),
+        match_repo: match_repo.clone(),
+        match_queue: match_queue_repo.clone(),
+        audit_log: audit_log_repo.clone(),
+    };
+    let janitor =
+        pharma_core::worker::janitor::Janitor::new(janitor_config, db.clone(), janitor_repos);
+    let janitor_handle = tokio::spawn(async move {
+        janitor.run(rx_janitor).await;
     });
 
     // Create application state for HTTP (with matching engine)
@@ -281,11 +300,23 @@ async fn main() -> anyhow::Result<()> {
             // Phase 4: Wait for workers to drain (with timeout)
             tracing::info!("Phase 4: Waiting for workers to drain...");
             let drain_timeout = std::time::Duration::from_secs(10);
-            match tokio::time::timeout(drain_timeout, worker_handle).await {
-                Ok(Ok(())) => tracing::info!("✅ Worker stopped gracefully"),
-                Ok(Err(e)) => tracing::warn!("⚠️ Worker task panicked: {}", e),
-                Err(_) => tracing::warn!("⚠️ Worker drain timed out after {:?}", drain_timeout),
-            }
+
+            let _ = tokio::join!(
+                async {
+                    match tokio::time::timeout(drain_timeout, worker_handle).await {
+                        Ok(Ok(())) => tracing::info!("✅ MatchProcessor stopped gracefully"),
+                        Ok(Err(e)) => tracing::warn!("⚠️ MatchProcessor task panicked: {}", e),
+                        Err(_) => tracing::warn!("⚠️ MatchProcessor drain timed out after {:?}", drain_timeout),
+                    }
+                },
+                async {
+                    match tokio::time::timeout(drain_timeout, janitor_handle).await {
+                        Ok(Ok(())) => tracing::info!("✅ Janitor stopped gracefully"),
+                        Ok(Err(e)) => tracing::warn!("⚠️ Janitor task panicked: {}", e),
+                        Err(_) => tracing::warn!("⚠️ Janitor drain timed out after {:?}", drain_timeout),
+                    }
+                }
+            );
 
             // Phase 5: Final drain for servers
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;

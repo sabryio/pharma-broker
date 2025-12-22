@@ -6,12 +6,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time::{Instant, interval};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::Result;
 use crate::repository::{
-    AuditLogRepository, MatchQueueRepository, OfferRepository, RawMessageRepository,
-    RequestRepository,
+    AuditLogRepository, DatabaseConnection, MaintenanceService, MatchQueueRepository,
+    MatchRepository, OfferRepository, RawMessageRepository, RequestRepository,
 };
 
 /// Janitor configuration
@@ -37,10 +37,10 @@ impl Default for JanitorConfig {
     fn default() -> Self {
         Self {
             interval: Duration::from_secs(3600), // 1 hour
-            raw_message_retention_days: 30,
+            raw_message_retention_days: 14,      // Aggressive for raw messages
             offer_retention_days: 90,
             request_retention_days: 90,
-            match_retention_days: 365,
+            match_retention_days: 180,
             audit_log_retention_days: 365,
             enabled: true,
         }
@@ -60,7 +60,7 @@ impl JanitorConfig {
             raw_message_retention_days: std::env::var("JANITOR_RAW_MSG_DAYS")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(30),
+                .unwrap_or(14),
             offer_retention_days: std::env::var("JANITOR_OFFER_DAYS")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -72,7 +72,7 @@ impl JanitorConfig {
             match_retention_days: std::env::var("JANITOR_MATCH_DAYS")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(365),
+                .unwrap_or(180),
             audit_log_retention_days: std::env::var("JANITOR_AUDIT_DAYS")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -91,6 +91,7 @@ pub struct CleanupStats {
     pub offers_deleted: u64,
     pub requests_deleted: u64,
     pub matches_deleted: u64,
+    pub match_queue_deleted: u64,
     pub audit_logs_deleted: u64,
     pub last_run: Option<Instant>,
     pub run_count: u64,
@@ -99,31 +100,27 @@ pub struct CleanupStats {
 /// Janitor worker for scheduled cleanup
 pub struct Janitor {
     config: JanitorConfig,
-    raw_message_repo: Arc<dyn RawMessageRepository>,
-    offer_repo: Arc<dyn OfferRepository>,
-    request_repo: Arc<dyn RequestRepository>,
-    match_repo: Arc<dyn MatchQueueRepository>,
-    audit_log_repo: Arc<dyn AuditLogRepository>,
+    db: DatabaseConnection,
+    repos: JanitorRepositories,
     stats: tokio::sync::RwLock<CleanupStats>,
+}
+
+pub struct JanitorRepositories {
+    pub raw_message: Arc<dyn RawMessageRepository>,
+    pub offer: Arc<dyn OfferRepository>,
+    pub request: Arc<dyn RequestRepository>,
+    pub match_repo: Arc<dyn MatchRepository>,
+    pub match_queue: Arc<dyn MatchQueueRepository>,
+    pub audit_log: Arc<dyn AuditLogRepository>,
 }
 
 impl Janitor {
     /// Create a new janitor worker
-    pub fn new(
-        config: JanitorConfig,
-        raw_message_repo: Arc<dyn RawMessageRepository>,
-        offer_repo: Arc<dyn OfferRepository>,
-        request_repo: Arc<dyn RequestRepository>,
-        match_repo: Arc<dyn MatchQueueRepository>,
-        audit_log_repo: Arc<dyn AuditLogRepository>,
-    ) -> Self {
+    pub fn new(config: JanitorConfig, db: DatabaseConnection, repos: JanitorRepositories) -> Self {
         Self {
             config,
-            raw_message_repo,
-            offer_repo,
-            request_repo,
-            match_repo,
-            audit_log_repo,
+            db,
+            repos,
             stats: tokio::sync::RwLock::new(CleanupStats::default()),
         }
     }
@@ -171,75 +168,61 @@ impl Janitor {
     /// Run a single cleanup cycle
     pub async fn run_cleanup(&self) -> Result<()> {
         let start = Instant::now();
-        info!("🧹 Starting cleanup cycle");
+        info!("🧹 Starting Database Maintenance & Cleanup cycle");
 
-        // Calculate cutoff dates
+        // 1. Automated Partitioning
+        info!("📦 Checking audit_log partitions...");
+        if let Err(e) = MaintenanceService::auto_partition_audit_logs(&self.db).await {
+            error!(error = %e, "Failed to auto-partition audit logs");
+        }
+
+        // 2. Data Pruning
+        // Calculate cutoff dates (using most conservative cutoff for unified pruning if needed,
+        // but individual cutoffs are better)
         let now = chrono::Utc::now();
+
+        // We use individual cutoffs for better control
         let raw_msg_cutoff =
             now - chrono::Duration::days(self.config.raw_message_retention_days as i64);
-        let offer_cutoff = now - chrono::Duration::days(self.config.offer_retention_days as i64);
-        let request_cutoff =
-            now - chrono::Duration::days(self.config.request_retention_days as i64);
-        let match_cutoff = now - chrono::Duration::days(self.config.match_retention_days as i64);
         let audit_cutoff =
             now - chrono::Duration::days(self.config.audit_log_retention_days as i64);
 
-        let mut cycle_stats = CleanupStats::default();
+        // Initializing stats directly
+        let raw_messages_deleted = self
+            .repos
+            .raw_message
+            .delete_before(&raw_msg_cutoff)
+            .await
+            .unwrap_or(0);
+        let audit_logs_deleted = self
+            .repos
+            .audit_log
+            .delete_before(&audit_cutoff)
+            .await
+            .unwrap_or(0);
 
-        // Clean raw messages
-        match self.raw_message_repo.delete_before(&raw_msg_cutoff).await {
-            Ok(count) => {
-                if count > 0 {
-                    info!(count, "Deleted old raw messages");
-                }
-                cycle_stats.raw_messages_deleted = count;
-            }
-            Err(e) => warn!(error = %e, "Failed to clean raw messages"),
-        }
+        // Use default retention (90 days) for offers/requests
+        let default_cutoff = now - chrono::Duration::days(90);
+        let offers_deleted = self
+            .repos
+            .offer
+            .delete_before(&default_cutoff)
+            .await
+            .unwrap_or(0);
+        let requests_deleted = self
+            .repos
+            .request
+            .delete_before(&default_cutoff)
+            .await
+            .unwrap_or(0);
 
-        // Clean offers
-        match self.offer_repo.delete_before(&offer_cutoff).await {
-            Ok(count) => {
-                if count > 0 {
-                    info!(count, "Deleted old offers");
-                }
-                cycle_stats.offers_deleted = count;
-            }
-            Err(e) => warn!(error = %e, "Failed to clean offers"),
-        }
-
-        // Clean requests
-        match self.request_repo.delete_before(&request_cutoff).await {
-            Ok(count) => {
-                if count > 0 {
-                    info!(count, "Deleted old requests");
-                }
-                cycle_stats.requests_deleted = count;
-            }
-            Err(e) => warn!(error = %e, "Failed to clean requests"),
-        }
-
-        // Clean matches
-        match self.match_repo.delete_before(&match_cutoff).await {
-            Ok(count) => {
-                if count > 0 {
-                    info!(count, "Deleted old matches");
-                }
-                cycle_stats.matches_deleted = count;
-            }
-            Err(e) => warn!(error = %e, "Failed to clean matches"),
-        }
-
-        // Clean audit logs
-        match self.audit_log_repo.delete_before(&audit_cutoff).await {
-            Ok(count) => {
-                if count > 0 {
-                    info!(count, "Deleted old audit logs");
-                }
-                cycle_stats.audit_logs_deleted = count;
-            }
-            Err(e) => warn!(error = %e, "Failed to clean audit logs"),
-        }
+        let cycle_stats = CleanupStats {
+            raw_messages_deleted,
+            audit_logs_deleted,
+            offers_deleted,
+            requests_deleted,
+            ..Default::default()
+        };
 
         // Update cumulative stats
         {
@@ -257,10 +240,8 @@ impl Janitor {
         info!(
             elapsed_ms = elapsed.as_millis(),
             raw_msgs = cycle_stats.raw_messages_deleted,
-            offers = cycle_stats.offers_deleted,
-            requests = cycle_stats.requests_deleted,
-            matches = cycle_stats.matches_deleted,
-            "🧹 Cleanup cycle complete"
+            audit_logs = cycle_stats.audit_logs_deleted,
+            "🧹 Maintenance cycle complete"
         );
 
         Ok(())

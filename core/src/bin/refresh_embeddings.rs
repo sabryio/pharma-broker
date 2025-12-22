@@ -286,7 +286,10 @@ async fn main() -> anyhow::Result<()> {
     println!();
 
     if dry_run {
-        println!("{}", "🔍 DRY RUN MODE - No changes will be made".yellow().bold());
+        println!(
+            "{}",
+            "🔍 DRY RUN MODE - No changes will be made".yellow().bold()
+        );
         println!();
     }
 
@@ -411,7 +414,10 @@ async fn main() -> anyhow::Result<()> {
 
     if dry_run {
         println!();
-        println!("{}", "Dry run complete. Use without --dry-run to execute.".cyan());
+        println!(
+            "{}",
+            "Dry run complete. Use without --dry-run to execute.".cyan()
+        );
         return Ok(());
     }
 
@@ -553,7 +559,11 @@ async fn main() -> anyhow::Result<()> {
                 completed,
                 total_batches,
                 gen_.to_string().green(),
-                if err > 0 { err.to_string().red() } else { err.to_string().dimmed() }
+                if err > 0 {
+                    err.to_string().red()
+                } else {
+                    err.to_string().dimmed()
+                }
             );
         });
 
@@ -573,8 +583,7 @@ async fn main() -> anyhow::Result<()> {
     println!();
     println!(
         "{}",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            .dimmed()
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
     );
     println!(
         "{} Generated {} embeddings in {:?}",

@@ -12,7 +12,8 @@
 //! ```
 
 // Re-export pharma_db
-pub use pharma_db;
+pub use pharma_db::maintenance::{MaintenanceRepositories, MaintenanceService, PruneReport};
+pub use pharma_db::migration;
 
 // Convenience re-exports from pharma_db
 pub use pharma_db::{Database, DatabaseConnection};

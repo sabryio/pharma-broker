@@ -22,6 +22,7 @@ pub mod audit_types;
 pub mod diagnostics;
 pub mod entity;
 pub mod feedback_params;
+pub mod maintenance;
 pub mod migration;
 pub mod params;
 pub mod repo;
@@ -33,6 +34,9 @@ pub mod testing;
 
 pub use migration::run_migrations;
 pub use sea_orm::{Database, DatabaseConnection, DbErr};
+
+// Export diagnostics types
+pub use diagnostics::{DatabaseHealth, DbDiagnostics, IndexStats, QueryPlanAnalysis, TableStats};
 
 /// Re-export common types
 pub mod prelude {
