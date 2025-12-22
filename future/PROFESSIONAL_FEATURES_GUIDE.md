@@ -1,6 +1,9 @@
 # Professional Features Implementation Guide
 
-Detailed implementation plans for key features to enhance PharmaBroker's functionality, user engagement, and competitiveness.
+> **Target Architecture**: Rust Core  
+> **Last Updated**: December 22, 2025
+
+Detailed implementation plans for key features to enhance PharmaBroker's functionality.
 
 ---
 
@@ -10,68 +13,71 @@ Detailed implementation plans for key features to enhance PharmaBroker's functio
 
 Enable users to rate suppliers after confirmed matches, building trust and accountability.
 
-### Data Model
+### Data Model (Rust)
 
-```go
-// internal/domain/rating.go
-type SupplierRating struct {
-    ID           string    `json:"id"`
-    SupplierJID  string    `json:"supplier_jid"`
-    SupplierName string    `json:"supplier_name"`
-    MatchID      string    `json:"match_id"`
-    RaterJID     string    `json:"rater_jid"`
+```rust
+// core/src/domain/rating.rs
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupplierRating {
+    pub id: String,
+    pub supplier_jid: String,
+    pub supplier_name: String,
+    pub match_id: String,
+    pub rater_jid: String,
 
     // Rating dimensions (1-5)
-    QualityScore    int     `json:"quality_score"`    // Product quality
-    DeliveryScore   int     `json:"delivery_score"`   // On-time delivery
-    CommunicationScore int  `json:"communication_score"` // Responsiveness
-    PriceScore      int     `json:"price_score"`      // Fair pricing
-    OverallScore    float64 `json:"overall_score"`    // Calculated average
+    pub quality_score: i32,
+    pub delivery_score: i32,
+    pub communication_score: i32,
+    pub price_score: i32,
+    pub overall_score: f64,
 
-    Comment      string    `json:"comment,omitempty"`
-    CreatedAt    time.Time `json:"created_at"`
+    pub comment: Option<String>,
+    pub created_at: DateTime<Utc>,
 }
 
-type SupplierProfile struct {
-    JID             string  `json:"jid"`
-    Name            string  `json:"name"`
-    Phone           string  `json:"phone"`
-    AvgRating       float64 `json:"avg_rating"`
-    TotalRatings    int     `json:"total_ratings"`
-    ConfirmedDeals  int     `json:"confirmed_deals"`
-    JoinedAt        time.Time `json:"joined_at"`
-    Verified        bool    `json:"verified"`
-    VerificationLevel string `json:"verification_level"` // basic, verified, premium
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupplierProfile {
+    pub jid: String,
+    pub name: String,
+    pub phone: String,
+    pub avg_rating: f64,
+    pub total_ratings: i32,
+    pub confirmed_deals: i32,
+    pub joined_at: DateTime<Utc>,
+    pub verified: bool,
+    pub verification_level: VerificationLevel, // Basic, Verified, Premium
 }
 ```
 
 ### Implementation Tasks
 
-- [ ] Create `internal/domain/rating.go` - Rating models
-- [ ] Create `internal/storage/rating_repo.go` - Rating repository
-- [ ] Create `internal/storage/supplier_repo.go` - Supplier profiles
-- [ ] Add API endpoints:
+- [ ] Create `core/crates/db/src/entity/rating.rs` - Rating entity
+- [ ] Create `core/crates/db/src/repo/rating.rs` - Rating repository
+- [ ] Create `core/crates/db/src/repo/supplier.rs` - Supplier profiles
+- [ ] Add API handlers in `core/src/api/handlers.rs`:
   - [ ] `POST /api/ratings` - Submit rating
-  - [ ] `GET /api/suppliers/{jid}/ratings` - Get supplier ratings
-  - [ ] `GET /api/suppliers/{jid}/profile` - Get supplier profile
+  - [ ] `GET /api/suppliers/{jid}/ratings` - Get ratings
+  - [ ] `GET /api/suppliers/{jid}/profile` - Get profile
 - [ ] Add rating prompt after match confirmation (24h delay)
 - [ ] Dashboard: Supplier leaderboard component
-- [ ] Bot command: `/rate <match_id> <1-5>` or `/supplier <name>`
 
 ### Rating Calculation
 
-```go
-func CalculateOverallRating(r *SupplierRating) float64 {
-    weights := map[string]float64{
-        "quality":       0.30,
-        "delivery":      0.25,
-        "communication": 0.20,
-        "price":         0.25,
+```rust
+impl SupplierRating {
+    pub fn calculate_overall(&self) -> f64 {
+        const QUALITY_WEIGHT: f64 = 0.30;
+        const DELIVERY_WEIGHT: f64 = 0.25;
+        const COMMUNICATION_WEIGHT: f64 = 0.20;
+        const PRICE_WEIGHT: f64 = 0.25;
+
+        (self.quality_score as f64) * QUALITY_WEIGHT +
+        (self.delivery_score as f64) * DELIVERY_WEIGHT +
+        (self.communication_score as f64) * COMMUNICATION_WEIGHT +
+        (self.price_score as f64) * PRICE_WEIGHT
     }
-    return float64(r.QualityScore)*weights["quality"] +
-           float64(r.DeliveryScore)*weights["delivery"] +
-           float64(r.CommunicationScore)*weights["communication"] +
-           float64(r.PriceScore)*weights["price"]
 }
 ```
 
@@ -81,169 +87,139 @@ func CalculateOverallRating(r *SupplierRating) float64 {
 
 ### Overview
 
-Real-time alerts via WhatsApp, Telegram, and browser push for critical events.
+Real-time alerts via WhatsApp, Telegram, and browser push.
 
 ### Notification Types
 
-| Type           | Trigger                              | Priority | Channels     |
-| -------------- | ------------------------------------ | -------- | ------------ |
-| New Match      | Match created with score ≥ threshold | High     | WA, TG, Push |
-| Urgent Request | Request marked urgent                | Critical | WA, TG, Push |
-| Price Drop     | Offer price drops for watched med    | Medium   | TG, Push     |
-| Match Expiring | Pending match > 24h                  | Medium   | WA, TG       |
-| Daily Digest   | 9:00 AM daily                        | Low      | TG, Email    |
+| Type           | Trigger           | Priority | Channels     |
+| -------------- | ----------------- | -------- | ------------ |
+| New Match      | Score ≥ threshold | High     | WA, TG, Push |
+| Urgent Request | Marked urgent     | Critical | WA, TG, Push |
+| Price Drop     | Price below watch | Medium   | TG, Push     |
+| Match Expiring | Pending > 24h     | Medium   | WA, TG       |
+| Daily Digest   | 9:00 AM           | Low      | TG, Email    |
 
-### Data Model
+### Data Model (Rust)
 
-```go
-type NotificationPreference struct {
-    UserJID           string   `json:"user_jid"`
-    WhatsAppEnabled   bool     `json:"whatsapp_enabled"`
-    TelegramEnabled   bool     `json:"telegram_enabled"`
-    TelegramChatID    string   `json:"telegram_chat_id"`
-    PushEnabled       bool     `json:"push_enabled"`
-    EmailEnabled      bool     `json:"email_enabled"`
-    Email             string   `json:"email"`
+```rust
+// core/src/domain/notification.rs
 
-    // Granular controls
-    NewMatchThreshold float64  `json:"new_match_threshold"` // Min score to notify
-    UrgentOnly        bool     `json:"urgent_only"`
-    QuietHoursStart   string   `json:"quiet_hours_start"` // "22:00"
-    QuietHoursEnd     string   `json:"quiet_hours_end"`   // "08:00"
-    WatchedMedications []string `json:"watched_medications"`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationPreference {
+    pub user_jid: String,
+    pub whatsapp_enabled: bool,
+    pub telegram_enabled: bool,
+    pub telegram_chat_id: Option<String>,
+    pub push_enabled: bool,
+    pub email_enabled: bool,
+    pub email: Option<String>,
+
+    pub new_match_threshold: f64,
+    pub urgent_only: bool,
+    pub quiet_hours_start: Option<String>,
+    pub quiet_hours_end: Option<String>,
+    pub watched_medications: Vec<String>,
 }
 
-type Notification struct {
-    ID         string    `json:"id"`
-    UserJID    string    `json:"user_jid"`
-    Type       string    `json:"type"`
-    Title      string    `json:"title"`
-    Body       string    `json:"body"`
-    Data       map[string]string `json:"data"`
-    Channels   []string  `json:"channels"` // ["whatsapp", "telegram", "push"]
-    Status     string    `json:"status"`   // pending, sent, failed
-    SentAt     *time.Time `json:"sent_at"`
-    CreatedAt  time.Time `json:"created_at"`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Notification {
+    pub id: String,
+    pub user_jid: String,
+    pub notification_type: NotificationType,
+    pub title: String,
+    pub body: String,
+    pub data: HashMap<String, String>,
+    pub channels: Vec<Channel>,
+    pub status: NotificationStatus,
+    pub sent_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
 }
 ```
 
 ### Implementation Tasks
 
-- [ ] Create `internal/domain/notification.go` - Notification models
-- [ ] Create `internal/notify/dispatcher.go` - Multi-channel dispatcher
-- [ ] Create `internal/notify/templates.go` - Message templates (AR/EN)
-- [ ] Create `internal/storage/notification_repo.go` - Notification storage
-- [ ] Add Web Push support (VAPID keys)
+- [ ] Create `core/src/notify/dispatcher.rs` - Multi-channel dispatcher
+- [ ] Create `core/src/notify/templates.rs` - Message templates (AR/EN)
+- [ ] Add preferences API endpoints
 - [ ] Add quiet hours logic
-- [ ] Add preferences API:
-  - [ ] `GET /api/notifications/preferences`
-  - [ ] `PUT /api/notifications/preferences`
-- [ ] Bot commands: `/notify on|off`, `/watch <medication>`
-- [ ] Dashboard: Notification center component
-
-### Message Templates
-
-```go
-var NotificationTemplates = map[string]map[string]string{
-    "new_match": {
-        "en": "🔔 New Match: {{.Medication}} ({{.Score}}%)\n💊 {{.Quantity}} units @ {{.Price}} EGP\nID: {{.ID}}",
-        "ar": "🔔 مطابقة جديدة: {{.Medication}} ({{.Score}}%)\n💊 {{.Quantity}} وحدة @ {{.Price}} ج.م\nID: {{.ID}}",
-    },
-    "urgent_request": {
-        "en": "🔥 URGENT: {{.Medication}} needed\n📋 {{.Quantity}} units requested\nGroup: {{.Group}}",
-        "ar": "🔥 عاجل: مطلوب {{.Medication}}\n📋 {{.Quantity}} وحدة\nالمجموعة: {{.Group}}",
-    },
-}
-```
+- [ ] Integrate with WebSocket for real-time push
 
 ---
 
-## Feature 3: Price Analytics & Intelligence 📊
+## Feature 3: Price Analytics 📊
 
 ### Overview
 
-Track price history, identify trends, and provide fair price recommendations.
+Track price history, identify trends, provide fair price recommendations.
 
-### Data Model
+### Data Model (Rust)
 
-```go
-type PricePoint struct {
-    ID          string    `json:"id"`
-    Medication  string    `json:"medication"`
-    Price       float64   `json:"price"`
-    Quantity    float64   `json:"quantity"`
-    UnitPrice   float64   `json:"unit_price"` // price / quantity
-    Source      string    `json:"source"`     // "offer" or "request"
-    GroupJID    string    `json:"group_jid"`
-    RecordedAt  time.Time `json:"recorded_at"`
+```rust
+// core/src/domain/price.rs
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PricePoint {
+    pub id: String,
+    pub medication: String,
+    pub price: f64,
+    pub quantity: f64,
+    pub unit_price: f64,
+    pub source: PriceSource, // Offer or Request
+    pub group_jid: String,
+    pub recorded_at: DateTime<Utc>,
 }
 
-type PriceAnalytics struct {
-    Medication     string  `json:"medication"`
-    CurrentPrice   float64 `json:"current_price"`   // Latest avg
-    AvgPrice7d     float64 `json:"avg_price_7d"`
-    AvgPrice30d    float64 `json:"avg_price_30d"`
-    MinPrice30d    float64 `json:"min_price_30d"`
-    MaxPrice30d    float64 `json:"max_price_30d"`
-    PriceChange7d  float64 `json:"price_change_7d"`  // % change
-    PriceChange30d float64 `json:"price_change_30d"`
-    TrendDirection string  `json:"trend_direction"` // up, down, stable
-    FairPrice      float64 `json:"fair_price"`      // Recommended
-    DataPoints     int     `json:"data_points"`
-    LastUpdated    time.Time `json:"last_updated"`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceAnalytics {
+    pub medication: String,
+    pub current_price: f64,
+    pub avg_price_7d: f64,
+    pub avg_price_30d: f64,
+    pub min_price_30d: f64,
+    pub max_price_30d: f64,
+    pub price_change_7d: f64,
+    pub price_change_30d: f64,
+    pub trend_direction: TrendDirection, // Up, Down, Stable
+    pub fair_price: f64,
+    pub data_points: i32,
+    pub last_updated: DateTime<Utc>,
 }
+```
 
-type PriceAlert struct {
-    ID          string  `json:"id"`
-    UserJID     string  `json:"user_jid"`
-    Medication  string  `json:"medication"`
-    AlertType   string  `json:"alert_type"`   // below, above, change
-    ThresholdPrice float64 `json:"threshold_price"`
-    ThresholdPercent float64 `json:"threshold_percent"`
-    Active      bool    `json:"active"`
-    CreatedAt   time.Time `json:"created_at"`
+### Fair Price Algorithm
+
+```rust
+pub fn calculate_fair_price(prices: &[f64]) -> f64 {
+    if prices.len() < 3 {
+        return average(prices);
+    }
+
+    let mut sorted = prices.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let q1 = percentile(&sorted, 25.0);
+    let q3 = percentile(&sorted, 75.0);
+    let iqr = q3 - q1;
+
+    // Filter outliers
+    let filtered: Vec<f64> = sorted
+        .iter()
+        .filter(|&&p| p >= q1 - 1.5 * iqr && p <= q3 + 1.5 * iqr)
+        .copied()
+        .collect();
+
+    median(&filtered)
 }
 ```
 
 ### Implementation Tasks
 
-- [ ] Create `internal/domain/price_analytics.go` - Price models
-- [ ] Create `internal/storage/price_repo.go` - Price history storage
-- [ ] Create `internal/analytics/price_analyzer.go` - Analysis logic
+- [ ] Create `core/src/analytics/price.rs` - Price analysis
 - [ ] Auto-record prices from offers/requests
 - [ ] Calculate rolling averages and trends
-- [ ] Fair price algorithm (median + IQR)
 - [ ] Add API endpoints:
-  - [ ] `GET /api/analytics/price/{medication}` - Price analytics
-  - [ ] `GET /api/analytics/trending` - Top movers
-  - [ ] `POST /api/alerts/price` - Create price alert
-- [ ] Dashboard: Price chart component (Chart.js)
-- [ ] Bot commands: `/price <medication>`, `/alert add <med> below <price>`
-
-### Fair Price Algorithm
-
-```go
-func CalculateFairPrice(prices []float64) float64 {
-    if len(prices) < 3 {
-        return average(prices)
-    }
-
-    sort.Float64s(prices)
-    q1 := percentile(prices, 25)
-    q3 := percentile(prices, 75)
-    iqr := q3 - q1
-
-    // Filter outliers
-    var filtered []float64
-    for _, p := range prices {
-        if p >= q1-1.5*iqr && p <= q3+1.5*iqr {
-            filtered = append(filtered, p)
-        }
-    }
-
-    return median(filtered)
-}
-```
+  - [ ] `GET /api/analytics/price/{medication}`
+  - [ ] `GET /api/analytics/trending`
 
 ---
 
@@ -251,65 +227,30 @@ func CalculateFairPrice(prices []float64) float64 {
 
 ### Overview
 
-Track medication batch numbers and expiry dates for regulatory compliance and quality assurance.
-
-### Data Model
-
-```go
-type BatchInfo struct {
-    BatchNumber   string    `json:"batch_number"`
-    ExpiryDate    time.Time `json:"expiry_date"`
-    ManufactureDate *time.Time `json:"manufacture_date,omitempty"`
-    Manufacturer  string    `json:"manufacturer,omitempty"`
-}
-
-// Extend Offer model
-type OfferWithBatch struct {
-    domain.Offer
-    BatchInfo     *BatchInfo `json:"batch_info,omitempty"`
-    ExpiryMonths  int        `json:"expiry_months"` // Months until expiry
-    ExpiryStatus  string     `json:"expiry_status"` // ok, warning, critical
-}
-```
+Track batch numbers and expiry dates for compliance.
 
 ### Expiry Status Logic
 
-```go
-func GetExpiryStatus(expiryDate time.Time) string {
-    months := int(time.Until(expiryDate).Hours() / 24 / 30)
-    switch {
-    case months <= 0:
-        return "expired"
-    case months <= 3:
-        return "critical" // 🔴
-    case months <= 6:
-        return "warning"  // 🟡
-    default:
-        return "ok"       // 🟢
+```rust
+pub fn get_expiry_status(expiry_date: DateTime<Utc>) -> ExpiryStatus {
+    let now = Utc::now();
+    let months = (expiry_date - now).num_days() / 30;
+
+    match months {
+        m if m <= 0 => ExpiryStatus::Expired,    // ⛔
+        m if m <= 3 => ExpiryStatus::Critical,   // 🔴
+        m if m <= 6 => ExpiryStatus::Warning,    // 🟡
+        _ => ExpiryStatus::Ok,                    // 🟢
     }
 }
 ```
 
 ### Implementation Tasks
 
-- [ ] Extend `domain.Offer` with BatchInfo
-- [ ] Update AI prompt to extract batch/expiry from messages
-- [ ] Add expiry parsing for formats: "exp 03/25", "انتهاء 2025"
+- [ ] Extend offer entity with batch info
+- [ ] Update AI prompt to extract batch/expiry
+- [ ] Add expiry filter to offers API
 - [ ] Create expiry warning notifications
-- [ ] Add expiry filter to API:
-  - [ ] `GET /api/offers?min_expiry=6` (minimum 6 months)
-- [ ] Dashboard: Expiry indicator on offer cards
-- [ ] Bot: Include expiry in search results
-
-### AI Prompt Addition
-
-```
-## Batch & Expiry Extraction
-Extract batch numbers and expiry dates if mentioned:
-- "batch: ABC123, exp 03/2025" → batch_number: "ABC123", expiry: "2025-03-01"
-- "انتهاء 6/2025" → expiry: "2025-06-01"
-- "صلاحية سنة" → expiry: (current date + 1 year)
-```
 
 ---
 
@@ -317,90 +258,51 @@ Extract batch numbers and expiry dates if mentioned:
 
 ### Overview
 
-Progressive Web App for mobile-first experience with offline capabilities.
+Progressive Web App for mobile-first experience.
 
 ### PWA Features
 
-| Feature            | Status | Priority |
-| ------------------ | ------ | -------- |
-| Installable        | Todo   | High     |
-| Offline mode       | Todo   | High     |
-| Push notifications | Todo   | High     |
-| Background sync    | Todo   | Medium   |
-| Camera (QR scan)   | Todo   | Low      |
+| Feature            | Priority |
+| ------------------ | -------- |
+| Installable        | High     |
+| Offline mode       | High     |
+| Push notifications | High     |
+| Background sync    | Medium   |
+| Camera (QR scan)   | Low      |
 
 ### Implementation Tasks
 
-- [ ] Create `manifest.json` for PWA
-- [ ] Create service worker for offline caching
-- [ ] Implement IndexedDB for offline data
-- [ ] Add "Add to Home Screen" prompt
-- [ ] Implement background sync for offline actions
-- [ ] Add push notification subscription
-- [ ] Mobile-optimized UI components:
-  - [ ] Bottom navigation bar
-  - [ ] Swipe actions on cards
-  - [ ] Pull-to-refresh
-- [ ] QR scanner for medication lookup (optional)
-
-### Service Worker Strategy
-
-```javascript
-// Cache strategies
-const CACHE_NAME = "pharmabroker-v1";
-const STATIC_ASSETS = ["/index.html", "/app.js", "/styles.css"];
-const API_CACHE = "api-cache-v1";
-
-// Cache-first for static assets
-// Network-first for API calls
-// Stale-while-revalidate for images
-```
-
-### manifest.json
-
-```json
-{
-  "name": "PharmaBroker",
-  "short_name": "PB",
-  "description": "Pharmaceutical Trading Platform",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#1a1a2e",
-  "theme_color": "#4a90d9",
-  "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
-  ]
-}
-```
+- [ ] Create `manifest.json`
+- [ ] Create service worker
+- [ ] Implement IndexedDB for offline
+- [ ] Mobile-optimized UI components
 
 ---
 
-## Implementation Priority & Timeline
+## Implementation Priority
 
-| Phase | Feature             | Weeks | Dependencies        |
-| ----- | ------------------- | ----- | ------------------- |
-| 1     | Supplier Ratings    | 2     | None                |
-| 2     | Smart Notifications | 2     | Existing notify pkg |
-| 3     | Price Analytics     | 2     | None                |
-| 4     | Batch/Expiry        | 1     | AI prompt update    |
-| 5     | PWA                 | 2     | Frontend build      |
+| Phase | Feature             | Weeks | Dependencies     |
+| ----- | ------------------- | ----- | ---------------- |
+| 1     | Supplier Ratings    | 2     | None             |
+| 2     | Smart Notifications | 2     | notify module    |
+| 3     | Price Analytics     | 2     | None             |
+| 4     | Batch/Expiry        | 1     | AI prompt update |
+| 5     | PWA                 | 2     | Frontend build   |
 
-**Total estimated time: 9 weeks**
+**Total: ~9 weeks**
 
 ---
 
 ## Success Metrics
 
-| Feature          | KPI                    | Target                   |
-| ---------------- | ---------------------- | ------------------------ |
-| Supplier Ratings | Rating submission rate | 30% of confirmed matches |
-| Notifications    | Open rate              | > 40%                    |
-| Price Analytics  | Usage                  | 50+ queries/day          |
-| Batch/Expiry     | Compliance             | 100% offers with expiry  |
-| PWA              | Installation           | 500+ installs            |
+| Feature          | KPI             | Target           |
+| ---------------- | --------------- | ---------------- |
+| Supplier Ratings | Submission rate | 30% of matches   |
+| Notifications    | Open rate       | > 40%            |
+| Price Analytics  | Usage           | 50+ queries/day  |
+| Batch/Expiry     | Compliance      | 100% with expiry |
+| PWA              | Installs        | 500+             |
 
 ---
 
-_Document Version: 1.0_  
-_Last Updated: December 2024_
+_Last Updated: December 22, 2025_

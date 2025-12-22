@@ -1,0 +1,634 @@
+{
+  "اوجمنتين": {
+    "english": "Augmentin",
+    "synonyms": ["Amoxicillin-Clavulanate", "Amoxiclav", "Co-Amoxiclav"]
+  },
+  "انسولين": {
+    "english": "Insulin",
+    "synonyms": ["Insulatard", "Actrapid", "Mixtard"]
+  },
+  "فيزكو بلس": {
+    "english": "ViscoPlus",
+    "synonyms": ["Hyaluronic Acid", "HA Injection"]
+  },
+  "جونابيور": {
+    "english": "Gonapure",
+    "synonyms": ["FSH", "Follitropin", "Gonadotropin"]
+  },
+  "اوفتريل": {
+    "english": "Ovitrelle",
+    "synonyms": ["Choriogonadotropin alfa", "hCG", "Ovidrel"]
+  },
+  "أوفتريل": {
+    "english": "Ovitrelle",
+    "synonyms": ["Choriogonadotropin alfa", "hCG", "Ovidrel"]
+  },
+  "جادينو": {
+    "english": "Jadenu",
+    "synonyms": ["Deferasirox", "Exjade"]
+  },
+  "اوزمبك": {
+    "english": "Ozempic",
+    "synonyms": ["Semaglutide", "GLP-1 agonist", "Wegovy", "Rybelsus"]
+  },
+  "كوريومون": {
+    "english": "Choriomon",
+    "synonyms": ["hCG", "Human Chorionic Gonadotropin", "Pregnyl"]
+  },
+  "ديكابيبتيل": {
+    "english": "Decapeptyl",
+    "synonyms": ["Triptorelin", "GnRH agonist", "Diphereline"]
+  },
+  "ديكابيبتايل": {
+    "english": "Decapeptyl",
+    "synonyms": ["Triptorelin", "GnRH agonist", "Diphereline"]
+  },
+  "ميريوفيرت": {
+    "english": "Mireofert",
+    "synonyms": ["HMG", "Menotropin", "Menopur"]
+  },
+  "مريوفيرت": {
+    "english": "Mireofert",
+    "synonyms": ["HMG", "Menotropin", "Menopur"]
+  },
+  "ابيفاسي": {
+    "english": "Epifasi",
+    "synonyms": ["hCG", "Chorionic Gonadotropin"]
+  },
+  "إبيجونال": {
+    "english": "Epigonal",
+    "synonyms": ["FSH", "Follitropin"]
+  },
+  "فوستيمون": {
+    "english": "Fostimon",
+    "synonyms": ["FSH", "Urofollitropin", "Follitropin"]
+  },
+  "بروجراف": {
+    "english": "Prograf",
+    "synonyms": ["Tacrolimus", "FK506", "Advagraf"]
+  },
+  "كالكوينس": {
+    "english": "Calquence",
+    "synonyms": ["Acalabrutinib", "BTK Inhibitor"]
+  },
+  "سوفريزا": {
+    "english": "Suvreza",
+    "synonyms": ["Semaglutide"]
+  },
+  "لوكيلما": {
+    "english": "Lukelma",
+    "synonyms": ["Sodium Zirconium Cyclosilicate"]
+  },
+  "تريسيبا": {
+    "english": "Tresiba",
+    "synonyms": ["Insulin Degludec", "Long-acting Insulin"]
+  },
+  "ريزوديج": {
+    "english": "Ryzodeg",
+    "synonyms": ["Insulin Degludec/Aspart"]
+  },
+  "انتريستو": {
+    "english": "Entresto",
+    "synonyms": ["Sacubitril/Valsartan", "ARNI"]
+  },
+  "هيومن البومين": {
+    "english": "Human Albumin",
+    "synonyms": ["Albumin", "HSA"]
+  },
+  "اكسفورج": {
+    "english": "Exforge",
+    "synonyms": ["Amlodipine/Valsartan"]
+  },
+  "ايماتينيب": {
+    "english": "Imatinib",
+    "synonyms": ["Gleevec", "Glivec", "TKI"]
+  },
+  "اوماكورا": {
+    "english": "Omacor",
+    "synonyms": ["Omega-3", "Fish Oil", "EPA/DHA"]
+  },
+  "زيتيجا": {
+    "english": "Zytiga",
+    "synonyms": ["Abiraterone"]
+  },
+  "فورسيجا": {
+    "english": "Forxiga",
+    "synonyms": ["Dapagliflozin", "SGLT2 inhibitor", "Farxiga"]
+  },
+  "مونجارو": {
+    "english": "Mounjaro",
+    "synonyms": ["Tirzepatide", "GIP/GLP-1"]
+  },
+  "سكسندا": {
+    "english": "Saxenda",
+    "synonyms": ["Liraglutide", "GLP-1 agonist", "Victoza"]
+  },
+  "سيتروتيد": {
+    "english": "Cetrotide",
+    "synonyms": ["Cetrorelix", "GnRH antagonist"]
+  },
+  "سيتروتايد": {
+    "english": "Cetrotide",
+    "synonyms": ["Cetrorelix", "GnRH antagonist"]
+  },
+  "اورجالوتران": {
+    "english": "Orgalutran",
+    "synonyms": ["Ganirelix", "GnRH antagonist"]
+  },
+  "زولادكس": {
+    "english": "Zoladex",
+    "synonyms": ["Goserelin", "GnRH agonist", "LHRH agonist"]
+  },
+  "مايفورتيك": {
+    "english": "Myfortic",
+    "synonyms": ["Mycophenolate", "MMF", "CellCept"]
+  },
+  "ريلوتك": {
+    "english": "Rilutek",
+    "synonyms": ["Riluzole", "ALS medication"]
+  },
+  "نيبوجين": {
+    "english": "Neupogen",
+    "synonyms": ["Filgrastim", "G-CSF", "Neulasta"]
+  },
+  "نيوبوجين": {
+    "english": "Neupogen",
+    "synonyms": ["Filgrastim", "G-CSF", "Neulasta"]
+  },
+  "سيدولوت دييو": {
+    "english": "Cidolut Depot",
+    "synonyms": ["Hydroxyprogesterone"]
+  },
+  "ايفرزين": {
+    "english": "Iverzine",
+    "synonyms": ["Ivermectin"]
+  },
+  "جلوكوفانسي": {
+    "english": "Glucovance",
+    "synonyms": ["Metformin/Glibenclamide"]
+  },
+  "جلوكوفانس": {
+    "english": "Glucovance",
+    "synonyms": ["Metformin/Glibenclamide"]
+  },
+  "راباميون": {
+    "english": "Rapamune",
+    "synonyms": ["Sirolimus", "mTOR inhibitor"]
+  },
+  "تاميفلو": {
+    "english": "Tamiflu",
+    "synonyms": ["Oseltamivir"]
+  },
+  "هالودول": {
+    "english": "Haloperidol",
+    "synonyms": ["Haldol", "Antipsychotic"]
+  },
+  "كيبرا": {
+    "english": "Keppra",
+    "synonyms": ["Levetiracetam", "Antiepileptic"]
+  },
+  "هالوبريدول": {
+    "english": "Haloperidol",
+    "synonyms": ["Haldol", "Antipsychotic"]
+  },
+  "سوميناليتا": {
+    "english": "Sominaletta",
+    "synonyms": ["Progesterone"]
+  },
+  "روكسوتوب": {
+    "english": "Roxotop",
+    "synonyms": ["Esomeprazole", "PPI"]
+  },
+  "ابيميرافلو": {
+    "english": "Epimeraflu",
+    "synonyms": []
+  },
+  "تيتانوس": {
+    "english": "Tetanus",
+    "synonyms": ["Tetanus Vaccine", "TT", "DT"]
+  },
+  "ابيناتين": {
+    "english": "Epanutin",
+    "synonyms": ["Phenytoin", "Dilantin"]
+  },
+  "زيجدو": {
+    "english": "Xigduo",
+    "synonyms": ["Dapagliflozin/Metformin"]
+  },
+  "اكلاستا": {
+    "english": "Aclasta",
+    "synonyms": ["Zoledronic Acid", "Reclast"]
+  },
+  "كلوبيكسول": {
+    "english": "Clopixol",
+    "synonyms": ["Zuclopenthixol"]
+  },
+  "فيرماجون": {
+    "english": "Firmagon",
+    "synonyms": ["Degarelix", "GnRH antagonist"]
+  },
+  "رانيكسا": {
+    "english": "Ranexa",
+    "synonyms": ["Ranolazine"]
+  },
+  "بروليوتكس": {
+    "english": "Prolutex",
+    "synonyms": ["Progesterone"]
+  },
+  "برولوتكس": {
+    "english": "Prolutex",
+    "synonyms": ["Progesterone"]
+  },
+  "ميثوتريكسات": {
+    "english": "Methotrexate",
+    "synonyms": ["MTX", "Trexall"]
+  },
+  "ايمند": {
+    "english": "Emend",
+    "synonyms": ["Aprepitant", "NK1 antagonist"]
+  },
+  "زاكتاجيكت": {
+    "english": "Zactaject",
+    "synonyms": []
+  },
+  "ليمتة": {
+    "english": "Limustin",
+    "synonyms": []
+  },
+  "بيتافيرون": {
+    "english": "Betaferon",
+    "synonyms": ["Interferon beta-1b", "Betaseron"]
+  },
+  "اونكوتايس": {
+    "english": "Oncotice",
+    "synonyms": ["BCG", "Bladder Cancer Vaccine"]
+  },
+  "اومنيباك": {
+    "english": "Omnipaque",
+    "synonyms": ["Iohexol", "Contrast Medium"]
+  },
+  "تينام": {
+    "english": "Tienam",
+    "synonyms": ["Imipenem/Cilastatin", "Carbapenem"]
+  },
+  "ساندميون": {
+    "english": "Sandimmun",
+    "synonyms": ["Cyclosporine", "Neoral"]
+  },
+  "ماكسيتارد": {
+    "english": "Mixtard",
+    "synonyms": ["Biphasic Insulin"]
+  },
+  "ماكسيتاردفيال": {
+    "english": "Mixtard Vial",
+    "synonyms": ["Biphasic Insulin"]
+  },
+  "ريبيف": {
+    "english": "Rebif",
+    "synonyms": ["Interferon beta-1a"]
+  },
+  "بنسيتارد": {
+    "english": "Pencitard",
+    "synonyms": ["Benzathine Penicillin"]
+  },
+  "سيكلوبريجنوفا": {
+    "english": "Cyclo-Progynova",
+    "synonyms": ["Estradiol/Norgestrel", "HRT"]
+  },
+  "كونتراكيوتابكس": {
+    "english": "Contractubex",
+    "synonyms": ["Scar Gel"]
+  },
+  "بيبراسيلين": {
+    "english": "Piperacillin",
+    "synonyms": ["Tazocin", "Piperacillin-Tazobactam"]
+  },
+  "البيبراسيلين": {
+    "english": "Piperacillin",
+    "synonyms": ["Tazocin", "Piperacillin-Tazobactam"]
+  },
+  "لانكسوين": {
+    "english": "Lanoxin",
+    "synonyms": ["Digoxin"]
+  },
+  "سيفترياكسون": {
+    "english": "Ceftriaxone",
+    "synonyms": ["Rocephin"]
+  },
+  "امري ك": {
+    "english": "Amri-K",
+    "synonyms": ["Potassium"]
+  },
+  "جلوكوفاج": {
+    "english": "Glucophage",
+    "synonyms": ["Metformin"]
+  },
+  "مبيفيروباك": {
+    "english": "Mpiviropack",
+    "synonyms": ["Sofosbuvir"]
+  },
+  "داكلافيروكيرل": {
+    "english": "Daclavirocyrl",
+    "synonyms": ["Daclatasvir"]
+  },
+  "دوفلاك": {
+    "english": "Duphalac",
+    "synonyms": ["Lactulose"]
+  },
+  "هيموكيون": {
+    "english": "Haemokion",
+    "synonyms": ["Factor VIII"]
+  },
+  "روتاجريست": {
+    "english": "Rotagrist",
+    "synonyms": []
+  },
+  "بروفيرون": {
+    "english": "Proviron",
+    "synonyms": ["Mesterolone"]
+  },
+  "بيورنيثول": {
+    "english": "Purinethol",
+    "synonyms": ["Mercaptopurine", "6-MP"]
+  },
+  "فيفند": {
+    "english": "Vfend",
+    "synonyms": ["Voriconazole", "Antifungal"]
+  },
+  "نيورال": {
+    "english": "Neoral",
+    "synonyms": ["Cyclosporine", "Sandimmun"]
+  },
+  "سيدوتستون": {
+    "english": "Cidoteston",
+    "synonyms": ["Testosterone"]
+  },
+  "راوكول": {
+    "english": "Rowachol",
+    "synonyms": ["Bile acid"]
+  },
+  "ريكورمون": {
+    "english": "Recormon",
+    "synonyms": ["Erythropoietin", "EPO", "Eprex"]
+  },
+  "كال هيبارين": {
+    "english": "Cal-Heparin",
+    "synonyms": ["LMWH", "Enoxaparin", "Clexane"]
+  },
+  "سولوميدرول": {
+    "english": "Solu-Medrol",
+    "synonyms": ["Methylprednisolone", "Steroid"]
+  },
+  "جونال": {
+    "english": "Gonal-F",
+    "synonyms": ["FSH", "Follitropin alfa"]
+  },
+  "دافلون": {
+    "english": "Daflon",
+    "synonyms": ["Diosmin/Hesperidin"]
+  },
+  "زيلودا": {
+    "english": "Xeloda",
+    "synonyms": ["Capecitabine", "5-FU prodrug"]
+  },
+  "مابثيرا": {
+    "english": "MabThera",
+    "synonyms": ["Rituximab", "Rituxan"]
+  },
+  "زوفيراكس": {
+    "english": "Zovirax",
+    "synonyms": ["Acyclovir", "Antiviral"]
+  },
+  "بنديبين": {
+    "english": "Bipenfibin",
+    "synonyms": []
+  },
+  "كوجنكس": {
+    "english": "Cognex",
+    "synonyms": ["Tacrine"]
+  },
+  "دياميكرون": {
+    "english": "Diamicron",
+    "synonyms": ["Gliclazide", "Sulfonylurea"]
+  },
+  "ريفوليد": {
+    "english": "Revolade",
+    "synonyms": ["Eltrombopag", "TPO agonist"]
+  },
+  "فيوسيدين": {
+    "english": "Fucidin",
+    "synonyms": ["Fusidic Acid"]
+  },
+  "اميوناميد": {
+    "english": "Imunamide",
+    "synonyms": []
+  },
+  "رينفوك": {
+    "english": "Rinvoq",
+    "synonyms": ["Upadacitinib", "JAK inhibitor"]
+  },
+  "سايزن": {
+    "english": "Saizen",
+    "synonyms": ["Somatropin", "Growth Hormone", "HGH"]
+  },
+  "نيتروديرم": {
+    "english": "Nitroderm",
+    "synonyms": ["Nitroglycerin Patch"]
+  },
+  "نبيلت": {
+    "english": "Nebilet",
+    "synonyms": ["Nebivolol", "Beta Blocker"]
+  },
+  "اريميدكس": {
+    "english": "Arimidex",
+    "synonyms": ["Anastrozole", "Aromatase Inhibitor"]
+  },
+  "فورتيو": {
+    "english": "Forteo",
+    "synonyms": ["Teriparatide", "PTH analog"]
+  },
+  "سبيستون": {
+    "english": "Spasfon",
+    "synonyms": ["Phloroglucinol"]
+  },
+  "هيدروكورتيزون": {
+    "english": "Hydrocortisone",
+    "synonyms": ["Cortisol", "Steroid"]
+  },
+  "يونيتريكسات": {
+    "english": "Unitrexate",
+    "synonyms": ["Methotrexate", "MTX"]
+  },
+  "زولير": {
+    "english": "Xolair",
+    "synonyms": ["Omalizumab", "Anti-IgE"]
+  },
+  "هوميوز": {
+    "english": "Humuz",
+    "synonyms": []
+  },
+  "كابستاجيت": {
+    "english": "Capecitabine",
+    "synonyms": ["Xeloda", "5-FU prodrug"]
+  },
+  "جوناتستون": {
+    "english": "Gonateston",
+    "synonyms": ["Testosterone"]
+  },
+  "ديفارول": {
+    "english": "Devarol",
+    "synonyms": ["Vitamin D", "Cholecalciferol"]
+  },
+  "ياسمين": {
+    "english": "Yasmin",
+    "synonyms": ["Drospirenone/Ethinyl Estradiol", "OCP"]
+  },
+  "كارديكسين": {
+    "english": "Cardixin",
+    "synonyms": ["Digitoxin"]
+  },
+  "نولفادكس": {
+    "english": "Nolvadex",
+    "synonyms": ["Tamoxifen", "SERM"]
+  },
+  "ديكانست": {
+    "english": "Decancit",
+    "synonyms": []
+  },
+  "بنادول": {
+    "english": "Panadol",
+    "synonyms": ["Paracetamol", "Acetaminophen", "Tylenol"]
+  },
+  "توبرادكس": {
+    "english": "Tobradex",
+    "synonyms": ["Tobramycin/Dexamethasone"]
+  },
+  "تيراميسن": {
+    "english": "Terramycin",
+    "synonyms": ["Oxytetracycline"]
+  },
+  "كلينداسول": {
+    "english": "Clindasol",
+    "synonyms": ["Clindamycin"]
+  },
+  "انفانز": {
+    "english": "Invanz",
+    "synonyms": ["Ertapenem", "Carbapenem"]
+  },
+  "بنستارد": {
+    "english": "Pencitard",
+    "synonyms": ["Benzathine Penicillin"]
+  },
+  "اوريكس": {
+    "english": "Orex",
+    "synonyms": []
+  },
+  "سكروفير": {
+    "english": "Sacrofer",
+    "synonyms": ["Iron Sucrose"]
+  },
+  "نوكسافيل": {
+    "english": "Noxafil",
+    "synonyms": ["Posaconazole", "Antifungal"]
+  },
+  "زوميتا": {
+    "english": "Zometa",
+    "synonyms": ["Zoledronic Acid", "Bisphosphonate"]
+  },
+  "هوميرا": {
+    "english": "Humira",
+    "synonyms": ["Adalimumab", "Anti-TNF"]
+  },
+  "اكترابيد": {
+    "english": "Actrapid",
+    "synonyms": ["Regular Insulin", "Short-acting Insulin"]
+  },
+  "ميراج": {
+    "english": "Mirage",
+    "synonyms": []
+  },
+  "بنتازا": {
+    "english": "Pentasa",
+    "synonyms": ["Mesalazine", "5-ASA"]
+  },
+  "سيدامكس": {
+    "english": "Cidamex",
+    "synonyms": ["Acetazolamide"]
+  },
+  "بيتاكور": {
+    "english": "Betacor",
+    "synonyms": ["Bisoprolol", "Beta Blocker"]
+  },
+  "رميتيك": {
+    "english": "Remeditec",
+    "synonyms": []
+  },
+  "ميدودرين": {
+    "english": "Midodrine",
+    "synonyms": ["ProAmatine"]
+  },
+  "جاست ريج": {
+    "english": "Gast-Reg",
+    "synonyms": ["Metoclopramide"]
+  },
+  "كولوسسلازين": {
+    "english": "Colosalazine",
+    "synonyms": ["Sulfasalazine"]
+  },
+  "زافيسيفتا": {
+    "english": "Zavicefta",
+    "synonyms": ["Ceftazidime/Avibactam"]
+  },
+  "اسماتروبين": {
+    "english": "Somatropin",
+    "synonyms": ["Growth Hormone", "HGH", "Genotropin"]
+  },
+  "فاستم": {
+    "english": "Fastum",
+    "synonyms": ["Ketoprofen"]
+  },
+  "ليبراكس": {
+    "english": "Librax",
+    "synonyms": ["Chlordiazepoxide/Clidinium"]
+  },
+  "الليربان": {
+    "english": "Allerban",
+    "synonyms": ["Diphenhydramine"]
+  },
+  "انتربستو": {
+    "english": "Entresto",
+    "synonyms": ["Sacubitril/Valsartan", "ARNI"]
+  },
+  "بروليا": {
+    "english": "Prolia",
+    "synonyms": ["Denosumab", "RANKL inhibitor"]
+  },
+  "اوزمبيك": {
+    "english": "Ozempic",
+    "synonyms": ["Semaglutide", "GLP-1 agonist", "Wegovy"]
+  },
+  "ازومبك": {
+    "english": "Ozempic",
+    "synonyms": ["Semaglutide", "GLP-1 agonist", "Wegovy"]
+  },
+  "بيبراسلين": {
+    "english": "Piperacillin",
+    "synonyms": ["Tazocin", "Piperacillin-Tazobactam"]
+  },
+  "انسولين تارد": {
+    "english": "Insulatard",
+    "synonyms": ["NPH Insulin", "Intermediate Insulin"]
+  },
+  "ريبلسوس": {
+    "english": "Rybelsus",
+    "synonyms": ["Semaglutide Oral", "GLP-1 agonist"]
+  },
+  "ريبلسس": {
+    "english": "Rybelsus",
+    "synonyms": ["Semaglutide Oral", "GLP-1 agonist"]
+  },
+  "تريبتوفيم": {
+    "english": "Triptofem",
+    "synonyms": ["Triptorelin", "GnRH agonist"]
+  }
+}

@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "pharma-core"
+    static_configs:
+      - targets: ["core:8080"]
+    metrics_path: /metrics
+
+  - job_name: "pharma-bridge"
+    static_configs:
+      - targets: ["bridge:8081"]
+    metrics_path: /health

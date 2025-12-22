@@ -4,7 +4,7 @@ services:
   # PostgreSQL with pgvector for semantic search
   postgres:
     image: pgvector/pgvector:pg18-trixie
-    container_name: postgres
+    container_name: pharma-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-pharmabroker}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -12,10 +12,11 @@ services:
     ports:
       - "5432:5432"
     volumes:
+      # For pg18+, mount at /var/lib/postgresql (not /data subdirectory)
       - ./data/postgres:/var/lib/postgresql
-      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pharmabroker"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,62 +24,155 @@ services:
     networks:
       - pharmabroker-network
 
-  # Main application
-  app:
-    build: .
+  # Redis (for future caching/pubsub)
+  redis:
+    image: redis:8-alpine
+    container_name: pharma-redis
     ports:
-      - "8080:8080" # Main HTTP API + Dashboard
-      - "5051:5050" # Health check endpoint
-    container_name: pharmabroker-app
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pharmabroker-network
+
+  # Rust Core Engine (gRPC + REST API)
+  # Now directly uses Docker Model Runner (no TypeScript gateway needed)
+  core:
+    build:
+      context: .
+      dockerfile: core/Dockerfile
+    container_name: pharma-core
+    environment:
+      DATABASE_URL: postgres://postgres:password@postgres:5432/pharmabroker
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: info
+      API_PORT: "8080"
+      GRPC_PORT: "50051"
+    ports:
+      - "8080:8080" # REST API
+      - "50051:50051" # gRPC
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      # AI Provider - uses Docker Model Runner
-      - PB_AI_PROVIDER=docker
-      # Main application database
-      - PB_DATABASE_DSN=postgres://postgres:password@postgres:5432/pharmabroker?sslmode=disable
-      # WhatsApp session database (separate for isolation)
-      - PB_WHATSAPP_SESSION_DB_DSN=postgres://postgres:password@postgres:5432/whatsapp_sessions?sslmode=disable
-      # WhatsApp session files
-      - PB_WHATSAPP_SESSION_DIR=/app/data/whatsapp
-    volumes:
-      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - pharmabroker-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Bind models directly to core service
+    models:
+      qwen:
+        endpoint_var: AI_BASE_URL
+        model_var: AI_MODEL
+      ministral:
+        endpoint_var: MINISTRAL_BASE_URL
+        model_var: MINISTRAL_MODEL
+      gemma:
+        endpoint_var: GEMMA_BASE_URL
+        model_var: GEMMA_MODEL
+      embedding:
+        endpoint_var: EMBEDDING_BASE_URL
+        model_var: EMBEDDING_MODEL
+
+  # Go WhatsApp Bridge
+  bridge:
+    build:
+      context: ./bridge
+      dockerfile: Dockerfile
+    container_name: pharma-bridge
+    environment:
+      BRIDGE_GRPC_CORE_ADDR: ${BRIDGE_GRPC_CORE_ADDR:-core:50051}
+      BRIDGE_WHATSAPP_STORE_PATH: ${BRIDGE_WHATSAPP_STORE_PATH:-/app/data/whatsapp.db}
+      BRIDGE_WHATSAPP_QR_TERMINAL: ${BRIDGE_WHATSAPP_QR_TERMINAL:-true}
+      BRIDGE_HTTP_MODE: ${BRIDGE_HTTP_MODE:-release}
+    ports:
+      - "5050:5050" # Health server with QR code endpoint
+    volumes:
+      - bridge_data:/app/data
+    depends_on:
+      - core
+    stdin_open: true
+    tty: true
     restart: unless-stopped
     networks:
       - pharmabroker-network
 
-    healthcheck:
-      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5050/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    # Bind to AI models using long syntax with custom env var names
-    models:
-      llm:
-        endpoint_var: LLM_URL
-        model_var: LLM_MODEL
-      embedding-model:
-        endpoint_var: EMBEDDING_MODEL_URL
-        model_var: EMBEDDING_MODEL_MODEL
-
 # Local AI models via Docker Model Runner
 models:
-  llm:
+  # Primary LLM for parsing
+  qwen:
     model: ai/qwen3-vl:latest
     context_size: 16384
+    # runtime_flags:
+    #   - "--temp"
+    #   - "0.3"
 
-  embedding-model:
+    # Alternative LLM (smaller, faster)
+  ministral:
+    model: ai/ministral3:latest
+    context_size: 16384
+    # runtime_flags:
+    #   - "--temp"
+    #   - "0.3"
+
+    # Alternative LLM (Google)
+  gemma:
+    model: ai/gemma3:latest
+    context_size: 16384
+    # runtime_flags:
+    #   - "--temp"
+    #   - "0.3"
+
+    # Embedding model
+  embedding:
     model: ai/embeddinggemma:latest
-    context_size: 8192
+    context_size: 16384
 
 volumes:
-  pharmabroker-data:
-
+  postgres_data:
+  bridge_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   pharmabroker-network:
     name: pharmabroker-network
     driver: bridge
+# Add monitoring services to the services section above gateway
+# To use, add these to the 'services' section:
+#
+#   prometheus:
+#     image: prom/prometheus:latest
+#     container_name: pharma-prometheus
+#     command:
+#       - '--config.file=/etc/prometheus/prometheus.yml'
+#       - '--storage.tsdb.path=/prometheus'
+#     volumes:
+#       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+#       - prometheus_data:/prometheus
+#     ports:
+#       - "9090:9090"
+#     networks:
+#       - pharmabroker-network
+#     restart: unless-stopped
+#
+#   grafana:
+#     image: grafana/grafana:latest
+#     container_name: pharma-grafana
+#     environment:
+#       GF_SECURITY_ADMIN_PASSWORD: admin
+#       GF_USERS_ALLOW_SIGN_UP: "false"
+#     volumes:
+#       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+#       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+#       - grafana_data:/var/lib/grafana
+#     ports:
+#       - "3001:3000"
+#     depends_on:
+#       - prometheus
+#     networks:
+#       - pharmabroker-network
+#     restart: unless-stopped

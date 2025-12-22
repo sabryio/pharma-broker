@@ -1,146 +1,94 @@
 # PharmaBroker Enhancement Roadmap
 
-This document outlines planned enhancements based on the comprehensive app review.
-Each phase contains specific tasks that can be tracked for implementation.
+> **Target Architecture**: Rust Core + Go Bridge  
+> **Last Updated**: December 22, 2025
 
 ---
 
-## Phase 1: Code Quality & Testing (Priority: HIGH)
+## Phase 1: E2E Testing (Priority: HIGH)
 
-**Timeline:** 1-2 weeks  
-**Goal:** Improve maintainability and test coverage
+**Goal**: Comprehensive test coverage
 
-### 1.1 Split Large Files
+### Testing Infrastructure
 
-- [ ] **Split `parser.go`** (1150 lines → 3 files)
+- [ ] Docker-based test environment
+- [ ] Integration tests with testcontainers
+- [ ] Mock AI provider for testing
+- [ ] Performance benchmarks
 
-  - [ ] Create `internal/ai/parser_core.go` - Main parser struct and initialization
-  - [ ] Create `internal/ai/parser_matching.go` - Matching worker loop
-  - [ ] Create `internal/ai/parser_helpers.go` - Utility functions (createOffer, createRequest)
-  - [ ] Update imports and run tests
+### Test Coverage Targets
 
-- [ ] **Split `handlers.go`** (915 lines → 4 files)
-  - [ ] Create `internal/api/handlers_offers.go` - Offer endpoints
-  - [ ] Create `internal/api/handlers_requests.go` - Request endpoints
-  - [ ] Create `internal/api/handlers_matches.go` - Match endpoints
-  - [ ] Create `internal/api/handlers_config.go` - Config & stats endpoints
-  - [ ] Verify all routes still work
-
-### 1.2 Increase Test Coverage
-
-| Package  | Current | Target | Tasks         |
-| -------- | ------- | ------ | ------------- |
-| ai       | 27%     | 50%    | Add 15+ tests |
-| whatsapp | 23%     | 50%    | Add 10+ tests |
-| api      | ~30%    | 60%    | Add 20+ tests |
-
-- [ ] Add AI parsing integration tests with mock LLM responses
-- [ ] Add WhatsApp listener edge case tests
-- [ ] Add API endpoint validation tests
-- [ ] Add concurrent access tests for matching
+| Component       | Current | Target |
+| --------------- | ------- | ------ |
+| Matching Engine | 80%     | 90%    |
+| AI Parser       | 60%     | 80%    |
+| API Handlers    | 70%     | 85%    |
+| Repositories    | 85%     | 95%    |
 
 ---
 
 ## Phase 2: Production Features (Priority: MEDIUM)
 
-**Timeline:** 2-3 weeks  
-**Goal:** Prepare for production deployment
+### Dashboard & Authentication
 
-### 2.1 Dashboard Authentication
+- [ ] Web dashboard (React/Vue)
+- [ ] JWT authentication
+- [ ] User roles (admin, operator, viewer)
+- [ ] Real-time WebSocket updates
 
-- [ ] Choose auth strategy (JWT / session-based)
-- [ ] Create `internal/auth/` package
-- [ ] Add user model to database
-- [ ] Implement login/logout endpoints
-- [ ] Add auth middleware to protected routes
-- [ ] Update frontend to handle auth flow
+### API Enhancements
 
-### 2.2 Cursor-Based Pagination
-
-- [ ] Replace offset pagination with cursor-based
-- [ ] Update `/api/offers` with `?cursor=xxx&limit=50`
-- [ ] Update `/api/requests` pagination
-- [ ] Update `/api/matches` pagination
-- [ ] Add pagination metadata to responses
-
-### 2.3 Full-Text Search API
-
-- [ ] Create `/api/search` endpoint
-- [ ] Support medication name search (FTS5)
-- [ ] Support group/sender filtering
-- [ ] Support date range filtering
-- [ ] Add search to dashboard
-
-### 2.4 Bulk Operations
-
-- [ ] Add `POST /api/matches/bulk-confirm` endpoint
-- [ ] Add `POST /api/matches/bulk-reject` endpoint
-- [ ] Update dashboard with bulk action UI
-- [ ] Add audit logging for bulk actions
+- [ ] Cursor-based pagination
+- [ ] Full-text search endpoint
+- [ ] Bulk operations (confirm/reject)
+- [ ] Webhook notifications
 
 ---
 
-## Phase 3: Scale & Performance (Priority: LOW)
+## Phase 3: Performance & Scale (Priority: LOW)
 
-**Timeline:** 1-2 weeks  
-**Goal:** Handle 1000+ messages/hour
+### Database Optimization
 
-### 3.1 Database Optimization
+- [ ] Query analysis and indexing
+- [ ] Connection pool tuning
+- [ ] Read replicas (if needed)
 
-- [ ] Analyze slow queries with EXPLAIN
-- [ ] Add composite indexes for common queries:
-  - `offers(status, medication, created_at)`
-  - `requests(status, medication, created_at)`
-  - `matches(status, score, created_at)`
-- [ ] Optimize FTS5 configuration
-- [ ] Add database connection pooling tuning
+### Observability
 
-### 3.2 Load Testing
+- [ ] Prometheus dashboards
+- [ ] Grafana visualizations
+- [ ] Alerting rules
+- [ ] Distributed tracing
 
-- [ ] Create load test script (simulate 100 concurrent messages)
-- [ ] Benchmark AI parsing throughput
-- [ ] Benchmark matching engine throughput
-- [ ] Identify and fix bottlenecks
+### Load Testing
+
+- [ ] Simulate 1000+ messages/hour
+- [ ] Identify bottlenecks
 - [ ] Document performance baseline
 
-### 3.3 Prometheus Dashboards
-
-- [ ] Create Grafana dashboard template
-- [ ] Add key metrics:
-  - Messages processed/hour
-  - AI parse latency (p50, p95, p99)
-  - Match score distribution
-  - Error rates by component
-
 ---
 
-## Phase 4: Additional Features (Priority: OPTIONAL)
+## Phase 4: Advanced Features (Priority: OPTIONAL)
 
-### 4.1 WhatsApp Notifications
+### Bot System
 
-- [ ] Add notification via WhatsApp (reuse existing whatsapp package)
-- [ ] Create match notification template
-- [ ] Add user preference for notification channel
+See [AI_BOT_SYSTEM_DESIGN.md](./AI_BOT_SYSTEM_DESIGN.md):
 
-### 4.2 Webhook Support
+- [ ] Natural language commands
+- [ ] MCP tool integration
+- [ ] Multi-platform support
 
-- [ ] Add webhook configuration to settings
-- [ ] Send webhooks on new matches
-- [ ] Send webhooks on confirmations
-- [ ] Document webhook payload format
+### Automation
 
-### 4.3 PDF Export
+- [ ] Auto-confirm rules
+- [ ] Scheduled reports
+- [ ] Email/SMS notifications
 
-- [ ] Add PDF report generation
-- [ ] Include charts/graphs in reports
-- [ ] Add to scheduled reports
+### Analytics
 
-### 4.4 Archival Policy
-
-- [ ] Add auto-archive after X days config
-- [ ] Create archive tables
-- [ ] Add janitor job for archival
-- [ ] Add archived data export
+- [ ] Demand forecasting
+- [ ] Price trend analysis
+- [ ] Supplier reliability scoring
 
 ---
 
@@ -148,28 +96,27 @@ Each phase contains specific tasks that can be tracked for implementation.
 
 ### Already Implemented ✅
 
-- [x] GORM parameterized queries (SQL injection safe)
+- [x] Parameterized queries (SQL injection safe)
 - [x] Environment variables for secrets
-- [x] Bot command phone whitelist
+- [x] Rate limiting
+- [x] Circuit breaker protection
 
 ### To Implement
 
-- [ ] Dashboard authentication (Phase 2.1)
-- [ ] Request rate limiting per IP
-- [ ] Input validation middleware
-- [ ] HTTPS enforcement in production
-- [ ] Content Security Policy headers
+- [ ] Dashboard authentication
+- [ ] Request validation middleware
+- [ ] HTTPS enforcement
+- [ ] Content Security Policy
 
 ---
 
-## How to Use This Document
+## How to Use
 
-1. Pick a phase to work on
-2. Create a Git branch: `feature/phase-1-testing`
-3. Check off tasks as you complete them
-4. Create PRs with references to specific tasks
-5. Update this document with any new discoveries
+1. Pick a phase based on priority
+2. Create feature branch: `feature/phase-1-testing`
+3. Check off tasks as completed
+4. Update this document with findings
 
 ---
 
-_Last Updated: December 2024_
+_Last Updated: December 22, 2025_
