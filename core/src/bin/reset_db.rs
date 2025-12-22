@@ -16,8 +16,9 @@ use std::path::Path;
 
 use colored::Colorize;
 use pharma_core::domain::MedicationMapping;
-use pharma_core::repository::MedicationMappingRepository;
-use pharma_core::repository::postgres::PostgresMedicationMappingRepo;
+use pharma_core::repository::{
+    MedicationMappingRepository, SeaOrmMedicationMappingRepo, create_connection,
+};
 use serde::Deserialize;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -124,7 +125,7 @@ async fn truncate_tables(pool: &PgPool) -> anyhow::Result<()> {
 }
 
 /// Seed medication mappings
-async fn seed_medications(repo: &PostgresMedicationMappingRepo) -> anyhow::Result<(usize, usize)> {
+async fn seed_medications(repo: &SeaOrmMedicationMappingRepo) -> anyhow::Result<(usize, usize)> {
     let medications = load_medications_json()?;
 
     println!(
@@ -253,7 +254,8 @@ async fn main() -> anyhow::Result<()> {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
     );
 
-    let repo = PostgresMedicationMappingRepo::new(pool);
+    let db = create_connection(&database_url).await?;
+    let repo = SeaOrmMedicationMappingRepo::new(db);
     let (count, synonym_count) = seed_medications(&repo).await?;
 
     println!();

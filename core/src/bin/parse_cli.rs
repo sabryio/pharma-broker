@@ -389,7 +389,7 @@ async fn main() -> anyhow::Result<()> {
             .parse(
                 &msg.content,
                 msg.sender_name.as_deref(),
-                Some(&msg.group_name),
+                &msg.group_name,
                 msg.reply_to.as_deref(),
                 mappings.as_deref(),
             )

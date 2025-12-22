@@ -12,10 +12,10 @@ use pharma_core::api::{create_router, routes::AppState};
 use pharma_core::grpc::{PharmaCoreService, start_grpc_server};
 use pharma_core::matching::{MatchingEngine, MatchingEngineConfig};
 use pharma_core::metrics::init_metrics;
-use pharma_core::repository::postgres::{
-    PostgresAuditLogRepo, PostgresFeedbackRepo, PostgresGroupRepo, PostgresMatchQueueRepo,
-    PostgresMatchRepo, PostgresMedicationMappingRepo, PostgresOfferRepo, PostgresRawMessageRepo,
-    PostgresRequestRepo, PostgresReviewQueueRepo, create_pool,
+use pharma_core::repository::{
+    SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
+    SeaOrmMedicationMappingRepo, SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo,
+    SeaOrmReviewQueueRepo, create_connection, pharma_db,
 };
 use pharma_core::worker::match_processor::MatchProcessor;
 
@@ -47,21 +47,26 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Connecting to database...");
 
-    // Create database connection pool
-    let pool = create_pool(&database_url).await?;
+    // Create database connection pool (SeaORM)
+    let db = create_connection(&database_url).await?;
     tracing::info!("✅ Database connected");
 
-    // Create repositories
-    let offer_repo = Arc::new(PostgresOfferRepo::new(pool.clone()));
-    let request_repo = Arc::new(PostgresRequestRepo::new(pool.clone()));
-    let match_repo = Arc::new(PostgresMatchRepo::new(pool.clone()));
-    let raw_message_repo = Arc::new(PostgresRawMessageRepo::new(pool.clone()));
-    let group_repo = Arc::new(PostgresGroupRepo::new(pool.clone()));
-    let feedback_repo = Arc::new(PostgresFeedbackRepo::new(pool.clone()));
-    let review_queue_repo = Arc::new(PostgresReviewQueueRepo::new(pool.clone()));
+    // Run migrations
+    tracing::info!("🔄 Running database migrations...");
+    pharma_db::migration::run_migrations(&db).await?;
+    tracing::info!("✅ Migrations complete");
 
-    let audit_log_repo = Arc::new(PostgresAuditLogRepo::new(pool.clone()));
-    let match_queue_repo = Arc::new(PostgresMatchQueueRepo::new(pool.clone()));
+    // Create repositories (SeaORM)
+    let offer_repo = Arc::new(SeaOrmOfferRepo::new(db.clone()));
+    let request_repo = Arc::new(SeaOrmRequestRepo::new(db.clone()));
+    let match_repo = Arc::new(SeaOrmMatchRepo::new(db.clone()));
+    let raw_message_repo = Arc::new(SeaOrmRawMessageRepo::new(db.clone()));
+    let group_repo = Arc::new(SeaOrmGroupRepo::new(db.clone()));
+    let feedback_repo = Arc::new(SeaOrmFeedbackRepo::new(db.clone()));
+    let review_queue_repo = Arc::new(SeaOrmReviewQueueRepo::new(db.clone()));
+
+    let audit_log_repo = Arc::new(SeaOrmAuditLogRepo::new(db.clone()));
+    let match_queue_repo = Arc::new(SeaOrmMatchQueueRepo::new(db.clone()));
 
     // Create AI client (reads AI_GATEWAY_URL from env)
     let ai_client = Arc::new(PharmaParser::from_env());
@@ -70,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🤖 AI Gateway: {}", gateway_url);
 
     // Create broadcast channel for real-time events
-    let medication_mapping_repo = Arc::new(PostgresMedicationMappingRepo::new(pool.clone()));
+    let medication_mapping_repo = Arc::new(SeaOrmMedicationMappingRepo::new(db.clone()));
     let (ws_tx, _) = tokio::sync::broadcast::channel(100);
 
     // Track active WebSocket connections

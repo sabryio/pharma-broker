@@ -208,8 +208,8 @@ impl Scorer {
 
         let weights = self.weights.read().unwrap();
 
-        let qty_score = self.quantity_score(offer.quantity, request.quantity);
-        let price_score = self.price_score(offer.price, request.max_price);
+        let qty_score = self.quantity_score(offer.quantity_f64(), request.quantity_f64());
+        let price_score = self.price_score(offer.price_f64(), request.max_price_f64());
         let recency_score = self.recency_score(offer.created_at);
 
         // Real dosage comparison - ported from Go: Scorer.DosageScore (scorer.go:189-207)

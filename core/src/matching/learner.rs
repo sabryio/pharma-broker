@@ -56,7 +56,7 @@ pub struct PerformanceMetrics {
     pub confirmation_rate: f64,
     pub avg_score_confirmed: f64,
     pub avg_score_rejected: f64,
-    pub sample_size: usize,
+    pub sample_size: i64,
     pub evaluated_at: DateTime<Utc>,
 }
 
@@ -314,7 +314,7 @@ impl WeightLearner {
             confirmation_rate: stats.confirmation_rate,
             avg_score_confirmed: stats.confirmed_avg_total,
             avg_score_rejected: stats.rejected_avg_total,
-            sample_size: stats.total_feedbacks,
+            sample_size: stats.total_feedback,
             evaluated_at: Utc::now(),
         }
     }
@@ -329,9 +329,9 @@ impl WeightLearner {
         let config = self.config.read().unwrap();
 
         // Check minimum sample size
-        if stats.total_feedbacks < config.min_samples {
+        if (stats.total_feedback as usize) < config.min_samples {
             return Err(LearnerError::InsufficientData {
-                got: stats.total_feedbacks,
+                got: stats.total_feedback as usize,
                 need: config.min_samples,
             });
         }
@@ -611,7 +611,7 @@ mod tests {
         let learner = WeightLearner::new();
 
         let stats = FeedbackStats {
-            total_feedbacks: 50, // Less than min (100)
+            total_feedback: 50, // Less than min (100)
             ..Default::default()
         };
 
@@ -633,9 +633,11 @@ mod tests {
         let learner = WeightLearner::new();
 
         let stats = FeedbackStats {
-            total_feedbacks: 200,
+            total_feedback: 200,
             confirmed_count: 150,
             rejected_count: 50,
+            avg_confirmed_score: 0.88,
+            avg_rejected_score: 0.75,
             confirmation_rate: 0.75,
 
             confirmed_avg_medication: 0.90,
@@ -760,7 +762,7 @@ mod tests {
         let learner = WeightLearner::new();
 
         let stats = FeedbackStats {
-            total_feedbacks: 200,
+            total_feedback: 200,
             confirmed_count: 150,
             confirmation_rate: 0.75,
             confirmed_avg_total: 0.88,

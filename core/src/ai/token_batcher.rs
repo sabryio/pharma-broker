@@ -64,7 +64,7 @@ pub struct BatchMessage {
     /// Sender name
     pub sender_name: Option<String>,
     /// Group name
-    pub group_name: Option<String>,
+    pub group_name: String,
     /// Reply context (truncated to 200 chars in prompt)
     pub reply_to: Option<String>,
 }
@@ -76,7 +76,7 @@ impl BatchMessage {
             id: id.into(),
             content: content.into(),
             sender_name: None,
-            group_name: None,
+            group_name: "".to_string(),
             reply_to: None,
         }
     }
@@ -89,7 +89,7 @@ impl BatchMessage {
 
     /// Set group name
     pub fn with_group(mut self, group: impl Into<String>) -> Self {
-        self.group_name = Some(group.into());
+        self.group_name = group.into();
         self
     }
 

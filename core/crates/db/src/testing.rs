@@ -1,0 +1,325 @@
+//! Test infrastructure for repository integration tests
+//! Uses testcontainers to spin up a pgvector-enabled PostgreSQL container
+
+use sea_orm::{Database, DatabaseConnection};
+use std::sync::atomic::{AtomicU64, Ordering};
+use testcontainers::{
+    ContainerAsync, GenericImage, ImageExt,
+    core::{IntoContainerPort, WaitFor},
+    runners::AsyncRunner,
+};
+use uuid::Uuid;
+
+use crate::migration::Migrator;
+use sea_orm_migration::MigratorTrait;
+
+/// Global counter for unique schema names
+static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Test database wrapper with container lifecycle management
+pub struct TestDb {
+    pub db: DatabaseConnection,
+    _schema_name: String,
+    _container: ContainerAsync<GenericImage>,
+}
+
+impl TestDb {
+    /// Creates a new test database with pgvector PostgreSQL
+    pub async fn new() -> Self {
+        let counter = SCHEMA_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let unique_id = Uuid::new_v4().simple().to_string();
+        let schema_name = format!("t{}_{}", counter, &unique_id[..8]);
+
+        let container = GenericImage::new("pgvector/pgvector", "pg18-trixie")
+            .with_exposed_port(5432.tcp())
+            .with_wait_for(WaitFor::message_on_stderr(
+                "database system is ready to accept connections",
+            ))
+            .with_env_var("POSTGRES_USER", "postgres")
+            .with_env_var("POSTGRES_PASSWORD", "password")
+            .with_env_var("POSTGRES_DB", "pharmabroker_test")
+            .start()
+            .await
+            .expect("Failed to start PostgreSQL container");
+
+        let host_port = container
+            .get_host_port_ipv4(5432)
+            .await
+            .expect("Failed to get container port");
+
+        let connection_string = format!(
+            "postgres://postgres:password@127.0.0.1:{}/pharmabroker_test?sslmode=disable&options=-c%20search_path%3D{},public",
+            host_port, schema_name
+        );
+
+        // Connect to create schema first
+        let base_url = format!(
+            "postgres://postgres:password@127.0.0.1:{}/pharmabroker_test?sslmode=disable",
+            host_port
+        );
+        let setup_db = Database::connect(&base_url)
+            .await
+            .expect("Failed to connect for setup");
+
+        // Create extensions and schema
+        Self::setup_schema(&setup_db, &schema_name).await;
+        setup_db.close().await.ok();
+
+        // Connect with schema in search path
+        let db = Database::connect(&connection_string)
+            .await
+            .expect("Failed to connect to test database");
+
+        // Run migrations
+        Migrator::up(&db, None)
+            .await
+            .expect("Failed to run migrations");
+
+        TestDb {
+            db,
+            _schema_name: schema_name,
+            _container: container,
+        }
+    }
+
+    async fn setup_schema(db: &DatabaseConnection, schema_name: &str) {
+        use sea_orm::{ConnectionTrait, Statement};
+
+        db.execute(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            "CREATE EXTENSION IF NOT EXISTS vector".to_string(),
+        ))
+        .await
+        .expect("Failed to create vector extension");
+
+        db.execute(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            "CREATE EXTENSION IF NOT EXISTS pg_trgm".to_string(),
+        ))
+        .await
+        .expect("Failed to create pg_trgm extension");
+
+        db.execute(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!("CREATE SCHEMA IF NOT EXISTS {}", schema_name),
+        ))
+        .await
+        .expect("Failed to create test schema");
+    }
+}
+
+// =============================================================================
+// Test Data Factories
+// =============================================================================
+
+use chrono::Utc;
+use sea_orm::ActiveValue::Set;
+
+use crate::entity::{
+    audit_log, feedback_record, group, match_, match_queue, medication_mapping, offer, raw_message,
+    request, review_queue, weight_history,
+};
+
+/// Creates a test group ActiveModel
+pub fn new_test_group(jid: &str, name: &str, monitored: bool) -> group::ActiveModel {
+    group::ActiveModel {
+        jid: Set(jid.to_string()),
+        name: Set(name.to_string()),
+        description: Set(Some("Test group".to_string())),
+        monitored: Set(monitored),
+        added_at: Set(Utc::now()),
+        last_message: Set(None),
+        message_count: Set(0),
+    }
+}
+
+/// Creates a test raw_message ActiveModel
+pub fn new_test_raw_message() -> raw_message::ActiveModel {
+    let id = Uuid::new_v4().to_string();
+    raw_message::ActiveModel {
+        id: Set(id.clone()),
+        external_id: Set(Some(Uuid::new_v4().to_string())),
+        group_jid: Set("test-group@g.us".to_string()),
+        group_name: Set("Test Group".to_string()),
+        sender_jid: Set("sender@s.whatsapp.net".to_string()),
+        sender_phone: Set(Some("+201234567890".to_string())),
+        sender_name: Set(Some("Test Sender".to_string())),
+        content: Set("Test message content".to_string()),
+        timestamp: Set(Utc::now()),
+        processed_at: Set(None),
+        error: Set(None),
+        reply_to_id: Set(None),
+        reply_to_content: Set(None),
+        reply_to_sender: Set(None),
+        created_at: Set(Utc::now()),
+    }
+}
+
+/// Creates a test offer ActiveModel
+pub fn new_test_offer(raw_message_id: &str) -> offer::ActiveModel {
+    let now = Utc::now();
+    offer::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        raw_message_id: Set(raw_message_id.to_string()),
+        source_phone: Set("+201234567890".to_string()),
+        source_name: Set(Some("Test Seller".to_string())),
+        source_group: Set("test-group@g.us".to_string()),
+        group_name: Set("Test Group".to_string()),
+        medication: Set("Augmentin 1g".to_string()),
+        medication_raw: Set("أوجمنتين 1 جم".to_string()),
+        quantity: Set(Some(rust_decimal::Decimal::new(5000, 2))), // 50.00
+        unit: Set(Some("boxes".to_string())),
+        price: Set(Some(rust_decimal::Decimal::new(15000, 2))), // 150.00
+        currency: Set(Some("EGP".to_string())),
+        expiry_date: Set(None),
+        batch_number: Set(None),
+        notes: Set(None),
+        raw_message: Set(Some("للبيع: Augmentin 1g - 50 علبة".to_string())),
+        status: Set(offer::Status::Active),
+        urgent: Set(false),
+        urgency_level: Set(offer::UrgencyLevel::Normal),
+        expiry_info: Set(None),
+        ai_confidence: Set(0.9),
+        content_embedding: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+}
+
+/// Creates a test request ActiveModel
+pub fn new_test_request(raw_message_id: &str) -> request::ActiveModel {
+    let now = Utc::now();
+    request::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        raw_message_id: Set(raw_message_id.to_string()),
+        source_phone: Set("+201098765432".to_string()),
+        source_name: Set(Some("Test Buyer".to_string())),
+        source_group: Set("test-group@g.us".to_string()),
+        group_name: Set("Test Group".to_string()),
+        medication: Set("Augmentin 1g".to_string()),
+        medication_raw: Set("أوجمنتين 1 جرام".to_string()),
+        quantity: Set(Some(rust_decimal::Decimal::new(2000, 2))), // 20.00
+        unit: Set(Some("boxes".to_string())),
+        max_price: Set(Some(rust_decimal::Decimal::new(16000, 2))), // 160.00
+        currency: Set(Some("EGP".to_string())),
+        urgent: Set(false),
+        urgency_level: Set(offer::UrgencyLevel::Normal),
+        expiry_requirement: Set(None),
+        ai_confidence: Set(0.9),
+        notes: Set(None),
+        raw_message: Set(Some("مطلوب: أوجمنتين 1 جرام - 20 علبة".to_string())),
+        status: Set(offer::Status::Active),
+        content_embedding: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+}
+
+/// Creates a test match ActiveModel
+pub fn new_test_match(offer_id: &str, request_id: &str) -> match_::ActiveModel {
+    match_::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        offer_id: Set(offer_id.to_string()),
+        request_id: Set(request_id.to_string()),
+        score: Set(0.85),
+        reasoning: Set(Some("Strong medication match".to_string())),
+        matched_by: Set(Some("AUTO".to_string())),
+        status: Set(match_::MatchStatus::Pending),
+        created_at: Set(Utc::now()),
+        confirmed_at: Set(None),
+        notes: Set(None),
+    }
+}
+
+/// Creates a test audit_log ActiveModel
+pub fn new_test_audit_log(action: &str, entity_id: &str) -> audit_log::ActiveModel {
+    audit_log::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        action: Set(action.to_string()),
+        entity_type: Set("match".to_string()),
+        entity_id: Set(entity_id.to_string()),
+        actor: Set("test-user".to_string()),
+        details: Set(None),
+        ip_address: Set(None),
+        user_agent: Set(None),
+        created_at: Set(Utc::now()),
+    }
+}
+
+/// Creates a test feedback_record ActiveModel
+pub fn new_test_feedback(match_id: &str, confirmed: bool) -> feedback_record::ActiveModel {
+    feedback_record::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        match_id: Set(match_id.to_string()),
+        user_id: Set("test-user".to_string()),
+        confirmed: Set(confirmed),
+        medication_score: Set(0.9),
+        dosage_score: Set(0.8),
+        quantity_score: Set(0.7),
+        price_score: Set(0.6),
+        recency_score: Set(0.5),
+        total_score: Set(0.75),
+        created_at: Set(Utc::now()),
+    }
+}
+
+/// Creates a test weight_history ActiveModel
+pub fn new_test_weight_history(source: &str) -> weight_history::ActiveModel {
+    weight_history::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        medication_weight: Set(0.35),
+        dosage_weight: Set(0.20),
+        quantity_weight: Set(0.15),
+        price_weight: Set(0.15),
+        recency_weight: Set(0.15),
+        source: Set(source.to_string()),
+        sample_count: Set(100),
+        created_at: Set(Utc::now()),
+    }
+}
+
+/// Creates a test review_queue ActiveModel
+pub fn new_test_review_queue(raw_message_id: &str) -> review_queue::ActiveModel {
+    review_queue::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        raw_message_id: Set(raw_message_id.to_string()),
+        ai_result: Set(serde_json::json!({"items": []})),
+        confidence: Set(0.45),
+        reason: Set("low_confidence".to_string()),
+        status: Set(review_queue::ReviewStatus::Pending),
+        reviewed_by: Set(None),
+        review_notes: Set(None),
+        created_at: Set(Utc::now()),
+        reviewed_at: Set(None),
+    }
+}
+
+/// Creates a test match_queue ActiveModel
+pub fn new_test_match_queue(request_id: &str) -> match_queue::ActiveModel {
+    let now = Utc::now();
+    match_queue::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        request_id: Set(request_id.to_string()),
+        status: Set(match_queue::QueueStatus::Pending),
+        priority: Set(0),
+        attempts: Set(0),
+        last_error: Set(None),
+        next_attempt_at: Set(now),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+}
+
+/// Creates a test medication_mapping ActiveModel
+pub fn new_test_medication_mapping(arabic: &str, english: &str) -> medication_mapping::ActiveModel {
+    let now = Utc::now();
+    medication_mapping::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        arabic_name: Set(arabic.to_string()),
+        english_name: Set(english.to_string()),
+        synonyms: Set(None),
+        embedding: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+}

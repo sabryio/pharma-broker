@@ -19,7 +19,7 @@ use super::{
 };
 use crate::matching::MatchingEngine;
 use crate::repository::{
-    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchRepository,
+    AuditLogRepository, FeedbackRepository, GroupRepository, MatchRepository,
     MedicationMappingRepository, OfferRepository, RequestRepository, ReviewQueueRepository,
 };
 use crate::ws::{self, WsEvent};
@@ -35,7 +35,7 @@ where
     pub request_repo: Arc<dyn RequestRepository + Send + Sync>,
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
     pub group_repo: Arc<dyn GroupRepository + Send + Sync>,
-    pub feedback_repo: Arc<dyn FeedbackRecordRepository + Send + Sync>,
+    pub feedback_repo: Arc<dyn FeedbackRepository + Send + Sync>,
     pub review_queue_repo: Arc<RQ>,
     pub audit_log_repo: Arc<A>,
     pub medication_mapping_repo: Arc<MM>,

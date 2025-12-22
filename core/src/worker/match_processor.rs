@@ -1,4 +1,7 @@
 use chrono::Utc;
+use crate::repository::{
+    AuditLogRepository, MatchQueueRepository, MatchRepository, OfferRepository, RequestRepository,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
@@ -13,9 +16,6 @@ use crate::domain::{
     MatchStatus, Offer, Request,
 };
 use crate::matching::{MatchAction, MatchingEngine};
-use crate::repository::{
-    AuditLogRepository, MatchQueueRepository, MatchRepository, OfferRepository, RequestRepository,
-};
 use crate::ws::WsEvent;
 
 /// MatchProcessor handles the background processing of match queue items
@@ -155,7 +155,7 @@ impl MatchProcessor {
 
             // Calculate similarity (Logic ported from server.rs)
             let med_score = match (&offer.content_embedding, &request.content_embedding) {
-                (Some(o), Some(r)) => crate::matching::cosine_similarity(o, r).unwrap_or(0.0),
+                (Some(o), Some(r)) => crate::matching::cosine_similarity(o.as_slice(), r.as_slice()).unwrap_or(0.0),
                 _ => self.fallback_similarity(&offer, &request),
             };
 
@@ -173,7 +173,7 @@ impl MatchProcessor {
                     offer_id: offer.id.clone(),
                     request_id: request.id.clone(),
                     score: score.total,
-                    reasoning: score.breakdown.clone(),
+                    reasoning: Some(score.breakdown.clone()),
                     matched_by: Some(format!("worker:{}", self.worker_id)),
                     status: MatchStatus::Pending,
                     created_at: Utc::now(),

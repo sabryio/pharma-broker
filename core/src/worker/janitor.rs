@@ -10,7 +10,8 @@ use tracing::{error, info, warn};
 
 use crate::Result;
 use crate::repository::{
-    AuditLogRepository, MatchRepository, OfferRepository, RawMessageRepository, RequestRepository,
+    AuditLogRepository, MatchQueueRepository, OfferRepository, RawMessageRepository,
+    RequestRepository,
 };
 
 /// Janitor configuration
@@ -101,7 +102,7 @@ pub struct Janitor {
     raw_message_repo: Arc<dyn RawMessageRepository>,
     offer_repo: Arc<dyn OfferRepository>,
     request_repo: Arc<dyn RequestRepository>,
-    match_repo: Arc<dyn MatchRepository>,
+    match_repo: Arc<dyn MatchQueueRepository>,
     audit_log_repo: Arc<dyn AuditLogRepository>,
     stats: tokio::sync::RwLock<CleanupStats>,
 }
@@ -114,7 +115,7 @@ impl Janitor {
         raw_message_repo: Arc<dyn RawMessageRepository>,
         offer_repo: Arc<dyn OfferRepository>,
         request_repo: Arc<dyn RequestRepository>,
-        match_repo: Arc<dyn MatchRepository>,
+        match_repo: Arc<dyn MatchQueueRepository>,
         audit_log_repo: Arc<dyn AuditLogRepository>,
     ) -> Self {
         Self {
@@ -192,7 +193,7 @@ impl Janitor {
                 if count > 0 {
                     info!(count, "Deleted old raw messages");
                 }
-                cycle_stats.raw_messages_deleted = count as u64;
+                cycle_stats.raw_messages_deleted = count;
             }
             Err(e) => warn!(error = %e, "Failed to clean raw messages"),
         }
@@ -203,7 +204,7 @@ impl Janitor {
                 if count > 0 {
                     info!(count, "Deleted old offers");
                 }
-                cycle_stats.offers_deleted = count as u64;
+                cycle_stats.offers_deleted = count;
             }
             Err(e) => warn!(error = %e, "Failed to clean offers"),
         }
@@ -214,7 +215,7 @@ impl Janitor {
                 if count > 0 {
                     info!(count, "Deleted old requests");
                 }
-                cycle_stats.requests_deleted = count as u64;
+                cycle_stats.requests_deleted = count;
             }
             Err(e) => warn!(error = %e, "Failed to clean requests"),
         }
@@ -225,7 +226,7 @@ impl Janitor {
                 if count > 0 {
                     info!(count, "Deleted old matches");
                 }
-                cycle_stats.matches_deleted = count as u64;
+                cycle_stats.matches_deleted = count;
             }
             Err(e) => warn!(error = %e, "Failed to clean matches"),
         }
@@ -236,7 +237,7 @@ impl Janitor {
                 if count > 0 {
                     info!(count, "Deleted old audit logs");
                 }
-                cycle_stats.audit_logs_deleted = count as u64;
+                cycle_stats.audit_logs_deleted = count;
             }
             Err(e) => warn!(error = %e, "Failed to clean audit logs"),
         }

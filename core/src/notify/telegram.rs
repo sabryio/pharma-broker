@@ -139,7 +139,7 @@ impl TelegramNotifier {
             action_emoji,
             action_text,
             match_entity.score * 100.0,
-            match_entity.reasoning,
+            match_entity.reasoning_str(),
             match_entity.offer_id,
             match_entity.request_id,
             match_entity.id,
@@ -169,10 +169,10 @@ impl MatchNotifier for TelegramNotifier {
     async fn notify_suggested(&self, match_entity: &Match) -> Result<()> {
         let message = format!(
             "💡 <b>Match Suggested</b>\n\n\
-             � {}\n\
-             📊 Score: {:.1}%\n\
+             📝 {}\n\
+             📊 Score: {:.1}%\n\n\
              <code>ID: {}</code>",
-            match_entity.reasoning,
+            match_entity.reasoning_str(),
             match_entity.score * 100.0,
             match_entity.id
         );
@@ -203,7 +203,7 @@ mod tests {
             offer_id: "offer-456".to_string(),
             request_id: "req-789".to_string(),
             score: 0.85,
-            reasoning: "High similarity".to_string(),
+            reasoning: Some("High similarity".to_string()),
             matched_by: Some("system".to_string()),
             status: MatchStatus::Pending,
             created_at: Utc::now(),

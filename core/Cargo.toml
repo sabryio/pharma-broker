@@ -68,7 +68,7 @@ prost = "0.14.1"
 tonic-prost = "0.14.2"
 strsim = "0.11.1"
 
-# Database
+# Database - Legacy sqlx
 sqlx = { version = "0.8.6", features = [
     "runtime-tokio",
     "postgres",
@@ -76,6 +76,16 @@ sqlx = { version = "0.8.6", features = [
     "uuid",
 ] }
 pgvector = { version = "0.4.1", features = ["sqlx"] }
+
+# Database - SeaORM (recommended)
+sea-orm = { version = "1.1.19", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+    "postgres-vector",
+] }
+pharma-db = { path = "crates/db" }
+rust_decimal = "1.39.0"
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
@@ -135,7 +145,7 @@ dialoguer = "0.12.0"
 # TUI (for monitor)
 ratatui = "0.29.0"
 crossterm = "0.29.0"
-whatlang = "0.16"
+whatlang = "0.18.0"
 
 [dev-dependencies]
 tokio-test = "0.4.4"

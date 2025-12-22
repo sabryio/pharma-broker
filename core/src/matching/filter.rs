@@ -234,8 +234,8 @@ impl MatchFilter {
             && let Some(result) = self.check_same_sender(
                 &offer.source_phone,
                 &request.source_phone,
-                &offer.source_name,
-                &request.source_name,
+                offer.source_name.as_deref().unwrap_or(""),
+                request.source_name.as_deref().unwrap_or(""),
             )
         {
             self.stats
@@ -444,7 +444,7 @@ mod tests {
         Offer {
             id: "offer-1".to_string(),
             source_phone: phone.to_string(),
-            source_name: name.to_string(),
+            source_name: Some(name.to_string()),
             created_at: Utc::now() - Duration::days(age_days),
             ..Default::default()
         }
@@ -454,7 +454,7 @@ mod tests {
         Request {
             id: "request-1".to_string(),
             source_phone: phone.to_string(),
-            source_name: name.to_string(),
+            source_name: Some(name.to_string()),
             ..Default::default()
         }
     }

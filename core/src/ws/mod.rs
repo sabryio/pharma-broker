@@ -31,7 +31,6 @@ use uuid::Uuid;
 use crate::api::routes::AppState;
 use crate::domain::{Match, Offer, Request};
 use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
-
 /// Payload for match status change events
 #[derive(Debug, Clone, Serialize)]
 pub struct MatchStatusEvent {

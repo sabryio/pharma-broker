@@ -12,6 +12,7 @@
 //! - AuditTrail (comprehensive audit logging)
 //! - HistoricalLearner (medication pair affinity learning)
 
+use crate::repository::{AuditLogRepository, FeedbackRepository};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
@@ -28,7 +29,6 @@ use super::{
 use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackStats, MedicationMapping};
 use crate::domain::{Match as MatchEntity, Offer, Request};
 use crate::notify::MatchNotifier;
-use crate::repository::{AuditLogRepository, FeedbackRecordRepository};
 
 /// Matching engine configuration
 #[derive(Debug, Default, Clone)]
@@ -88,7 +88,7 @@ pub struct MatchingEngine {
     /// Notification sender
     pub notifier: Arc<dyn MatchNotifier>,
     /// Repository for fetching feedback
-    feedback_repo: Option<Arc<dyn FeedbackRecordRepository>>,
+    feedback_repo: Option<Arc<dyn FeedbackRepository>>,
     /// Repository for audit logging
     audit_log_repo: Option<Arc<dyn AuditLogRepository>>,
 }
@@ -139,7 +139,7 @@ impl MatchingEngine {
     /// Set repositories for the learning job
     pub fn set_repositories(
         &mut self,
-        feedback_repo: Arc<dyn FeedbackRecordRepository>,
+        feedback_repo: Arc<dyn FeedbackRepository>,
         audit_log_repo: Arc<dyn AuditLogRepository>,
     ) {
         self.feedback_repo = Some(feedback_repo);
@@ -374,7 +374,7 @@ impl MatchingEngine {
         let (new_weights, metrics) = self.learner.calculate_optimal_weights(stats, &effective)?;
 
         tracing::info!(
-            sample_size = stats.total_feedbacks,
+            sample_size = stats.total_feedback,
             confirmation_rate = format!("{:.1}%", metrics.confirmation_rate * 100.0),
             "Calculated new weights"
         );
@@ -450,9 +450,9 @@ impl MatchingEngine {
         let start = end - chrono::Duration::days(30);
         let stats = feedback_repo.get_stats(start, end).await?;
 
-        if stats.total_feedbacks < 50 {
+        if stats.total_feedback < 50 {
             tracing::info!(
-                count = stats.total_feedbacks,
+                count = stats.total_feedback,
                 "Not enough feedback for learning (minimum 50)"
             );
             return Ok(());
@@ -491,7 +491,7 @@ impl MatchingEngine {
             .with_details(serde_json::json!({
                 "weights": new_weights,
                 "confirmation_rate": metrics.confirmation_rate,
-                "sample_size": stats.total_feedbacks
+                "sample_size": stats.total_feedback
             }));
             let _ = audit_repo.save(&audit_log).await;
         }
@@ -1018,6 +1018,8 @@ impl MatchingEngine {
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, Utc};
+    use rust_decimal::Decimal;
+    use rust_decimal::prelude::FromPrimitive;
 
     use super::*;
     use crate::domain::MatchStatus;
@@ -1036,16 +1038,16 @@ mod tests {
 
         let offer = Offer {
             medication: "Aspirin 100mg".to_string(),
-            quantity: 100.0,
-            price: 50.0,
+            quantity: Decimal::from_f64(100.0),
+            price: Decimal::from_f64(50.0),
             created_at: Utc::now(),
             ..Default::default()
         };
 
         let request = Request {
             medication: "Aspirin 100mg".to_string(),
-            quantity: 100.0,
-            max_price: 60.0,
+            quantity: Decimal::from_f64(100.0),
+            max_price: Decimal::from_f64(60.0),
             ..Default::default()
         };
 
@@ -1256,7 +1258,7 @@ mod tests {
             request_id: "request-789".to_string(),
             score: 0.95,
             status: MatchStatus::Confirmed,
-            reasoning: "High confidence match".to_string(),
+            reasoning: Some("High confidence match".to_string()),
             ..Default::default()
         };
 
@@ -1334,16 +1336,16 @@ mod tests {
         // Score a match - should include historical bonus
         let offer = Offer {
             medication: "Brufen".to_string(),
-            quantity: 100.0,
-            price: 50.0,
+            quantity: Decimal::from_f64(100.0),
+            price: Decimal::from_f64(50.0),
             created_at: Utc::now(),
             ..Default::default()
         };
 
         let request = Request {
             medication: "Ibuprofen".to_string(),
-            quantity: 100.0,
-            max_price: 60.0,
+            quantity: Decimal::from_f64(100.0),
+            max_price: Decimal::from_f64(60.0),
             ..Default::default()
         };
 

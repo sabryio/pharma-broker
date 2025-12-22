@@ -14,6 +14,9 @@ pub enum Error {
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 
+    #[error("SeaORM database error: {0}")]
+    SeaOrm(#[from] pharma_db::Error),
+
     #[error("Validation error: {0}")]
     Validation(String),
 

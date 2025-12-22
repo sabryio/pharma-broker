@@ -3,6 +3,9 @@
 //! Accumulates messages and processes them in batches for efficiency.
 //! Ported from legacy/parsing/processor.go
 
+use pgvector::Vector as PgVector;
+use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, mpsc, watch};
 use tokio::time::interval;
@@ -233,8 +236,8 @@ impl BatchProcessor {
                 .ai_client
                 .parse(
                     &msg.content,
-                    Some(&msg.sender_name),
-                    Some(&msg.group_name),
+                    msg.sender_name.as_deref(),
+                    &msg.group_name,
                     msg.reply_to_content.as_deref(),
                     mapping_slice,
                 )
@@ -292,9 +295,10 @@ impl BatchProcessor {
         // Check if needs review queue
         if self.multi_pass_config.needs_review(avg_confidence) {
             let review_item = ReviewQueueItem::for_low_confidence(
-                msg.id.clone(),
+                &msg.id,
                 serde_json::to_value(&result.items).unwrap_or_default(),
                 avg_confidence,
+                "low_confidence",
             );
             if let Err(e) = self.review_queue_repo.save(&review_item).await {
                 error!(error = %e, "Failed to queue for review");
@@ -344,20 +348,20 @@ impl BatchProcessor {
                     raw_message_id: msg.id.clone(),
                     medication: item.medication.clone(),
                     medication_raw: item.medication.clone(),
-                    quantity: item.quantity,
+                    quantity: Decimal::from_f64(item.quantity),
                     unit: item.unit.clone(),
-                    price: item.price,
+                    price: Decimal::from_f64(item.price),
                     currency: Some("EGP".to_string()),
                     expiry_date: None,
                     batch_number: None,
-                    source_phone: msg.sender_phone.clone(),
+                    source_phone: msg.sender_phone.clone().unwrap_or_default(),
                     source_name: msg.sender_name.clone(),
                     source_group: msg.group_jid.clone(),
                     group_name: msg.group_name.clone(),
                     notes: item.notes.clone(),
-                    raw_message: msg.content.clone(),
+                    raw_message: Some(msg.content.clone()),
                     status: ItemStatus::Active,
-                    content_embedding: embedding.clone(),
+                    content_embedding: embedding.clone().map(PgVector::from),
                     urgent: item.urgent,
                     urgency_level: UrgencyLevel::from_bool(item.urgent),
                     expiry_info: item.expiry.clone(),
@@ -397,22 +401,22 @@ impl BatchProcessor {
                     raw_message_id: msg.id.clone(),
                     medication: item.medication.clone(),
                     medication_raw: item.medication.clone(),
-                    quantity: item.quantity,
+                    quantity: Decimal::from_f64(item.quantity),
                     unit: item.unit.clone(),
-                    max_price: item.max_price,
+                    max_price: Decimal::from_f64(item.max_price),
                     currency: Some("EGP".to_string()),
-                    source_phone: msg.sender_phone.clone(),
+                    source_phone: msg.sender_phone.clone().unwrap_or_default(),
                     source_name: msg.sender_name.clone(),
                     source_group: msg.group_jid.clone(),
                     group_name: msg.group_name.clone(),
                     notes: item.notes.clone(),
-                    raw_message: msg.content.clone(),
+                    raw_message: Some(msg.content.clone()),
                     urgent: item.urgent,
                     urgency_level: UrgencyLevel::from_bool(item.urgent),
                     expiry_requirement: item.expiry.clone(),
                     ai_confidence: item.ai_confidence,
                     status: ItemStatus::Active,
-                    content_embedding: embedding,
+                    content_embedding: embedding.map(PgVector::from),
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 };

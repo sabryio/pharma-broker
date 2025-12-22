@@ -20,10 +20,10 @@ use std::time::Instant;
 use colored::Colorize;
 use pharma_core::ai::{PharmaParser, PharmaParserConfig};
 use pharma_core::domain::MedicationMapping;
-use pharma_core::repository::MedicationMappingRepository;
-use pharma_core::repository::postgres::PostgresMedicationMappingRepo;
+use pharma_core::repository::{
+    MedicationMappingRepository, SeaOrmMedicationMappingRepo, create_connection,
+};
 use serde::Deserialize;
-use sqlx::postgres::PgPoolOptions;
 use tokio::sync::Mutex;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -50,7 +50,7 @@ struct MedicationEntry {
 // Seed from JSON
 // ============================================================================
 
-async fn seed_from_json(repo: &PostgresMedicationMappingRepo) -> anyhow::Result<usize> {
+async fn seed_from_json(repo: &SeaOrmMedicationMappingRepo) -> anyhow::Result<usize> {
     // Try multiple paths for medications.json
     let paths = [
         MEDICATIONS_JSON,
@@ -162,12 +162,8 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
 
     println!("🗄️  Connecting to database...");
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
-
-    let repo = PostgresMedicationMappingRepo::new(pool);
+    let db = create_connection(&database_url).await?;
+    let repo = SeaOrmMedicationMappingRepo::new(db);
 
     // Seed from JSON if requested or if database is empty
     let initial_count = repo.count().await?;

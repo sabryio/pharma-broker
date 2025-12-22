@@ -14,9 +14,9 @@ use std::time::Instant;
 use colored::Colorize;
 use pharma_core::ai::{PharmaParser, PharmaParserConfig};
 use pharma_core::domain::MedicationMapping;
-use pharma_core::repository::MedicationMappingRepository;
-use pharma_core::repository::postgres::PostgresMedicationMappingRepo;
-use sqlx::postgres::PgPoolOptions;
+use pharma_core::repository::{
+    MedicationMappingRepository, SeaOrmMedicationMappingRepo, create_connection,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 // ============================================================================
@@ -166,15 +166,12 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
 
     println!("🗄️  Connecting to database...");
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
+    let db = create_connection(&database_url).await?;
 
     // Load all medication mappings
-    let repo = PostgresMedicationMappingRepo::new(pool);
+    let repo = SeaOrmMedicationMappingRepo::new(db);
 
-    let mut all_mappings = Vec::new();
+    let mut all_mappings: Vec<MedicationMapping> = Vec::new();
     let page_size = 1000i64;
     let mut offset = 0i64;
     loop {
@@ -407,7 +404,7 @@ async fn main() -> anyhow::Result<()> {
         .parse(
             TEST_CONTENT,
             Some("Test"),
-            Some("Test"),
+            "Test",
             None,
             Some(&filtered_mappings),
         )

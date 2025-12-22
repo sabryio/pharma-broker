@@ -36,13 +36,11 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use pharma_core::ai::{PharmaParser, PharmaParserConfig, TokenBatchConfig, TokenBatcher};
 use pharma_core::domain::{Group, RawMessage};
 use pharma_core::parsing::{BatchConfig, BatchProcessor, MultiPassConfig, ParseJob};
-use pharma_core::repository::postgres::{
-    PostgresAuditLogRepo, PostgresGroupRepo, PostgresMatchQueueRepo, PostgresMatchRepo,
-    PostgresMedicationMappingRepo, PostgresOfferRepo, PostgresRawMessageRepo, PostgresRequestRepo,
-    PostgresReviewQueueRepo, create_pool,
-};
 use pharma_core::repository::{
     GroupRepository, MatchRepository, OfferRepository, RawMessageRepository, RequestRepository,
+    SeaOrmAuditLogRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
+    SeaOrmMedicationMappingRepo, SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo,
+    SeaOrmReviewQueueRepo, create_connection,
 };
 use pharma_core::ws::WsEvent;
 
@@ -210,12 +208,12 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         // ========== Group 1: مجموعة صيادلة القاهرة ==========
         RawMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            external_id: uuid::Uuid::new_v4().to_string(),
+            external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363012345678901@g.us".to_string(),
             group_name: "مجموعة صيادلة القاهرة".to_string(),
             sender_jid: "201012345678@s.whatsapp.net".to_string(),
-            sender_phone: "201012345678".to_string(),
-            sender_name: "د. أحمد صيدلي".to_string(),
+            sender_phone: Some("201012345678".to_string()),
+            sender_name: Some("د. أحمد صيدلي".to_string()),
             content: "السلام عليكم\nعندي للبيع:\n*اوجمنتين 1 جم* - 50 علبة بـ 150 جنيه\n*فلاجيل 500* - 30 علبة بـ 45 جنيه\nالتواصل واتس فقط".to_string(),
             timestamp: base_time - chrono::Duration::seconds(5),
             processed_at: None,
@@ -223,15 +221,16 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             reply_to_id: None,
             reply_to_content: None,
             reply_to_sender: None,
+            created_at: base_time,
         },
         RawMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            external_id: uuid::Uuid::new_v4().to_string(),
+            external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363012345678901@g.us".to_string(),
             group_name: "مجموعة صيادلة القاهرة".to_string(),
             sender_jid: "201098765432@s.whatsapp.net".to_string(),
-            sender_phone: "201098765432".to_string(),
-            sender_name: "صيدلية النور".to_string(),
+            sender_phone: Some("201098765432".to_string()),
+            sender_name: Some("صيدلية النور".to_string()),
             content: "محتاج ضروري جداً:\n*أوجمنتين 1 جرام* 20 علبة\nأي سعر مناسب".to_string(),
             timestamp: base_time - chrono::Duration::seconds(3),
             processed_at: None,
@@ -239,16 +238,17 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             reply_to_id: None,
             reply_to_content: None,
             reply_to_sender: None,
+            created_at: base_time,
         },
         // Reply to previous message
         RawMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            external_id: uuid::Uuid::new_v4().to_string(),
+            external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363012345678901@g.us".to_string(),
             group_name: "مجموعة صيادلة القاهرة".to_string(),
             sender_jid: "201012345678@s.whatsapp.net".to_string(),
-            sender_phone: "201012345678".to_string(),
-            sender_name: "د. أحمد صيدلي".to_string(),
+            sender_phone: Some("201012345678".to_string()),
+            sender_name: Some("د. أحمد صيدلي".to_string()),
             content: "متوفر عندي، نفس السعر".to_string(),
             timestamp: base_time - chrono::Duration::seconds(1),
             processed_at: None,
@@ -256,16 +256,17 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             reply_to_id: Some("previous-msg-id".to_string()),
             reply_to_content: Some("محتاج ضروري جداً: أوجمنتين 1 جرام 20 علبة".to_string()),
             reply_to_sender: Some("201098765432@s.whatsapp.net".to_string()),
+            created_at: base_time,
         },
         // ========== Group 2: موردين الأدوية ==========
         RawMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            external_id: uuid::Uuid::new_v4().to_string(),
+            external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363098765432109@g.us".to_string(),
             group_name: "موردين الأدوية".to_string(),
             sender_jid: "201155555555@s.whatsapp.net".to_string(),
-            sender_phone: "201155555555".to_string(),
-            sender_name: "مورد أدوية".to_string(),
+            sender_phone: Some("201155555555".to_string()),
+            sender_name: Some("مورد أدوية".to_string()),
             content: "عرض اليوم 🔥\n*كتافلام 50 مجم* - 200 شريط @ 75 جنيه\n*بروفين 400* - 100 علبة @ 55 جنيه\n*بانادول اكسترا* - 50 علبة @ 40 جنيه\nالكميات محدودة!".to_string(),
             timestamp: base_time - chrono::Duration::seconds(10),
             processed_at: None,
@@ -273,15 +274,16 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             reply_to_id: None,
             reply_to_content: None,
             reply_to_sender: None,
+            created_at: base_time,
         },
         RawMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            external_id: uuid::Uuid::new_v4().to_string(),
+            external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363098765432109@g.us".to_string(),
             group_name: "موردين الأدوية".to_string(),
             sender_jid: "201166666666@s.whatsapp.net".to_string(),
-            sender_phone: "201166666666".to_string(),
-            sender_name: "صيدلية الأمل".to_string(),
+            sender_phone: Some("201166666666".to_string()),
+            sender_name: Some("صيدلية الأمل".to_string()),
             content: "مطلوب عاجل:\n- كتافلام 50 - 100 شريط\n- بانادول اكسترا - 30 علبة".to_string(),
             timestamp: base_time - chrono::Duration::seconds(8),
             processed_at: None,
@@ -289,16 +291,17 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             reply_to_id: None,
             reply_to_content: None,
             reply_to_sender: None,
+            created_at: base_time,
         },
         // ========== Group 3: صيادلة الإسكندرية ==========
         RawMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            external_id: uuid::Uuid::new_v4().to_string(),
+            external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363055555555555@g.us".to_string(),
             group_name: "صيادلة الإسكندرية".to_string(),
             sender_jid: "201177777777@s.whatsapp.net".to_string(),
-            sender_phone: "201177777777".to_string(),
-            sender_name: "Pharmacy Alex".to_string(),
+            sender_phone: Some("201177777777".to_string()),
+            sender_name: Some("Pharmacy Alex".to_string()),
             content: "Available for sale:\nConcor 5mg - 40 boxes @ 85 LE\nZoloft 50mg - 25 boxes @ 120 LE".to_string(),
             timestamp: base_time - chrono::Duration::seconds(15),
             processed_at: None,
@@ -306,15 +309,16 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             reply_to_id: None,
             reply_to_content: None,
             reply_to_sender: None,
+            created_at: base_time,
         },
         RawMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            external_id: uuid::Uuid::new_v4().to_string(),
+            external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363055555555555@g.us".to_string(),
             group_name: "صيادلة الإسكندرية".to_string(),
             sender_jid: "201188888888@s.whatsapp.net".to_string(),
-            sender_phone: "201188888888".to_string(),
-            sender_name: "Dr. Sara".to_string(),
+            sender_phone: Some("201188888888".to_string()),
+            sender_name: Some("Dr. Sara".to_string()),
             content: "محتاجين كونكور 5 - 20 علبة\nالحد الأقصى للسعر 90 جنيه".to_string(),
             timestamp: base_time - chrono::Duration::seconds(12),
             processed_at: None,
@@ -322,16 +326,17 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             reply_to_id: None,
             reply_to_content: None,
             reply_to_sender: None,
+            created_at: base_time,
         },
         // ========== Multi-concentration message ==========
         RawMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            external_id: uuid::Uuid::new_v4().to_string(),
+            external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363012345678901@g.us".to_string(),
             group_name: "مجموعة صيادلة القاهرة".to_string(),
             sender_jid: "201199999999@s.whatsapp.net".to_string(),
-            sender_phone: "201199999999".to_string(),
-            sender_name: "صيدلية الشفاء".to_string(),
+            sender_phone: Some("201199999999".to_string()),
+            sender_name: Some("صيدلية الشفاء".to_string()),
             content: "مطلوب:\n*اوزمبك واحد ونص وربع*\n*زولادكس 3.6*".to_string(),
             timestamp: base_time - chrono::Duration::seconds(2),
             processed_at: None,
@@ -339,6 +344,7 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             reply_to_id: None,
             reply_to_content: None,
             reply_to_sender: None,
+            created_at: base_time,
         },
     ]
 }
@@ -378,8 +384,8 @@ async fn main() -> anyhow::Result<()> {
     // ============================================================
     workflow.start_phase("Database Init");
 
-    let pool = match create_pool(&database_url).await {
-        Ok(p) => p,
+    let db = match create_connection(&database_url).await {
+        Ok(d) => d,
         Err(e) => {
             error!("Failed to connect to database: {}", e);
             workflow.end_phase("failed", &e.to_string());
@@ -389,15 +395,15 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Create repositories
-    let raw_message_repo = Arc::new(PostgresRawMessageRepo::new(pool.clone()));
-    let offer_repo = Arc::new(PostgresOfferRepo::new(pool.clone()));
-    let request_repo = Arc::new(PostgresRequestRepo::new(pool.clone()));
-    let match_repo = Arc::new(PostgresMatchRepo::new(pool.clone()));
-    let group_repo = Arc::new(PostgresGroupRepo::new(pool.clone()));
-    let medication_mapping_repo = Arc::new(PostgresMedicationMappingRepo::new(pool.clone()));
-    let review_queue_repo = Arc::new(PostgresReviewQueueRepo::new(pool.clone()));
-    let audit_log_repo = Arc::new(PostgresAuditLogRepo::new(pool.clone()));
-    let match_queue_repo = Arc::new(PostgresMatchQueueRepo::new(pool.clone()));
+    let raw_message_repo = Arc::new(SeaOrmRawMessageRepo::new(db.clone()));
+    let offer_repo = Arc::new(SeaOrmOfferRepo::new(db.clone()));
+    let request_repo = Arc::new(SeaOrmRequestRepo::new(db.clone()));
+    let match_repo = Arc::new(SeaOrmMatchRepo::new(db.clone()));
+    let group_repo = Arc::new(SeaOrmGroupRepo::new(db.clone()));
+    let medication_mapping_repo = Arc::new(SeaOrmMedicationMappingRepo::new(db.clone()));
+    let review_queue_repo = Arc::new(SeaOrmReviewQueueRepo::new(db.clone()));
+    let audit_log_repo = Arc::new(SeaOrmAuditLogRepo::new(db.clone()));
+    let match_queue_repo = Arc::new(SeaOrmMatchQueueRepo::new(db.clone()));
 
     workflow.end_phase("success", "9 repositories initialized");
 
@@ -523,7 +529,7 @@ async fn main() -> anyhow::Result<()> {
         .iter()
         .map(|m| {
             pharma_core::ai::BatchMessage::new(&m.id, &m.content)
-                .with_sender(&m.sender_name)
+                .with_sender(m.sender_name.as_deref().unwrap_or(""))
                 .with_group(&m.group_name)
         })
         .collect();
@@ -542,7 +548,7 @@ async fn main() -> anyhow::Result<()> {
             "{}. [{}] {}: {}",
             i + 1,
             msg.group_name,
-            msg.sender_name,
+            msg.sender_name.as_deref().unwrap_or("Unknown"),
             truncate(&msg.content, 50)
         );
 
@@ -637,7 +643,7 @@ async fn main() -> anyhow::Result<()> {
             }
             println!(
                 "   - {} ({:.0} units @ {:.0} EGP)",
-                o.medication, o.quantity, o.price
+                o.medication, o.quantity.unwrap_or_default(), o.price.unwrap_or_default()
             );
         }
     }
@@ -650,7 +656,7 @@ async fn main() -> anyhow::Result<()> {
                 break;
             }
             let urgent = if r.urgent { " 🔥" } else { "" };
-            println!("   - {} ({:.0} units){}", r.medication, r.quantity, urgent);
+            println!("   - {} ({:.0} units){}", r.medication, r.quantity.unwrap_or_default(), urgent);
         }
     }
 

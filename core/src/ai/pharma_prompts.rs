@@ -212,7 +212,7 @@ CORRECT Output: {"items": []}
 pub fn build_user_prompt_with_mappings(
     content: &str,
     sender_name: Option<&str>,
-    group_name: Option<&str>,
+    group_name: &str,
     reply_to: Option<&str>,
     medication_mappings: Option<&[String]>,
 ) -> String {
@@ -233,9 +233,7 @@ pub fn build_user_prompt_with_mappings(
     if let Some(sender) = sender_name {
         prompt.push_str(&format!("From: {}\n", sender));
     }
-    if let Some(group) = group_name {
-        prompt.push_str(&format!("Group: {}\n", group));
-    }
+    prompt.push_str(&format!("Group: {}\n", group_name));
     if let Some(reply) = reply_to {
         prompt.push_str(&format!("Replying to: \"{}\"\n", reply));
     }
@@ -254,7 +252,7 @@ mod tests {
         let prompt = build_user_prompt_with_mappings(
             "متوفر اوجمنتين",
             Some("Ahmed"),
-            Some("Pharmacy"),
+            "Pharmacy",
             None,
             None,
         );
@@ -269,7 +267,7 @@ mod tests {
         let prompt = build_user_prompt_with_mappings(
             "متوفر اوجمنتين",
             Some("Ahmed"),
-            None,
+            "Pharmacy",
             None,
             Some(&mappings),
         );

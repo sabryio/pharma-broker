@@ -117,7 +117,7 @@ impl PharmaParser {
         &self,
         content: &str,
         sender_name: Option<&str>,
-        group_name: Option<&str>,
+        group_name: &str,
         reply_to: Option<&str>,
         mappings: Option<&[String]>,
     ) -> Result<Vec<ParsedItem>, ParseError> {
@@ -206,7 +206,7 @@ impl PharmaParser {
         &self,
         content: &str,
         sender_name: Option<&str>,
-        group_name: Option<&str>,
+        group_name: &str,
         reply_to: Option<&str>,
         mappings: Option<&[String]>,
     ) -> Result<Vec<ParsedItem>, ParseError> {
@@ -344,7 +344,7 @@ impl PharmaParser {
 
         for batch in batches {
             for msg in batch {
-                let result = self.parse(&msg.content, None, None, None, None).await;
+                let result = self.parse(&msg.content, None, &msg.group_name, None, None).await;
                 results.push(BatchParseResult {
                     message_id: msg.id,
                     result,

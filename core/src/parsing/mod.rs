@@ -75,11 +75,11 @@ mod tests {
     fn test_parse_job_new() {
         let msg = RawMessage {
             id: "test-123".to_string(),
-            external_id: "ext-123".to_string(),
+            external_id: Some("ext-123".to_string()),
             content: "Test message".to_string(),
-            sender_phone: "+123".to_string(),
+            sender_phone: Some("+123".to_string()),
             sender_jid: "123@s.whatsapp.net".to_string(),
-            sender_name: "Test".to_string(),
+            sender_name: Some("Test".to_string()),
             group_jid: "group@s.whatsapp.net".to_string(),
             group_name: "Test Group".to_string(),
             reply_to_id: None,
@@ -88,6 +88,7 @@ mod tests {
             timestamp: chrono::Utc::now(),
             processed_at: None,
             error: None,
+            created_at: chrono::Utc::now(),
         };
 
         let job = ParseJob::new(msg.clone());

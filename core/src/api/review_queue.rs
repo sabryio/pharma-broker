@@ -11,11 +11,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use super::routes::AppState;
-use crate::repository::{AuditLogRepository, ReviewQueueRepository};
-use crate::{
-    domain::{AuditAction, AuditLog, EntityType, ReviewQueueItem, ReviewQueueStats, ReviewStatus},
-    repository::MedicationMappingRepository,
+use crate::domain::{
+    AuditAction, AuditLog, EntityType, ReviewQueueItem, ReviewQueueStats, ReviewStatus,
 };
+use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
 
 // ============================================================================
 // Request/Response Types
@@ -166,7 +165,7 @@ where
     // Update the status
     state
         .review_queue_repo
-        .update_status(&id, status, &req.reviewed_by, req.notes.as_deref())
+        .update_status(&id, status.clone(), &req.reviewed_by, req.notes.as_deref())
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

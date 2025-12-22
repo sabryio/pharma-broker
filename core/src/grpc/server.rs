@@ -6,6 +6,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use pgvector::Vector as PgVector;
+use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 use tokio::sync::broadcast;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
@@ -27,9 +30,9 @@ use crate::domain::{
 use crate::matching::AutoActionHandler;
 use crate::matching::MatchingEngine;
 use crate::repository::{
-    AuditLogRepository, FeedbackRecordRepository, GroupRepository, MatchQueueRepository,
-    MatchRepository, MedicationMappingRepository, OfferRepository, RawMessageRepository,
-    RequestRepository, ReviewQueueRepository,
+    AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
+    MedicationMappingRepository, OfferRepository, RawMessageRepository, RequestRepository,
+    ReviewQueueRepository,
 };
 
 /// The gRPC service implementation
@@ -39,7 +42,7 @@ where
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
     G: GroupRepository + 'static,
-    F: FeedbackRecordRepository + 'static,
+    F: FeedbackRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
@@ -67,7 +70,7 @@ where
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
     G: GroupRepository + 'static,
-    F: FeedbackRecordRepository + 'static,
+    F: FeedbackRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
@@ -118,12 +121,24 @@ fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
         } else {
             proto.id.clone()
         },
-        external_id: proto.external_id.clone(),
+        external_id: if proto.external_id.is_empty() {
+            None
+        } else {
+            Some(proto.external_id.clone())
+        },
         group_jid: proto.group_jid.clone(),
         group_name: proto.group_name.clone(),
         sender_jid: proto.sender_jid.clone(),
-        sender_phone: proto.sender_phone.clone(),
-        sender_name: proto.sender_name.clone(),
+        sender_phone: if proto.sender_phone.is_empty() {
+            None
+        } else {
+            Some(proto.sender_phone.clone())
+        },
+        sender_name: if proto.sender_name.is_empty() {
+            None
+        } else {
+            Some(proto.sender_name.clone())
+        },
         content: proto.content.clone(),
         timestamp,
         processed_at: None,
@@ -131,6 +146,7 @@ fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
         reply_to_id: proto.reply_to_id.clone(),
         reply_to_content: proto.reply_to_content.clone(),
         reply_to_sender: proto.reply_to_sender.clone(),
+        created_at: Utc::now(),
     }
 }
 
@@ -151,7 +167,7 @@ where
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
     G: GroupRepository + 'static,
-    F: FeedbackRecordRepository + 'static,
+    F: FeedbackRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
@@ -272,8 +288,8 @@ where
             let parsed_items = match ai_client
                 .parse(
                     &content,
-                    Some(&sender_name),
-                    Some(&group_name),
+                    sender_name.as_deref(),
+                    &group_name,
                     reply_to.as_deref(),
                     mappings_opt,
                 )
@@ -343,22 +359,22 @@ where
                             let offer = Offer {
                                 id: Uuid::new_v4().to_string(),
                                 raw_message_id: msg_id.clone(),
-                                source_phone: sender_phone.clone(),
+                                source_phone: sender_phone.clone().unwrap_or_default(),
                                 source_name: sender_name.clone(),
                                 source_group: group_jid.clone(),
                                 group_name: group_name.clone(),
                                 medication: item.medication.clone(),
                                 medication_raw: item.medication_raw.clone(),
-                                quantity: item.quantity,
+                                quantity: Decimal::from_f64(item.quantity),
                                 unit: item.unit.clone(),
-                                price: item.price,
+                                price: Decimal::from_f64(item.price),
                                 currency: Some("EGP".to_string()),
                                 expiry_date: None,
                                 batch_number: None,
                                 notes: item.notes.clone(),
-                                raw_message: content.clone(),
+                                raw_message: Some(content.clone()),
                                 status: ItemStatus::Active,
-                                content_embedding: content_embedding.clone(),
+                                content_embedding: content_embedding.clone().map(PgVector::from),
                                 urgent: item.urgent,
                                 urgency_level: convert_urgency_level(item.urgency_level),
                                 expiry_info: item.expiry.clone(),
@@ -387,7 +403,7 @@ where
                             else if let Some(emb) = &offer.content_embedding
                                 && let Ok(semantic_dups) = offer_repo
                                     .find_semantic_duplicates(
-                                        emb,
+                                        emb.as_slice(),
                                         0.95,
                                         chrono::Duration::minutes(10),
                                     )
@@ -431,24 +447,24 @@ where
                             let request = RequestEntity {
                                 id: Uuid::new_v4().to_string(),
                                 raw_message_id: msg_id.clone(),
-                                source_phone: sender_phone.clone(),
+                                source_phone: sender_phone.clone().unwrap_or_default(),
                                 source_name: sender_name.clone(),
                                 source_group: group_jid.clone(),
                                 group_name: group_name.clone(),
                                 medication: item.medication.clone(),
                                 medication_raw: item.medication_raw.clone(),
-                                quantity: item.quantity,
+                                quantity: Decimal::from_f64(item.quantity),
                                 unit: item.unit.clone(),
-                                max_price: item.max_price,
+                                max_price: Decimal::from_f64(item.max_price),
                                 currency: Some("EGP".to_string()),
                                 urgent: item.urgent,
                                 urgency_level: convert_urgency_level(item.urgency_level),
                                 expiry_requirement: item.expiry.clone(),
                                 ai_confidence: item.ai_confidence,
                                 notes: item.notes.clone(),
-                                raw_message: content.clone(),
+                                raw_message: Some(content.clone()),
                                 status: ItemStatus::Active,
-                                content_embedding: content_embedding.clone(),
+                                content_embedding: content_embedding.clone().map(PgVector::from),
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };
@@ -473,7 +489,7 @@ where
                             else if let Some(emb) = &request.content_embedding
                                 && let Ok(semantic_dups) = request_repo
                                     .find_semantic_duplicates(
-                                        emb,
+                                        emb.as_slice(),
                                         0.95,
                                         chrono::Duration::minutes(10),
                                     )
@@ -518,9 +534,10 @@ where
                     crate::matching::ParseAction::QueueForReview => {
                         // Task 3.3: Queue for human review
                         let review_item = ReviewQueueItem::for_low_confidence(
-                            msg_id.clone(),
+                            &msg_id,
                             serde_json::to_value(&item).unwrap_or(serde_json::Value::Null),
                             item.ai_confidence,
+                            "low_confidence",
                         );
 
                         if let Err(e) = review_queue_repo.save(&review_item).await {
@@ -710,7 +727,7 @@ where
     R: RequestRepository + 'static,
     M: RawMessageRepository + 'static,
     G: GroupRepository + 'static,
-    F: FeedbackRecordRepository + 'static,
+    F: FeedbackRepository + 'static,
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,

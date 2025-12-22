@@ -25,8 +25,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use pharma_core::domain::Group;
-use pharma_core::repository::GroupRepository;
-use pharma_core::repository::postgres::PostgresGroupRepo;
+use pharma_core::repository::{GroupRepository, SeaOrmGroupRepo, create_connection};
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
@@ -35,7 +34,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs},
 };
-use sqlx::postgres::PgPoolOptions;
 use whatlang::{Lang, detect};
 
 // ============================================================================
@@ -221,11 +219,11 @@ struct App {
     saved: bool,
 
     // Repository
-    group_repo: PostgresGroupRepo,
+    group_repo: SeaOrmGroupRepo,
 }
 
 impl App {
-    fn new(group_repo: PostgresGroupRepo, groups: Vec<Group>) -> Self {
+    fn new(group_repo: SeaOrmGroupRepo, groups: Vec<Group>) -> Self {
         let group_items: Vec<GroupItem> = groups
             .into_iter()
             .map(|g| GroupItem {
@@ -561,13 +559,9 @@ async fn main() -> anyhow::Result<()> {
     let database_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/pharmabroker".to_string());
 
-    // Connect to database
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
-
-    let group_repo = PostgresGroupRepo::new(pool);
+    // Connect to database using SeaORM
+    let db = create_connection(&database_url).await?;
+    let group_repo = SeaOrmGroupRepo::new(db);
 
     // Load groups
     let groups = group_repo.get_all().await?;
