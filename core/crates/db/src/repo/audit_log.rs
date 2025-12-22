@@ -118,7 +118,8 @@ mod tests {
             .await
             .expect("Insert audit log");
 
-        audit_log::Entity::find_by_id(id)
+        audit_log::Entity::find()
+            .filter(audit_log::Column::Id.eq(id))
             .one(&db.db)
             .await
             .expect("Find audit log")

@@ -90,6 +90,21 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Added check constraints for non-empty names
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "ALTER TABLE medication_mappings ADD CONSTRAINT check_arabic_name_not_empty CHECK (length(trim(arabic_name)) > 0)",
+            )
+            .await?;
+
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "ALTER TABLE medication_mappings ADD CONSTRAINT check_english_name_not_empty CHECK (length(trim(english_name)) > 0)",
+            )
+            .await?;
+
         Ok(())
     }
 

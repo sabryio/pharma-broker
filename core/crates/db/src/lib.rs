@@ -19,6 +19,7 @@
 //! ```
 
 pub mod audit_types;
+pub mod diagnostics;
 pub mod entity;
 pub mod feedback_params;
 pub mod migration;

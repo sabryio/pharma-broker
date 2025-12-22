@@ -16,6 +16,7 @@ pub struct Model {
     pub details: Option<serde_json::Value>,
     pub ip_address: Option<String>,
     pub user_agent: Option<String>,
+    #[sea_orm(primary_key)]
     pub created_at: DateTimeUtc,
 }
 

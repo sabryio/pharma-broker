@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use pharma_core::ai::PharmaParser;
+#[cfg(not(feature = "tokio-console"))]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use pharma_core::api::handlers::init_start_time;
@@ -19,15 +20,32 @@ use pharma_core::repository::{
 };
 use pharma_core::worker::match_processor::MatchProcessor;
 
+/// Initialize tracing subscriber with optional tokio-console support
+fn init_tracing() {
+    #[cfg(feature = "tokio-console")]
+    {
+        // When tokio-console is enabled, use console_subscriber
+        // This enables runtime debugging via `tokio-console` CLI tool
+        console_subscriber::init();
+        eprintln!("🔍 Tokio Console enabled - connect with `tokio-console` CLI");
+    }
+
+    #[cfg(not(feature = "tokio-console"))]
+    {
+        // Standard tracing setup
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::new(
+                std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+            ))
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Initialize tracing (with optional tokio-console support)
+    init_tracing();
 
     tracing::info!("🦀 PharmaBroker Core Engine v0.1.0 starting...");
 

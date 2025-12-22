@@ -8,78 +8,50 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // Create partitioned table using raw SQL as SeaORM builder doesn't natively support PARTITION BY in all versions
         manager
-            .create_table(
-                Table::create()
-                    .table(AuditLogs::Table)
-                    .if_not_exists()
-                    .col(
-                        ColumnDef::new(AuditLogs::Id)
-                            .uuid()
-                            .not_null()
-                            .primary_key()
-                            .default(Expr::cust("gen_random_uuid()")),
-                    )
-                    .col(ColumnDef::new(AuditLogs::Action).text().not_null())
-                    .col(ColumnDef::new(AuditLogs::EntityType).text().not_null())
-                    .col(ColumnDef::new(AuditLogs::EntityId).text().not_null())
-                    .col(ColumnDef::new(AuditLogs::Actor).text().not_null())
-                    .col(ColumnDef::new(AuditLogs::Details).json_binary())
-                    .col(ColumnDef::new(AuditLogs::IpAddress).text())
-                    .col(ColumnDef::new(AuditLogs::UserAgent).text())
-                    .col(
-                        ColumnDef::new(AuditLogs::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .to_owned(),
+            .get_connection()
+            .execute_unprepared(
+                "CREATE TABLE IF NOT EXISTS audit_logs (
+                    id UUID NOT NULL DEFAULT gen_random_uuid(),
+                    action TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    details JSONB,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id, created_at)
+                ) PARTITION BY RANGE (created_at)",
             )
             .await?;
 
-        // Indexes
+        // Create a default partition to handle data outside specific ranges
         manager
-            .create_index(
-                Index::create()
-                    .if_not_exists()
-                    .name("idx_audit_logs_entity")
-                    .table(AuditLogs::Table)
-                    .col(AuditLogs::EntityType)
-                    .col(AuditLogs::EntityId)
-                    .to_owned(),
+            .get_connection()
+            .execute_unprepared(
+                "CREATE TABLE IF NOT EXISTS audit_logs_default PARTITION OF audit_logs DEFAULT",
             )
             .await?;
 
+        // Indexes (Primary key (id, created_at) is already an index)
         manager
-            .create_index(
-                Index::create()
-                    .if_not_exists()
-                    .name("idx_audit_logs_actor")
-                    .table(AuditLogs::Table)
-                    .col(AuditLogs::Actor)
-                    .to_owned(),
+            .get_connection()
+            .execute_unprepared("CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs (entity_type, entity_id)")
+            .await?;
+
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs (actor)",
             )
             .await?;
 
         manager
-            .create_index(
-                Index::create()
-                    .if_not_exists()
-                    .name("idx_audit_logs_action")
-                    .table(AuditLogs::Table)
-                    .col(AuditLogs::Action)
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .if_not_exists()
-                    .name("idx_audit_logs_created_at")
-                    .table(AuditLogs::Table)
-                    .col((AuditLogs::CreatedAt, IndexOrder::Desc))
-                    .to_owned(),
+            .get_connection()
+            .execute_unprepared(
+                "CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs (action)",
             )
             .await?;
 
@@ -96,13 +68,4 @@ impl MigrationTrait for Migration {
 #[derive(DeriveIden)]
 pub enum AuditLogs {
     Table,
-    Id,
-    Action,
-    EntityType,
-    EntityId,
-    Actor,
-    Details,
-    IpAddress,
-    UserAgent,
-    CreatedAt,
 }

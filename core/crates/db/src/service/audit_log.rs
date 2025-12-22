@@ -17,12 +17,16 @@ impl AuditLogService {
         model.insert(db).await.map_err(Error::from)
     }
 
-    /// Get log entry by ID
+    /// Get log entry by ID (scans partitions if timestamp not provided)
     pub async fn get_by_id(
         db: &DatabaseConnection,
         id: uuid::Uuid,
     ) -> Result<Option<audit_log::Model>> {
-        AuditLog::find_by_id(id).one(db).await.map_err(Error::from)
+        AuditLog::find()
+            .filter(audit_log::Column::Id.eq(id))
+            .one(db)
+            .await
+            .map_err(Error::from)
     }
 
     /// Get logs by entity

@@ -88,6 +88,14 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Partial index for unprocessed messages
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "CREATE INDEX IF NOT EXISTS idx_raw_messages_unprocessed ON raw_messages (timestamp) WHERE processed_at IS NULL",
+            )
+            .await?;
+
         Ok(())
     }
 
