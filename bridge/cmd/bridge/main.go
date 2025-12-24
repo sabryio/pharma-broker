@@ -33,6 +33,8 @@ func main() {
 	log.Info().Str("version", domain.CurrentVersion.String()).Msg("🌉 PharmaBroker WhatsApp Bridge")
 
 	fxApp := fx.New(
+		fx.NopLogger,
+
 		fx.Provide(func() (*config.Config, error) { return config.Load() }),
 		fx.Provide(func() zerolog.Logger { return log.Logger }),
 
