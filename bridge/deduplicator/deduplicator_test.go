@@ -62,6 +62,28 @@ func TestDeduplicator_IsDuplicate(t *testing.T) {
 	}
 }
 
+func TestDeduplicator_CrossGroupDedup(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	d := New(ctx, testConfig(), zerolog.Nop())
+	defer d.Close()
+
+	group1 := domain.JID("group1@g.us")
+	group2 := domain.JID("group2@g.us")
+	senderJID := domain.JID("sender@s.whatsapp.net")
+	content := "Hello"
+	ts := time.Now()
+
+	// Record in group 1
+	d.Record(group1, senderJID, content, ts)
+
+	// Same message from same sender in group 2 should now be duplicate
+	if !d.IsDuplicate(group2, senderJID, content, ts) {
+		t.Error("Same message from same sender in different group should be duplicate")
+	}
+}
+
 func TestDeduplicator_WindowExpiry(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

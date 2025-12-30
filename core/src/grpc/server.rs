@@ -308,6 +308,7 @@ where
             let mut offers_created = 0;
             let mut requests_created = 0;
             let mut items_queued = 0;
+            let mut new_request_ids: Vec<String> = Vec::new();
 
             // Pre-filter items that will be accepted (need embeddings)
             let accepted_items: Vec<_> = parsed_items
@@ -505,6 +506,7 @@ where
                                     "❓ Request created"
                                 );
                                 requests_created += 1;
+                                new_request_ids.push(request.id.clone());
                                 let _ = ws_tx.send(WsEvent::NewRequest(request.clone()));
 
                                 // Task 5.3: Audit log Request creation
@@ -578,18 +580,12 @@ where
                 );
             }
 
-            // Trigger matching engine for new requests
-            // Trigger matching engine via queue for new requests
-            if requests_created > 0
-                && let Ok(recent_requests) = request_repo.get_active(10, 0).await
-            {
-                for request in recent_requests {
-                    // Enqueue for matching (Priority 0 default)
-                    if let Err(e) = match_queue_repo.enqueue(&request.id, 0).await {
-                        tracing::error!(error = %e, request_id = %request.id, "Failed to enqueue request for matching");
-                    } else {
-                        tracing::info!(request_id = %request.id, "Queued request for matching");
-                    }
+            // Trigger matching engine for newly created requests only
+            for request_id in new_request_ids {
+                if let Err(e) = match_queue_repo.enqueue(&request_id, 0).await {
+                    tracing::error!(error = %e, request_id = %request_id, "Failed to enqueue request for matching");
+                } else {
+                    tracing::debug!(request_id = %request_id, "Queued request for matching");
                 }
             }
         });

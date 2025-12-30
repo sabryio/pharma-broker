@@ -231,7 +231,8 @@ impl Client {
         &self,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse> {
-        let url = format!("{}/chat/completions", self.config.base_url);
+        let base = self.config.base_url.trim_end_matches('/');
+        let url = format!("{}/chat/completions", base);
 
         debug!(
             url = %url,

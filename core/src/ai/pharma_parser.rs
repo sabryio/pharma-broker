@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use ai_client::{Client, ClientConfig, Error as ClientError};
+use futures::future::join_all;
 use tracing::{debug, error, info, warn};
 
 use super::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
@@ -260,7 +261,7 @@ impl PharmaParser {
 
         // Get learned medication mappings from feedback loop (once for all chunks)
         let learned_mappings = self.feedback_loop.get_medication_mappings();
-        let all_mappings = if !learned_mappings.is_empty() {
+        let all_mappings: Option<Vec<String>> = if !learned_mappings.is_empty() {
             let mut combined = mappings.map(|m| m.to_vec()).unwrap_or_default();
             combined.extend(learned_mappings);
             Some(combined)
@@ -268,29 +269,46 @@ impl PharmaParser {
             mappings.map(|m| m.to_vec())
         };
 
+        // Build enhanced system prompt once (shared across all chunks)
+        let enhanced_system_prompt = self
+            .feedback_loop
+            .build_enhanced_prompt(SYSTEM_PROMPT, content);
+
+        // Create futures for parallel chunk processing
+        let chunk_futures: Vec<_> = chunks
+            .iter()
+            .enumerate()
+            .map(|(idx, chunk)| {
+                let client = &self.client;
+                let all_mappings_ref = all_mappings.as_deref();
+                let enhanced_system_prompt_ref = &enhanced_system_prompt;
+                let chunk_owned = chunk.clone(); // Clone to owned String before async
+
+                async move {
+                    let user_prompt = build_user_prompt_with_mappings(
+                        &chunk_owned,
+                        sender_name,
+                        group_name,
+                        reply_to,
+                        all_mappings_ref,
+                    );
+
+                    let result: Result<ParseResult, ClientError> = client
+                        .generate_object_with_system(enhanced_system_prompt_ref, &user_prompt)
+                        .await;
+
+                    (idx, chunk_owned, result)
+                }
+            })
+            .collect();
+
+        // Execute all chunks in parallel
+        let results = join_all(chunk_futures).await;
+
         let mut all_items = Vec::new();
         let mut errors = Vec::new();
 
-        for (idx, chunk) in chunks.iter().enumerate() {
-            // Build user prompt with combined mappings
-            let user_prompt = build_user_prompt_with_mappings(
-                chunk,
-                sender_name,
-                group_name,
-                reply_to,
-                all_mappings.as_deref(),
-            );
-
-            // Enhance system prompt with learned examples for this chunk
-            let enhanced_system_prompt = self
-                .feedback_loop
-                .build_enhanced_prompt(SYSTEM_PROMPT, chunk);
-
-            let result: Result<ParseResult, ClientError> = self
-                .client
-                .generate_object_with_system(&enhanced_system_prompt, &user_prompt)
-                .await;
-
+        for (idx, chunk, result) in results {
             match result {
                 Ok(parse_result) => {
                     self.circuit_breaker.record_success();
@@ -299,7 +317,7 @@ impl PharmaParser {
                         info!(
                             chunk = idx + 1,
                             items = items_count,
-                            "Chunk parsed successfully"
+                            "Chunk parsed successfully (parallel)"
                         );
                     } else {
                         debug!(chunk = idx + 1, "Chunk parsed successfully (no items)");
@@ -321,9 +339,9 @@ impl PharmaParser {
                             chunk = idx + 1,
                             "Chunk still too large, attempting sub-split"
                         );
-                        // Sub-split this specific chunk
+                        // Sub-split this specific chunk (sequentially for safety)
                         if let Ok(sub_items) = Box::pin(self.parse_chunked(
-                            chunk,
+                            &chunk,
                             sender_name,
                             group_name,
                             reply_to,

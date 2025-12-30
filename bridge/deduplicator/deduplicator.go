@@ -3,6 +3,8 @@ package deduplicator
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,8 +26,12 @@ type Config struct {
 // cacheKey is a strongly-typed key for the dedup cache.
 type cacheKey string
 
-func makeCacheKey(groupJID, senderJID domain.JID) cacheKey {
-	return cacheKey(string(groupJID) + "|" + string(senderJID))
+// makeCacheKey creates a key from sender JID and content hash.
+// This makes deduplication group-agnostic, catching identical messages
+// from the same sender across multiple groups.
+func makeCacheKey(senderJID domain.JID, content string) cacheKey {
+	contentHash := sha256.Sum256([]byte(content))
+	return cacheKey(string(senderJID) + "|" + hex.EncodeToString(contentHash[:8]))
 }
 
 type cacheEntry struct {
@@ -86,7 +92,7 @@ func (d *Deduplicator) IsDuplicate(groupJID, senderJID domain.JID, content strin
 	d.cacheMu.RLock()
 	defer d.cacheMu.RUnlock()
 
-	key := makeCacheKey(groupJID, senderJID)
+	key := makeCacheKey(senderJID, content)
 	entry, exists := d.cache[key]
 	if !exists {
 		d.misses.Add(1)
@@ -108,8 +114,9 @@ func (d *Deduplicator) IsDuplicate(groupJID, senderJID domain.JID, content strin
 		d.hits.Add(1)
 		d.log.Debug().
 			Str("sender", string(senderJID)).
+			Str("group", string(groupJID)).
 			Dur("time_diff", timeDiff).
-			Msg("Duplicate message detected")
+			Msg("Duplicate message detected (cross-group)")
 		return true
 	}
 
@@ -119,7 +126,7 @@ func (d *Deduplicator) IsDuplicate(groupJID, senderJID domain.JID, content strin
 
 // Record stores the message for future deduplication checks.
 func (d *Deduplicator) Record(groupJID, senderJID domain.JID, content string, timestamp time.Time) {
-	key := makeCacheKey(groupJID, senderJID)
+	key := makeCacheKey(senderJID, content)
 	entry := cacheEntry{
 		Content:   content,
 		Timestamp: timestamp,
