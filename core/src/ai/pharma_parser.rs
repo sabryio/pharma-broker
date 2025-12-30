@@ -22,22 +22,22 @@ use super::token_batcher::{BatchMessage, TokenBatchConfig, TokenBatcher};
 // Context Size Constants (matching legacy)
 // =============================================================================
 
-/// Maximum context size for the model (conservative estimate)
-/// Most local models have 8K-32K context, we use 8K as safe default
-const DEFAULT_MAX_CONTEXT_TOKENS: usize = 8000;
-
-/// Estimated tokens for system prompt (SYSTEM_PROMPT is ~3000 tokens)
-const SYSTEM_PROMPT_TOKENS: usize = 3500;
+/// Default maximum context size for the model (conservative estimate)
+/// Most local models have 8K-32K context, we use 4K as safe default for local llama.cpp/Ollama
+const DEFAULT_MAX_CONTEXT_TOKENS: usize = 4096;
 
 /// Reserved tokens for AI response output
-const RESPONSE_RESERVED_TOKENS: usize = 2000;
+const RESPONSE_RESERVED_TOKENS: usize = 1000;
 
 /// Maximum lines per message chunk (matching legacy DefaultMaxMessageLines)
 const MAX_MESSAGE_LINES: usize = 20;
 
-/// Available tokens for user prompt = context - system - response
-const fn available_prompt_tokens() -> usize {
-    DEFAULT_MAX_CONTEXT_TOKENS - SYSTEM_PROMPT_TOKENS - RESPONSE_RESERVED_TOKENS
+/// Get maximum context tokens from environment or default
+fn get_max_context_tokens() -> usize {
+    std::env::var("AI_MAX_CONTEXT_TOKENS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONTEXT_TOKENS)
 }
 
 /// Configuration for the PharmaParser
@@ -127,16 +127,42 @@ impl PharmaParser {
             return Err(ParseError::CircuitOpen);
         }
 
+        // Enhance system prompt with learned examples from feedback loop
+        let enhanced_system_prompt = self
+            .feedback_loop
+            .build_enhanced_prompt(SYSTEM_PROMPT, content);
+
+        // Calculate overhead tokens (system prompt + user prompt shell + mappings)
+        let prompt_shell =
+            build_user_prompt_with_mappings("", sender_name, group_name, reply_to, mappings);
+        let overhead =
+            Self::estimate_tokens(&enhanced_system_prompt) + Self::estimate_tokens(&prompt_shell);
+
+        let max_context = get_max_context_tokens();
+        let available = max_context
+            .saturating_sub(overhead)
+            .saturating_sub(RESPONSE_RESERVED_TOKENS)
+            .max(512);
+
         // Check if content needs to be split due to context limits
         let content_tokens = Self::estimate_tokens(content);
-        let available = available_prompt_tokens();
 
         if content_tokens > available {
             // Content too large - split into chunks and merge results
+            let preview: String = content.chars().take(100).collect();
+            let preview = if content.chars().count() > 100 {
+                format!("{}...", preview)
+            } else {
+                preview
+            };
+
             warn!(
                 content_tokens = content_tokens,
                 available = available,
-                "Message exceeds context limit, splitting into chunks"
+                overhead = overhead,
+                max_context = max_context,
+                content = %preview,
+                "Message exceeds dynamic context limit, splitting into chunks"
             );
             return self
                 .parse_chunked(content, sender_name, group_name, reply_to, mappings)
@@ -146,11 +172,6 @@ impl PharmaParser {
         // Build user prompt with mappings
         let user_prompt =
             build_user_prompt_with_mappings(content, sender_name, group_name, reply_to, mappings);
-
-        // Enhance system prompt with learned examples from feedback loop
-        let enhanced_system_prompt = self
-            .feedback_loop
-            .build_enhanced_prompt(SYSTEM_PROMPT, content);
 
         // Get learned medication mappings from feedback loop
         let learned_mappings = self.feedback_loop.get_medication_mappings();
@@ -189,10 +210,30 @@ impl PharmaParser {
         match result {
             Ok(parse_result) => {
                 self.circuit_breaker.record_success();
-                info!(items = parse_result.items.len(), "AI parsing complete");
+                let items_count = parse_result.items.len();
+                if items_count > 0 {
+                    info!(items = items_count, "AI parsing complete");
+                } else {
+                    debug!("AI parsing complete (no items found)");
+                }
                 Ok(parse_result.items)
             }
             Err(e) => {
+                // Handle context exceeded error with recursive split (Half-Chunk Retry)
+                if let ClientError::Api {
+                    status,
+                    ref message,
+                } = e
+                    && status == 500
+                    && (message.contains("Context size has been exceeded")
+                        || message.contains("context_length_exceeded"))
+                {
+                    warn!("Context exceeded during single parse, attempting half-chunk split");
+                    return self
+                        .parse_chunked(content, sender_name, group_name, reply_to, mappings)
+                        .await;
+                }
+
                 self.circuit_breaker.record_failure();
                 error!(error = %e, "AI parsing failed");
                 Err(ParseError::Client(e))
@@ -253,14 +294,48 @@ impl PharmaParser {
             match result {
                 Ok(parse_result) => {
                     self.circuit_breaker.record_success();
-                    info!(
-                        chunk = idx + 1,
-                        items = parse_result.items.len(),
-                        "Chunk parsed successfully"
-                    );
+                    let items_count = parse_result.items.len();
+                    if items_count > 0 {
+                        info!(
+                            chunk = idx + 1,
+                            items = items_count,
+                            "Chunk parsed successfully"
+                        );
+                    } else {
+                        debug!(chunk = idx + 1, "Chunk parsed successfully (no items)");
+                    }
                     all_items.extend(parse_result.items);
                 }
                 Err(e) => {
+                    // Even in chunked mode, a single chunk might be too big if estimation was slightly off
+                    // or if system prompt + mapping grew too much.
+                    if let ClientError::Api {
+                        status,
+                        ref message,
+                    } = e
+                        && status == 500
+                        && (message.contains("Context size has been exceeded")
+                            || message.contains("context_length_exceeded"))
+                    {
+                        warn!(
+                            chunk = idx + 1,
+                            "Chunk still too large, attempting sub-split"
+                        );
+                        // Sub-split this specific chunk
+                        if let Ok(sub_items) = Box::pin(self.parse_chunked(
+                            chunk,
+                            sender_name,
+                            group_name,
+                            reply_to,
+                            mappings,
+                        ))
+                        .await
+                        {
+                            all_items.extend(sub_items);
+                            continue;
+                        }
+                    }
+
                     self.circuit_breaker.record_failure();
                     error!(chunk = idx + 1, error = %e, "Chunk parsing failed");
                     errors.push(format!("Chunk {}: {}", idx + 1, e));
@@ -281,9 +356,11 @@ impl PharmaParser {
         Ok(all_items)
     }
 
-    /// Estimate token count for text (~4 chars per token)
+    /// Estimate token count for text using o200k_base
     fn estimate_tokens(text: &str) -> usize {
-        text.len().saturating_div(4).max(1)
+        static BPE: std::sync::OnceLock<tiktoken_rs::CoreBPE> = std::sync::OnceLock::new();
+        let bpe = BPE.get_or_init(|| tiktoken_rs::o200k_base().unwrap());
+        bpe.encode_with_special_tokens(text).len()
     }
 
     /// Split content into chunks that fit within context limits
@@ -305,8 +382,16 @@ impl PharmaParser {
 
     /// Split content by estimated token count
     fn split_by_tokens(content: &str) -> Vec<String> {
-        let available = available_prompt_tokens();
-        let max_chars = available * 4; // ~4 chars per token
+        // Estimate available tokens based on current SYSTEM_PROMPT size
+        // Using a conservative overhead estimate for chunking
+        let system_tokens = Self::estimate_tokens(SYSTEM_PROMPT) + 500; // base + extra slack
+        let max_context = get_max_context_tokens();
+        let available = max_context
+            .saturating_sub(system_tokens)
+            .saturating_sub(RESPONSE_RESERVED_TOKENS)
+            .max(512);
+
+        let max_chars = available * 4; // ~4 chars per token fallback still useful for rough estimate
 
         if content.len() <= max_chars {
             return vec![content.to_string()];

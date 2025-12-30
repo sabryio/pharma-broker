@@ -294,11 +294,15 @@ where
                 }
             };
 
-            tracing::info!(
-                id = %msg_id,
-                items_count = parsed_items.len(),
-                "🎯 AI parsing complete"
-            );
+            if parsed_items.is_empty() {
+                tracing::debug!(id = %msg_id, "🎯 AI parsing complete (no items found)");
+            } else {
+                tracing::info!(
+                    id = %msg_id,
+                    items_count = parsed_items.len(),
+                    "🎯 AI parsing complete"
+                );
+            }
 
             // Create Offer/Request entities from parsed items
             let mut offers_created = 0;
@@ -562,13 +566,17 @@ where
             // Mark message as processed
             let _ = raw_message_repo.mark_processed(&msg_id, None).await;
 
-            tracing::info!(
-                id = %msg_id,
-                offers = offers_created,
-                requests = requests_created,
-                queued = items_queued,
-                "✅ Background processing complete"
-            );
+            if offers_created == 0 && requests_created == 0 && items_queued == 0 {
+                tracing::debug!(id = %msg_id, "✅ Background processing complete (no items created)");
+            } else {
+                tracing::info!(
+                    id = %msg_id,
+                    offers = offers_created,
+                    requests = requests_created,
+                    queued = items_queued,
+                    "✅ Background processing complete"
+                );
+            }
 
             // Trigger matching engine for new requests
             // Trigger matching engine via queue for new requests

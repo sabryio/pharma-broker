@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // =============================================================================
 
 /// Default maximum tokens per batch (leaves room for response)
-pub const DEFAULT_MAX_TOKENS_PER_BATCH: usize = 6000;
+pub const DEFAULT_MAX_TOKENS_PER_BATCH: usize = 4096;
 
 /// Default estimated tokens for system prompt + mappings
 pub const DEFAULT_PROMPT_OVERHEAD: usize = 2000;
@@ -170,14 +170,10 @@ impl TokenBatcher {
     }
 
     /// Estimate token count for a text string
-    ///
-    /// Uses simple heuristic: ~4 characters per token (cl100k_base-like)
-    /// This matches the legacy fallback behavior
     pub fn estimate_tokens(text: &str) -> usize {
-        // Simple estimation: ~4 chars per token
-        // This is a reasonable approximation for cl100k_base encoding
-        // More accurate would require a proper tokenizer like tiktoken-rs
-        text.len().saturating_div(4).max(1)
+        static BPE: std::sync::OnceLock<tiktoken_rs::CoreBPE> = std::sync::OnceLock::new();
+        let bpe = BPE.get_or_init(|| tiktoken_rs::o200k_base().unwrap());
+        bpe.encode_with_special_tokens(text).len()
     }
 
     /// Estimate token count for a single message
