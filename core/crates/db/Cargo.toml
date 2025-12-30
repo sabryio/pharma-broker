@@ -33,7 +33,7 @@ tokio = { version = "1.48.0", features = ["rt-multi-thread", "macros"] }
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.145"
+serde_json = "1.0.148"
 
 # Date/Time
 chrono = { version = "0.4.42", features = ["serde"] }
@@ -42,7 +42,7 @@ chrono = { version = "0.4.42", features = ["serde"] }
 uuid = { version = "1.19.0", features = ["v4", "serde"] }
 
 # Decimal
-rust_decimal = "1.39"
+rust_decimal = "1.39.0"
 
 # Error handling
 thiserror = "2.0.17"
@@ -54,8 +54,13 @@ async-trait = "0.1.89"
 # Tracing
 tracing = "0.1.44"
 
+# Convex client
+convex = "0.10.2"
+maplit = "1.0.2"
+futures = "0.3.31"
+
 [dev-dependencies]
-testcontainers = { version = "0.26.2", features = ["reusable-containers"] }
+testcontainers = { version = "0.26.3", features = ["reusable-containers"] }
 testcontainers-modules = { version = "0.14.0", features = ["postgres"] }
 tokio = { version = "1.48.0", features = ["full", "test-util"] }
 rstest = "0.26.1"

@@ -14,6 +14,8 @@ services:
     volumes:
       # For pg18+, mount at /var/lib/postgresql (not /data subdirectory)
       - ./data/postgres:/var/lib/postgresql
+      # Init script to create additional databases (Convex, WhatsApp)
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres -d pharmabroker" ]
       interval: 10s
@@ -99,6 +101,54 @@ services:
     networks:
       - pharmabroker-network
 
+  # ============================================================================
+  # Convex Backend (Self-Hosted)
+  # ============================================================================
+
+  convex:
+    image: ghcr.io/get-convex/convex-backend:latest
+    container_name: pharma-convex
+    ports:
+      - "3210:3210" # Convex API
+      - "3211:3211" # HTTP Actions
+    volumes:
+      - convex_data:/convex/data
+    environment:
+      CONVEX_CLOUD_ORIGIN: http://127.0.0.1:3210
+      CONVEX_SITE_ORIGIN: http://127.0.0.1:3211
+      # Use same PostgreSQL for Convex storage
+      POSTGRES_URL: postgresql://postgres:password@postgres:5432
+      DO_NOT_REQUIRE_SSL: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3210/version" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - pharmabroker-network
+
+  # Convex Dashboard
+  convex-dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:latest
+    container_name: pharma-convex-dashboard
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      - "6791:6791"
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: http://127.0.0.1:3210
+    depends_on:
+      convex:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pharmabroker-network
+
 # Local AI models via Docker Model Runner
 models:
   # Primary LLM for parsing
@@ -133,6 +183,7 @@ models:
 volumes:
   postgres_data:
   bridge_data:
+  convex_data:
   prometheus_data:
   grafana_data:
 

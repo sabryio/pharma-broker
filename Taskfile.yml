@@ -180,6 +180,38 @@ tasks:
       - msg "  Terminal 2 - task bridge:dev"
 
   # ============================================================================
+  # Convex
+  # ============================================================================
+
+  convex:dev:
+    desc: Start Convex development server (push functions + watch)
+    cmds:
+      - npx convex dev
+
+  convex:push:
+    desc: Push Convex functions to backend
+    cmds:
+      - npx convex deploy
+      - echo "✅ Functions pushed to backend"
+
+  convex:codegen:
+    desc: Generate Convex type definitions
+    cmds:
+      - npx convex codegen
+
+  convex:admin-key:
+    desc: Generate a new Convex admin key
+    cmds:
+      - docker compose exec convex ./generate_admin_key.sh
+      - echo ""
+      - echo "📝 Copy the key above to .env.local"
+
+  convex:logs:
+    desc: View Convex backend logs
+    cmds:
+      - docker compose logs -f convex
+
+  # ============================================================================
   # Database
   # ============================================================================
 

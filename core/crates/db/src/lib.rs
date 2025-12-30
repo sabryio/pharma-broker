@@ -19,6 +19,7 @@
 //! ```
 
 pub mod audit_types;
+pub mod convex;
 pub mod diagnostics;
 pub mod entity;
 pub mod feedback_params;
@@ -76,7 +77,13 @@ pub enum Error {
 
     #[error("Validation error: {0}")]
     Validation(String),
+
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
+
+// Alias for backwards compatibility
+pub type DbError = Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
