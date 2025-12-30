@@ -23,7 +23,7 @@ http:
 processing:
   skip_own_messages: true
   worker_count: 20
-  worker_queue_size: 100
+  worker_queue_size: 500
 
 # Resilience configuration
 resilience:

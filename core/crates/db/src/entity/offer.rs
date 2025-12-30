@@ -32,7 +32,7 @@ pub struct Model {
     pub urgency_level: UrgencyLevel,
     pub expiry_info: Option<String>,
     pub ai_confidence: f64,
-    pub content_embedding: Option<PgVector>, // Vector(384) for semantic search
+    pub content_embedding: Option<PgVector>, // Vector(768) for semantic search
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }

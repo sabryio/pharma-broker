@@ -102,7 +102,7 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared(
-                "ALTER TABLE requests ADD COLUMN IF NOT EXISTS content_embedding vector(384)",
+                "ALTER TABLE requests ADD COLUMN IF NOT EXISTS content_embedding vector(768)",
             )
             .await?;
 

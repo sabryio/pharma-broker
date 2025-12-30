@@ -14,9 +14,8 @@ services:
     volumes:
       # For pg18+, mount at /var/lib/postgresql (not /data subdirectory)
       - ./data/postgres:/var/lib/postgresql
-      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d pharmabroker"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d pharmabroker" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,18 +24,18 @@ services:
       - pharmabroker-network
 
   # Redis (for future caching/pubsub)
-  redis:
-    image: redis:8-alpine
-    container_name: pharma-redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - pharmabroker-network
+  # redis:
+  #   image: redis:8-alpine
+  #   container_name: pharma-redis
+  #   ports:
+  #     - "6379:6379"
+  #   healthcheck:
+  #     test: [ "CMD", "redis-cli", "ping" ]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - pharmabroker-network
 
   # Rust Core Engine (gRPC + REST API)
   # Now directly uses Docker Model Runner (no TypeScript gateway needed)
@@ -49,10 +48,10 @@ services:
       DATABASE_URL: postgres://postgres:password@postgres:5432/pharmabroker
       REDIS_URL: redis://redis:6379
       RUST_LOG: info
-      API_PORT: "8080"
+      API_PORT: "8081"
       GRPC_PORT: "50051"
     ports:
-      - "8080:8080" # REST API
+      - "8081:8081" # REST API
       - "50051:50051" # gRPC
     depends_on:
       postgres:
@@ -137,10 +136,12 @@ volumes:
   prometheus_data:
   grafana_data:
 
+
 networks:
   pharmabroker-network:
     name: pharmabroker-network
     driver: bridge
+
 # Add monitoring services to the services section above gateway
 # To use, add these to the 'services' section:
 #

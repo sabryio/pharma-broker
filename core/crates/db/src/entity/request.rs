@@ -30,7 +30,7 @@ pub struct Model {
     pub ai_confidence: f64,
     pub notes: Option<String>,
     pub status: Status,
-    pub content_embedding: Option<PgVector>, // Vector(384) for semantic search
+    pub content_embedding: Option<PgVector>, // Vector(768) for semantic search
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }
