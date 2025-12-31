@@ -106,6 +106,36 @@ tasks:
     cmds:
       - cargo run --bin vector-search
 
+  core:analysis:
+    desc: Run data quality analysis (Rust port of Python scripts)
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --package pharma-analysis -- {{.CLI_ARGS}}
+
+  core:analysis:all:
+    desc: Run all data analysis phases
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --package pharma-analysis -- all
+
+  core:analysis:health:
+    desc: Run database health check
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --package pharma-analysis -- health
+
+  core:analysis:quality:
+    desc: Run data quality analysis
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --package pharma-analysis -- quality
+
+  core:analysis:matching:
+    desc: Run matching engine analysis
+    dir: "{{.CORE_DIR}}"
+    cmds:
+      - cargo run --package pharma-analysis -- matching
+
   # ============================================================================
   # Bridge (Go)
   # ============================================================================
