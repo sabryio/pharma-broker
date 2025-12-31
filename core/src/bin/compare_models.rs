@@ -141,8 +141,6 @@ fn get_config_interactive() -> Config {
 #[derive(Debug, Clone)]
 struct TestMessage {
     content: String,
-    sender_name: Option<String>,
-    group_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -252,11 +250,7 @@ async fn main() -> anyhow::Result<()> {
 
     let messages: Vec<TestMessage> = db_messages
         .into_iter()
-        .map(|m| TestMessage {
-            content: m.content,
-            sender_name: m.sender_name,
-            group_name: Some(m.group_name),
-        })
+        .map(|m| TestMessage { content: m.content })
         .collect();
 
     if messages.is_empty() {
@@ -315,21 +309,13 @@ async fn main() -> anyhow::Result<()> {
             let permit = Arc::clone(&semaphore).acquire_owned();
             let parser = Arc::clone(&parser);
             let content = msg.content.clone();
-            let sender = msg.sender_name.clone();
-            let group = msg.group_name.clone();
             let model_name = model.name.clone();
             let timeout_secs = config.timeout_secs;
 
             let handle = tokio::spawn(async move {
                 let _permit = permit.await.unwrap();
                 let start = Instant::now();
-                let parse_fut = parser.parse(
-                    &content,
-                    sender.as_deref(),
-                    group.as_deref().unwrap_or_default(),
-                    None,
-                    None,
-                );
+                let parse_fut = parser.parse(&content, None, "", None, None);
 
                 let result =
                     tokio::time::timeout(Duration::from_secs(timeout_secs), parse_fut).await;

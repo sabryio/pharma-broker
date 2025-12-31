@@ -154,10 +154,8 @@ pub enum FilterReason {
     Passed,
     /// Offer is too old
     StaleOffer,
-    /// Same sender (by phone)
-    SameSenderPhone,
-    /// Same sender (by name)
-    SameSenderName,
+    /// Same sender (by ID)
+    SameSender,
 }
 
 impl FilterResult {
@@ -230,18 +228,11 @@ impl MatchFilter {
         }
 
         // Check same sender
-        if config.enable_same_sender_exclusion
-            && let Some(result) = self.check_same_sender(
-                &offer.source_phone,
-                &request.source_phone,
-                offer.source_name.as_deref().unwrap_or(""),
-                request.source_name.as_deref().unwrap_or(""),
-            )
-        {
+        if config.enable_same_sender_exclusion && offer.participant_id == request.participant_id {
             self.stats
                 .same_sender_filtered
                 .fetch_add(1, Ordering::Relaxed);
-            return result;
+            return FilterResult::filtered(FilterReason::SameSender);
         }
 
         self.stats.passed_filters.fetch_add(1, Ordering::Relaxed);
@@ -269,32 +260,7 @@ impl MatchFilter {
         None
     }
 
-    /// Check if offer and request are from the same sender
-    /// Ported from Go: MatchFilter.checkSameSender (match_filter.go:136-155)
-    fn check_same_sender(
-        &self,
-        offer_phone: &str,
-        request_phone: &str,
-        offer_name: &str,
-        request_name: &str,
-    ) -> Option<FilterResult> {
-        // Check by phone number (most reliable)
-        if !offer_phone.is_empty() && !request_phone.is_empty() && offer_phone == request_phone {
-            return Some(FilterResult::filtered(FilterReason::SameSenderPhone));
-        }
-
-        // Fallback: check by name if phones not available
-        if offer_phone.is_empty()
-            && request_phone.is_empty()
-            && !offer_name.is_empty()
-            && !request_name.is_empty()
-            && offer_name == request_name
-        {
-            return Some(FilterResult::filtered(FilterReason::SameSenderName));
-        }
-
-        None
-    }
+    // check_same_sender removed as it's now directly compared in filter_offer_for_request
 
     // =========================================================================
     // Batch Filtering
@@ -441,21 +407,19 @@ mod tests {
     use rstest::rstest;
     use uuid::Uuid;
 
-    fn create_offer(phone: &str, name: &str, age_days: i64) -> Offer {
+    fn create_offer(participant_id: Uuid, age_days: i64) -> Offer {
         Offer {
             id: Uuid::new_v4(),
-            source_phone: phone.to_string(),
-            source_name: Some(name.to_string()),
+            participant_id,
             created_at: Utc::now() - Duration::days(age_days),
             ..Default::default()
         }
     }
 
-    fn create_request(phone: &str, name: &str) -> Request {
+    fn create_request(participant_id: Uuid) -> Request {
         Request {
             id: Uuid::new_v4(),
-            source_phone: phone.to_string(),
-            source_name: Some(name.to_string()),
+            participant_id,
             ..Default::default()
         }
     }
@@ -501,8 +465,8 @@ mod tests {
     #[case(30, false)] // Very old
     fn test_stale_offer_filter(#[case] age_days: i64, #[case] should_pass: bool) {
         let filter = MatchFilter::default();
-        let offer = create_offer("123", "Seller", age_days);
-        let request = create_request("456", "Buyer");
+        let offer = create_offer(Uuid::new_v4(), age_days);
+        let request = create_request(Uuid::new_v4());
 
         let result = filter.filter_offer_for_request(&offer, &request);
 
@@ -525,8 +489,8 @@ mod tests {
             ..Default::default()
         });
 
-        let offer = create_offer("123", "Seller", 30); // Very old
-        let request = create_request("456", "Buyer");
+        let offer = create_offer(Uuid::new_v4(), 30); // Very old
+        let request = create_request(Uuid::new_v4());
 
         let result = filter.filter_offer_for_request(&offer, &request);
         assert!(
@@ -540,45 +504,23 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_same_sender_by_phone() {
+    fn test_same_sender_by_id() {
         let filter = MatchFilter::default();
-        let offer = create_offer("123456789", "Seller", 0);
-        let request = create_request("123456789", "Buyer"); // Same phone
+        let p_id = Uuid::new_v4();
+        let offer = create_offer(p_id, 0);
+        let request = create_request(p_id); // Same ID
 
         let result = filter.filter_offer_for_request(&offer, &request);
 
         assert!(!result.passed);
-        assert_eq!(result.reason, FilterReason::SameSenderPhone);
-    }
-
-    #[test]
-    fn test_same_sender_by_name_fallback() {
-        let filter = MatchFilter::default();
-        let offer = create_offer("", "John Doe", 0); // No phone
-        let request = create_request("", "John Doe"); // Same name, no phone
-
-        let result = filter.filter_offer_for_request(&offer, &request);
-
-        assert!(!result.passed);
-        assert_eq!(result.reason, FilterReason::SameSenderName);
-    }
-
-    #[test]
-    fn test_same_name_different_phone_passes() {
-        let filter = MatchFilter::default();
-        let offer = create_offer("111", "John Doe", 0);
-        let request = create_request("222", "John Doe"); // Same name but different phone
-
-        let result = filter.filter_offer_for_request(&offer, &request);
-
-        assert!(result.passed, "Same name with different phones should pass");
+        assert_eq!(result.reason, FilterReason::SameSender);
     }
 
     #[test]
     fn test_different_sender_passes() {
         let filter = MatchFilter::default();
-        let offer = create_offer("111", "Seller", 0);
-        let request = create_request("222", "Buyer");
+        let offer = create_offer(Uuid::new_v4(), 0);
+        let request = create_request(Uuid::new_v4());
 
         let result = filter.filter_offer_for_request(&offer, &request);
 
@@ -593,8 +535,9 @@ mod tests {
             ..Default::default()
         });
 
-        let offer = create_offer("123", "Same", 0);
-        let request = create_request("123", "Same"); // Same everything
+        let p_id = Uuid::new_v4();
+        let offer = create_offer(p_id, 0);
+        let request = create_request(p_id); // Same ID
 
         let result = filter.filter_offer_for_request(&offer, &request);
         assert!(
@@ -610,38 +553,46 @@ mod tests {
     #[test]
     fn test_filter_offers_batch() {
         let filter = MatchFilter::default();
-        let request = create_request("buyer-phone", "Buyer");
+        let b_id = Uuid::new_v4();
+        let request = create_request(b_id);
+
+        let s1_id = Uuid::new_v4();
+        let s4_id = Uuid::new_v4();
 
         let offers = vec![
-            create_offer("seller-1", "Seller 1", 0), // Fresh, different sender
-            create_offer("buyer-phone", "Seller 2", 0), // Same phone as buyer
-            create_offer("seller-3", "Seller 3", 10), // Stale
-            create_offer("seller-4", "Seller 4", 3), // Fresh, different sender
+            create_offer(s1_id, 0),           // Fresh, different sender
+            create_offer(b_id, 0),            // Same ID as buyer
+            create_offer(Uuid::new_v4(), 10), // Stale
+            create_offer(s4_id, 0),           // Fresh, different sender
         ];
 
         let filtered = filter.filter_offers(&offers, &request);
 
         assert_eq!(filtered.len(), 2);
-        assert_eq!(filtered[0].source_phone.as_str(), "seller-1");
-        assert_eq!(filtered[1].source_phone.as_str(), "seller-4");
+        assert_eq!(filtered[0].participant_id, s1_id);
+        assert_eq!(filtered[1].participant_id, s4_id);
     }
 
     #[test]
     fn test_filter_requests_batch() {
         let filter = MatchFilter::default();
-        let offer = create_offer("seller-phone", "Seller", 0);
+        let s_id = Uuid::new_v4();
+        let offer = create_offer(s_id, 0);
+
+        let b1_id = Uuid::new_v4();
+        let b3_id = Uuid::new_v4();
 
         let requests = vec![
-            create_request("buyer-1", "Buyer 1"),
-            create_request("seller-phone", "Buyer 2"), // Same phone as seller
-            create_request("buyer-3", "Buyer 3"),
+            create_request(b1_id),
+            create_request(s_id), // Same ID as seller
+            create_request(b3_id),
         ];
 
         let filtered = filter.filter_requests(&requests, &offer);
 
         assert_eq!(filtered.len(), 2);
-        assert_eq!(filtered[0].source_phone.as_str(), "buyer-1");
-        assert_eq!(filtered[1].source_phone.as_str(), "buyer-3");
+        assert_eq!(filtered[0].participant_id, b1_id);
+        assert_eq!(filtered[1].participant_id, b3_id);
     }
 
     // =========================================================================
@@ -653,11 +604,15 @@ mod tests {
         let filter = MatchFilter::default();
 
         // Process some candidates
-        let fresh_offer = create_offer("111", "A", 0);
-        let stale_offer = create_offer("222", "B", 10);
-        let same_sender_offer = create_offer("333", "C", 0);
+        let p1 = Uuid::new_v4();
+        let p2 = Uuid::new_v4();
+        let p3 = Uuid::new_v4();
 
-        let request = create_request("333", "Buyer"); // Same phone as third offer
+        let fresh_offer = create_offer(p1, 0);
+        let stale_offer = create_offer(p2, 10);
+        let same_sender_offer = create_offer(p3, 0);
+
+        let request = create_request(p3); // Same ID as third offer
 
         filter.filter_offer_for_request(&fresh_offer, &request);
         filter.filter_offer_for_request(&stale_offer, &request);
@@ -705,8 +660,10 @@ mod tests {
     #[test]
     fn test_reset_stats() {
         let filter = MatchFilter::default();
-        let offer = create_offer("111", "A", 0);
-        let request = create_request("222", "B");
+        let p1 = Uuid::new_v4();
+        let p2 = Uuid::new_v4();
+        let offer = create_offer(p1, 0);
+        let request = create_request(p2);
 
         filter.filter_offer_for_request(&offer, &request);
         assert_eq!(filter.get_stats().total_candidates, 1);

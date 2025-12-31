@@ -16,6 +16,7 @@ mod m20251221_000008_create_review_queue;
 mod m20251221_000009_create_audit_logs;
 mod m20251221_000010_create_feedback_records;
 mod m20251221_000011_create_weight_history;
+mod m20251231_000012_create_participants;
 
 pub struct Migrator;
 
@@ -24,6 +25,7 @@ impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         vec![
             Box::new(m20251221_000001_create_groups::Migration),
+            Box::new(m20251231_000012_create_participants::Migration),
             Box::new(m20251221_000002_create_raw_messages::Migration),
             Box::new(m20251221_000003_create_offers::Migration),
             Box::new(m20251221_000004_create_requests::Migration),

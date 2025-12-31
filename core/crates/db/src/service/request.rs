@@ -57,16 +57,16 @@ impl RequestService {
             .map_err(Error::from)
     }
 
-    /// Find potential duplicates by source phone and medication
+    /// Find potential duplicates by participant and medication
     pub async fn find_duplicates(
         db: &DatabaseConnection,
-        source_phone: &str,
+        participant_id: Uuid,
         medication: &str,
         hours: i64,
     ) -> Result<Vec<request::Model>> {
         let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours);
         Request::find()
-            .filter(request::Column::SourcePhone.eq(source_phone))
+            .filter(request::Column::ParticipantId.eq(participant_id))
             .filter(request::Column::Medication.eq(medication))
             .filter(request::Column::Status.eq(Status::Active))
             .filter(request::Column::CreatedAt.gte(cutoff))

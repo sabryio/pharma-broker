@@ -17,8 +17,9 @@ use crate::domain::{
     UrgencyLevel,
 };
 use crate::repository::{
-    AuditLogRepository, MatchQueueRepository, MedicationMappingRepository, OfferRepository,
-    RawMessageRepository, RequestRepository, ReviewQueueRepository,
+    AuditLogRepository, GroupRepository, MatchQueueRepository, MedicationMappingRepository,
+    OfferRepository, ParticipantRepository, RawMessageRepository, RequestRepository,
+    ReviewQueueRepository,
 };
 use crate::ws::WsEvent;
 
@@ -41,6 +42,8 @@ pub struct BatchProcessor {
     request_repo: Arc<dyn RequestRepository>,
     medication_mapping_repo: Arc<dyn MedicationMappingRepository>,
     review_queue_repo: Arc<dyn ReviewQueueRepository>,
+    group_repo: Arc<dyn GroupRepository>,
+    participant_repo: Arc<dyn ParticipantRepository>,
     audit_log_repo: Arc<dyn AuditLogRepository>,
     match_queue_repo: Arc<dyn MatchQueueRepository>,
 
@@ -71,6 +74,8 @@ impl BatchProcessor {
             request_repo: repos.request,
             medication_mapping_repo: repos.medication_mapping,
             review_queue_repo: repos.review_queue,
+            group_repo: repos.group,
+            participant_repo: repos.participant,
             audit_log_repo: repos.audit_log,
             match_queue_repo: repos.match_queue,
             ws_tx: deps.ws_tx,
@@ -216,6 +221,21 @@ impl BatchProcessor {
 
         // For now, parse each message individually
         for msg in messages {
+            // Fetch names for AI prompt
+            let participant = self
+                .participant_repo
+                .get_by_id(msg.participant_id)
+                .await
+                .ok()
+                .flatten();
+            let group = self.group_repo.get_by_id(msg.group_id).await.ok().flatten();
+
+            let sender_name = participant.as_ref().and_then(|p| p.push_name.clone());
+            let group_name = group
+                .as_ref()
+                .map(|g| g.name.clone())
+                .unwrap_or_else(|| "Unknown".to_string());
+
             // Pass medication mappings to parser for better context
             let mapping_slice = if mappings.is_empty() {
                 None
@@ -227,8 +247,8 @@ impl BatchProcessor {
                 .ai_client
                 .parse(
                     &msg.content,
-                    msg.sender_name.as_deref(),
-                    &msg.group_name,
+                    sender_name.as_deref(),
+                    &group_name,
                     msg.reply_to_content.as_deref(),
                     mapping_slice,
                 )
@@ -345,9 +365,8 @@ impl BatchProcessor {
                     currency: Some("EGP".to_string()),
                     expiry_date: None,
                     batch_number: None,
-                    source_phone: msg.sender_phone.clone().unwrap_or_default(),
-                    source_name: msg.sender_name.clone(),
-                    source_group: msg.group_jid.clone(),
+                    participant_id: msg.participant_id,
+                    group_id: msg.group_id,
                     notes: item.notes.clone(),
                     status: ItemStatus::Active,
                     content_embedding: embedding.clone().map(PgVector::from),
@@ -390,9 +409,8 @@ impl BatchProcessor {
                     unit: item.unit.clone(),
                     max_price: Decimal::from_f64(item.max_price),
                     currency: Some("EGP".to_string()),
-                    source_phone: msg.sender_phone.clone().unwrap_or_default(),
-                    source_name: msg.sender_name.clone(),
-                    source_group: msg.group_jid.clone(),
+                    participant_id: msg.participant_id,
+                    group_id: msg.group_id,
                     notes: item.notes.clone(),
                     urgency_level: UrgencyLevel::from_bool(item.urgent),
                     expiry_requirement: item.expiry.clone(),

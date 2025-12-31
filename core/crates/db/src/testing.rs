@@ -131,6 +131,7 @@ use crate::entity::{
 /// Creates a test group ActiveModel
 pub fn new_test_group(jid: &str, name: &str, monitored: bool) -> group::ActiveModel {
     group::ActiveModel {
+        id: Set(Uuid::new_v4()),
         jid: Set(jid.to_string()),
         name: Set(name.to_string()),
         description: Set(Some("Test group".to_string())),
@@ -141,17 +142,30 @@ pub fn new_test_group(jid: &str, name: &str, monitored: bool) -> group::ActiveMo
     }
 }
 
+/// Creates a test participant ActiveModel
+pub fn new_test_participant(jid: &str, phone: &str) -> participant::ActiveModel {
+    participant::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        jid: Set(jid.to_string()),
+        phone: Set(phone.to_string()),
+        push_name: Set(Some("Test User".to_string())),
+        display_name: Set(None),
+        label: Set(None),
+        notes: Set(None),
+        is_blocked: Set(false),
+        created_at: Set(Utc::now()),
+        updated_at: Set(Utc::now()),
+    }
+}
+
 /// Creates a test raw_message ActiveModel
-pub fn new_test_raw_message() -> raw_message::ActiveModel {
+pub fn new_test_raw_message(participant_id: Uuid, group_id: Uuid) -> raw_message::ActiveModel {
     let id = Uuid::new_v4();
     raw_message::ActiveModel {
         id: Set(id),
         external_id: Set(Some(Uuid::new_v4().to_string())),
-        group_jid: Set("test-group@g.us".to_string()),
-        group_name: Set("Test Group".to_string()),
-        sender_jid: Set("sender@s.whatsapp.net".to_string()),
-        sender_phone: Set(Some("+201234567890".to_string())),
-        sender_name: Set(Some("Test Sender".to_string())),
+        participant_id: Set(participant_id),
+        group_id: Set(group_id),
         content: Set("Test message content".to_string()),
         timestamp: Set(Utc::now()),
         processed_at: Set(None),
@@ -164,14 +178,17 @@ pub fn new_test_raw_message() -> raw_message::ActiveModel {
 }
 
 /// Creates a test offer ActiveModel
-pub fn new_test_offer(raw_message_id: Uuid) -> offer::ActiveModel {
+pub fn new_test_offer(
+    raw_message_id: Uuid,
+    participant_id: Uuid,
+    group_id: Uuid,
+) -> offer::ActiveModel {
     let now = Utc::now();
     offer::ActiveModel {
         id: Set(Uuid::new_v4()),
         raw_message_id: Set(raw_message_id),
-        source_phone: Set("+201234567890".to_string()),
-        source_name: Set(Some("Test Seller".to_string())),
-        source_group: Set("test-group@g.us".to_string()),
+        participant_id: Set(participant_id),
+        group_id: Set(group_id),
         medication: Set("Augmentin 1g".to_string()),
         medication_raw: Set("أوجمنتين 1 جم".to_string()),
         quantity: Set(Some(rust_decimal::Decimal::new(5000, 2))), // 50.00
@@ -192,14 +209,17 @@ pub fn new_test_offer(raw_message_id: Uuid) -> offer::ActiveModel {
 }
 
 /// Creates a test request ActiveModel
-pub fn new_test_request(raw_message_id: Uuid) -> request::ActiveModel {
+pub fn new_test_request(
+    raw_message_id: Uuid,
+    participant_id: Uuid,
+    group_id: Uuid,
+) -> request::ActiveModel {
     let now = Utc::now();
     request::ActiveModel {
         id: Set(Uuid::new_v4()),
         raw_message_id: Set(raw_message_id),
-        source_phone: Set("+201098765432".to_string()),
-        source_name: Set(Some("Test Buyer".to_string())),
-        source_group: Set("test-group@g.us".to_string()),
+        participant_id: Set(participant_id),
+        group_id: Set(group_id),
         medication: Set("Augmentin 1g".to_string()),
         medication_raw: Set("أوجمنتين 1 جرام".to_string()),
         quantity: Set(Some(rust_decimal::Decimal::new(2000, 2))), // 20.00

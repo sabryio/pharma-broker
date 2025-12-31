@@ -893,6 +893,8 @@ async fn main() -> anyhow::Result<()> {
         config.limit
     );
     let db_messages = RawMessage::find()
+        .find_also_related(pharma_db::entity::participant::Entity)
+        .find_also_related(pharma_db::entity::group::Entity)
         .order_by_asc(raw_message::Column::Timestamp)
         .limit(config.limit as u64)
         .all(&*db)
@@ -900,11 +902,11 @@ async fn main() -> anyhow::Result<()> {
 
     let messages: Vec<TestMessage> = db_messages
         .into_iter()
-        .map(|m| TestMessage {
+        .map(|(m, p, g)| TestMessage {
             id: m.id,
             content: m.content,
-            sender_name: m.sender_name,
-            group_name: Some(m.group_name),
+            sender_name: p.and_then(|part| part.push_name),
+            group_name: g.map(|grp| grp.name),
         })
         .collect();
 

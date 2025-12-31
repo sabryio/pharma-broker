@@ -1274,26 +1274,22 @@ mod tests {
 
         let request = Request {
             id: Uuid::new_v4(),
-            source_phone: "buyer-phone".to_string(),
             ..Default::default()
         };
 
         let offers = vec![
             Offer {
                 id: Uuid::new_v4(),
-                source_phone: "seller-1".to_string(),
                 created_at: Utc::now(),
                 ..Default::default()
             },
             Offer {
                 id: Uuid::new_v4(),
-                source_phone: "buyer-phone".to_string(), // Same as buyer
                 created_at: Utc::now(),
                 ..Default::default()
             },
             Offer {
                 id: Uuid::new_v4(),
-                source_phone: "seller-3".to_string(),
                 created_at: Utc::now() - Duration::days(10), // Stale
                 ..Default::default()
             },
@@ -1311,13 +1307,11 @@ mod tests {
 
         let request = Request {
             id: Uuid::new_v4(),
-            source_phone: "buyer".to_string(),
             ..Default::default()
         };
 
         let offers = vec![Offer {
             id: Uuid::new_v4(),
-            source_phone: "seller".to_string(),
             created_at: Utc::now(),
             ..Default::default()
         }];

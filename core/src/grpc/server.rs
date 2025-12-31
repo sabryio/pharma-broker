@@ -32,11 +32,12 @@ use crate::matching::MatchingEngine;
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, FindDuplicateParams, GroupRepository,
     MatchQueueRepository, MatchRepository, MedicationMappingRepository, OfferRepository,
-    RawMessageRepository, RequestRepository, ReviewQueueRepository, SemanticDuplicateParams,
+    ParticipantRepository, RawMessageRepository, RequestRepository, ReviewQueueRepository,
+    SemanticDuplicateParams,
 };
 
 /// The gRPC service implementation
-pub struct PharmaCoreService<O, R, M, G, F, RQ, A, MQ>
+pub struct PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -46,11 +47,13 @@ where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
+    P: ParticipantRepository + 'static,
 {
     pub offer_repo: Arc<O>,
     pub request_repo: Arc<R>,
     pub raw_message_repo: Arc<M>,
     pub group_repo: Arc<G>,
+    pub participant_repo: Arc<P>,
     pub feedback_repo: Arc<F>,
     pub review_queue_repo: Arc<RQ>,
     pub audit_log_repo: Arc<A>,
@@ -64,7 +67,7 @@ where
     start_time: std::time::Instant,
 }
 
-impl<O, R, M, G, F, RQ, A, MQ> PharmaCoreService<O, R, M, G, F, RQ, A, MQ>
+impl<O, R, M, G, F, RQ, A, MQ, P> PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -74,10 +77,11 @@ where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
+    P: ParticipantRepository + 'static,
 {
     /// Create a new service from structured parameter objects
     pub fn new(
-        repos: super::params::GrpcRepositories<O, R, M, G, F, RQ, A, MQ>,
+        repos: super::params::GrpcRepositories<O, R, M, G, F, RQ, A, MQ, P>,
         deps: super::params::GrpcDependencies,
     ) -> Self {
         Self {
@@ -85,6 +89,7 @@ where
             request_repo: repos.request,
             raw_message_repo: repos.raw_message,
             group_repo: repos.group,
+            participant_repo: repos.participant,
             feedback_repo: repos.feedback,
             review_queue_repo: repos.review_queue,
             audit_log_repo: repos.audit_log,
@@ -101,7 +106,7 @@ where
 }
 
 /// Convert proto RawMessage to domain RawMessage
-fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
+fn proto_to_domain(proto: &ProtoRawMessage, participant_id: Uuid, group_id: Uuid) -> RawMessage {
     let timestamp = DateTime::from_timestamp(proto.timestamp, 0).unwrap_or_else(Utc::now);
 
     RawMessage {
@@ -116,19 +121,8 @@ fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
         } else {
             Some(proto.external_id.clone())
         },
-        group_jid: proto.group_jid.clone(),
-        group_name: proto.group_name.clone(),
-        sender_jid: proto.sender_jid.clone(),
-        sender_phone: if proto.sender_phone.is_empty() {
-            None
-        } else {
-            Some(proto.sender_phone.clone())
-        },
-        sender_name: if proto.sender_name.is_empty() {
-            None
-        } else {
-            Some(proto.sender_name.clone())
-        },
+        participant_id,
+        group_id,
         content: proto.content.clone(),
         timestamp,
         processed_at: None,
@@ -151,7 +145,7 @@ fn convert_urgency_level(ai_level: AiUrgencyLevel) -> UrgencyLevel {
 }
 
 #[tonic::async_trait]
-impl<O, R, M, G, F, RQ, A, MQ> PharmaCore for PharmaCoreService<O, R, M, G, F, RQ, A, MQ>
+impl<O, R, M, G, F, RQ, A, MQ, P> PharmaCore for PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -161,6 +155,7 @@ where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
+    P: ParticipantRepository + 'static,
 {
     /// Process an incoming WhatsApp message
     async fn process_message(
@@ -186,16 +181,42 @@ where
             "📨 Received message from Go bridge"
         );
 
-        // Step 1: Check if group is monitored
-        let is_monitored = match self.group_repo.is_monitored(&proto_msg.group_jid).await {
-            Ok(monitored) => monitored,
+        // Step 1: Resolve Group
+        let group = match self.group_repo.get_by_jid(&proto_msg.group_jid).await {
+            Ok(Some(g)) => g,
+            Ok(None) => {
+                // Auto-sync/create group if missing
+                let new_group = Group {
+                    id: Uuid::new_v4(),
+                    jid: proto_msg.group_jid.clone(),
+                    name: proto_msg.group_name.clone(),
+                    description: None,
+                    monitored: true, // Default to monitored for new groups discovered via bridge
+                    added_at: Utc::now(),
+                    last_message: Some(Utc::now()),
+                    message_count: 0,
+                };
+                if let Err(e) = self.group_repo.save(&new_group).await {
+                    tracing::error!(error = %e, group = %proto_msg.group_jid, "Failed to auto-create group");
+                    return Ok(Response::new(ProcessResponse {
+                        success: false,
+                        message_id: proto_msg.id.clone(),
+                        error: Some(format!("Group lookup/creation failed: {}", e)),
+                    }));
+                }
+                new_group
+            }
             Err(e) => {
-                tracing::warn!(error = %e, group = %proto_msg.group_jid, "Failed to check group monitoring, allowing by default");
-                true
+                tracing::error!(error = %e, group = %proto_msg.group_jid, "Group lookup error");
+                return Ok(Response::new(ProcessResponse {
+                    success: false,
+                    message_id: proto_msg.id.clone(),
+                    error: Some(format!("Database error: {}", e)),
+                }));
             }
         };
 
-        if !is_monitored {
+        if !group.monitored {
             tracing::info!(
                 group = %proto_msg.group_jid,
                 "⏭️ Group not monitored, skipping message"
@@ -207,12 +228,64 @@ where
             }));
         }
 
-        // Step 2: Convert proto to domain entity
-        let raw_message = proto_to_domain(&proto_msg);
-        let message_id = raw_message.id;
-        let group_jid = raw_message.group_jid.clone();
+        // Step 2: Resolve Participant
+        let participant = match self
+            .participant_repo
+            .get_by_jid(&proto_msg.sender_jid)
+            .await
+        {
+            Ok(Some(p)) => p,
+            Ok(None) => {
+                let p = crate::domain::Participant {
+                    id: Uuid::new_v4(),
+                    jid: proto_msg.sender_jid.clone(),
+                    phone: proto_msg.sender_phone.clone(),
+                    push_name: if proto_msg.sender_name.is_empty() {
+                        None
+                    } else {
+                        Some(proto_msg.sender_name.clone())
+                    },
+                    display_name: None,
+                    label: None,
+                    notes: None,
+                    is_blocked: false,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                };
+                if let Err(e) = self.participant_repo.save(&p).await {
+                    tracing::error!(error = %e, sender = %proto_msg.sender_jid, "Failed to create participant");
+                    return Ok(Response::new(ProcessResponse {
+                        success: false,
+                        message_id: proto_msg.id.clone(),
+                        error: Some(format!("Participant creation failed: {}", e)),
+                    }));
+                }
+                p
+            }
+            Err(e) => {
+                tracing::error!(error = %e, sender = %proto_msg.sender_jid, "Participant lookup error");
+                return Ok(Response::new(ProcessResponse {
+                    success: false,
+                    message_id: proto_msg.id.clone(),
+                    error: Some(format!("Database error: {}", e)),
+                }));
+            }
+        };
 
-        // Step 3: Save to database (handle duplicates gracefully)
+        // Step 3: Link Participant to Group
+        if let Err(e) = self
+            .participant_repo
+            .add_to_group(participant.id, group.id)
+            .await
+        {
+            tracing::warn!(error = %e, participant = %participant.id, group = %group.id, "Failed to link participant to group");
+        }
+
+        // Step 4: Convert proto to domain entity
+        let raw_message = proto_to_domain(&proto_msg, participant.id, group.id);
+        let message_id = raw_message.id;
+
+        // Step 5: Save to database (handle duplicates gracefully)
         match self.raw_message_repo.save(&raw_message).await {
             Ok(_) => {
                 // New message saved successfully
@@ -242,8 +315,9 @@ where
         }
 
         // Record message received metric
-        metrics::record_message_received(&group_jid, "saved");
+        metrics::record_message_received(&group.jid, "saved");
         tracing::info!(id = %message_id, "✅ Message saved to database");
+        let group_jid = group.jid.clone();
 
         // Step 4: Update group stats asynchronously
         let group_repo = self.group_repo.clone();
@@ -264,9 +338,8 @@ where
         let raw_message_repo = self.raw_message_repo.clone();
         let msg_id = message_id;
         let content = raw_message.content.clone();
-        let sender_name = raw_message.sender_name.clone();
-        let group_name = raw_message.group_name.clone();
-        let sender_phone = raw_message.sender_phone.clone();
+        let sender_name = participant.push_name.clone();
+        let group_name = group.name.clone();
         let reply_to = raw_message.reply_to_content.clone();
         let ws_tx = self.ws_tx.clone();
         let _match_repo = self.match_repo.clone();
@@ -379,9 +452,8 @@ where
                             let offer = Offer {
                                 id: Uuid::new_v4(),
                                 raw_message_id: msg_id,
-                                source_phone: sender_phone.clone().unwrap_or_default(),
-                                source_name: sender_name.clone(),
-                                source_group: group_jid.clone(),
+                                participant_id: participant.id,
+                                group_id: group.id,
                                 medication: item.medication.clone(),
                                 medication_raw: item.medication_raw.clone(),
                                 quantity: Decimal::from_f64(item.quantity),
@@ -407,7 +479,7 @@ where
                             // 1. Exact match check
                             if let Ok(Some(existing)) = offer_repo
                                 .find_recent_duplicate(FindDuplicateParams::new(
-                                    &offer.source_phone,
+                                    participant.id,
                                     &offer.medication,
                                     chrono::Duration::minutes(10),
                                 ))
@@ -429,7 +501,7 @@ where
                                 // Filter by same sender
                                 if let Some(existing) = semantic_dups
                                     .iter()
-                                    .find(|o| o.source_phone == offer.source_phone)
+                                    .find(|o| o.participant_id == participant.id)
                                 {
                                     tracing::info!(id = %offer.id, existing = %existing.id, "Duplicate offer detected (semantic)");
                                     is_duplicate = true;
@@ -465,9 +537,8 @@ where
                             let request = RequestEntity {
                                 id: Uuid::new_v4(),
                                 raw_message_id: msg_id,
-                                source_phone: sender_phone.clone().unwrap_or_default(),
-                                source_name: sender_name.clone(),
-                                source_group: group_jid.clone(),
+                                participant_id: participant.id,
+                                group_id: group.id,
                                 medication: item.medication.clone(),
                                 medication_raw: item.medication_raw.clone(),
                                 quantity: Decimal::from_f64(item.quantity),
@@ -491,7 +562,7 @@ where
                             // 1. Exact match check
                             if let Ok(Some(existing)) = request_repo
                                 .find_recent_duplicate(FindDuplicateParams::new(
-                                    &request.source_phone,
+                                    participant.id,
                                     &request.medication,
                                     chrono::Duration::minutes(10),
                                 ))
@@ -513,7 +584,7 @@ where
                                 // Filter by same sender
                                 if let Some(existing) = semantic_dups
                                     .iter()
-                                    .find(|r| r.source_phone == request.source_phone)
+                                    .find(|r| r.participant_id == participant.id)
                                 {
                                     tracing::info!(id = %request.id, existing = %existing.id, "Duplicate request detected (semantic)");
                                     is_duplicate = true;
@@ -693,12 +764,13 @@ where
             let existing = self.group_repo.get_by_jid(&jid).await.ok().flatten();
 
             let group = Group {
+                id: existing.as_ref().map(|e| e.id).unwrap_or_else(Uuid::new_v4),
                 jid: jid.clone(),
-                name,
+                name: name.clone(),
                 description: if description.is_empty() {
                     None
                 } else {
-                    Some(description)
+                    Some(description.clone())
                 },
                 // Preserve monitoring status for existing groups, default to false for new
                 monitored: existing.as_ref().map(|e| e.monitored).unwrap_or(false),
@@ -733,9 +805,9 @@ where
 }
 
 /// Start the gRPC server on the specified address
-pub async fn start_grpc_server<O, R, M, G, F, RQ, A, MQ, S>(
+pub async fn start_grpc_server<O, R, M, G, F, RQ, A, MQ, P, S>(
     addr: SocketAddr,
-    service: PharmaCoreService<O, R, M, G, F, RQ, A, MQ>,
+    service: PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P>,
     shutdown: S,
 ) -> std::result::Result<(), tonic::transport::Error>
 where
@@ -747,6 +819,7 @@ where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
+    P: ParticipantRepository + 'static,
     S: std::future::Future<Output = ()> + Send + 'static,
 {
     tracing::info!("🔌 gRPC server starting on {}", addr);

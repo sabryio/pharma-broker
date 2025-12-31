@@ -53,16 +53,16 @@ impl OfferService {
             .map_err(Error::from)
     }
 
-    /// Find potential duplicates by source phone and medication
+    /// Find potential duplicates by participant and medication
     pub async fn find_duplicates(
         db: &DatabaseConnection,
-        source_phone: &str,
+        participant_id: Uuid,
         medication: &str,
         hours: i64,
     ) -> Result<Vec<offer::Model>> {
         let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours);
         Offer::find()
-            .filter(offer::Column::SourcePhone.eq(source_phone))
+            .filter(offer::Column::ParticipantId.eq(participant_id))
             .filter(offer::Column::Medication.eq(medication))
             .filter(offer::Column::Status.eq(Status::Active))
             .filter(offer::Column::CreatedAt.gte(cutoff))

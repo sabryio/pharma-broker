@@ -69,7 +69,7 @@ impl OfferRepository for SeaOrmOfferRepo {
     ) -> Result<Option<offer::Model>> {
         let cutoff = Utc::now() - params.within;
         Offer::find()
-            .filter(offer::Column::SourcePhone.eq(params.sender_phone))
+            .filter(offer::Column::ParticipantId.eq(params.participant_id))
             .filter(offer::Column::Medication.eq(params.medication))
             .filter(offer::Column::Status.eq(Status::Active))
             .filter(offer::Column::CreatedAt.gte(cutoff))

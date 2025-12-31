@@ -43,7 +43,10 @@ const TABLES: &[&str] = &[
     "matches",
     "offers",
     "requests",
+    "participant_groups",
     "raw_messages",
+    "participants",
+    "groups",
     "config",
     "bot_users",
 ];

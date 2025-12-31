@@ -13,11 +13,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Groups::Table)
                     .if_not_exists()
+                    .col(ColumnDef::new(Groups::Id).uuid().not_null().primary_key())
                     .col(
                         ColumnDef::new(Groups::Jid)
                             .string_len(50)
                             .not_null()
-                            .primary_key(),
+                            .unique_key(),
                     )
                     .col(ColumnDef::new(Groups::Name).string_len(100).not_null())
                     .col(ColumnDef::new(Groups::Description).text())
@@ -69,6 +70,7 @@ impl MigrationTrait for Migration {
 #[derive(DeriveIden)]
 pub enum Groups {
     Table,
+    Id,
     Jid,
     Name,
     Description,

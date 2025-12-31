@@ -111,8 +111,6 @@ fn get_config_interactive() -> Config {
 struct LegacyMessage {
     id: Uuid,
     content: String,
-    sender_name: Option<String>,
-    group_name: Option<String>,
 }
 
 // ============================================================================
@@ -146,8 +144,6 @@ async fn main() -> anyhow::Result<()> {
         .map(|m| LegacyMessage {
             id: m.id,
             content: m.content,
-            sender_name: m.sender_name,
-            group_name: Some(m.group_name),
         })
         .collect();
 
@@ -174,16 +170,7 @@ async fn main() -> anyhow::Result<()> {
     // Convert to batch messages
     let batch_messages: Vec<BatchMessage> = messages
         .iter()
-        .map(|m| {
-            let mut msg = BatchMessage::new(m.id, &m.content);
-            if let Some(ref sender) = m.sender_name {
-                msg = msg.with_sender(sender);
-            }
-            if let Some(ref group) = m.group_name {
-                msg = msg.with_group(group);
-            }
-            msg
-        })
+        .map(|m| BatchMessage::new(m.id, &m.content))
         .collect();
 
     // Split into token-aware batches
@@ -200,23 +187,13 @@ async fn main() -> anyhow::Result<()> {
         let p = Arc::clone(&parser);
         let sem = Arc::clone(&semaphore);
         let content = msg.content.clone();
-        let sender = msg.sender_name.clone();
-        let group = msg.group_name.clone();
         let msg_id = msg.id;
 
         let handle = tokio::spawn(async move {
             let _permit = sem.acquire().await.unwrap();
             let start = Instant::now();
 
-            let result = p
-                .parse(
-                    &content,
-                    sender.as_deref(),
-                    group.as_deref().unwrap_or(""),
-                    None,
-                    None,
-                )
-                .await;
+            let result = p.parse(&content, None, "", None, None).await;
 
             let latency = start.elapsed().as_millis();
 

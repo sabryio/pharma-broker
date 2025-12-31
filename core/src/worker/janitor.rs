@@ -262,7 +262,6 @@ mod tests {
     use chrono::{DateTime, Utc};
     use pharma_db::Result as DbResult;
     use sea_orm::{MockDatabase, MockExecResult};
-    use uuid::Uuid;
     use std::{
         sync::{
             Arc,
@@ -270,6 +269,7 @@ mod tests {
         },
         time::Duration,
     };
+    use uuid::Uuid;
 
     struct MockRepo {
         deleted_count: u64,

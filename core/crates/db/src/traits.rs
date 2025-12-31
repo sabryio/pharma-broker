@@ -30,6 +30,7 @@ pub use crate::entity::match_queue::Model as MatchQueueModel;
 pub use crate::entity::match_queue::QueueStatus;
 pub use crate::entity::medication_mapping::Model as MedicationMappingModel;
 pub use crate::entity::offer::Model as OfferModel;
+pub use crate::entity::participant::Model as ParticipantModel;
 pub use crate::entity::raw_message::Model as RawMessageModel;
 pub use crate::entity::request::Model as RequestModel;
 pub use crate::entity::review_queue::Model as ReviewQueueModel;
@@ -113,6 +114,8 @@ pub trait RawMessageRepository: Send + Sync {
 #[async_trait]
 pub trait GroupRepository: Send + Sync {
     async fn get_all(&self) -> Result<Vec<GroupModel>>;
+    /// Get a group by its UUID
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<GroupModel>>;
     /// Get a group by its JID
     async fn get_by_jid(&self, jid: &str) -> Result<Option<GroupModel>>;
     /// Check if a group is monitored
@@ -127,6 +130,20 @@ pub trait GroupRepository: Send + Sync {
     async fn update_last_message(&self, jid: &str) -> Result<()>;
     /// Increment the message count for a group
     async fn increment_message_count(&self, jid: &str) -> Result<()>;
+}
+
+/// Participant repository trait
+#[async_trait]
+pub trait ParticipantRepository: Send + Sync {
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<crate::entity::participant::Model>>;
+    async fn get_by_jid(&self, jid: &str) -> Result<Option<crate::entity::participant::Model>>;
+    async fn get_by_phone(&self, phone: &str) -> Result<Option<crate::entity::participant::Model>>;
+    async fn save(
+        &self,
+        participant: &crate::entity::participant::Model,
+    ) -> Result<crate::entity::participant::Model>;
+    async fn get_groups(&self, participant_id: Uuid) -> Result<Vec<GroupModel>>;
+    async fn add_to_group(&self, participant_id: Uuid, group_id: Uuid) -> Result<()>;
 }
 
 /// Feedback record repository trait

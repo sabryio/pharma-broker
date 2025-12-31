@@ -8,8 +8,9 @@ use tokio::sync::broadcast;
 
 use crate::ai::PharmaParser;
 use crate::repository::{
-    AuditLogRepository, MatchQueueRepository, MedicationMappingRepository, OfferRepository,
-    RawMessageRepository, RequestRepository, ReviewQueueRepository,
+    AuditLogRepository, GroupRepository, MatchQueueRepository, MedicationMappingRepository,
+    OfferRepository, ParticipantRepository, RawMessageRepository, RequestRepository,
+    ReviewQueueRepository,
 };
 use crate::ws::WsEvent;
 
@@ -63,6 +64,10 @@ pub struct BatchProcessorRepositories {
     pub medication_mapping: Arc<dyn MedicationMappingRepository>,
     /// Review queue repository for low-confidence items
     pub review_queue: Arc<dyn ReviewQueueRepository>,
+    /// Group repository for reading group details
+    pub group: Arc<dyn GroupRepository>,
+    /// Participant repository for reading participant details
+    pub participant: Arc<dyn ParticipantRepository>,
     /// Audit log repository for tracking actions
     pub audit_log: Arc<dyn AuditLogRepository>,
     /// Match queue repository for enqueueing new items
@@ -78,6 +83,8 @@ impl BatchProcessorRepositories {
         request: Arc<dyn RequestRepository>,
         medication_mapping: Arc<dyn MedicationMappingRepository>,
         review_queue: Arc<dyn ReviewQueueRepository>,
+        group: Arc<dyn GroupRepository>,
+        participant: Arc<dyn ParticipantRepository>,
         audit_log: Arc<dyn AuditLogRepository>,
         match_queue: Arc<dyn MatchQueueRepository>,
     ) -> Self {
@@ -87,6 +94,8 @@ impl BatchProcessorRepositories {
             request,
             medication_mapping,
             review_queue,
+            group,
+            participant,
             audit_log,
             match_queue,
         }

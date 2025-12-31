@@ -24,17 +24,8 @@ impl MigrationTrait for Migration {
                             .default(Expr::cust("gen_random_uuid()")),
                     )
                     .col(ColumnDef::new(Requests::RawMessageId).uuid())
-                    .col(
-                        ColumnDef::new(Requests::SourcePhone)
-                            .string_len(20)
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(Requests::SourceName).string_len(100))
-                    .col(
-                        ColumnDef::new(Requests::SourceGroup)
-                            .string_len(50)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Requests::ParticipantId).uuid().not_null())
+                    .col(ColumnDef::new(Requests::GroupId).uuid().not_null())
                     .col(
                         ColumnDef::new(Requests::Medication)
                             .string_len(200)
@@ -90,10 +81,17 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_requests_source_group")
-                            .from(Requests::Table, Requests::SourceGroup)
-                            .to(Groups::Table, Groups::Jid)
-                            .on_delete(ForeignKeyAction::Restrict),
+                            .name("fk_requests_participant_id")
+                            .from(Requests::Table, Requests::ParticipantId)
+                            .to(Alias::new("participants"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_requests_group_id")
+                            .from(Requests::Table, Requests::GroupId)
+                            .to(Groups::Table, Groups::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),
             )
@@ -134,9 +132,20 @@ impl MigrationTrait for Migration {
             .create_index(
                 Index::create()
                     .if_not_exists()
-                    .name("idx_requests_source_phone")
+                    .name("idx_requests_participant_id")
                     .table(Requests::Table)
-                    .col(Requests::SourcePhone)
+                    .col(Requests::ParticipantId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_requests_group_id")
+                    .table(Requests::Table)
+                    .col(Requests::GroupId)
                     .to_owned(),
             )
             .await?;
@@ -202,9 +211,8 @@ pub enum Requests {
     Table,
     Id,
     RawMessageId,
-    SourcePhone,
-    SourceName,
-    SourceGroup,
+    ParticipantId,
+    GroupId,
     Medication,
     MedicationRaw,
     Quantity,

@@ -10,11 +10,8 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub external_id: Option<String>,
-    pub group_jid: String,
-    pub group_name: String,
-    pub sender_jid: String,
-    pub sender_phone: Option<String>,
-    pub sender_name: Option<String>,
+    pub participant_id: Uuid,
+    pub group_id: Uuid,
     pub content: String,
     pub timestamp: DateTimeUtc,
     pub processed_at: Option<DateTimeUtc>,
@@ -25,34 +22,40 @@ pub struct Model {
     pub created_at: DateTimeUtc,
 }
 
-impl Default for Model {
-    fn default() -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            external_id: None,
-            group_jid: String::new(),
-            group_name: String::new(),
-            sender_jid: String::new(),
-            sender_phone: None,
-            sender_name: None,
-            content: String::new(),
-            timestamp: Utc::now(),
-            processed_at: None,
-            error: None,
-            reply_to_id: None,
-            reply_to_content: None,
-            reply_to_sender: None,
-            created_at: Utc::now(),
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::participant::Entity",
+        from = "Column::ParticipantId",
+        to = "super::participant::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Participant,
+    #[sea_orm(
+        belongs_to = "super::group::Entity",
+        from = "Column::GroupId",
+        to = "super::group::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Group,
     #[sea_orm(has_many = "super::offer::Entity")]
     Offers,
     #[sea_orm(has_many = "super::request::Entity")]
     Requests,
+}
+
+impl Related<super::participant::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Participant.def()
+    }
+}
+
+impl Related<super::group::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Group.def()
+    }
 }
 
 impl Related<super::offer::Entity> for Entity {
@@ -68,3 +71,22 @@ impl Related<super::request::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            external_id: None,
+            participant_id: Uuid::nil(),
+            group_id: Uuid::nil(),
+            content: String::new(),
+            timestamp: Utc::now(),
+            processed_at: None,
+            error: None,
+            reply_to_id: None,
+            reply_to_content: None,
+            reply_to_sender: None,
+            created_at: Utc::now(),
+        }
+    }
+}

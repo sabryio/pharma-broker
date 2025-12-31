@@ -94,14 +94,14 @@ impl RawMessageService {
         active.update(db).await.map_err(Error::from)
     }
 
-    /// Get messages by group JID
+    /// Get messages by group ID
     pub async fn get_by_group(
         db: &DatabaseConnection,
-        group_jid: &str,
+        group_id: Uuid,
         limit: u64,
     ) -> Result<Vec<raw_message::Model>> {
         RawMessage::find()
-            .filter(raw_message::Column::GroupJid.eq(group_jid))
+            .filter(raw_message::Column::GroupId.eq(group_id))
             .order_by_desc(raw_message::Column::Timestamp)
             .limit(limit)
             .all(db)

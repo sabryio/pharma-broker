@@ -20,19 +20,8 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(RawMessages::ExternalId).string_len(50))
-                    .col(
-                        ColumnDef::new(RawMessages::GroupJid)
-                            .string_len(50)
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(RawMessages::GroupName).string_len(100))
-                    .col(
-                        ColumnDef::new(RawMessages::SenderJid)
-                            .string_len(50)
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(RawMessages::SenderPhone).string_len(20))
-                    .col(ColumnDef::new(RawMessages::SenderName).string_len(100))
+                    .col(ColumnDef::new(RawMessages::ParticipantId).uuid().not_null())
+                    .col(ColumnDef::new(RawMessages::GroupId).uuid().not_null())
                     .col(ColumnDef::new(RawMessages::Content).text().not_null())
                     .col(
                         ColumnDef::new(RawMessages::Timestamp)
@@ -50,6 +39,20 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_raw_messages_participant_id")
+                            .from(RawMessages::Table, RawMessages::ParticipantId)
+                            .to(Alias::new("participants"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_raw_messages_group_id")
+                            .from(RawMessages::Table, RawMessages::GroupId)
+                            .to(Alias::new("groups"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -59,9 +62,9 @@ impl MigrationTrait for Migration {
             .create_index(
                 Index::create()
                     .if_not_exists()
-                    .name("idx_raw_messages_group_jid")
+                    .name("idx_raw_messages_group_id")
                     .table(RawMessages::Table)
-                    .col(RawMessages::GroupJid)
+                    .col(RawMessages::GroupId)
                     .to_owned(),
             )
             .await?;
@@ -111,11 +114,8 @@ pub enum RawMessages {
     Table,
     Id,
     ExternalId,
-    GroupJid,
-    GroupName,
-    SenderJid,
-    SenderPhone,
-    SenderName,
+    ParticipantId,
+    GroupId,
     Content,
     Timestamp,
     ProcessedAt,

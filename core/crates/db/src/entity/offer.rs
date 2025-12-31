@@ -14,9 +14,8 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub raw_message_id: Uuid,
-    pub source_phone: String,
-    pub source_name: Option<String>,
-    pub source_group: String,
+    pub participant_id: Uuid,
+    pub group_id: Uuid,
     pub medication: String,
     pub medication_raw: String,
     #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
@@ -42,9 +41,27 @@ pub enum Relation {
     #[sea_orm(
         belongs_to = "super::raw_message::Entity",
         from = "Column::RawMessageId",
-        to = "super::raw_message::Column::Id"
+        to = "super::raw_message::Column::Id",
+        on_update = "Cascade",
+        on_delete = "SetNull"
     )]
     RawMessage,
+    #[sea_orm(
+        belongs_to = "super::participant::Entity",
+        from = "Column::ParticipantId",
+        to = "super::participant::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Participant,
+    #[sea_orm(
+        belongs_to = "super::group::Entity",
+        from = "Column::GroupId",
+        to = "super::group::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Group,
     #[sea_orm(has_many = "super::match_::Entity")]
     Matches,
 }
@@ -52,6 +69,18 @@ pub enum Relation {
 impl Related<super::raw_message::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::RawMessage.def()
+    }
+}
+
+impl Related<super::participant::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Participant.def()
+    }
+}
+
+impl Related<super::group::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Group.def()
     }
 }
 
@@ -69,9 +98,8 @@ impl Default for Model {
         Self {
             id: Uuid::new_v4(),
             raw_message_id: Uuid::new_v4(),
-            source_phone: String::new(),
-            source_name: None,
-            source_group: String::new(),
+            participant_id: Uuid::nil(),
+            group_id: Uuid::nil(),
             medication: String::new(),
             medication_raw: String::new(),
             quantity: None,
@@ -108,11 +136,6 @@ impl Model {
         self.price.as_ref().and_then(|d| d.to_f64()).unwrap_or(0.0)
     }
 
-    /// Get source_name or empty string
-    pub fn source_name_str(&self) -> &str {
-        self.source_name.as_deref().unwrap_or("")
-    }
-
     /// Get embedding as Vec<f32> if present
     pub fn get_embedding(&self) -> Option<Vec<f32>> {
         self.content_embedding.as_ref().map(|v| v.to_vec())
@@ -142,10 +165,9 @@ impl Model {
 pub struct OfferBuilder {
     raw_message_id: Uuid,
     medication: String,
-    source_phone: String,
-    source_group: String,
+    participant_id: Uuid,
+    group_id: Uuid,
     // Optional fields
-    source_name: Option<String>,
     medication_raw: Option<String>,
     quantity: Option<Decimal>,
     unit: Option<String>,
@@ -165,16 +187,15 @@ impl OfferBuilder {
     pub fn new(
         raw_message_id: Uuid,
         medication: impl Into<String>,
-        source_phone: impl Into<String>,
-        source_group: impl Into<String>,
+        participant_id: Uuid,
+        group_id: Uuid,
     ) -> Self {
         let medication = medication.into();
         Self {
             raw_message_id,
             medication: medication.clone(),
-            source_phone: source_phone.into(),
-            source_group: source_group.into(),
-            source_name: None,
+            participant_id,
+            group_id,
             medication_raw: Some(medication),
             quantity: None,
             unit: None,
@@ -188,12 +209,6 @@ impl OfferBuilder {
             ai_confidence: 0.0,
             content_embedding: None,
         }
-    }
-
-    /// Set the source name
-    pub fn source_name(mut self, name: impl Into<String>) -> Self {
-        self.source_name = Some(name.into());
-        self
     }
 
     /// Set the original medication text
@@ -296,9 +311,8 @@ impl OfferBuilder {
         Model {
             id: Uuid::new_v4(),
             raw_message_id: self.raw_message_id,
-            source_phone: self.source_phone,
-            source_name: self.source_name,
-            source_group: self.source_group,
+            participant_id: self.participant_id,
+            group_id: self.group_id,
             medication: self.medication.clone(),
             medication_raw: self.medication_raw.unwrap_or(self.medication),
             quantity: self.quantity,
@@ -326,11 +340,13 @@ mod tests {
     #[test]
     fn test_offer_builder_minimal() {
         let msg_id = Uuid::new_v4();
-        let offer =
-            OfferBuilder::new(msg_id, "Aspirin 100mg", "+201234567890", "group@g.us").build();
+        let part_id = Uuid::new_v4();
+        let group_id = Uuid::new_v4();
+        let offer = OfferBuilder::new(msg_id, "Aspirin 100mg", part_id, group_id).build();
 
         assert_eq!(offer.medication, "Aspirin 100mg");
-        assert_eq!(offer.source_phone, "+201234567890");
+        assert_eq!(offer.participant_id, part_id);
+        assert_eq!(offer.group_id, group_id);
         assert_eq!(offer.status, Status::Active);
         assert!(!offer.is_urgent());
     }
@@ -338,8 +354,9 @@ mod tests {
     #[test]
     fn test_offer_builder_full() {
         let msg_id = Uuid::new_v4();
-        let offer = OfferBuilder::new(msg_id, "Ozempic 1mg", "+201111111111", "pharma@g.us")
-            .source_name("Dr. Ahmed")
+        let part_id = Uuid::new_v4();
+        let group_id = Uuid::new_v4();
+        let offer = OfferBuilder::new(msg_id, "Ozempic 1mg", part_id, group_id)
             .quantity(5.0)
             .price(1500.0)
             .unit("boxes")
@@ -349,7 +366,7 @@ mod tests {
             .build();
 
         assert_eq!(offer.medication, "Ozempic 1mg");
-        assert_eq!(offer.source_name, Some("Dr. Ahmed".to_string()));
+        assert_eq!(offer.participant_id, part_id);
         assert!(offer.quantity.is_some());
         assert!(offer.price.is_some());
         assert_eq!(offer.unit, Some("boxes".to_string()));
@@ -364,7 +381,9 @@ mod tests {
         assert!(!normal.is_urgent());
 
         let msg_id = Uuid::new_v4();
-        let urgent = OfferBuilder::new(msg_id, "med", "p", "g")
+        let part_id = Uuid::new_v4();
+        let group_id = Uuid::new_v4();
+        let urgent = OfferBuilder::new(msg_id, "med", part_id, group_id)
             .urgency_level(UrgencyLevel::Critical)
             .build();
         assert!(urgent.is_urgent());

@@ -159,9 +159,10 @@ impl MatchProcessor {
             };
 
             // Score match
+            let participant_id_str = request.participant_id.to_string();
             let (score, action) = self
                 .matching_engine
-                .score_match(&offer, &request, med_score, Some(&request.source_phone))
+                .score_match(&offer, &request, med_score, Some(&participant_id_str))
                 .await;
 
             // Check if actionable

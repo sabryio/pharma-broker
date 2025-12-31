@@ -19,6 +19,7 @@ pub use pharma_db::entity::medication_mapping::Model as MedicationMapping;
 pub use pharma_db::entity::offer::Model as Offer;
 pub use pharma_db::entity::offer::Status as ItemStatus;
 pub use pharma_db::entity::offer::UrgencyLevel;
+pub use pharma_db::entity::participant::Model as Participant;
 pub use pharma_db::entity::raw_message::Model as RawMessage;
 pub use pharma_db::entity::request::Model as Request;
 pub use pharma_db::entity::review_queue::Model as ReviewQueueItem;

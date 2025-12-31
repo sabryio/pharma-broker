@@ -20,7 +20,11 @@ impl GroupService {
 
     /// Get group by JID
     pub async fn get_by_jid(db: &DatabaseConnection, jid: &str) -> Result<Option<group::Model>> {
-        Group::find_by_id(jid).one(db).await.map_err(Error::from)
+        Group::find()
+            .filter(group::Column::Jid.eq(jid))
+            .one(db)
+            .await
+            .map_err(Error::from)
     }
 
     /// Get all monitored groups
@@ -35,16 +39,16 @@ impl GroupService {
 
     /// Check if a group is monitored
     pub async fn is_monitored(db: &DatabaseConnection, jid: &str) -> Result<bool> {
-        let group = Group::find_by_id(jid).one(db).await?;
+        let group = Self::get_by_jid(db, jid).await?;
         Ok(group.map(|g| g.monitored).unwrap_or(false))
     }
 
     /// Save or update a group (upsert)
     pub async fn save(db: &DatabaseConnection, model: group::ActiveModel) -> Result<group::Model> {
-        let jid = model.jid.clone().unwrap();
+        let id = model.id.clone().unwrap();
 
         // Check if exists
-        let existing = Group::find_by_id(&jid).one(db).await?;
+        let existing = Group::find_by_id(id).one(db).await?;
 
         if existing.is_some() {
             model.update(db).await.map_err(Error::from)
@@ -59,8 +63,7 @@ impl GroupService {
         jid: &str,
         monitored: bool,
     ) -> Result<()> {
-        let group = Group::find_by_id(jid)
-            .one(db)
+        let group = Self::get_by_jid(db, jid)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Group not found: {}", jid)))?;
 
@@ -96,7 +99,10 @@ impl GroupService {
 
     /// Delete a group
     pub async fn delete(db: &DatabaseConnection, jid: &str) -> Result<bool> {
-        let result = Group::delete_by_id(jid).exec(db).await?;
+        let result = Group::delete_many()
+            .filter(group::Column::Jid.eq(jid))
+            .exec(db)
+            .await?;
         Ok(result.rows_affected > 0)
     }
 }
@@ -109,10 +115,12 @@ impl GroupService {
 mod tests {
     use super::*;
     use sea_orm::ActiveValue::Set;
+    use uuid::Uuid;
 
     // Helper to create test group
     fn new_test_group(jid: &str, name: &str, monitored: bool) -> group::ActiveModel {
         group::ActiveModel {
+            id: Set(Uuid::new_v4()),
             jid: Set(jid.to_string()),
             name: Set(name.to_string()),
             description: Set(None),

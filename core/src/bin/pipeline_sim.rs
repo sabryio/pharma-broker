@@ -29,6 +29,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use colored::Colorize;
 use dialoguer::{Input, theme::ColorfulTheme};
+use pharma_db::repo::SeaOrmParticipantRepo;
 use tokio::sync::{broadcast, watch};
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -212,11 +213,8 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         RawMessage {
             id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
-            group_jid: "120363012345678901@g.us".to_string(),
-            group_name: "مجموعة صيادلة القاهرة".to_string(),
-            sender_jid: "201012345678@s.whatsapp.net".to_string(),
-            sender_phone: Some("201012345678".to_string()),
-            sender_name: Some("د. أحمد صيدلي".to_string()),
+            participant_id: uuid::Uuid::new_v4(),
+            group_id: uuid::Uuid::new_v4(),
             content: "السلام عليكم\nعندي للبيع:\n*اوجمنتين 1 جم* - 50 علبة بـ 150 جنيه\n*فلاجيل 500* - 30 علبة بـ 45 جنيه\nالتواصل واتس فقط".to_string(),
             timestamp: base_time - chrono::Duration::seconds(5),
             processed_at: None,
@@ -229,11 +227,8 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         RawMessage {
             id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
-            group_jid: "120363012345678901@g.us".to_string(),
-            group_name: "مجموعة صيادلة القاهرة".to_string(),
-            sender_jid: "201098765432@s.whatsapp.net".to_string(),
-            sender_phone: Some("201098765432".to_string()),
-            sender_name: Some("صيدلية النور".to_string()),
+            participant_id: uuid::Uuid::new_v4(),
+            group_id: uuid::Uuid::new_v4(),
             content: "محتاج ضروري جداً:\n*أوجمنتين 1 جرام* 20 علبة\nأي سعر مناسب".to_string(),
             timestamp: base_time - chrono::Duration::seconds(3),
             processed_at: None,
@@ -247,11 +242,8 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         RawMessage {
             id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
-            group_jid: "120363012345678901@g.us".to_string(),
-            group_name: "مجموعة صيادلة القاهرة".to_string(),
-            sender_jid: "201012345678@s.whatsapp.net".to_string(),
-            sender_phone: Some("201012345678".to_string()),
-            sender_name: Some("د. أحمد صيدلي".to_string()),
+            participant_id: uuid::Uuid::new_v4(),
+            group_id: uuid::Uuid::new_v4(),
             content: "متوفر عندي، نفس السعر".to_string(),
             timestamp: base_time - chrono::Duration::seconds(1),
             processed_at: None,
@@ -265,11 +257,8 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         RawMessage {
             id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
-            group_jid: "120363098765432109@g.us".to_string(),
-            group_name: "موردين الأدوية".to_string(),
-            sender_jid: "201155555555@s.whatsapp.net".to_string(),
-            sender_phone: Some("201155555555".to_string()),
-            sender_name: Some("مورد أدوية".to_string()),
+            group_id: uuid::Uuid::new_v4(),
+            participant_id: uuid::Uuid::new_v4(),
             content: "عرض اليوم 🔥\n*كتافلام 50 مجم* - 200 شريط @ 75 جنيه\n*بروفين 400* - 100 علبة @ 55 جنيه\n*بانادول اكسترا* - 50 علبة @ 40 جنيه\nالكميات محدودة!".to_string(),
             timestamp: base_time - chrono::Duration::seconds(10),
             processed_at: None,
@@ -282,11 +271,8 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         RawMessage {
             id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
-            group_jid: "120363098765432109@g.us".to_string(),
-            group_name: "موردين الأدوية".to_string(),
-            sender_jid: "201166666666@s.whatsapp.net".to_string(),
-            sender_phone: Some("201166666666".to_string()),
-            sender_name: Some("صيدلية الأمل".to_string()),
+            group_id: uuid::Uuid::new_v4(),
+            participant_id: uuid::Uuid::new_v4(),
             content: "مطلوب عاجل:\n- كتافلام 50 - 100 شريط\n- بانادول اكسترا - 30 علبة".to_string(),
             timestamp: base_time - chrono::Duration::seconds(8),
             processed_at: None,
@@ -300,11 +286,8 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         RawMessage {
             id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
-            group_jid: "120363055555555555@g.us".to_string(),
-            group_name: "صيادلة الإسكندرية".to_string(),
-            sender_jid: "201177777777@s.whatsapp.net".to_string(),
-            sender_phone: Some("201177777777".to_string()),
-            sender_name: Some("Pharmacy Alex".to_string()),
+            group_id: uuid::Uuid::new_v4(),
+            participant_id: uuid::Uuid::new_v4(),
             content: "Available for sale:\nConcor 5mg - 40 boxes @ 85 LE\nZoloft 50mg - 25 boxes @ 120 LE".to_string(),
             timestamp: base_time - chrono::Duration::seconds(15),
             processed_at: None,
@@ -317,11 +300,8 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         RawMessage {
             id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
-            group_jid: "120363055555555555@g.us".to_string(),
-            group_name: "صيادلة الإسكندرية".to_string(),
-            sender_jid: "201188888888@s.whatsapp.net".to_string(),
-            sender_phone: Some("201188888888".to_string()),
-            sender_name: Some("Dr. Sara".to_string()),
+            group_id: uuid::Uuid::new_v4(),
+            participant_id: uuid::Uuid::new_v4(),
             content: "محتاجين كونكور 5 - 20 علبة\nالحد الأقصى للسعر 90 جنيه".to_string(),
             timestamp: base_time - chrono::Duration::seconds(12),
             processed_at: None,
@@ -335,11 +315,8 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         RawMessage {
             id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
-            group_jid: "120363012345678901@g.us".to_string(),
-            group_name: "مجموعة صيادلة القاهرة".to_string(),
-            sender_jid: "201199999999@s.whatsapp.net".to_string(),
-            sender_phone: Some("201199999999".to_string()),
-            sender_name: Some("صيدلية الشفاء".to_string()),
+            group_id: uuid::Uuid::new_v4(),
+            participant_id: uuid::Uuid::new_v4(),
             content: "مطلوب:\n*اوزمبك واحد ونص وربع*\n*زولادكس 3.6*".to_string(),
             timestamp: base_time - chrono::Duration::seconds(2),
             processed_at: None,
@@ -403,6 +380,7 @@ async fn main() -> anyhow::Result<()> {
     let request_repo = Arc::new(SeaOrmRequestRepo::new(db.clone()));
     let match_repo = Arc::new(SeaOrmMatchRepo::new(db.clone()));
     let group_repo = Arc::new(SeaOrmGroupRepo::new(db.clone()));
+    let participant_repo = Arc::new(SeaOrmParticipantRepo::new(db.clone()));
     let medication_mapping_repo = Arc::new(SeaOrmMedicationMappingRepo::new(db.clone()));
     let review_queue_repo = Arc::new(SeaOrmReviewQueueRepo::new(db.clone()));
     let audit_log_repo = Arc::new(SeaOrmAuditLogRepo::new(db.clone()));
@@ -417,6 +395,7 @@ async fn main() -> anyhow::Result<()> {
 
     let test_groups = vec![
         Group {
+            id: uuid::Uuid::new_v4(),
             jid: "120363012345678901@g.us".to_string(),
             name: "مجموعة صيادلة القاهرة".to_string(),
             description: None,
@@ -426,6 +405,7 @@ async fn main() -> anyhow::Result<()> {
             message_count: 0,
         },
         Group {
+            id: uuid::Uuid::new_v4(),
             jid: "120363098765432109@g.us".to_string(),
             name: "موردين الأدوية".to_string(),
             description: None,
@@ -435,6 +415,7 @@ async fn main() -> anyhow::Result<()> {
             message_count: 0,
         },
         Group {
+            id: uuid::Uuid::new_v4(),
             jid: "120363055555555555@g.us".to_string(),
             name: "صيادلة الإسكندرية".to_string(),
             description: None,
@@ -499,6 +480,8 @@ async fn main() -> anyhow::Result<()> {
             review_queue: review_queue_repo,
             audit_log: audit_log_repo,
             match_queue: match_queue_repo,
+            group: group_repo,
+            participant: participant_repo,
         },
         BatchProcessorDeps {
             ai_client: ai_client.clone(),
@@ -536,11 +519,7 @@ async fn main() -> anyhow::Result<()> {
     // Use token batcher to check for context limits
     let batch_messages: Vec<_> = messages_to_process
         .iter()
-        .map(|m| {
-            pharma_core::ai::BatchMessage::new(m.id, &m.content)
-                .with_sender(m.sender_name.as_deref().unwrap_or(""))
-                .with_group(&m.group_name)
-        })
+        .map(|m| pharma_core::ai::BatchMessage::new(m.id, &m.content))
         .collect();
 
     let batches = batcher.split_into_batches(batch_messages);
@@ -553,13 +532,7 @@ async fn main() -> anyhow::Result<()> {
     // Submit messages to processor
     let sender = processor.sender();
     for (i, msg) in messages_to_process.iter().enumerate() {
-        println!(
-            "{}. [{}] {}: {}",
-            i + 1,
-            msg.group_name,
-            msg.sender_name.as_deref().unwrap_or("Unknown"),
-            truncate(&msg.content, 50)
-        );
+        println!("{}. {}", i + 1, truncate(&msg.content, 50));
 
         // Save raw message first (like real flow)
         if let Err(e) = raw_message_repo.save(msg).await {

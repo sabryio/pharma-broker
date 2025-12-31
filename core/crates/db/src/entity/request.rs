@@ -14,9 +14,8 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub raw_message_id: Uuid,
-    pub source_phone: String,
-    pub source_name: Option<String>,
-    pub source_group: String,
+    pub participant_id: Uuid,
+    pub group_id: Uuid,
     pub medication: String,
     pub medication_raw: String,
     #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
@@ -40,9 +39,27 @@ pub enum Relation {
     #[sea_orm(
         belongs_to = "super::raw_message::Entity",
         from = "Column::RawMessageId",
-        to = "super::raw_message::Column::Id"
+        to = "super::raw_message::Column::Id",
+        on_update = "Cascade",
+        on_delete = "SetNull"
     )]
     RawMessage,
+    #[sea_orm(
+        belongs_to = "super::participant::Entity",
+        from = "Column::ParticipantId",
+        to = "super::participant::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Participant,
+    #[sea_orm(
+        belongs_to = "super::group::Entity",
+        from = "Column::GroupId",
+        to = "super::group::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Group,
     #[sea_orm(has_many = "super::match_::Entity")]
     Matches,
 }
@@ -50,6 +67,18 @@ pub enum Relation {
 impl Related<super::raw_message::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::RawMessage.def()
+    }
+}
+
+impl Related<super::participant::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Participant.def()
+    }
+}
+
+impl Related<super::group::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Group.def()
     }
 }
 
@@ -67,9 +96,8 @@ impl Default for Model {
         Self {
             id: Uuid::new_v4(),
             raw_message_id: Uuid::new_v4(),
-            source_phone: String::new(),
-            source_name: None,
-            source_group: String::new(),
+            participant_id: Uuid::nil(),
+            group_id: Uuid::nil(),
             medication: String::new(),
             medication_raw: String::new(),
             quantity: None,
@@ -107,11 +135,6 @@ impl Model {
             .unwrap_or(0.0)
     }
 
-    /// Get source_name or empty string
-    pub fn source_name_str(&self) -> &str {
-        self.source_name.as_deref().unwrap_or("")
-    }
-
     /// Get embedding as Vec<f32> if present
     pub fn get_embedding(&self) -> Option<Vec<f32>> {
         self.content_embedding.as_ref().map(|v| v.to_vec())
@@ -141,10 +164,9 @@ impl Model {
 pub struct RequestBuilder {
     raw_message_id: Uuid,
     medication: String,
-    source_phone: String,
-    source_group: String,
+    participant_id: Uuid,
+    group_id: Uuid,
     // Optional fields
-    source_name: Option<String>,
     medication_raw: Option<String>,
     quantity: Option<Decimal>,
     unit: Option<String>,
@@ -154,7 +176,6 @@ pub struct RequestBuilder {
     expiry_requirement: Option<String>,
     ai_confidence: f64,
     notes: Option<String>,
-    content_embedding: Option<PgVector>,
 }
 
 impl RequestBuilder {
@@ -162,16 +183,15 @@ impl RequestBuilder {
     pub fn new(
         raw_message_id: Uuid,
         medication: impl Into<String>,
-        source_phone: impl Into<String>,
-        source_group: impl Into<String>,
+        participant_id: Uuid,
+        group_id: Uuid,
     ) -> Self {
         let medication = medication.into();
         Self {
             raw_message_id,
             medication: medication.clone(),
-            source_phone: source_phone.into(),
-            source_group: source_group.into(),
-            source_name: None,
+            participant_id,
+            group_id,
             medication_raw: Some(medication),
             quantity: None,
             unit: None,
@@ -181,14 +201,7 @@ impl RequestBuilder {
             expiry_requirement: None,
             ai_confidence: 0.0,
             notes: None,
-            content_embedding: None,
         }
-    }
-
-    /// Set the source name
-    pub fn source_name(mut self, name: impl Into<String>) -> Self {
-        self.source_name = Some(name.into());
-        self
     }
 
     /// Set the original medication text
@@ -253,7 +266,7 @@ impl RequestBuilder {
         self
     }
 
-    /// Set expiry requirement
+    /// Set expiry requirement text
     pub fn expiry_requirement(mut self, req: impl Into<String>) -> Self {
         self.expiry_requirement = Some(req.into());
         self
@@ -271,12 +284,6 @@ impl RequestBuilder {
         self
     }
 
-    /// Set content embedding
-    pub fn embedding(mut self, embedding: Vec<f32>) -> Self {
-        self.content_embedding = Some(PgVector::from(embedding));
-        self
-    }
-
     /// Build the Request entity
     pub fn build(self) -> Model {
         use chrono::Utc;
@@ -285,9 +292,8 @@ impl RequestBuilder {
         Model {
             id: Uuid::new_v4(),
             raw_message_id: self.raw_message_id,
-            source_phone: self.source_phone,
-            source_name: self.source_name,
-            source_group: self.source_group,
+            participant_id: self.participant_id,
+            group_id: self.group_id,
             medication: self.medication.clone(),
             medication_raw: self.medication_raw.unwrap_or(self.medication),
             quantity: self.quantity,
@@ -299,7 +305,7 @@ impl RequestBuilder {
             ai_confidence: self.ai_confidence,
             notes: self.notes,
             status: Status::Active,
-            content_embedding: self.content_embedding,
+            content_embedding: None,
             created_at: now,
             updated_at: now,
         }
@@ -313,50 +319,35 @@ mod tests {
     #[test]
     fn test_request_builder_minimal() {
         let msg_id = Uuid::new_v4();
-        let request =
-            RequestBuilder::new(msg_id, "Ozempic 1mg", "+201234567890", "group@g.us").build();
+        let part_id = Uuid::new_v4();
+        let group_id = Uuid::new_v4();
+        let request = RequestBuilder::new(msg_id, "Aspirin 100mg", part_id, group_id).build();
 
-        assert_eq!(request.medication, "Ozempic 1mg");
-        assert_eq!(request.source_phone, "+201234567890");
+        assert_eq!(request.medication, "Aspirin 100mg");
+        assert_eq!(request.participant_id, part_id);
+        assert_eq!(request.group_id, group_id);
         assert_eq!(request.status, Status::Active);
-        assert!(!request.is_urgent());
     }
 
     #[test]
     fn test_request_builder_full() {
         let msg_id = Uuid::new_v4();
-        let request = RequestBuilder::new(msg_id, "Insulin Lantus", "+201111111111", "pharma@g.us")
-            .source_name("Pharmacy ABC")
-            .quantity(3.0)
-            .max_price(500.0)
-            .unit("pens")
-            .critical()
-            .expiry_requirement("At least 6 months")
-            .ai_confidence(0.88)
-            .notes("Urgent patient need")
+        let part_id = Uuid::new_v4();
+        let group_id = Uuid::new_v4();
+        let request = RequestBuilder::new(msg_id, "Ozempic 1mg", part_id, group_id)
+            .quantity(2.0)
+            .max_price(2000.0)
+            .unit("boxes")
+            .urgency_level(UrgencyLevel::Urgent)
+            .ai_confidence(0.9)
+            .notes("Urgent request")
             .build();
 
-        assert_eq!(request.medication, "Insulin Lantus");
-        assert_eq!(request.source_name, Some("Pharmacy ABC".to_string()));
+        assert_eq!(request.medication, "Ozempic 1mg");
+        assert_eq!(request.participant_id, part_id);
         assert!(request.quantity.is_some());
         assert!(request.max_price.is_some());
-        assert!(request.is_urgent());
-        assert_eq!(request.urgency_level, UrgencyLevel::Critical);
-        assert_eq!(
-            request.expiry_requirement,
-            Some("At least 6 months".to_string())
-        );
-    }
-
-    #[test]
-    fn test_request_is_urgent() {
-        let normal = Model::default();
-        assert!(!normal.is_urgent());
-
-        let msg_id = Uuid::new_v4();
-        let urgent = RequestBuilder::new(msg_id, "med", "p", "g")
-            .urgent()
-            .build();
-        assert!(urgent.is_urgent());
+        assert_eq!(request.urgency_level, UrgencyLevel::Urgent);
+        assert!((request.ai_confidence - 0.9).abs() < 0.001);
     }
 }

@@ -100,8 +100,8 @@ impl UpdateReviewStatusParams {
 /// Parameters for finding recent duplicates
 #[derive(Debug, Clone)]
 pub struct FindDuplicateParams<'a> {
-    /// Sender phone to match
-    pub sender_phone: &'a str,
+    /// Participant ID to match
+    pub participant_id: Uuid,
     /// Medication name to match
     pub medication: &'a str,
     /// Time window to search within
@@ -109,18 +109,18 @@ pub struct FindDuplicateParams<'a> {
 }
 
 impl<'a> FindDuplicateParams<'a> {
-    pub fn new(sender_phone: &'a str, medication: &'a str, within: Duration) -> Self {
+    pub fn new(participant_id: Uuid, medication: &'a str, within: Duration) -> Self {
         Self {
-            sender_phone,
+            participant_id,
             medication,
             within,
         }
     }
 
     /// Create with default 24-hour window
-    pub fn within_day(sender_phone: &'a str, medication: &'a str) -> Self {
+    pub fn within_day(participant_id: Uuid, medication: &'a str) -> Self {
         Self {
-            sender_phone,
+            participant_id,
             medication,
             within: Duration::hours(24),
         }

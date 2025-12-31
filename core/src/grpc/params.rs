@@ -10,13 +10,13 @@ use crate::ai::PharmaParser;
 use crate::matching::MatchingEngine;
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
-    MedicationMappingRepository, OfferRepository, RawMessageRepository, RequestRepository,
-    ReviewQueueRepository,
+    MedicationMappingRepository, OfferRepository, ParticipantRepository, RawMessageRepository,
+    RequestRepository, ReviewQueueRepository,
 };
 use crate::ws::WsEvent;
 
 /// Repositories required by the gRPC service
-pub struct GrpcRepositories<O, R, M, G, F, RQ, A, MQ>
+pub struct GrpcRepositories<O, R, M, G, F, RQ, A, MQ, P>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -26,11 +26,13 @@ where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
+    P: ParticipantRepository + 'static,
 {
     pub offer: Arc<O>,
     pub request: Arc<R>,
     pub raw_message: Arc<M>,
     pub group: Arc<G>,
+    pub participant: Arc<P>,
     pub feedback: Arc<F>,
     pub review_queue: Arc<RQ>,
     pub audit_log: Arc<A>,

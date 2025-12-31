@@ -70,7 +70,7 @@ impl RequestRepository for SeaOrmRequestRepo {
     ) -> Result<Option<request::Model>> {
         let cutoff = Utc::now() - params.within;
         Request::find()
-            .filter(request::Column::SourcePhone.eq(params.sender_phone))
+            .filter(request::Column::ParticipantId.eq(params.participant_id))
             .filter(request::Column::Medication.eq(params.medication))
             .filter(request::Column::Status.eq(Status::Active))
             .filter(request::Column::CreatedAt.gte(cutoff))

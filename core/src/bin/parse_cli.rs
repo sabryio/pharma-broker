@@ -258,15 +258,22 @@ async fn load_messages_from_database(limit: i64) -> anyhow::Result<Vec<TestMessa
 
     let db = create_connection(&database_url).await?;
 
-    let db_messages = RawMessage::find().limit(limit as u64).all(&*db).await?;
+    let db_messages = RawMessage::find()
+        .find_also_related(pharma_db::entity::participant::Entity)
+        .find_also_related(pharma_db::entity::group::Entity)
+        .limit(limit as u64)
+        .all(&*db)
+        .await?;
 
     let messages: Vec<TestMessage> = db_messages
         .into_iter()
-        .map(|m| TestMessage {
+        .map(|(m, p, g)| TestMessage {
             id: m.id,
-            group_name: m.group_name,
+            group_name: g
+                .map(|grp| grp.name)
+                .unwrap_or_else(|| "Unknown".to_string()),
             content: m.content,
-            sender_name: m.sender_name,
+            sender_name: p.and_then(|part| part.push_name),
             reply_to: None,
         })
         .collect();

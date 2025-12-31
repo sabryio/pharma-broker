@@ -30,17 +30,8 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(ColumnDef::new(Offers::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(Offers::RawMessageId).uuid())
-                    .col(
-                        ColumnDef::new(Offers::SourcePhone)
-                            .string_len(20)
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(Offers::SourceName).string_len(100))
-                    .col(
-                        ColumnDef::new(Offers::SourceGroup)
-                            .string_len(50)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Offers::ParticipantId).uuid().not_null())
+                    .col(ColumnDef::new(Offers::GroupId).uuid().not_null())
                     .col(
                         ColumnDef::new(Offers::Medication)
                             .string_len(200)
@@ -98,10 +89,17 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_offers_source_group")
-                            .from(Offers::Table, Offers::SourceGroup)
-                            .to(Groups::Table, Groups::Jid)
-                            .on_delete(ForeignKeyAction::Restrict),
+                            .name("fk_offers_participant_id")
+                            .from(Offers::Table, Offers::ParticipantId)
+                            .to(Alias::new("participants"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_offers_group_id")
+                            .from(Offers::Table, Offers::GroupId)
+                            .to(Groups::Table, Groups::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),
             )
@@ -142,9 +140,20 @@ impl MigrationTrait for Migration {
             .create_index(
                 Index::create()
                     .if_not_exists()
-                    .name("idx_offers_source_phone")
+                    .name("idx_offers_participant_id")
                     .table(Offers::Table)
-                    .col(Offers::SourcePhone)
+                    .col(Offers::ParticipantId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_offers_group_id")
+                    .table(Offers::Table)
+                    .col(Offers::GroupId)
                     .to_owned(),
             )
             .await?;
@@ -210,9 +219,8 @@ pub enum Offers {
     Table,
     Id,
     RawMessageId,
-    SourcePhone,
-    SourceName,
-    SourceGroup,
+    ParticipantId,
+    GroupId,
     Medication,
     MedicationRaw,
     Quantity,

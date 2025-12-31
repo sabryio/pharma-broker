@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicUsize;
 
 use pharma_core::ai::PharmaParser;
 use pharma_db::migration;
+use pharma_db::repo::SeaOrmParticipantRepo;
 #[cfg(not(feature = "tokio-console"))]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -81,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
     let match_repo = Arc::new(SeaOrmMatchRepo::new(db.clone()));
     let raw_message_repo = Arc::new(SeaOrmRawMessageRepo::new(db.clone()));
     let group_repo = Arc::new(SeaOrmGroupRepo::new(db.clone()));
+    let participant_repo = Arc::new(SeaOrmParticipantRepo::new(db.clone()));
     let feedback_repo = Arc::new(SeaOrmFeedbackRepo::new(db.clone()));
     let review_queue_repo = Arc::new(SeaOrmReviewQueueRepo::new(db.clone()));
 
@@ -207,6 +209,7 @@ async fn main() -> anyhow::Result<()> {
         request: request_repo,
         raw_message: raw_message_repo,
         group: group_repo,
+        participant: participant_repo,
         feedback: feedback_repo,
         review_queue: review_queue_repo,
         audit_log: audit_log_repo,

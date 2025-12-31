@@ -21,30 +21,30 @@ pub use pharma_db::{Database, DatabaseConnection};
 // Re-export SeaORM repos
 pub use pharma_db::repo::{
     SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
-    SeaOrmMedicationMappingRepo, SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo,
-    SeaOrmReviewQueueRepo, SeaOrmWeightHistoryRepo,
+    SeaOrmMedicationMappingRepo, SeaOrmOfferRepo, SeaOrmParticipantRepo, SeaOrmRawMessageRepo,
+    SeaOrmRequestRepo, SeaOrmReviewQueueRepo, SeaOrmWeightHistoryRepo,
 };
 
 // Re-export pharma_db traits
 pub use pharma_db::traits::{
     AuditLogRepository, FeedbackRepository, FeedbackStats, GroupRepository, MatchQueueRepository,
-    MatchRepository, MedicationMappingRepository, OfferRepository, RawMessageRepository,
-    RequestRepository, ReviewQueueRepository, ReviewQueueStats, WeightHistoryRepository,
+    MatchRepository, MedicationMappingRepository, OfferRepository, ParticipantRepository,
+    RawMessageRepository, RequestRepository, ReviewQueueRepository, ReviewQueueStats,
+    WeightHistoryRepository,
 };
 
 // Re-export entity types as type aliases for domain compatibility
 pub use pharma_db::traits::{
     AuditLogModel, FeedbackModel, GroupModel, MatchModel, MatchQueueModel, MedicationMappingModel,
-    OfferModel, RawMessageModel, RequestModel, ReviewQueueModel, WeightHistoryModel,
+    OfferModel, ParticipantModel, RawMessageModel, RequestModel, ReviewQueueModel,
+    WeightHistoryModel,
 };
 
 // Re-export enums
 pub use pharma_db::traits::{ItemStatus, MatchStatus, QueueStatus, ReviewStatus, UrgencyLevel};
 
 // Re-export ID newtypes for type-safe entity references
-pub use pharma_db::traits::{
-    GroupJid, MatchId, MedicationMappingId, OfferId, RawMessageId, RequestId,
-};
+pub use pharma_db::traits::{MatchId, MedicationMappingId, OfferId, RawMessageId, RequestId};
 
 pub use pharma_db::params::{
     AuditByEntityParams, FindDuplicateParams, SemanticDuplicateParams, UpdateMatchStatusParams,
