@@ -9,10 +9,11 @@ scrape_configs:
 
   - job_name: "pharma-core"
     static_configs:
-      - targets: ["core:8080"]
+      - targets: ["core:8081"]
     metrics_path: /metrics
 
-  - job_name: "pharma-bridge"
-    static_configs:
-      - targets: ["bridge:8081"]
-    metrics_path: /health
+  # Bridge doesn't expose Prometheus metrics yet
+  # - job_name: "pharma-bridge"
+  #   static_configs:
+  #     - targets: ["bridge:5050"]
+  #   metrics_path: /metrics

@@ -13,7 +13,7 @@ use tokio::sync::broadcast;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::{ai::Intent, ws::WsEvent};
+use crate::{ai::Intent, metrics, ws::WsEvent};
 
 use super::pharma::{
     GroupInfo as ProtoGroupInfo, HealthRequest, HealthResponse, MonitoredGroupsRequest,
@@ -221,6 +221,8 @@ where
             }));
         }
 
+        // Record message received metric
+        metrics::record_message_received(&group_jid, "saved");
         tracing::info!(id = %message_id, "✅ Message saved to database");
 
         // Step 4: Update group stats asynchronously
@@ -284,8 +286,12 @@ where
                 )
                 .await
             {
-                Ok(items) => items,
+                Ok(items) => {
+                    metrics::record_ai_parse("success");
+                    items
+                }
                 Err(e) => {
+                    metrics::record_ai_parse("error");
                     tracing::error!(error = %e, id = %msg_id, "AI parsing failed");
                     let _ = raw_message_repo
                         .mark_processed(&msg_id, Some(&e.to_string()))
@@ -422,6 +428,7 @@ where
                                     medication = %offer.medication,
                                     "💊 Offer created"
                                 );
+                                metrics::record_offer_created();
                                 offers_created += 1;
                                 let _ = ws_tx.send(WsEvent::NewOffer(offer.clone()));
 
@@ -505,6 +512,7 @@ where
                                     medication = %request.medication,
                                     "❓ Request created"
                                 );
+                                metrics::record_request_created();
                                 requests_created += 1;
                                 new_request_ids.push(request.id.clone());
                                 let _ = ws_tx.send(WsEvent::NewRequest(request.clone()));
@@ -538,6 +546,7 @@ where
                                 confidence = %item.ai_confidence,
                                 "📋 Item queued for human review (low confidence)"
                             );
+                            metrics::record_ai_parse("queued_review");
                             items_queued += 1;
                             let _ = ws_tx.send(WsEvent::ReviewQueued(review_item.id)); // Notify clients
 

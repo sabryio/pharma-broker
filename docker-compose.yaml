@@ -45,6 +45,7 @@ services:
       dockerfile: core/Dockerfile
     container_name: pharma-core
     environment:
+      TZ: Africa/Cairo
       DATABASE_URL: postgres://postgres:password@postgres:5432/pharmabroker
       REDIS_URL: redis://redis:6379
       RUST_LOG: info
@@ -83,6 +84,7 @@ services:
       dockerfile: Dockerfile
     container_name: pharma-bridge
     environment:
+      TZ: Africa/Cairo
       BRIDGE_GRPC_CORE_ADDR: ${BRIDGE_GRPC_CORE_ADDR:-core:50051}
       BRIDGE_WHATSAPP_STORE_PATH: ${BRIDGE_WHATSAPP_STORE_PATH:-/app/data/whatsapp.db}
       BRIDGE_WHATSAPP_QR_TERMINAL: ${BRIDGE_WHATSAPP_QR_TERMINAL:-true}
@@ -98,6 +100,40 @@ services:
     restart: unless-stopped
     networks:
       - pharmabroker-network
+
+  # Monitoring Services
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: pharma-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - pharmabroker-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: pharma-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - pharmabroker-network
+    restart: unless-stopped
 
 # Local AI models via Docker Model Runner
 models:
@@ -141,39 +177,3 @@ networks:
   pharmabroker-network:
     name: pharmabroker-network
     driver: bridge
-
-# Add monitoring services to the services section above gateway
-# To use, add these to the 'services' section:
-#
-#   prometheus:
-#     image: prom/prometheus:latest
-#     container_name: pharma-prometheus
-#     command:
-#       - '--config.file=/etc/prometheus/prometheus.yml'
-#       - '--storage.tsdb.path=/prometheus'
-#     volumes:
-#       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-#       - prometheus_data:/prometheus
-#     ports:
-#       - "9090:9090"
-#     networks:
-#       - pharmabroker-network
-#     restart: unless-stopped
-#
-#   grafana:
-#     image: grafana/grafana:latest
-#     container_name: pharma-grafana
-#     environment:
-#       GF_SECURITY_ADMIN_PASSWORD: admin
-#       GF_USERS_ALLOW_SIGN_UP: "false"
-#     volumes:
-#       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
-#       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-#       - grafana_data:/var/lib/grafana
-#     ports:
-#       - "3001:3000"
-#     depends_on:
-#       - prometheus
-#     networks:
-#       - pharmabroker-network
-#     restart: unless-stopped
