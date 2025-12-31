@@ -33,6 +33,37 @@ use pharma_analysis::{
 use pharma_db::{ConnectOptions, Database};
 use std::env;
 
+// ============================================================================
+// Arabic RTL Text Handling for Terminal Display
+// ============================================================================
+
+/// Formats Arabic text for proper terminal display by reversing RTL segments.
+fn format_arabic(text: &str) -> String {
+    if !contains_arabic(text) {
+        return text.to_string();
+    }
+    // For terminal display, reverse Arabic text
+    reverse_string(text)
+}
+
+/// Checks if text contains any Arabic characters.
+fn contains_arabic(text: &str) -> bool {
+    text.chars().any(|c| {
+        matches!(c,
+            '\u{0600}'..='\u{06FF}' |  // Arabic
+            '\u{0750}'..='\u{077F}' |  // Arabic Supplement
+            '\u{08A0}'..='\u{08FF}' |  // Arabic Extended-A
+            '\u{FB50}'..='\u{FDFF}' |  // Arabic Presentation Forms-A
+            '\u{FE70}'..='\u{FEFF}'    // Arabic Presentation Forms-B
+        )
+    })
+}
+
+/// Reverses a string (for RTL display).
+fn reverse_string(text: &str) -> String {
+    text.chars().rev().collect()
+}
+
 #[derive(Parser)]
 #[command(
     name = "pharma-analysis",
@@ -99,6 +130,10 @@ enum Commands {
         /// Minimum score threshold for auto-confirmation (default: 0.9)
         #[arg(long, default_value = "0.9")]
         threshold: f64,
+
+        /// Maximum number of matches to confirm (default: all)
+        #[arg(long, short = 'n')]
+        limit: Option<usize>,
 
         /// Actually execute the confirmations (default is dry-run)
         #[arg(long)]
@@ -182,8 +217,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Expire { days, execute } => {
             expire_matches(&db, days, execute).await?;
         }
-        Commands::AutoConfirm { threshold, execute } => {
-            auto_confirm_matches(&db, threshold, execute).await?;
+        Commands::AutoConfirm {
+            threshold,
+            limit,
+            execute,
+        } => {
+            auto_confirm_matches(&db, threshold, limit, execute).await?;
         }
         Commands::All => {
             run_all_phases(&db).await?;
@@ -277,45 +316,120 @@ async fn expire_matches(
 async fn auto_confirm_matches(
     db: &pharma_db::DatabaseConnection,
     threshold: f64,
+    limit: Option<usize>,
     execute: bool,
 ) -> anyhow::Result<()> {
+    use pharma_db::entity::feedback_record::Model as FeedbackRecord;
+    use prettytable::{Table, row};
     use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
+    let limit_str = limit
+        .map(|n| format!(" (limit: {})", n))
+        .unwrap_or_default();
     println!(
-        "\n✅ {} high-confidence matches (score >= {:.2})",
+        "\n✅ {} high-confidence matches (score >= {:.2}){}",
         if execute {
             "Auto-confirming"
         } else {
             "Would auto-confirm"
         },
-        threshold
+        threshold,
+        limit_str
     );
 
-    // First, count matches that would be affected
+    // Count matches that would be affected
     let count_sql = format!(
         "SELECT COUNT(*) FROM matches WHERE score >= {} AND status = 'PENDING'",
         threshold
     );
-    let count: i64 = db
+    let total_count: i64 = db
         .query_one(Statement::from_string(DbBackend::Postgres, count_sql))
         .await?
         .map(|r| r.try_get_by_index(0).unwrap_or(0))
         .unwrap_or(0);
 
+    let effective_count = match limit {
+        Some(n) => (total_count as usize).min(n),
+        None => total_count as usize,
+    };
+
     println!(
-        "📊 Found {} pending matches with score >= {:.2}",
-        count, threshold
+        "📊 Found {} pending matches with score >= {:.2}{}",
+        total_count,
+        threshold,
+        if limit.is_some() {
+            format!(" (will process {})", effective_count)
+        } else {
+            String::new()
+        }
     );
 
-    if count == 0 {
+    if total_count == 0 {
         println!("{}", "No matches to confirm.".yellow());
         return Ok(());
     }
 
+    // Show preview of first 5 matches
+    let preview_sql = format!(
+        "SELECT m.id, m.score, 
+                o.medication as offer_med, o.medication_raw as offer_raw, o.source_phone as offer_phone,
+                r.medication as request_med, r.medication_raw as request_raw, r.source_phone as request_phone
+         FROM matches m
+         LEFT JOIN offers o ON m.offer_id = o.id
+         LEFT JOIN requests r ON m.request_id = r.id
+         WHERE m.score >= {} AND m.status = 'PENDING'
+         ORDER BY m.score DESC
+         LIMIT 5",
+        threshold
+    );
+    let preview_rows = db
+        .query_all(Statement::from_string(DbBackend::Postgres, preview_sql))
+        .await?;
+
+    println!("\n📋 Preview of top matches to confirm:");
+    let mut table = Table::new();
+    table.add_row(row![
+        "ID",
+        "Score",
+        "Offer Med",
+        "Offer (Arabic)",
+        "Offer Phone",
+        "Request Med",
+        "Request (Arabic)",
+        "Request Phone"
+    ]);
+
+    for row in &preview_rows {
+        let id: uuid::Uuid = row.try_get_by_index(0)?;
+        let score: f64 = row.try_get_by_index(1)?;
+        let offer_med: Option<String> = row.try_get_by_index(2).ok();
+        let offer_raw: Option<String> = row.try_get_by_index(3).ok();
+        let offer_phone: Option<String> = row.try_get_by_index(4).ok();
+        let request_med: Option<String> = row.try_get_by_index(5).ok();
+        let request_raw: Option<String> = row.try_get_by_index(6).ok();
+        let request_phone: Option<String> = row.try_get_by_index(7).ok();
+
+        table.add_row(row![
+            &id.to_string()[..8],
+            format!("{:.4}", score).green(),
+            offer_med.unwrap_or_else(|| "-".to_string()),
+            format_arabic(&offer_raw.unwrap_or_else(|| "-".to_string())),
+            offer_phone.unwrap_or_else(|| "-".to_string()),
+            request_med.unwrap_or_else(|| "-".to_string()),
+            format_arabic(&request_raw.unwrap_or_else(|| "-".to_string())),
+            request_phone.unwrap_or_else(|| "-".to_string())
+        ]);
+    }
+    table.printstd();
+
     if !execute {
         println!(
-            "{}",
-            format!("📊 {} matches would be auto-confirmed (dry-run)", count).yellow()
+            "\n{}",
+            format!(
+                "📊 {} matches would be auto-confirmed (dry-run)",
+                effective_count
+            )
+            .yellow()
         );
         println!(
             "\n💡 Add --execute flag to actually confirm these matches and create feedback records"
@@ -323,10 +437,11 @@ async fn auto_confirm_matches(
         return Ok(());
     }
 
-    // Get match IDs and scores to process
+    // Get match IDs and scores to process (apply limit if specified)
+    let limit_clause = limit.map(|n| format!(" LIMIT {}", n)).unwrap_or_default();
     let select_sql = format!(
-        "SELECT id, score FROM matches WHERE score >= {} AND status = 'PENDING'",
-        threshold
+        "SELECT id, score FROM matches WHERE score >= {} AND status = 'PENDING' ORDER BY score DESC{}",
+        threshold, limit_clause
     );
     let rows = db
         .query_all(Statement::from_string(DbBackend::Postgres, select_sql))
@@ -353,24 +468,29 @@ async fn auto_confirm_matches(
         }
         confirmed_count += 1;
 
-        // 2. Create feedback record
-        let feedback_id = uuid::Uuid::new_v4();
-        let insert_sql = format!(
-            r#"INSERT INTO feedback_records 
-               (id, match_id, user_id, confirmed, medication_score, dosage_score, quantity_score, price_score, recency_score, total_score, created_at)
-               VALUES ('{}', '{}', 'auto-confirm', true, {}, {}, {}, {}, 0.7, {}, NOW())"#,
-            feedback_id,
-            match_id,
-            score * 0.9,  // Estimated medication score
-            score * 0.8,  // Estimated dosage score
-            score * 0.85, // Estimated quantity score
-            score * 0.95, // Estimated price score
-            score
-        );
-        if let Err(e) = db
-            .execute(Statement::from_string(DbBackend::Postgres, insert_sql))
-            .await
-        {
+        // 2. Create feedback record using the entity model (validates entity structure)
+        let feedback = FeedbackRecord::confirmed(match_id, "auto-confirm", score);
+
+        // Insert using the entity's ActiveModel
+        use pharma_db::entity::feedback_record::ActiveModel;
+        use sea_orm::ActiveModelTrait;
+        use sea_orm::Set;
+
+        let active = ActiveModel {
+            id: Set(feedback.id),
+            match_id: Set(feedback.match_id),
+            user_id: Set(feedback.user_id.clone()),
+            confirmed: Set(feedback.confirmed),
+            medication_score: Set(feedback.medication_score),
+            dosage_score: Set(feedback.dosage_score),
+            quantity_score: Set(feedback.quantity_score),
+            price_score: Set(feedback.price_score),
+            recency_score: Set(feedback.recency_score),
+            total_score: Set(feedback.total_score),
+            created_at: Set(feedback.created_at),
+        };
+
+        if let Err(e) = active.insert(db).await {
             eprintln!(
                 "  ⚠️ Failed to create feedback for match {}: {}",
                 match_id, e
