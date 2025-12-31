@@ -1,6 +1,7 @@
 //! Dosage parsing and comparison module
 //!
 //! Ported from legacy/pkg/dosage/dosage.go
+//! Enhanced with medication-specific IU conversions
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -9,8 +10,6 @@ use std::collections::HashMap;
 /// Unit conversion constants (all to mg as base unit)
 const MG_PER_G: f64 = 1000.0; // 1 gram = 1000 milligrams
 const MCG_PER_MG: f64 = 1000.0; // 1 milligram = 1000 micrograms
-const IU_PER_MG: f64 = 1.0; // IU conversion is medication-specific
-const ML_PER_MG: f64 = 1.0; // ml to mg is density-dependent
 
 lazy_static! {
     /// Arabic numeral to Western numeral mapping
@@ -35,6 +34,53 @@ lazy_static! {
     static ref DOSAGE_PATTERN: Regex = Regex::new(
         r"(?i)([\d٠-٩]+(?:[.,]?[\d٠-٩]+)?)\s*(ميكروغرام|مايكروجرام|جرام|غرام|ملغ|ملجم|وحدة|mcg|μg|ug|mg|ml|iu|ui|مل|ج|g)(?:/\w+)?"
     ).unwrap();
+
+    /// Medication-specific IU to mg conversion factors
+    /// IU (International Units) vary by medication type
+    static ref IU_CONVERSIONS: HashMap<&'static str, f64> = {
+        let mut m = HashMap::new();
+        // Insulin: approximately 27.5 IU per mg (varies by type)
+        m.insert("insulin", 0.0364); // 1 IU = 0.0364 mg (1/27.5)
+        m.insert("lantus", 0.0364);
+        m.insert("humalog", 0.0364);
+        m.insert("novolog", 0.0364);
+        m.insert("novorapid", 0.0364);
+        m.insert("levemir", 0.0364);
+        m.insert("tresiba", 0.0364);
+        m.insert("toujeo", 0.0364);
+        m.insert("fiasp", 0.0364);
+        m.insert("apidra", 0.0364);
+
+        // Vitamin D: 40 IU = 1 mcg = 0.001 mg
+        m.insert("vitamin d", 0.000025); // 1 IU = 0.025 mcg
+        m.insert("d3", 0.000025);
+        m.insert("cholecalciferol", 0.000025);
+        m.insert("ergocalciferol", 0.000025);
+
+        // Vitamin E: 1 IU = 0.67 mg (d-alpha-tocopherol) or 0.45 mg (dl-alpha)
+        m.insert("vitamin e", 0.67);
+        m.insert("tocopherol", 0.67);
+
+        // Vitamin A: 1 IU = 0.3 mcg retinol = 0.0003 mg
+        m.insert("vitamin a", 0.0003);
+        m.insert("retinol", 0.0003);
+
+        // Heparin: approximately 100-200 IU per mg (varies)
+        m.insert("heparin", 0.007); // ~1 IU = 0.007 mg (average)
+        m.insert("لوفنوكس", 0.01); // Lovenox
+        m.insert("enoxaparin", 0.01);
+        m.insert("clexane", 0.01);
+
+        // Penicillin: 1 mg = 1667 IU for penicillin G
+        m.insert("penicillin", 0.0006); // 1 IU = 0.0006 mg
+
+        // EPO (Erythropoietin): varies significantly
+        m.insert("epo", 0.0084);
+        m.insert("erythropoietin", 0.0084);
+        m.insert("epoetin", 0.0084);
+
+        m
+    };
 }
 
 /// Represents a medication dosage with value and unit
@@ -53,14 +99,31 @@ impl Dosage {
         }
     }
 
-    /// Convert dosage to base unit (mg)
+    /// Convert dosage to base unit (mg) without medication context
     pub fn to_base_unit(&self) -> f64 {
+        self.to_base_unit_with_medication(None)
+    }
+
+    /// Convert dosage to base unit (mg) with medication context for IU conversion
+    pub fn to_base_unit_with_medication(&self, medication_name: Option<&str>) -> f64 {
         match self.unit.as_str() {
             "g" => self.value * MG_PER_G,
             "mcg" => self.value / MCG_PER_MG,
             "mg" => self.value,
-            "ml" => self.value * ML_PER_MG,
-            "iu" => self.value * IU_PER_MG,
+            "ml" => self.value, // ml to mg is density-dependent, keep as-is
+            "iu" => {
+                // Use medication-specific conversion if available
+                if let Some(med_name) = medication_name {
+                    let med_lower = med_name.to_lowercase();
+                    for (key, factor) in IU_CONVERSIONS.iter() {
+                        if med_lower.contains(key) {
+                            return self.value * factor;
+                        }
+                    }
+                }
+                // Default: 1 IU = 1 arbitrary unit (compare IU to IU directly)
+                self.value
+            }
             _ => self.value, // Unknown unit, return as-is
         }
     }

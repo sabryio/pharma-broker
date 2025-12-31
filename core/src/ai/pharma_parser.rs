@@ -41,6 +41,17 @@ fn get_max_context_tokens() -> usize {
         .unwrap_or(DEFAULT_MAX_CONTEXT_TOKENS)
 }
 
+/// Cached system prompt token count (computed once, reused)
+fn get_cached_system_prompt_tokens() -> usize {
+    static CACHED_TOKENS: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *CACHED_TOKENS.get_or_init(|| {
+        // Use the actual estimate_tokens function logic
+        static BPE: std::sync::OnceLock<tiktoken_rs::CoreBPE> = std::sync::OnceLock::new();
+        let bpe = BPE.get_or_init(|| tiktoken_rs::o200k_base().unwrap());
+        bpe.encode_with_special_tokens(SYSTEM_PROMPT).len()
+    })
+}
+
 /// Configuration for the PharmaParser
 #[derive(Clone, Default, Debug)]
 pub struct PharmaParserConfig {
@@ -270,9 +281,23 @@ impl PharmaParser {
         };
 
         // Build enhanced system prompt once (shared across all chunks)
+        // Use cached base tokens + estimate only the enhancement delta for performance
         let enhanced_system_prompt = self
             .feedback_loop
             .build_enhanced_prompt(SYSTEM_PROMPT, content);
+
+        // Fast overhead estimation: cached base + delta for enhancements
+        let base_tokens = get_cached_system_prompt_tokens();
+        let enhancement_overhead = if enhanced_system_prompt.len() > SYSTEM_PROMPT.len() {
+            Self::estimate_tokens(&enhanced_system_prompt[SYSTEM_PROMPT.len()..])
+        } else {
+            0
+        };
+        tracing::debug!(
+            base_tokens = base_tokens,
+            enhancement_overhead = enhancement_overhead,
+            "System prompt token estimate (cached)"
+        );
 
         // Create futures for parallel chunk processing
         let chunk_futures: Vec<_> = chunks

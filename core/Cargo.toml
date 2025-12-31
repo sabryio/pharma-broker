@@ -130,6 +130,7 @@ futures-util = "0.3.31"
 lazy_static = "1.5.0"
 regex = "1.12.2"
 tokio-cron-scheduler = "0.15.1"
+rayon = "1.10"
 
 # Workspace crate
 ai-client = { path = "crates/ai-client" }

@@ -9,12 +9,14 @@
 //! - Detailed score explanations for transparency
 //! - A/B testing support for strategy comparison
 //! - Dynamic weight adjustment based on performance
+//! - Parallel strategy scoring with rayon
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use chrono::{DateTime, Utc};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -621,7 +623,7 @@ impl EnsembleMatcher {
         }
     }
 
-    /// Score a match using all enabled strategies
+    /// Score a match using all enabled strategies (parallel execution with rayon)
     pub fn score(&self, offer: &Offer, request: &Request, context: &StrategyContext) -> f64 {
         let config = self.config.read().unwrap();
         if !config.enabled {
@@ -630,22 +632,32 @@ impl EnsembleMatcher {
         drop(config);
 
         let strategies = self.strategies.read().unwrap();
+
+        // Parallel scoring with rayon - each strategy scores independently
+        let results: Vec<(String, f64, f64, bool)> = strategies
+            .par_iter()
+            .map(|strategy| {
+                let enabled = strategy.is_enabled();
+                if !enabled {
+                    return (strategy.name().to_string(), 0.0, 0.0, false);
+                }
+                let weight = strategy.weight();
+                let score = strategy.score(offer, request, context);
+                (strategy.name().to_string(), score, weight, true)
+            })
+            .collect();
+
+        // Aggregate results
         let mut total_weight = 0.0;
         let mut weighted_sum = 0.0;
 
-        for strategy in strategies.iter() {
-            if !strategy.is_enabled() {
-                continue;
+        for (name, score, weight, enabled) in results {
+            if enabled {
+                weighted_sum += score * weight;
+                total_weight += weight;
+                // Update strategy stats
+                self.update_strategy_stats(&name, score);
             }
-
-            let weight = strategy.weight();
-            let score = strategy.score(offer, request, context);
-
-            weighted_sum += score * weight;
-            total_weight += weight;
-
-            // Update strategy stats
-            self.update_strategy_stats(strategy.name(), score);
         }
 
         let total_score = if total_weight > 0.0 {
