@@ -39,7 +39,7 @@ type ClientConfig struct {
 // NewClient creates a new WhatsApp client.
 func NewClient(ctx context.Context, cfg ClientConfig, qrHandler ports.QRHandler, logger zerolog.Logger) (*Client, error) {
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
-	container, err := sqlstore.New(ctx, "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", cfg.StorePath), dbLog)
+	container, err := sqlstore.New(ctx, "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on&_busy_timeout=5000&_journal_mode=WAL", cfg.StorePath), dbLog)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}

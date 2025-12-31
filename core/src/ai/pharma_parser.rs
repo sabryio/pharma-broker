@@ -327,14 +327,21 @@ impl PharmaParser {
                 Err(e) => {
                     // Even in chunked mode, a single chunk might be too big if estimation was slightly off
                     // or if system prompt + mapping grew too much.
-                    if let ClientError::Api {
-                        status,
-                        ref message,
-                    } = e
-                        && status == 500
-                        && (message.contains("Context size has been exceeded")
-                            || message.contains("context_length_exceeded"))
-                    {
+                    // Check for context error (either direct API error or wrapped in RetryExhausted)
+                    let is_context_error = match &e {
+                        ClientError::Api { status, message } => {
+                            *status == 500
+                                && (message.contains("Context size has been exceeded")
+                                    || message.contains("context_length_exceeded"))
+                        }
+                        ClientError::RetryExhausted { last_error, .. } => {
+                            last_error.contains("Context size has been exceeded")
+                                || last_error.contains("context_length_exceeded")
+                        }
+                        _ => false,
+                    };
+
+                    if is_context_error {
                         warn!(
                             chunk = idx + 1,
                             "Chunk still too large, attempting sub-split"

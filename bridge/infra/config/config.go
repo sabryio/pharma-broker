@@ -173,8 +173,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("resilience.retry_buffer.flush_interval", 10*time.Second)
 
 	// Rate Limit
-	v.SetDefault("rate_limit.per_minute", 20.0)
-	v.SetDefault("rate_limit.burst_size", 5)
+	v.SetDefault("rate_limit.per_minute", 1000.0)
+	v.SetDefault("rate_limit.burst_size", 100)
 	v.SetDefault("rate_limit.enabled", true)
 
 	// Group Sync

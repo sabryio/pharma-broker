@@ -36,8 +36,8 @@ resilience:
 
 # Rate limiting configuration
 rate_limit:
-  per_minute: 20
-  burst_size: 5
+  per_minute: 1000
+  burst_size: 100
   enabled: true
 
 # Group sync configuration

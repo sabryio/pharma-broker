@@ -184,7 +184,7 @@ func (b *Bridge) processMessage(ctx context.Context, msg domain.Message) {
 	}
 
 	if !b.rateLimiter.Allow() {
-		b.logger.Debug().Msg("Rate limited")
+		b.logger.Debug().Str("group", msg.GroupJID.String()).Msg("Rate limited")
 		return
 	}
 
