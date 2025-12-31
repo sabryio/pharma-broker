@@ -32,6 +32,8 @@ pub struct Model {
     pub expiry_info: Option<String>,
     pub ai_confidence: f64,
     pub content_embedding: Option<PgVector>, // Vector(768) for semantic search
+    pub master_medication_id: Option<Uuid>,  // FK to medication_master for deterministic matching
+    pub medication_curated: bool,            // Whether medication has been curated
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }
@@ -114,6 +116,8 @@ impl Default for Model {
             expiry_info: None,
             ai_confidence: 0.0,
             content_embedding: None,
+            master_medication_id: None,
+            medication_curated: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -327,6 +331,8 @@ impl OfferBuilder {
             expiry_info: self.expiry_info,
             ai_confidence: self.ai_confidence,
             content_embedding: self.content_embedding,
+            master_medication_id: None,
+            medication_curated: false,
             created_at: now,
             updated_at: now,
         }

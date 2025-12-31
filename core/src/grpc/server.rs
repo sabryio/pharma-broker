@@ -468,6 +468,8 @@ where
                                 urgency_level: convert_urgency_level(item.urgency_level),
                                 expiry_info: item.expiry.clone(),
                                 ai_confidence: item.ai_confidence,
+                                master_medication_id: None, // Will be set via curation
+                                medication_curated: false,
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };
@@ -551,6 +553,8 @@ where
                                 notes: item.notes.clone(),
                                 status: ItemStatus::Active,
                                 content_embedding: content_embedding.clone().map(PgVector::from),
+                                master_medication_id: None, // Will be set via curation
+                                medication_curated: false,
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };

@@ -30,6 +30,48 @@ cargo run --package pharma-analysis -- expire --days 14
 
 # Expire stale matches (execute)
 cargo run --package pharma-analysis -- expire --days 14 --execute
+
+# Auto-confirm high-confidence matches
+cargo run --package pharma-analysis -- auto-confirm --threshold 0.9
+cargo run --package pharma-analysis -- auto-confirm --threshold 0.9 --execute
+```
+
+### Medication Curation
+
+Curate medications to create a master medication list for deterministic matching:
+
+```bash
+# List medications pending curation (top 20 by frequency)
+cargo run --package pharma-analysis -- curate list --limit 20
+
+# List only uncurated medications
+cargo run --package pharma-analysis -- curate list --pending
+
+# Show curation statistics
+cargo run --package pharma-analysis -- curate stats
+
+# Create a master medication
+cargo run --package pharma-analysis -- curate create-master \
+    --name "Monjaro 12.5mg" \
+    --name-ar "مونجارو ١٢.٥" \
+    --strength "12.5mg" \
+    --ingredient "Tirzepatide" \
+    --manufacturer "Eli Lilly"
+
+# Approve an alias and link to master (auto-backfills offers/requests)
+cargo run --package pharma-analysis -- curate approve \
+    --alias "Monjaro 12.5mg" \
+    --master-id <uuid>
+
+# Sync uncurated medications from history to aliases table
+cargo run --package pharma-analysis -- curate sync
+
+# Show AI suggestions for a medication alias (fuzzy matching)
+cargo run --package pharma-analysis -- curate suggest --alias "Monjaro"
+
+# Automatically resolve high-confidence matches (>95%)
+cargo run --package pharma-analysis -- curate resolve --threshold 0.95
+cargo run --package pharma-analysis -- curate resolve --threshold 0.95 --execute
 ```
 
 Or use Taskfile:

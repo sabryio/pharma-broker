@@ -33,6 +33,7 @@ use pharma_analysis::{
 use pharma_core::grpc::pharma::{ConnectMatchRequest, pharma_bridge_client::PharmaBridgeClient};
 use pharma_db::{ConnectOptions, Database};
 use prettytable::format;
+use sea_orm::ConnectionTrait;
 use std::env;
 use unicode_width::UnicodeWidthStr;
 
@@ -174,8 +175,97 @@ enum Commands {
         execute: bool,
     },
 
+    /// Medication curation workflow - validate and link parsed medications
+    #[command(name = "curate")]
+    Curate {
+        #[command(subcommand)]
+        action: CurateAction,
+    },
+
     /// Run ALL analysis phases
     All,
+}
+
+/// Curation subcommands
+#[derive(Subcommand)]
+enum CurateAction {
+    /// List medications pending curation
+    List {
+        /// Maximum number of items to display
+        #[arg(long, default_value = "20")]
+        limit: usize,
+
+        /// Show only uncurated medications
+        #[arg(long)]
+        pending: bool,
+    },
+
+    /// Show curation statistics
+    Stats,
+
+    /// Create a new master medication
+    #[command(name = "create-master")]
+    CreateMaster {
+        /// Canonical English name
+        #[arg(long)]
+        name: String,
+
+        /// Arabic name (optional)
+        #[arg(long)]
+        name_ar: Option<String>,
+
+        /// Strength (e.g., "12.5mg")
+        #[arg(long)]
+        strength: Option<String>,
+
+        /// Active ingredient
+        #[arg(long)]
+        ingredient: Option<String>,
+
+        /// Manufacturer
+        #[arg(long)]
+        manufacturer: Option<String>,
+    },
+
+    /// Approve an alias and link it to a master medication
+    Approve {
+        /// The alias name to approve
+        #[arg(long)]
+        alias: String,
+
+        /// ID of the master medication to link to
+        #[arg(long)]
+        master_id: String,
+
+        /// Operator name for audit
+        #[arg(long, default_value = "cli")]
+        operator: String,
+    },
+
+    /// Sync uncurated medications from offers/requests to medication_aliases
+    Sync,
+
+    /// Show AI suggestions for a medication alias
+    Suggest {
+        /// The alias name to find suggestions for
+        #[arg(long)]
+        alias: String,
+    },
+
+    /// Automatically resolve high-confidence matches
+    Resolve {
+        /// Confidence threshold (0.0 - 1.0)
+        #[arg(long, default_value = "0.95")]
+        threshold: f64,
+
+        /// Actually execute changes (default is dry-run)
+        #[arg(long)]
+        execute: bool,
+
+        /// Limit number of items to process
+        #[arg(long, default_value = "50")]
+        limit: usize,
+    },
 }
 
 #[tokio::main]
@@ -258,6 +348,9 @@ async fn main() -> anyhow::Result<()> {
         } => {
             auto_confirm_matches(&db, threshold, limit, execute).await?;
         }
+        Commands::Curate { action } => {
+            handle_curate_action(&db, action).await?;
+        }
         Commands::All => {
             run_all_phases(&db).await?;
         }
@@ -269,7 +362,7 @@ async fn main() -> anyhow::Result<()> {
     );
     println!(
         "{}",
-        "║           ✨ Analysis completed successfully              ║".green()
+        "║           ✨ Analysis completed successfully             ║".green()
     );
     println!(
         "{}",
@@ -660,4 +753,444 @@ fn truncate_url(url: &str) -> String {
         return format!("{}****{}", prefix, suffix);
     }
     url.to_string()
+}
+
+// ============================================================================
+// Medication Curation Commands
+// ============================================================================
+
+async fn handle_curate_action(
+    db: &pharma_db::DatabaseConnection,
+    action: CurateAction,
+) -> anyhow::Result<()> {
+    use prettytable::{Table, row};
+    use sea_orm::{DbBackend, Statement};
+
+    match action {
+        CurateAction::List { limit, pending } => {
+            println!(
+                "\n📋 Medications {}",
+                if pending {
+                    "(pending curation only)"
+                } else {
+                    ""
+                }
+            );
+
+            // Query distinct medications from offers that don't have master_medication_id
+            let sql = format!(
+                "SELECT 
+                    medication,
+                    COUNT(*) as count,
+                    MIN(created_at) as first_seen,
+                    MAX(created_at) as last_seen
+                 FROM offers 
+                 {} 
+                 GROUP BY medication
+                 ORDER BY count DESC
+                 LIMIT {}",
+                if pending {
+                    "WHERE master_medication_id IS NULL"
+                } else {
+                    ""
+                },
+                limit
+            );
+
+            let rows = db
+                .query_all(Statement::from_string(DbBackend::Postgres, sql))
+                .await?;
+
+            let mut table = Table::new();
+            table.set_format(*format::consts::FORMAT_CLEAN);
+            table.add_row(row![
+                "Medication".bold(),
+                "Count".bold(),
+                "First Seen".bold(),
+                "Last Seen".bold()
+            ]);
+
+            for row in &rows {
+                let medication: String = row.try_get_by_index(0)?;
+                let count: i64 = row.try_get_by_index(1)?;
+                let first_seen: chrono::DateTime<chrono::Utc> = row.try_get_by_index(2)?;
+                let last_seen: chrono::DateTime<chrono::Utc> = row.try_get_by_index(3)?;
+
+                table.add_row(row![
+                    format_arabic(&medication),
+                    count.to_string().green(),
+                    first_seen.format("%Y-%m-%d").to_string(),
+                    last_seen.format("%Y-%m-%d").to_string()
+                ]);
+            }
+
+            table.printstd();
+            println!(
+                "\n💡 Tip: Use `curate create-master --name \"...\"` to create a master medication"
+            );
+        }
+
+        CurateAction::Stats => {
+            println!("\n📊 Curation Statistics");
+
+            // Count total offers
+            let total_sql = "SELECT COUNT(*) FROM offers";
+            let total: i64 = db
+                .query_one(Statement::from_string(
+                    DbBackend::Postgres,
+                    total_sql.to_string(),
+                ))
+                .await?
+                .map(|r| r.try_get_by_index(0).unwrap_or(0))
+                .unwrap_or(0);
+
+            // Count curated offers
+            let curated_sql = "SELECT COUNT(*) FROM offers WHERE master_medication_id IS NOT NULL";
+            let curated: i64 = db
+                .query_one(Statement::from_string(
+                    DbBackend::Postgres,
+                    curated_sql.to_string(),
+                ))
+                .await?
+                .map(|r| r.try_get_by_index(0).unwrap_or(0))
+                .unwrap_or(0);
+
+            // Count master medications
+            let master_sql = "SELECT COUNT(*) FROM medication_master";
+            let masters: i64 = db
+                .query_one(Statement::from_string(
+                    DbBackend::Postgres,
+                    master_sql.to_string(),
+                ))
+                .await?
+                .map(|r| r.try_get_by_index(0).unwrap_or(0))
+                .unwrap_or(0);
+
+            // Count aliases
+            let alias_sql = "SELECT COUNT(*) FROM medication_aliases";
+            let aliases: i64 = db
+                .query_one(Statement::from_string(
+                    DbBackend::Postgres,
+                    alias_sql.to_string(),
+                ))
+                .await?
+                .map(|r| r.try_get_by_index(0).unwrap_or(0))
+                .unwrap_or(0);
+
+            println!("  📦 Total offers:        {}", total);
+            println!(
+                "  ✅ Curated offers:      {} ({:.1}%)",
+                curated,
+                if total > 0 {
+                    curated as f64 / total as f64 * 100.0
+                } else {
+                    0.0
+                }
+            );
+            println!("  🗂️  Master medications: {}", masters);
+            println!("  🔗 Aliases defined:     {}", aliases);
+        }
+
+        CurateAction::CreateMaster {
+            name,
+            name_ar,
+            strength,
+            ingredient,
+            manufacturer,
+        } => {
+            use pharma_db::entity::medication_master;
+            use sea_orm::{ActiveModelTrait, Set};
+
+            let model = medication_master::ActiveModel {
+                id: Set(uuid::Uuid::new_v4()),
+                canonical_name: Set(name.clone()),
+                canonical_name_ar: Set(name_ar),
+                strength: Set(strength),
+                active_ingredient: Set(ingredient),
+                manufacturer: Set(manufacturer),
+                dosage_form: Set(None),
+                eda_registration: Set(None),
+                therapeutic_class: Set(None),
+                atc_code: Set(None),
+                status: Set(medication_master::MedicationStatus::Active),
+                created_at: Set(chrono::Utc::now()),
+                updated_at: Set(chrono::Utc::now()),
+                created_by: Set(Some("cli".to_string())),
+            };
+
+            let result = model.insert(db).await?;
+            println!("✅ Created master medication: {} (ID: {})", name, result.id);
+        }
+
+        CurateAction::Approve {
+            alias,
+            master_id,
+            operator,
+        } => {
+            use pharma_db::entity::medication_alias;
+            use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+
+            let master_uuid = uuid::Uuid::parse_str(&master_id)?;
+
+            // Find existing alias or create new one
+            let normalized = medication_alias::Model::normalize(&alias);
+            let existing = medication_alias::Entity::find()
+                .filter(medication_alias::Column::AliasNameNormalized.eq(&normalized))
+                .one(db)
+                .await?;
+
+            if let Some(existing) = existing {
+                // Update existing
+                let mut model: medication_alias::ActiveModel = existing.into();
+                model.master_medication_id = Set(Some(master_uuid));
+                model.curation_status = Set(medication_alias::CurationStatus::Approved);
+                model.curated_by = Set(Some(operator.clone()));
+                model.curated_at = Set(Some(chrono::Utc::now()));
+                model.update(db).await?;
+                println!("✅ Updated alias: \"{}\" → master {}", alias, master_id);
+            } else {
+                // Create new
+                let model = medication_alias::ActiveModel {
+                    id: Set(uuid::Uuid::new_v4()),
+                    alias_name: Set(alias.clone()),
+                    alias_name_normalized: Set(normalized.clone()),
+                    master_medication_id: Set(Some(master_uuid)),
+                    ai_suggestion_confidence: Set(None),
+                    curation_status: Set(medication_alias::CurationStatus::Approved),
+                    curated_by: Set(Some(operator)),
+                    curated_at: Set(Some(chrono::Utc::now())),
+                    occurrence_count: Set(1),
+                    first_seen_at: Set(chrono::Utc::now()),
+                    last_seen_at: Set(chrono::Utc::now()),
+                };
+                model.insert(db).await?;
+                println!(
+                    "✅ Created and approved alias: \"{}\" → master {}",
+                    alias, master_id
+                );
+            }
+
+            // Backfill offers with this medication
+            let backfill_sql = format!(
+                "UPDATE offers SET master_medication_id = '{}', medication_curated = true WHERE LOWER(TRIM(medication)) = '{}'",
+                master_uuid,
+                normalized.replace("'", "''")
+            );
+            let result = db
+                .execute(Statement::from_string(DbBackend::Postgres, backfill_sql))
+                .await?;
+            println!("   Backfilled {} offers", result.rows_affected());
+
+            // Backfill requests
+            let backfill_sql = format!(
+                "UPDATE requests SET master_medication_id = '{}', medication_curated = true WHERE LOWER(TRIM(medication)) = '{}'",
+                master_uuid,
+                normalized.replace("'", "''")
+            );
+            let result = db
+                .execute(Statement::from_string(DbBackend::Postgres, backfill_sql))
+                .await?;
+            println!("   Backfilled {} requests", result.rows_affected());
+        }
+
+        CurateAction::Sync => {
+            println!("\n🔄 Syncing uncurated medications to aliases...");
+
+            let sync_sql = "
+                INSERT INTO medication_aliases (
+                    alias_name, 
+                    alias_name_normalized, 
+                    occurrence_count, 
+                    first_seen_at, 
+                    last_seen_at
+                )
+                SELECT 
+                    medication,
+                    LOWER(TRIM(medication)),
+                    COUNT(*),
+                    MIN(created_at),
+                    MAX(created_at)
+                FROM offers
+                WHERE master_medication_id IS NULL
+                GROUP BY medication
+                ON CONFLICT (alias_name_normalized) DO UPDATE SET
+                    occurrence_count = EXCLUDED.occurrence_count,
+                    last_seen_at = EXCLUDED.last_seen_at
+            ";
+
+            let result = db
+                .execute(Statement::from_string(
+                    DbBackend::Postgres,
+                    sync_sql.to_string(),
+                ))
+                .await?;
+
+            println!("✅ Synced {} medication aliases", result.rows_affected());
+        }
+
+        CurateAction::Suggest { alias } => {
+            println!("\n🔍 Suggestions for: \"{}\"", alias);
+
+            let normalized = alias.to_lowercase().trim().to_string();
+
+            // Use trigram similarity to find candidates
+            let suggest_sql = format!(
+                "SELECT 
+                    id, 
+                    canonical_name, 
+                    strength,
+                    similarity(canonical_name, '{}') as score
+                 FROM medication_master
+                 WHERE canonical_name % '{}' OR canonical_name ILIKE '%{}%'
+                 ORDER BY score DESC
+                 LIMIT 5",
+                normalized.replace("'", "''"),
+                normalized.replace("'", "''"),
+                normalized.replace("'", "''")
+            );
+
+            let rows = db
+                .query_all(Statement::from_string(DbBackend::Postgres, suggest_sql))
+                .await?;
+
+            if rows.is_empty() {
+                println!("❌ No suggestions found.");
+            } else {
+                let mut table = Table::new();
+                table.set_format(*format::consts::FORMAT_CLEAN);
+                table.add_row(row![
+                    "ID".bold(),
+                    "Master Medication".bold(),
+                    "Strength".bold(),
+                    "Confidence".bold()
+                ]);
+
+                for row in &rows {
+                    let id: uuid::Uuid = row.try_get_by_index(0)?;
+                    let name: String = row.try_get_by_index(1)?;
+                    let strength: Option<String> = row.try_get_by_index(2)?;
+                    let score: f32 = row.try_get_by_index(3)?;
+
+                    table.add_row(row![
+                        id.to_string().dimmed(),
+                        name.green(),
+                        strength.unwrap_or_default().yellow(),
+                        format!("{:.1}%", score * 100.0).bold()
+                    ]);
+                }
+                table.printstd();
+            }
+        }
+
+        CurateAction::Resolve {
+            threshold,
+            execute,
+            limit,
+        } => {
+            println!(
+                "\n🤖 Auto-resolving medications (threshold: {:.1}%, execution: {})",
+                threshold * 100.0,
+                execute
+            );
+
+            // Fetch top uncurated aliases
+            let alias_sql = format!(
+                "SELECT alias_name, alias_name_normalized, occurrence_count 
+                 FROM medication_aliases 
+                 WHERE curation_status = 'PENDING' 
+                 ORDER BY occurrence_count DESC 
+                 LIMIT {}",
+                limit
+            );
+
+            let aliases = db
+                .query_all(Statement::from_string(DbBackend::Postgres, alias_sql))
+                .await?;
+            let mut resolved_count = 0;
+
+            for alias_row in aliases {
+                let alias_name: String = alias_row.try_get_by_index(0)?;
+                let normalized: String = alias_row.try_get_by_index(1)?;
+                let count: i32 = alias_row.try_get_by_index(2)?;
+
+                // Find best master match
+                let suggest_sql = format!(
+                    "SELECT id, canonical_name, similarity(canonical_name, '{}') as score
+                     FROM medication_master
+                     ORDER BY score DESC
+                     LIMIT 1",
+                    normalized.replace("'", "''")
+                );
+
+                if let Some(suggest_row) = db
+                    .query_one(Statement::from_string(DbBackend::Postgres, suggest_sql))
+                    .await?
+                {
+                    let master_id: uuid::Uuid = suggest_row.try_get_by_index(0)?;
+                    let master_name: String = suggest_row.try_get_by_index(1)?;
+                    let score: f32 = suggest_row.try_get_by_index(2)?;
+
+                    if score as f64 >= threshold {
+                        println!(
+                            "✨ Match: \"{}\" ({}) → \"{}\" ({:.1}%)",
+                            alias_name,
+                            count,
+                            master_name,
+                            score * 100.0
+                        );
+
+                        if execute {
+                            // Link alias
+                            let update_alias = format!(
+                                "UPDATE medication_aliases SET 
+                                    master_medication_id = '{}', 
+                                    curation_status = 'APPROVED',
+                                    curated_by = 'auto-resolve',
+                                    curated_at = NOW()
+                                 WHERE alias_name_normalized = '{}'",
+                                master_id,
+                                normalized.replace("'", "''")
+                            );
+                            db.execute(Statement::from_string(DbBackend::Postgres, update_alias))
+                                .await?;
+
+                            // Backfill offers
+                            let backfill_offers = format!(
+                                "UPDATE offers SET master_medication_id = '{}', medication_curated = true WHERE LOWER(TRIM(medication)) = '{}'",
+                                master_id,
+                                normalized.replace("'", "''")
+                            );
+                            db.execute(Statement::from_string(
+                                DbBackend::Postgres,
+                                backfill_offers,
+                            ))
+                            .await?;
+
+                            // Backfill requests
+                            let backfill_requests = format!(
+                                "UPDATE requests SET master_medication_id = '{}', medication_curated = true WHERE LOWER(TRIM(medication)) = '{}'",
+                                master_id,
+                                normalized.replace("'", "''")
+                            );
+                            db.execute(Statement::from_string(
+                                DbBackend::Postgres,
+                                backfill_requests,
+                            ))
+                            .await?;
+
+                            resolved_count += 1;
+                        }
+                    }
+                }
+            }
+
+            if execute {
+                println!("\n✅ Auto-resolved {} medication aliases", resolved_count);
+            } else {
+                println!("\n💡 This was a dry-run. Use `--execute` to apply changes.");
+            }
+        }
+    }
+
+    Ok(())
 }

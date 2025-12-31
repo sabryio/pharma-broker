@@ -55,6 +55,8 @@ fn create_offer() -> Offer {
         urgency_level: UrgencyLevel::Normal,
         expiry_info: None,
         ai_confidence: 0.9,
+        master_medication_id: None,
+        medication_curated: false,
         created_at: now,
         updated_at: now,
     }
@@ -80,6 +82,8 @@ fn create_matching_request() -> Request {
         notes: None,
         status: ItemStatus::Active,
         content_embedding: None,
+        master_medication_id: None,
+        medication_curated: false,
         created_at: now,
         updated_at: now,
     }

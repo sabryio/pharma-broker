@@ -373,6 +373,8 @@ impl BatchProcessor {
                     urgency_level: UrgencyLevel::from_bool(item.urgent),
                     expiry_info: item.expiry.clone(),
                     ai_confidence: item.ai_confidence,
+                    master_medication_id: None,
+                    medication_curated: false,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 };
@@ -417,6 +419,8 @@ impl BatchProcessor {
                     ai_confidence: item.ai_confidence,
                     status: ItemStatus::Active,
                     content_embedding: embedding.map(PgVector::from),
+                    master_medication_id: None,
+                    medication_curated: false,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 };

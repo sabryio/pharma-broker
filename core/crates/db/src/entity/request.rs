@@ -30,6 +30,8 @@ pub struct Model {
     pub notes: Option<String>,
     pub status: Status,
     pub content_embedding: Option<PgVector>, // Vector(768) for semantic search
+    pub master_medication_id: Option<Uuid>,  // FK to medication_master for deterministic matching
+    pub medication_curated: bool,            // Whether medication has been curated
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }
@@ -110,6 +112,8 @@ impl Default for Model {
             notes: None,
             status: Status::Active,
             content_embedding: None,
+            master_medication_id: None,
+            medication_curated: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -306,6 +310,8 @@ impl RequestBuilder {
             notes: self.notes,
             status: Status::Active,
             content_embedding: None,
+            master_medication_id: None,
+            medication_curated: false,
             created_at: now,
             updated_at: now,
         }

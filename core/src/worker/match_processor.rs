@@ -150,12 +150,25 @@ impl MatchProcessor {
                 continue;
             }
 
-            // Calculate similarity (Logic ported from server.rs)
-            let med_score = match (&offer.content_embedding, &request.content_embedding) {
-                (Some(o), Some(r)) => {
-                    crate::matching::cosine_similarity(o.as_slice(), r.as_slice()).unwrap_or(0.0)
+            // Calculate medication similarity score
+            // Phase 3: Deterministic matching with master_medication_id
+            let med_score = match (&offer.master_medication_id, &request.master_medication_id) {
+                // Both have master IDs - deterministic match
+                (Some(offer_master), Some(request_master)) => {
+                    if offer_master == request_master {
+                        1.0 // Same medication = 100% match
+                    } else {
+                        0.0 // Different medications = no match
+                    }
                 }
-                _ => self.fallback_similarity(&offer, &request),
+                // Fallback to embedding similarity when master IDs not available
+                _ => match (&offer.content_embedding, &request.content_embedding) {
+                    (Some(o), Some(r)) => {
+                        crate::matching::cosine_similarity(o.as_slice(), r.as_slice())
+                            .unwrap_or(0.0)
+                    }
+                    _ => self.fallback_similarity(&offer, &request),
+                },
             };
 
             // Score match
