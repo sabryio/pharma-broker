@@ -63,3 +63,6 @@ rust_decimal = "1.39"
 
 # Number formatting
 num-format = "0.4"
+
+# Unicode width for proper alignment
+unicode-width = "0.2"

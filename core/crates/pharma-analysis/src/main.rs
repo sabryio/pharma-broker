@@ -34,6 +34,21 @@ use pharma_core::grpc::pharma::{ConnectMatchRequest, pharma_bridge_client::Pharm
 use pharma_db::{ConnectOptions, Database};
 use prettytable::format;
 use std::env;
+use unicode_width::UnicodeWidthStr;
+
+// Column width constants for aligned table output
+const COL_WIDTH_MED: usize = 35;
+const COL_WIDTH_INFO: usize = 40;
+
+/// Pad a string to a fixed display width using Unicode-aware width calculation
+fn pad_to_width(text: &str, width: usize) -> String {
+    let current_width = UnicodeWidthStr::width(text);
+    if current_width >= width {
+        text.to_string()
+    } else {
+        format!("{}{}", text, " ".repeat(width - current_width))
+    }
+}
 
 // ============================================================================
 // Arabic RTL Text Handling for Terminal Display
@@ -391,13 +406,17 @@ async fn auto_confirm_matches(
     // Show preview of first 5 matches
     let preview_sql = format!(
         "SELECT m.id, m.score, 
-                o.medication as offer_med, o.medication_raw as offer_raw, o.source_phone as offer_phone, o.source_name as offer_name, og.name as offer_group,
-                r.medication as request_med, r.medication_raw as request_raw, r.source_phone as request_phone, r.source_name as request_name, rg.name as request_group
+                o.medication as offer_med, op.push_name as offer_name, op.phone as offer_phone, og.name as offer_group, op.jid as offer_jid, om.english_name as offer_eng,
+                r.medication as request_med, rp.push_name as request_name, rp.phone as request_phone, rg.name as request_group, rp.jid as request_jid, rm.english_name as request_eng
          FROM matches m
          LEFT JOIN offers o ON m.offer_id = o.id
          LEFT JOIN requests r ON m.request_id = r.id
-         LEFT JOIN groups og ON o.source_group = og.jid
-         LEFT JOIN groups rg ON r.source_group = rg.jid
+         LEFT JOIN participants op ON o.participant_id = op.id
+         LEFT JOIN groups og ON o.group_id = og.id
+         LEFT JOIN participants rp ON r.participant_id = rp.id
+         LEFT JOIN groups rg ON r.group_id = rg.id
+         LEFT JOIN medication_mappings om ON o.medication = om.arabic_name
+         LEFT JOIN medication_mappings rm ON r.medication = rm.arabic_name
          WHERE m.score >= {} AND m.status = 'PENDING'
          ORDER BY m.score DESC
          LIMIT 5",
@@ -409,49 +428,85 @@ async fn auto_confirm_matches(
 
     println!("\n📋 Preview of top matches to confirm:");
     let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+    table.set_format(*format::consts::FORMAT_CLEAN);
     table.add_row(row![
         "ID".bold(),
         "Score".bold(),
         "Medication".bold(),
-        "Seller (Name | Phone)".bold(),
-        "Buyer (Name | Phone)".bold()
+        "Seller Information".bold(),
+        "Buyer Information".bold()
     ]);
 
     for row in &preview_rows {
         let id: uuid::Uuid = row.try_get_by_index(0)?;
         let score: f64 = row.try_get_by_index(1)?;
         let offer_med: Option<String> = row.try_get_by_index(2).ok();
-        let offer_raw: Option<String> = row.try_get_by_index(3).ok();
+        let offer_name: Option<String> = row.try_get_by_index(3).ok();
         let offer_phone: Option<String> = row.try_get_by_index(4).ok();
-        let offer_name: Option<String> = row.try_get_by_index(5).ok();
-        let _offer_group: Option<String> = row.try_get_by_index(6).ok();
-        let request_med: Option<String> = row.try_get_by_index(7).ok();
-        let request_raw: Option<String> = row.try_get_by_index(8).ok();
-        let request_phone: Option<String> = row.try_get_by_index(9).ok();
-        let request_name: Option<String> = row.try_get_by_index(10).ok();
-        let _request_group: Option<String> = row.try_get_by_index(11).ok();
+        let offer_group: Option<String> = row.try_get_by_index(5).ok();
+        let offer_jid: String = row.try_get_by_index(6).unwrap_or_default();
+        let offer_eng: Option<String> = row.try_get_by_index(7).ok();
+
+        let request_med: Option<String> = row.try_get_by_index(8).ok();
+        let request_name: Option<String> = row.try_get_by_index(9).ok();
+        let request_phone: Option<String> = row.try_get_by_index(10).ok();
+        let request_group: Option<String> = row.try_get_by_index(11).ok();
+        let request_jid: String = row.try_get_by_index(12).unwrap_or_default();
+        let request_eng: Option<String> = row.try_get_by_index(13).ok();
 
         // Use name if available, otherwise raw identifier (cleaned)
         let o_name = offer_name
             .map(|s| format_arabic(&s))
-            .unwrap_or_else(|| format_arabic(&offer_raw.unwrap_or_else(|| "Unknown".to_string())));
-        let r_name = request_name.map(|s| format_arabic(&s)).unwrap_or_else(|| {
-            format_arabic(&request_raw.unwrap_or_else(|| "Unknown".to_string()))
-        });
+            .unwrap_or_else(|| "Unknown".to_string());
+        let r_name = request_name
+            .map(|s| format_arabic(&s))
+            .unwrap_or_else(|| "Unknown".to_string());
 
         let o_phone = format_phone(&offer_phone.unwrap_or_default());
         let r_phone = format_phone(&request_phone.unwrap_or_default());
 
-        let o_med = format_arabic(&offer_med.unwrap_or_else(|| "-".to_string()));
-        let _r_med = format_arabic(&request_med.unwrap_or_else(|| "-".to_string()));
+        let o_med_ar = format_arabic(&offer_med.unwrap_or_else(|| "-".to_string()));
+        let o_med_en = offer_eng.unwrap_or_else(|| "-".to_string());
+        let r_med_ar = format_arabic(&request_med.unwrap_or_else(|| "-".to_string()));
+        let r_med_en = request_eng.unwrap_or_else(|| "-".to_string());
+
+        let o_group_str = offer_group
+            .map(|s| format!("🏠 {}", format_arabic(&s)))
+            .unwrap_or_else(|| "🏠 Direct Chat".to_string());
+        let r_group_str = request_group
+            .map(|s| format!("🏠 {}", format_arabic(&s)))
+            .unwrap_or_else(|| "🏠 Direct Chat".to_string());
+
+        // Build padded cell content for proper alignment
+        let med_line1 = pad_to_width(
+            &format!("OFFER: {} | {}", o_med_ar, o_med_en),
+            COL_WIDTH_MED,
+        );
+        let med_line2 = pad_to_width(
+            &format!("REQ:   {} | {}", r_med_ar, r_med_en),
+            COL_WIDTH_MED,
+        );
+
+        let seller_line1 = pad_to_width(&o_name, COL_WIDTH_INFO);
+        let seller_line2 = pad_to_width(
+            &format!("📞 {} | 🆔 {}", o_phone, offer_jid),
+            COL_WIDTH_INFO,
+        );
+        let seller_line3 = pad_to_width(&o_group_str, COL_WIDTH_INFO);
+
+        let buyer_line1 = pad_to_width(&r_name, COL_WIDTH_INFO);
+        let buyer_line2 = pad_to_width(
+            &format!("📞 {} | 🆔 {}", r_phone, request_jid),
+            COL_WIDTH_INFO,
+        );
+        let buyer_line3 = pad_to_width(&r_group_str, COL_WIDTH_INFO);
 
         table.add_row(row![
-            &id.to_string()[..8].cyan(),
-            format!("{:.4}", score).green(),
-            o_med.bold(),
-            format!("{} | {}", o_name, o_phone),
-            format!("{} | {}", r_name, r_phone)
+            pad_to_width(&id.to_string()[..8], 8),
+            pad_to_width(&format!("{:.4}", score), 6),
+            format!("{}\n{}", med_line1, med_line2),
+            format!("{}\n{}\n{}", seller_line1, seller_line2, seller_line3),
+            format!("{}\n{}\n{}", buyer_line1, buyer_line2, buyer_line3)
         ]);
     }
     table.printstd();
@@ -475,14 +530,14 @@ async fn auto_confirm_matches(
     let limit_clause = limit.map(|n| format!(" LIMIT {}", n)).unwrap_or_default();
     let select_sql = format!(
         "SELECT m.id, m.score, \
-                o.source_phone as offer_phone, o.source_name as offer_name, o.medication as offer_med, \
-                r.source_phone as request_phone, r.source_name as request_name, r.medication as request_med, \
-                rom.sender_jid as offerer_jid, rrm.sender_jid as requester_jid \
+                op.phone as offer_phone, op.push_name as offer_name, o.medication as offer_med, \
+                rp.phone as request_phone, rp.push_name as request_name, r.medication as request_med, \
+                op.jid as offerer_jid, rp.jid as requester_jid \
          FROM matches m \
          LEFT JOIN offers o ON m.offer_id = o.id \
          LEFT JOIN requests r ON m.request_id = r.id \
-         LEFT JOIN raw_messages rom ON o.raw_message_id = rom.id \
-         LEFT JOIN raw_messages rrm ON r.raw_message_id = rrm.id \
+         LEFT JOIN participants op ON o.participant_id = op.id \
+         LEFT JOIN participants rp ON r.participant_id = rp.id \
          WHERE m.score >= {} AND m.status = 'PENDING' \
          ORDER BY m.score DESC{}",
         threshold, limit_clause

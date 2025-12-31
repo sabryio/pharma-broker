@@ -26,9 +26,15 @@ impl MedicationMappingRepository for SeaOrmMedicationMappingRepo {
         let existing = MedicationMapping::find_by_id(model.id)
             .one(&*self.db)
             .await?;
-        let active: medication_mapping::ActiveModel = model.clone().into();
+        let mut active: medication_mapping::ActiveModel = model.clone().into();
 
         if existing.is_some() {
+            // Force all fields to be "Set" so update works correctly
+            active.arabic_name = Set(model.arabic_name.clone());
+            active.english_name = Set(model.english_name.clone());
+            active.synonyms = Set(model.synonyms.clone());
+            active.embedding = Set(model.embedding.clone());
+            active.updated_at = Set(chrono::Utc::now());
             active.update(&*self.db).await.map_err(Error::from)
         } else {
             active.insert(&*self.db).await.map_err(Error::from)
