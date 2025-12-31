@@ -5,6 +5,7 @@
 pub mod audit_trail;
 pub mod calibration;
 pub mod confidence;
+pub mod curation;
 pub mod diagnostics;
 pub mod embedding_cache;
 pub mod groups;

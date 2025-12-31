@@ -28,7 +28,11 @@ pub use crate::entity::group::Model as GroupModel;
 pub use crate::entity::match_::Model as MatchModel;
 pub use crate::entity::match_queue::Model as MatchQueueModel;
 pub use crate::entity::match_queue::QueueStatus;
+pub use crate::entity::medication_alias::CurationStatus;
+pub use crate::entity::medication_alias::Model as MedicationAliasModel;
 pub use crate::entity::medication_mapping::Model as MedicationMappingModel;
+pub use crate::entity::medication_master::MedicationStatus;
+pub use crate::entity::medication_master::Model as MedicationMasterModel;
 pub use crate::entity::offer::Model as OfferModel;
 pub use crate::entity::participant::Model as ParticipantModel;
 pub use crate::entity::raw_message::Model as RawMessageModel;
@@ -278,4 +282,43 @@ pub trait MatchQueueRepository: Send + Sync {
     async fn fail(&self, id: Uuid, error: &str) -> Result<()>;
     async fn count_pending(&self) -> Result<i64>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
+}
+
+/// Medication master repository trait
+#[async_trait]
+pub trait MedicationMasterRepository: Send + Sync {
+    async fn save(&self, master: &MedicationMasterModel) -> Result<MedicationMasterModel>;
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<MedicationMasterModel>>;
+    async fn find_by_name(&self, name: &str) -> Result<Option<MedicationMasterModel>>;
+    async fn search(&self, name: &str, limit: i64) -> Result<Vec<MedicationMasterModel>>;
+    async fn search_semantic(
+        &self,
+        embedding: &[f32],
+        limit: i64,
+    ) -> Result<Vec<(MedicationMasterModel, f32)>>;
+    async fn count(&self) -> Result<i64>;
+}
+
+/// Medication alias repository trait
+#[async_trait]
+pub trait MedicationAliasRepository: Send + Sync {
+    async fn save(&self, alias: &MedicationAliasModel) -> Result<MedicationAliasModel>;
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<MedicationAliasModel>>;
+    async fn get_by_name(&self, name: &str) -> Result<Option<MedicationAliasModel>>;
+    async fn get_pending(&self, limit: i64, offset: i64) -> Result<Vec<MedicationAliasModel>>;
+    async fn get_all(&self, limit: i64, offset: i64) -> Result<Vec<MedicationAliasModel>>;
+    async fn count_pending(&self) -> Result<i64>;
+    async fn count_all(&self) -> Result<i64>;
+    async fn delete(&self, id: Uuid) -> Result<bool>;
+    async fn get_stats(&self) -> Result<CurationStats>;
+}
+
+/// Curation statistics
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CurationStats {
+    pub total_offers: i64,
+    pub curated_offers: i64,
+    pub master_medications: i64,
+    pub total_aliases: i64,
+    pub pending_aliases: i64,
 }

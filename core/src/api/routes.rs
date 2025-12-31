@@ -14,13 +14,15 @@ use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::broadcast;
 
 use super::{
-    audit_trail, calibration, confidence, diagnostics, embedding_cache, groups, handlers,
+    audit_trail, calibration, confidence, curation, diagnostics, embedding_cache, groups, handlers,
     match_filter, review_queue, weights,
 };
+use crate::ai::PharmaParser;
 use crate::matching::MatchingEngine;
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchRepository,
-    MedicationMappingRepository, OfferRepository, RequestRepository, ReviewQueueRepository,
+    MedicationAliasRepository, MedicationMappingRepository, MedicationMasterRepository,
+    OfferRepository, RequestRepository, ReviewQueueRepository,
 };
 use crate::ws::{self, WsEvent};
 
@@ -39,7 +41,10 @@ where
     pub review_queue_repo: Arc<RQ>,
     pub audit_log_repo: Arc<A>,
     pub medication_mapping_repo: Arc<MM>,
+    pub medication_master_repo: Arc<dyn MedicationMasterRepository + Send + Sync>,
+    pub medication_alias_repo: Arc<dyn MedicationAliasRepository + Send + Sync>,
     pub matching_engine: Option<Arc<MatchingEngine>>,
+    pub ai_client: Arc<PharmaParser>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub metrics_handle: Option<PrometheusHandle>,
     pub active_connections: Arc<AtomicUsize>,
@@ -61,7 +66,10 @@ where
             review_queue_repo: self.review_queue_repo.clone(),
             audit_log_repo: self.audit_log_repo.clone(),
             medication_mapping_repo: self.medication_mapping_repo.clone(),
+            medication_master_repo: self.medication_master_repo.clone(),
+            medication_alias_repo: self.medication_alias_repo.clone(),
             matching_engine: self.matching_engine.clone(),
+            ai_client: self.ai_client.clone(),
             ws_tx: self.ws_tx.clone(),
             metrics_handle: self.metrics_handle.clone(),
             active_connections: self.active_connections.clone(),
@@ -90,12 +98,37 @@ where
         // Matches
         .route("/api/matches", get(handlers::get_matches::<RQ, A, MM>))
         .route(
+            "/api/matching/calibration",
+            get(calibration::get_calibration::<RQ, A, MM>),
+        )
+        .route(
             "/api/matches/{id}/confirm",
             post(handlers::confirm_match::<RQ, A, MM>),
         )
         .route(
             "/api/matches/{id}/reject",
             post(handlers::reject_match::<RQ, A, MM>),
+        )
+        // Curation
+        .route(
+            "/api/curation/stats",
+            get(curation::get_curation_stats::<RQ, A, MM>),
+        )
+        .route(
+            "/api/curation/aliases",
+            get(curation::list_aliases::<RQ, A, MM>),
+        )
+        .route(
+            "/api/curation/master",
+            post(curation::create_master::<RQ, A, MM>),
+        )
+        .route(
+            "/api/curation/approve",
+            post(curation::approve_alias::<RQ, A, MM>),
+        )
+        .route(
+            "/api/curation/suggestions",
+            get(curation::get_suggestions::<RQ, A, MM>),
         )
         // Stats
         .route("/api/stats", get(handlers::get_stats::<RQ, A, MM>))

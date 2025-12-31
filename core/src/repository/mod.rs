@@ -21,27 +21,31 @@ pub use pharma_db::{Database, DatabaseConnection};
 // Re-export SeaORM repos
 pub use pharma_db::repo::{
     SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
-    SeaOrmMedicationMappingRepo, SeaOrmOfferRepo, SeaOrmParticipantRepo, SeaOrmRawMessageRepo,
-    SeaOrmRequestRepo, SeaOrmReviewQueueRepo, SeaOrmWeightHistoryRepo,
+    SeaOrmMedicationAliasRepo, SeaOrmMedicationMappingRepo, SeaOrmMedicationMasterRepo,
+    SeaOrmOfferRepo, SeaOrmParticipantRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo,
+    SeaOrmReviewQueueRepo, SeaOrmWeightHistoryRepo,
 };
 
 // Re-export pharma_db traits
 pub use pharma_db::traits::{
     AuditLogRepository, FeedbackRepository, FeedbackStats, GroupRepository, MatchQueueRepository,
-    MatchRepository, MedicationMappingRepository, OfferRepository, ParticipantRepository,
-    RawMessageRepository, RequestRepository, ReviewQueueRepository, ReviewQueueStats,
-    WeightHistoryRepository,
+    MatchRepository, MedicationAliasRepository, MedicationMappingRepository,
+    MedicationMasterRepository, OfferRepository, ParticipantRepository, RawMessageRepository,
+    RequestRepository, ReviewQueueRepository, ReviewQueueStats, WeightHistoryRepository,
 };
 
 // Re-export entity types as type aliases for domain compatibility
 pub use pharma_db::traits::{
-    AuditLogModel, FeedbackModel, GroupModel, MatchModel, MatchQueueModel, MedicationMappingModel,
-    OfferModel, ParticipantModel, RawMessageModel, RequestModel, ReviewQueueModel,
-    WeightHistoryModel,
+    AuditLogModel, CurationStats, FeedbackModel, GroupModel, MatchModel, MatchQueueModel,
+    MedicationAliasModel, MedicationMappingModel, MedicationMasterModel, OfferModel,
+    ParticipantModel, RawMessageModel, RequestModel, ReviewQueueModel, WeightHistoryModel,
 };
 
 // Re-export enums
-pub use pharma_db::traits::{ItemStatus, MatchStatus, QueueStatus, ReviewStatus, UrgencyLevel};
+pub use pharma_db::traits::{
+    CurationStatus, ItemStatus, MatchStatus, MedicationStatus, QueueStatus, ReviewStatus,
+    UrgencyLevel,
+};
 
 // Re-export ID newtypes for type-safe entity references
 pub use pharma_db::traits::{MatchId, MedicationMappingId, OfferId, RawMessageId, RequestId};

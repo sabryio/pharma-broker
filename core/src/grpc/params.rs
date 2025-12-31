@@ -10,8 +10,9 @@ use crate::ai::PharmaParser;
 use crate::matching::MatchingEngine;
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
-    MedicationMappingRepository, OfferRepository, ParticipantRepository, RawMessageRepository,
-    RequestRepository, ReviewQueueRepository,
+    MedicationAliasRepository, MedicationMappingRepository, MedicationMasterRepository,
+    OfferRepository, ParticipantRepository, RawMessageRepository, RequestRepository,
+    ReviewQueueRepository,
 };
 use crate::ws::WsEvent;
 
@@ -38,6 +39,8 @@ where
     pub audit_log: Arc<A>,
     pub match_queue: Arc<MQ>,
     pub medication_mapping: Arc<dyn MedicationMappingRepository + Send + Sync>,
+    pub medication_master: Arc<dyn MedicationMasterRepository + Send + Sync>,
+    pub medication_alias: Arc<dyn MedicationAliasRepository + Send + Sync>,
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
 }
 

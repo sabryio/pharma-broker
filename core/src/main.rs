@@ -17,8 +17,9 @@ use pharma_core::matching::{MatchingEngine, MatchingEngineConfig};
 use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
     SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
-    SeaOrmMedicationMappingRepo, SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo,
-    SeaOrmReviewQueueRepo, create_connection,
+    SeaOrmMedicationAliasRepo, SeaOrmMedicationMappingRepo, SeaOrmMedicationMasterRepo,
+    SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo, SeaOrmReviewQueueRepo,
+    create_connection,
 };
 use pharma_core::worker::match_processor::{MatchProcessor, MatchProcessorRepos};
 
@@ -88,6 +89,8 @@ async fn main() -> anyhow::Result<()> {
 
     let audit_log_repo = Arc::new(SeaOrmAuditLogRepo::new(db.clone()));
     let match_queue_repo = Arc::new(SeaOrmMatchQueueRepo::new(db.clone()));
+    let medication_master_repo = Arc::new(SeaOrmMedicationMasterRepo::new(db.clone()));
+    let medication_alias_repo = Arc::new(SeaOrmMedicationAliasRepo::new(db.clone()));
 
     // Create AI client (reads AI_GATEWAY_URL from env)
     let ai_client = Arc::new(PharmaParser::from_env());
@@ -173,13 +176,16 @@ async fn main() -> anyhow::Result<()> {
         request_repo: request_repo.clone(),
         match_repo: match_repo.clone(),
         group_repo: group_repo.clone(),
+        audit_log_repo: audit_log_repo.clone(),
+        medication_mapping_repo: medication_mapping_repo.clone(),
+        medication_master_repo: medication_master_repo.clone(),
+        medication_alias_repo: medication_alias_repo.clone(),
         matching_engine: Some(matching_engine.clone()),
+        ai_client: ai_client.clone(),
         ws_tx: ws_tx.clone(),
         metrics_handle: Some(metrics_handle),
         feedback_repo: feedback_repo.clone(),
         review_queue_repo: review_queue_repo.clone(),
-        audit_log_repo: audit_log_repo.clone(),
-        medication_mapping_repo: medication_mapping_repo.clone(),
         active_connections: active_connections.clone(),
     };
 
@@ -215,6 +221,8 @@ async fn main() -> anyhow::Result<()> {
         audit_log: audit_log_repo,
         match_queue: match_queue_repo.clone(),
         medication_mapping: medication_mapping_repo,
+        medication_master: medication_master_repo,
+        medication_alias: medication_alias_repo,
         match_repo: match_repo.clone(),
     };
     let grpc_deps = GrpcDependencies {
