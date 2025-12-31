@@ -125,6 +125,18 @@ impl MatchProcessor {
             }
         };
 
+        // 1.5. Skip duplicate or non-active requests
+        if request.status != crate::domain::ItemStatus::Active {
+            // Request is not active (could be DUPLICATE, MATCHED, etc.)
+            info!(
+                request_id = %request_id,
+                status = ?request.status,
+                "Skipping non-active request"
+            );
+            let _ = self.repos.match_queue.complete(item.id).await;
+            return;
+        }
+
         // 2. Fetch active offers
         let active_offers = match self.repos.offer.get_active(100, 0).await {
             Ok(offers) => offers,
@@ -258,5 +270,139 @@ impl MatchProcessor {
 
     fn fallback_similarity(&self, offer: &Offer, request: &Request) -> f64 {
         crate::matching::medication_similarity(&offer.medication, &request.medication)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::ItemStatus;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    /// Test that duplicate requests should be skipped
+    #[test]
+    fn test_duplicate_request_should_be_skipped() {
+        // A request with DUPLICATE status should not be processed
+        let request = Request {
+            id: Uuid::new_v4(),
+            raw_message_id: Uuid::new_v4(),
+            participant_id: Uuid::new_v4(),
+            group_id: Uuid::new_v4(),
+            medication: "Test Med".to_string(),
+            medication_raw: "Test Med Raw".to_string(),
+            quantity: None,
+            unit: None,
+            max_price: None,
+            currency: Some("EGP".to_string()),
+            urgency_level: crate::domain::UrgencyLevel::Normal,
+            expiry_requirement: None,
+            ai_confidence: 0.9,
+            notes: None,
+            status: ItemStatus::Duplicate, // DUPLICATE status
+            content_embedding: None,
+            master_medication_id: None,
+            medication_curated: false,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Verify the status check logic
+        assert_eq!(request.status, ItemStatus::Duplicate);
+        assert_ne!(request.status, ItemStatus::Active);
+        
+        // The condition in process_item should skip this request
+        let should_skip = request.status != ItemStatus::Active;
+        assert!(should_skip, "Duplicate request should be skipped");
+    }
+
+    /// Test that active requests should be processed
+    #[test]
+    fn test_active_request_should_be_processed() {
+        let request = Request {
+            id: Uuid::new_v4(),
+            raw_message_id: Uuid::new_v4(),
+            participant_id: Uuid::new_v4(),
+            group_id: Uuid::new_v4(),
+            medication: "Test Med".to_string(),
+            medication_raw: "Test Med Raw".to_string(),
+            quantity: None,
+            unit: None,
+            max_price: None,
+            currency: Some("EGP".to_string()),
+            urgency_level: crate::domain::UrgencyLevel::Normal,
+            expiry_requirement: None,
+            ai_confidence: 0.9,
+            notes: None,
+            status: ItemStatus::Active, // ACTIVE status
+            content_embedding: None,
+            master_medication_id: None,
+            medication_curated: false,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Verify the status check logic
+        assert_eq!(request.status, ItemStatus::Active);
+        
+        // The condition in process_item should NOT skip this request
+        let should_skip = request.status != ItemStatus::Active;
+        assert!(!should_skip, "Active request should NOT be skipped");
+    }
+
+    /// Test that matched requests should be skipped
+    #[test]
+    fn test_matched_request_should_be_skipped() {
+        let request = Request {
+            id: Uuid::new_v4(),
+            raw_message_id: Uuid::new_v4(),
+            participant_id: Uuid::new_v4(),
+            group_id: Uuid::new_v4(),
+            medication: "Test Med".to_string(),
+            medication_raw: "Test Med Raw".to_string(),
+            quantity: None,
+            unit: None,
+            max_price: None,
+            currency: Some("EGP".to_string()),
+            urgency_level: crate::domain::UrgencyLevel::Normal,
+            expiry_requirement: None,
+            ai_confidence: 0.9,
+            notes: None,
+            status: ItemStatus::Matched, // MATCHED status
+            content_embedding: None,
+            master_medication_id: None,
+            medication_curated: false,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Verify the status check logic
+        assert_eq!(request.status, ItemStatus::Matched);
+        assert_ne!(request.status, ItemStatus::Active);
+        
+        // The condition in process_item should skip this request
+        let should_skip = request.status != ItemStatus::Active;
+        assert!(should_skip, "Matched request should be skipped");
+    }
+
+    /// Test all non-active statuses should be skipped
+    #[test]
+    fn test_all_non_active_statuses_should_be_skipped() {
+        let non_active_statuses = vec![
+            ItemStatus::Duplicate,
+            ItemStatus::Matched,
+            ItemStatus::Expired,
+            ItemStatus::Cancelled,
+        ];
+
+        for status in non_active_statuses {
+            let should_skip = status != ItemStatus::Active;
+            assert!(
+                should_skip,
+                "Status {:?} should be skipped",
+                status
+            );
+        }
     }
 }

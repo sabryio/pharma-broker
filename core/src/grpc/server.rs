@@ -605,11 +605,15 @@ where
                                 tracing::info!(
                                     request_id = %request.id,
                                     medication = %request.medication,
+                                    is_duplicate = is_duplicate,
                                     "❓ Request created"
                                 );
                                 metrics::record_request_created();
                                 requests_created += 1;
-                                new_request_ids.push(request.id);
+                                // Only enqueue non-duplicate requests for matching
+                                if !is_duplicate {
+                                    new_request_ids.push(request.id);
+                                }
                                 let _ = ws_tx.send(WsEvent::NewRequest(request.clone()));
 
                                 // Task 5.3: Audit log Request creation
