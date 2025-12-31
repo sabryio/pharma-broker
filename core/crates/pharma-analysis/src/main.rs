@@ -372,11 +372,13 @@ async fn auto_confirm_matches(
     // Show preview of first 5 matches
     let preview_sql = format!(
         "SELECT m.id, m.score, 
-                o.medication as offer_med, o.medication_raw as offer_raw, o.source_phone as offer_phone,
-                r.medication as request_med, r.medication_raw as request_raw, r.source_phone as request_phone
+                o.medication as offer_med, o.medication_raw as offer_raw, o.source_phone as offer_phone, o.source_name as offer_name, og.name as offer_group,
+                r.medication as request_med, r.medication_raw as request_raw, r.source_phone as request_phone, r.source_name as request_name, rg.name as request_group
          FROM matches m
          LEFT JOIN offers o ON m.offer_id = o.id
          LEFT JOIN requests r ON m.request_id = r.id
+         LEFT JOIN groups og ON o.source_group = og.jid
+         LEFT JOIN groups rg ON r.source_group = rg.jid
          WHERE m.score >= {} AND m.status = 'PENDING'
          ORDER BY m.score DESC
          LIMIT 5",
@@ -391,11 +393,9 @@ async fn auto_confirm_matches(
     table.add_row(row![
         "ID",
         "Score",
-        "Offer Med",
-        "Offer (Arabic)",
+        "Offer (Med | Sender | Group)",
         "Offer Phone",
-        "Request Med",
-        "Request (Arabic)",
+        "Request (Med | Sender | Group)",
         "Request Phone"
     ]);
 
@@ -405,18 +405,34 @@ async fn auto_confirm_matches(
         let offer_med: Option<String> = row.try_get_by_index(2).ok();
         let offer_raw: Option<String> = row.try_get_by_index(3).ok();
         let offer_phone: Option<String> = row.try_get_by_index(4).ok();
-        let request_med: Option<String> = row.try_get_by_index(5).ok();
-        let request_raw: Option<String> = row.try_get_by_index(6).ok();
-        let request_phone: Option<String> = row.try_get_by_index(7).ok();
+        let offer_name: Option<String> = row.try_get_by_index(5).ok();
+        let offer_group: Option<String> = row.try_get_by_index(6).ok();
+        let request_med: Option<String> = row.try_get_by_index(7).ok();
+        let request_raw: Option<String> = row.try_get_by_index(8).ok();
+        let request_phone: Option<String> = row.try_get_by_index(9).ok();
+        let request_name: Option<String> = row.try_get_by_index(10).ok();
+        let request_group: Option<String> = row.try_get_by_index(11).ok();
+
+        // Use name if available, otherwise raw Arabic text
+        let o_sender = offer_name
+            .map(|s| format_arabic(&s))
+            .unwrap_or_else(|| format_arabic(&offer_raw.unwrap_or_else(|| "-".to_string())));
+        let r_sender = request_name
+            .map(|s| format_arabic(&s))
+            .unwrap_or_else(|| format_arabic(&request_raw.unwrap_or_else(|| "-".to_string())));
+
+        // Apply Arabic formatting to med and group names as well
+        let o_med = format_arabic(&offer_med.unwrap_or_else(|| "-".to_string()));
+        let o_group = format_arabic(&offer_group.unwrap_or_else(|| "Unknown Group".to_string()));
+        let r_med = format_arabic(&request_med.unwrap_or_else(|| "-".to_string()));
+        let r_group = format_arabic(&request_group.unwrap_or_else(|| "Unknown Group".to_string()));
 
         table.add_row(row![
             &id.to_string()[..8],
             format!("{:.4}", score).green(),
-            offer_med.unwrap_or_else(|| "-".to_string()),
-            format_arabic(&offer_raw.unwrap_or_else(|| "-".to_string())),
+            format!("{} | {} | {}", o_med, o_sender, o_group),
             offer_phone.unwrap_or_else(|| "-".to_string()),
-            request_med.unwrap_or_else(|| "-".to_string()),
-            format_arabic(&request_raw.unwrap_or_else(|| "-".to_string())),
+            format!("{} | {} | {}", r_med, r_sender, r_group),
             request_phone.unwrap_or_else(|| "-".to_string())
         ]);
     }

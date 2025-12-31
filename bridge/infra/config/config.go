@@ -12,6 +12,7 @@ import (
 
 // Config holds all bridge configuration.
 type Config struct {
+	LogLevel    string            `mapstructure:"log_level"`
 	GRPC        GRPCConfig        `mapstructure:"grpc"`
 	WhatsApp    WhatsAppConfig    `mapstructure:"whatsapp"`
 	HTTP        HTTPConfig        `mapstructure:"http"`

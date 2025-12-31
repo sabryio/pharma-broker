@@ -2,6 +2,9 @@
 # Environment variables override these values with BRIDGE_ prefix
 # Example: BRIDGE_GRPC_CORE_ADDR=localhost:50051
 
+# Log level: debug, info, warn, error
+log_level: "debug"
+
 # gRPC client configuration
 grpc:
   core_addr: "localhost:50051"

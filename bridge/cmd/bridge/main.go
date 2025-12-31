@@ -30,12 +30,27 @@ func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
+	// Load config early to get log level
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load config")
+	}
+
+	// Set log level from config
+	level, err := zerolog.ParseLevel(cfg.LogLevel)
+	if err != nil {
+		level = zerolog.InfoLevel // Default to info if invalid
+		log.Warn().Str("log_level", cfg.LogLevel).Msg("Invalid log level, using 'info'")
+	}
+	zerolog.SetGlobalLevel(level)
+	log.Debug().Str("log_level", level.String()).Msg("Log level set from config")
+
 	log.Info().Str("version", domain.CurrentVersion.String()).Msg("🌉 PharmaBroker WhatsApp Bridge")
 
 	fxApp := fx.New(
 		fx.NopLogger,
 
-		fx.Provide(func() (*config.Config, error) { return config.Load() }),
+		fx.Provide(func() (*config.Config, error) { return cfg, nil }),
 		fx.Provide(func() zerolog.Logger { return log.Logger }),
 
 		// Resilience

@@ -183,13 +183,52 @@ func getExtendedText(ext *waProto.ExtendedTextMessage) string {
 func (c *Client) handleMessage(evt *events.Message) {
 	content := extractContent(evt.Message)
 
+	// Comprehensive logging for sender JID diagnosis
+	c.logger.Debug().
+		Str("msg_id", evt.Info.ID).
+		Str("sender_full_jid", evt.Info.Sender.String()).
+		Str("sender_user", evt.Info.Sender.User).
+		Str("sender_server", evt.Info.Sender.Server).
+		Str("sender_device", fmt.Sprintf("%d", evt.Info.Sender.Device)).
+		Bool("sender_is_empty", evt.Info.Sender.IsEmpty()).
+		Str("chat_jid", evt.Info.Chat.String()).
+		Str("chat_user", evt.Info.Chat.User).
+		Str("push_name", evt.Info.PushName).
+		Bool("is_group", evt.Info.IsGroup).
+		Bool("is_from_me", evt.Info.IsFromMe).
+		Msg("📱 Message sender info")
+
+	// Log if sender phone looks unusual (not a typical phone number pattern)
+	senderPhone := evt.Info.Sender.User
+	if evt.Info.Sender.Server == "lid" {
+		// Try to resolve LID to Phone Number from local store
+		pnJID, err := c.wa.Store.LIDs.GetPNForLID(context.Background(), evt.Info.Sender)
+		if err == nil && !pnJID.IsEmpty() {
+			senderPhone = pnJID.User
+			c.logger.Debug().
+				Str("lid", evt.Info.Sender.User).
+				Str("pn", senderPhone).
+				Msg("✅ Resolved LID to Phone Number")
+		} else {
+			c.logger.Debug().
+				Str("lid", evt.Info.Sender.User).
+				Msg("ℹ️ Could not resolve LID to Phone Number (using LID as fallback)")
+		}
+	} else if len(senderPhone) > 15 || len(senderPhone) < 10 {
+		c.logger.Warn().
+			Str("sender_user", senderPhone).
+			Int("length", len(senderPhone)).
+			Str("full_jid", evt.Info.Sender.String()).
+			Msg("⚠️ Unusual sender phone format detected")
+	}
+
 	msg := domain.Message{
 		ID:          domain.MessageID(evt.Info.ID),
 		ExternalID:  domain.MessageID(evt.Info.ID),
 		GroupJID:    domain.JID(evt.Info.Chat.String()),
 		GroupName:   evt.Info.Chat.String(),
 		SenderJID:   domain.JID(evt.Info.Sender.String()),
-		SenderPhone: domain.Phone(evt.Info.Sender.User),
+		SenderPhone: domain.Phone(senderPhone),
 		SenderName:  evt.Info.PushName,
 		Content:     content,
 		Timestamp:   domain.UnixTimestamp(evt.Info.Timestamp.Unix()),
@@ -240,7 +279,21 @@ func (c *Client) handleHistorySync(v *events.HistorySync) {
 			if key.Participant != nil {
 				senderJID = domain.JID(*key.Participant)
 				if parsed, err := types.ParseJID(*key.Participant); err == nil {
-					senderPhone = domain.Phone(parsed.User)
+					user := parsed.User
+					if parsed.Server == "lid" {
+						pnJID, err := c.wa.Store.LIDs.GetPNForLID(context.Background(), parsed)
+						if err == nil && !pnJID.IsEmpty() {
+							user = pnJID.User
+							c.logger.Debug().
+								Str("msg_id", msgID.String()).
+								Str("lid", parsed.User).
+								Str("pn", user).
+								Msg("✅ Resolved HistorySync LID to Phone Number")
+						}
+					}
+					senderPhone = domain.Phone(user)
+					// Log history sync sender
+					c.logger.Debug().Str("msg_id", msgID.String()).Str("sender_phone", user).Msg("📚 History sync sender processed")
 				}
 			}
 
