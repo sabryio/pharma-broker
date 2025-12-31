@@ -22,6 +22,7 @@ use pharma_db::entity::raw_message::Entity as RawMessage;
 use sea_orm::{EntityTrait, QuerySelect};
 use tokio::sync::Semaphore;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use uuid::Uuid;
 
 // ============================================================================
 // Interactive Config
@@ -108,7 +109,7 @@ fn get_config_interactive() -> Config {
 
 #[derive(Debug, Clone)]
 struct LegacyMessage {
-    id: String,
+    id: Uuid,
     content: String,
     sender_name: Option<String>,
     group_name: Option<String>,
@@ -174,7 +175,7 @@ async fn main() -> anyhow::Result<()> {
     let batch_messages: Vec<BatchMessage> = messages
         .iter()
         .map(|m| {
-            let mut msg = BatchMessage::new(&m.id, &m.content);
+            let mut msg = BatchMessage::new(m.id, &m.content);
             if let Some(ref sender) = m.sender_name {
                 msg = msg.with_sender(sender);
             }
@@ -201,7 +202,7 @@ async fn main() -> anyhow::Result<()> {
         let content = msg.content.clone();
         let sender = msg.sender_name.clone();
         let group = msg.group_name.clone();
-        let msg_id = msg.id.clone();
+        let msg_id = msg.id;
 
         let handle = tokio::spawn(async move {
             let _permit = sem.acquire().await.unwrap();
@@ -232,7 +233,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Sort by index to maintain order
-    results.sort_by_key(|(idx, _, _, _, _): &(usize, String, String, _, u128)| *idx);
+    results.sort_by_key(|(idx, _, _, _, _): &(usize, Uuid, String, _, u128)| *idx);
 
     // Print results
     println!("{}", "=".repeat(100));

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use sea_orm::*;
+use uuid::Uuid;
 
 use crate::entity::weight_history::{self, Entity as WeightHistory};
 use crate::traits::WeightHistoryRepository;
@@ -44,10 +45,8 @@ impl WeightHistoryRepository for SeaOrmWeightHistoryRepo {
             .map_err(Error::from)
     }
 
-    async fn get_by_id(&self, id: &str) -> Result<Option<weight_history::Model>> {
-        let uuid = uuid::Uuid::parse_str(id)
-            .map_err(|_| Error::Validation(format!("Invalid UUID: {}", id)))?;
-        WeightHistory::find_by_id(uuid)
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<weight_history::Model>> {
+        WeightHistory::find_by_id(id)
             .one(&*self.db)
             .await
             .map_err(Error::from)

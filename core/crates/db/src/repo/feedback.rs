@@ -5,6 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::*;
+use uuid::Uuid;
 
 use crate::entity::feedback_record::{self, Entity as FeedbackRecord};
 use crate::traits::{FeedbackRepository, FeedbackStats};
@@ -28,7 +29,7 @@ impl FeedbackRepository for SeaOrmFeedbackRepo {
         active.insert(&*self.db).await.map_err(Error::from)
     }
 
-    async fn get_by_match(&self, match_id: &str) -> Result<Vec<feedback_record::Model>> {
+    async fn get_by_match(&self, match_id: Uuid) -> Result<Vec<feedback_record::Model>> {
         FeedbackRecord::find()
             .filter(feedback_record::Column::MatchId.eq(match_id))
             .order_by_desc(feedback_record::Column::CreatedAt)
@@ -125,7 +126,7 @@ impl FeedbackRepository for SeaOrmFeedbackRepo {
             .map_err(Error::from)
     }
 
-    async fn get_by_match_id(&self, match_id: &str) -> Result<Option<feedback_record::Model>> {
+    async fn get_by_match_id(&self, match_id: Uuid) -> Result<Option<feedback_record::Model>> {
         FeedbackRecord::find()
             .filter(feedback_record::Column::MatchId.eq(match_id))
             .one(&*self.db)

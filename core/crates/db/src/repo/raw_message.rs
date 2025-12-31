@@ -5,6 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::*;
+use uuid::Uuid;
 
 use crate::entity::raw_message::{self, Entity as RawMessage};
 use crate::traits::RawMessageRepository;
@@ -28,7 +29,7 @@ impl RawMessageRepository for SeaOrmRawMessageRepo {
         active.insert(&*self.db).await.map_err(Error::from)
     }
 
-    async fn get_by_id(&self, id: &str) -> Result<Option<raw_message::Model>> {
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<raw_message::Model>> {
         RawMessage::find_by_id(id)
             .one(&*self.db)
             .await
@@ -45,7 +46,7 @@ impl RawMessageRepository for SeaOrmRawMessageRepo {
             .map_err(Error::from)
     }
 
-    async fn mark_processed(&self, id: &str, error: Option<&str>) -> Result<raw_message::Model> {
+    async fn mark_processed(&self, id: Uuid, error: Option<&str>) -> Result<raw_message::Model> {
         let msg = RawMessage::find_by_id(id)
             .one(&*self.db)
             .await?

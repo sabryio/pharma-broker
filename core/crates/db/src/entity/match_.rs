@@ -12,9 +12,9 @@ pub use super::common::MatchStatus;
 #[sea_orm(table_name = "matches")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: String,
-    pub offer_id: String,
-    pub request_id: String,
+    pub id: Uuid,
+    pub offer_id: Uuid,
+    pub request_id: Uuid,
     #[sea_orm(column_type = "Double")]
     pub score: f64,
     pub reasoning: Option<String>,
@@ -67,9 +67,9 @@ impl Default for Model {
     fn default() -> Self {
         use chrono::Utc;
         Self {
-            id: String::new(),
-            offer_id: String::new(),
-            request_id: String::new(),
+            id: Uuid::new_v4(),
+            offer_id: Uuid::new_v4(),
+            request_id: Uuid::new_v4(),
             score: 0.0,
             reasoning: None,
             matched_by: None,

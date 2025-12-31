@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::domain::MatchStatus;
 use crate::matching::MatchAction;
@@ -70,9 +71,9 @@ impl std::fmt::Display for AuditEventType {
 /// Parameters for logging a match action (preferred API)
 #[derive(Debug, Clone)]
 pub struct MatchActionParams {
-    pub match_id: String,
-    pub offer_id: String,
-    pub request_id: String,
+    pub match_id: Uuid,
+    pub offer_id: Uuid,
+    pub request_id: Uuid,
     pub action: ActionType,
     pub score: f64,
     pub status: MatchStatus,
@@ -521,9 +522,9 @@ impl<L: AuditLogger> AuditTrail<L> {
         }
 
         let entry = AuditEntry::new(event_type, actor)
-            .with_match_id(&params.match_id)
-            .with_offer_id(&params.offer_id)
-            .with_request_id(&params.request_id)
+            .with_match_id(params.match_id.to_string())
+            .with_offer_id(params.offer_id.to_string())
+            .with_request_id(params.request_id.to_string())
             .with_action(params.action)
             .with_score(params.score)
             .with_status(params.status)
@@ -875,9 +876,9 @@ mod tests {
 
         trail
             .log_match_action(MatchActionParams {
-                match_id: "match-123".to_string(),
-                offer_id: "offer-456".to_string(),
-                request_id: "request-789".to_string(),
+                match_id: Uuid::new_v4(),
+                offer_id: Uuid::new_v4(),
+                request_id: Uuid::new_v4(),
                 action: ActionType::AutoConfirm,
                 score: 0.95,
                 status: MatchStatus::Confirmed,
@@ -923,9 +924,9 @@ mod tests {
 
         trail
             .log_match_action(MatchActionParams {
-                match_id: "match-123".to_string(),
-                offer_id: "offer-456".to_string(),
-                request_id: "request-789".to_string(),
+                match_id: Uuid::new_v4(),
+                offer_id: Uuid::new_v4(),
+                request_id: Uuid::new_v4(),
                 action: ActionType::AutoConfirm,
                 score: 0.95,
                 status: MatchStatus::Confirmed,

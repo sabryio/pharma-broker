@@ -1,6 +1,7 @@
 //! MedicationMapping Service - Arabic to English medication name mappings
 
 use sea_orm::*;
+use uuid::Uuid;
 
 use crate::entity::medication_mapping::{self, Entity as MedicationMapping};
 use crate::{Error, Result};
@@ -17,7 +18,7 @@ impl MedicationMappingService {
         let id = model.id.clone().unwrap();
 
         // Upsert logic
-        let existing = MedicationMapping::find_by_id(&id).one(db).await?;
+        let existing = MedicationMapping::find_by_id(id).one(db).await?;
 
         if existing.is_some() {
             model.update(db).await.map_err(Error::from)
@@ -29,7 +30,7 @@ impl MedicationMappingService {
     /// Get mapping by ID
     pub async fn get_by_id(
         db: &DatabaseConnection,
-        id: &str,
+        id: Uuid,
     ) -> Result<Option<medication_mapping::Model>> {
         MedicationMapping::find_by_id(id)
             .one(db)
@@ -134,7 +135,7 @@ impl MedicationMappingService {
     }
 
     /// Delete a mapping
-    pub async fn delete(db: &DatabaseConnection, id: &str) -> Result<bool> {
+    pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool> {
         let result = MedicationMapping::delete_by_id(id).exec(db).await?;
         Ok(result.rows_affected > 0)
     }

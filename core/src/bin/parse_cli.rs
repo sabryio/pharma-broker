@@ -24,6 +24,7 @@ use pharma_core::ai::{ParsedItem, PharmaParser, PharmaParserConfig};
 use pharma_core::repository::create_connection;
 use pharma_db::entity::raw_message::Entity as RawMessage;
 use sea_orm::{EntityTrait, QuerySelect};
+use uuid::Uuid;
 
 // ============================================================================
 // Interactive Config
@@ -175,7 +176,7 @@ fn get_config_interactive() -> Config {
 /// Test message loaded from JSON or database
 #[derive(Debug, Clone, Deserialize)]
 struct TestMessage {
-    id: String,
+    id: Uuid,
     #[serde(default)]
     group_name: String,
     content: String,
@@ -188,7 +189,7 @@ struct TestMessage {
 /// Test result for a single message
 #[derive(Debug, Clone, Serialize)]
 struct TestResult {
-    message_id: String,
+    message_id: Uuid,
     content: String,
     parsed_items: Vec<ParsedItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -404,7 +405,7 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 results.push(TestResult {
-                    message_id: msg.id.clone(),
+                    message_id: msg.id,
                     content: msg.content.clone(),
                     parsed_items: items,
                     error: None,
@@ -416,7 +417,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("\n❌ ERROR: {}", e);
 
                 results.push(TestResult {
-                    message_id: msg.id.clone(),
+                    message_id: msg.id,
                     content: msg.content.clone(),
                     parsed_items: vec![],
                     error: Some(e.to_string()),

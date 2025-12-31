@@ -9,6 +9,7 @@ use axum::{
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::routes::AppState;
 use crate::domain::{
@@ -59,7 +60,7 @@ pub struct UpdateReviewRequest {
 #[derive(Debug, Serialize)]
 pub struct UpdateReviewResponse {
     pub success: bool,
-    pub id: String,
+    pub id: Uuid,
     pub new_status: String,
 }
 
@@ -125,7 +126,7 @@ where
 /// GET /api/review-queue/:id
 pub async fn get_review_item<RQ, A, MM>(
     State(state): State<AppState<RQ, A, MM>>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<ReviewQueueItem>, (StatusCode, String)>
 where
     RQ: ReviewQueueRepository + 'static,
@@ -134,7 +135,7 @@ where
 {
     let item = state
         .review_queue_repo
-        .get_by_id(&id)
+        .get_by_id(id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -151,7 +152,7 @@ where
 /// POST /api/review-queue/:id/review
 pub async fn update_review_status<RQ, A, MM>(
     State(state): State<AppState<RQ, A, MM>>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
     Json(req): Json<UpdateReviewRequest>,
 ) -> Result<Json<UpdateReviewResponse>, (StatusCode, String)>
 where
@@ -166,10 +167,10 @@ where
     state
         .review_queue_repo
         .update_status(crate::repository::UpdateReviewStatusParams::new(
-            &id,
+            id,
             status.clone(),
             &req.reviewed_by,
-            req.notes.as_deref(),
+            req.notes.clone(),
         ))
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -182,7 +183,7 @@ where
         ReviewStatus::Pending => AuditAction::ReviewQueued, // Should not happen here but for completeness
     };
 
-    let audit_log = AuditLog::new(audit_action, EntityType::ReviewQueue, &id, &req.reviewed_by)
+    let audit_log = AuditLog::new(audit_action, EntityType::ReviewQueue, id, &req.reviewed_by)
         .with_details(serde_json::json!({
             "status": req.status,
             "notes": req.notes

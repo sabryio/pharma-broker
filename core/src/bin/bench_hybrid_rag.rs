@@ -18,6 +18,7 @@ use pharma_core::repository::{
     MedicationMappingRepository, SeaOrmMedicationMappingRepo, create_connection,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use uuid::Uuid;
 
 // ============================================================================
 // Configuration
@@ -29,17 +30,17 @@ const ITERATIONS: usize = 3;
 fn get_test_messages() -> Vec<RawMessage> {
     vec![
         RawMessage {
-            id: "bench-1".to_string(),
+            id: Uuid::new_v4(),
             content: "*عندي*\n*زولادكس 3.6*\n*سكسندا*\n*اوزمبك*".to_string(),
             ..Default::default()
         },
         RawMessage {
-            id: "bench-2".to_string(),
+            id: Uuid::new_v4(),
             content: "*محتاج*\n*ديكابيبتيل*\n*فوستيمون*".to_string(),
             ..Default::default()
         },
         RawMessage {
-            id: "bench-3".to_string(),
+            id: Uuid::new_v4(),
             content: "*متوفر*\n*مريوفيرت*\n*سيتروتايد*\n*اوفتريل*".to_string(),
             ..Default::default()
         },

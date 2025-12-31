@@ -20,11 +20,7 @@ impl MigrationTrait for Migration {
                             .primary_key()
                             .default(Expr::cust("gen_random_uuid()")),
                     )
-                    .col(
-                        ColumnDef::new(ReviewQueue::RawMessageId)
-                            .string_len(255)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ReviewQueue::RawMessageId).uuid().not_null())
                     .col(
                         ColumnDef::new(ReviewQueue::AiResult)
                             .json_binary()

@@ -13,7 +13,7 @@ use crate::feedback_params::{CreateFeedbackParams, FeedbackScores};
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: Uuid,
-    pub match_id: String,
+    pub match_id: Uuid,
     pub user_id: String,
     pub confirmed: bool,
     pub medication_score: f64,
@@ -66,7 +66,7 @@ impl Model {
     /// Prefer using `from_params` with `CreateFeedbackParams` for cleaner code.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        match_id: impl Into<String>,
+        match_id: Uuid,
         user_id: impl Into<String>,
         confirmed: bool,
         medication_score: f64,
@@ -78,7 +78,7 @@ impl Model {
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
-            match_id: match_id.into(),
+            match_id,
             user_id: user_id.into(),
             confirmed,
             medication_score,
@@ -92,11 +92,7 @@ impl Model {
     }
 
     /// Create a confirmation feedback record with estimated scores
-    pub fn confirmed(
-        match_id: impl Into<String>,
-        user_id: impl Into<String>,
-        total_score: f64,
-    ) -> Self {
+    pub fn confirmed(match_id: Uuid, user_id: impl Into<String>, total_score: f64) -> Self {
         Self::from_params(CreateFeedbackParams::confirmed(
             match_id,
             user_id,
@@ -105,11 +101,7 @@ impl Model {
     }
 
     /// Create a rejection feedback record with estimated scores
-    pub fn rejected(
-        match_id: impl Into<String>,
-        user_id: impl Into<String>,
-        total_score: f64,
-    ) -> Self {
+    pub fn rejected(match_id: Uuid, user_id: impl Into<String>, total_score: f64) -> Self {
         Self::from_params(CreateFeedbackParams::rejected(
             match_id,
             user_id,
@@ -136,10 +128,11 @@ mod tests {
 
     #[test]
     fn test_from_params() {
-        let params = CreateFeedbackParams::confirmed("match-123", "user-456", 0.85);
+        let match_id = Uuid::new_v4();
+        let params = CreateFeedbackParams::confirmed(match_id, "user-456", 0.85);
         let record = Model::from_params(params);
 
-        assert_eq!(record.match_id, "match-123");
+        assert_eq!(record.match_id, match_id);
         assert_eq!(record.user_id, "user-456");
         assert!(record.confirmed);
         assert!((record.total_score - 0.85).abs() < 0.001);
@@ -147,21 +140,24 @@ mod tests {
 
     #[test]
     fn test_confirmed_shorthand() {
-        let record = Model::confirmed("match-1", "user-1", 0.9);
+        let match_id = Uuid::new_v4();
+        let record = Model::confirmed(match_id, "user-1", 0.9);
         assert!(record.confirmed);
         assert!((record.total_score - 0.9).abs() < 0.001);
     }
 
     #[test]
     fn test_rejected_shorthand() {
-        let record = Model::rejected("match-2", "user-2", 0.5);
+        let match_id = Uuid::new_v4();
+        let record = Model::rejected(match_id, "user-2", 0.5);
         assert!(!record.confirmed);
         assert!((record.total_score - 0.5).abs() < 0.001);
     }
 
     #[test]
     fn test_scores_extraction() {
-        let record = Model::new("m", "u", true, 0.9, 0.8, 0.7, 0.6, 0.5, 0.75);
+        let match_id = Uuid::new_v4();
+        let record = Model::new(match_id, "u", true, 0.9, 0.8, 0.7, 0.6, 0.5, 0.75);
         let scores = record.scores();
 
         assert!((scores.medication - 0.9).abs() < 0.001);

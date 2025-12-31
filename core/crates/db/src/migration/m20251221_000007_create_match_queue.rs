@@ -22,11 +22,7 @@ impl MigrationTrait for Migration {
                             .primary_key()
                             .default(Expr::cust("gen_random_uuid()")),
                     )
-                    .col(
-                        ColumnDef::new(MatchQueueItems::RequestId)
-                            .string_len(36)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(MatchQueueItems::RequestId).uuid().not_null())
                     .col(
                         ColumnDef::new(MatchQueueItems::Status)
                             .string_len(20)

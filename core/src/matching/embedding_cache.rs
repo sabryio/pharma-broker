@@ -316,12 +316,13 @@ impl EmbeddingCacheStatsSnapshot {
 mod tests {
     use super::*;
     use chrono::Utc;
+    use uuid::Uuid;
 
     fn create_test_mappings() -> Vec<MedicationMapping> {
         let now = Utc::now();
         vec![
             MedicationMapping {
-                id: "1".to_string(),
+                id: Uuid::new_v4(),
                 arabic_name: "بروفين".to_string(),
                 english_name: "Brufen".to_string(),
                 synonyms: Some(vec!["Ibuprofen".to_string(), "ايبوبروفين".to_string()]),
@@ -330,7 +331,7 @@ mod tests {
                 updated_at: now,
             },
             MedicationMapping {
-                id: "2".to_string(),
+                id: Uuid::new_v4(),
                 arabic_name: "بنادول".to_string(),
                 english_name: "Panadol".to_string(),
                 synonyms: Some(vec!["Paracetamol".to_string()]),
@@ -339,7 +340,7 @@ mod tests {
                 updated_at: now,
             },
             MedicationMapping {
-                id: "3".to_string(),
+                id: Uuid::new_v4(),
                 arabic_name: "أوجمنتين".to_string(),
                 english_name: "Augmentin".to_string(),
                 synonyms: None,

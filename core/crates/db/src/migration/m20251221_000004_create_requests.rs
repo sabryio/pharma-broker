@@ -18,11 +18,12 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(Requests::Id)
-                            .string_len(36)
+                            .uuid()
                             .not_null()
-                            .primary_key(),
+                            .primary_key()
+                            .default(Expr::cust("gen_random_uuid()")),
                     )
-                    .col(ColumnDef::new(Requests::RawMessageId).string_len(36))
+                    .col(ColumnDef::new(Requests::RawMessageId).uuid())
                     .col(
                         ColumnDef::new(Requests::SourcePhone)
                             .string_len(20)

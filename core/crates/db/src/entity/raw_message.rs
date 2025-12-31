@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[sea_orm(table_name = "raw_messages")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: String,
+    pub id: Uuid,
     pub external_id: Option<String>,
     pub group_jid: String,
     pub group_name: String,
@@ -28,7 +28,7 @@ pub struct Model {
 impl Default for Model {
     fn default() -> Self {
         Self {
-            id: String::new(),
+            id: Uuid::new_v4(),
             external_id: None,
             group_jid: String::new(),
             group_name: String::new(),

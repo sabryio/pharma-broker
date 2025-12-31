@@ -210,7 +210,7 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
     vec![
         // ========== Group 1: مجموعة صيادلة القاهرة ==========
         RawMessage {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363012345678901@g.us".to_string(),
             group_name: "مجموعة صيادلة القاهرة".to_string(),
@@ -227,7 +227,7 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             created_at: base_time,
         },
         RawMessage {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363012345678901@g.us".to_string(),
             group_name: "مجموعة صيادلة القاهرة".to_string(),
@@ -245,7 +245,7 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         },
         // Reply to previous message
         RawMessage {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363012345678901@g.us".to_string(),
             group_name: "مجموعة صيادلة القاهرة".to_string(),
@@ -263,7 +263,7 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         },
         // ========== Group 2: موردين الأدوية ==========
         RawMessage {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363098765432109@g.us".to_string(),
             group_name: "موردين الأدوية".to_string(),
@@ -280,7 +280,7 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             created_at: base_time,
         },
         RawMessage {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363098765432109@g.us".to_string(),
             group_name: "موردين الأدوية".to_string(),
@@ -298,7 +298,7 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         },
         // ========== Group 3: صيادلة الإسكندرية ==========
         RawMessage {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363055555555555@g.us".to_string(),
             group_name: "صيادلة الإسكندرية".to_string(),
@@ -315,7 +315,7 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
             created_at: base_time,
         },
         RawMessage {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363055555555555@g.us".to_string(),
             group_name: "صيادلة الإسكندرية".to_string(),
@@ -333,7 +333,7 @@ fn get_mock_whatsapp_messages() -> Vec<RawMessage> {
         },
         // ========== Multi-concentration message ==========
         RawMessage {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: uuid::Uuid::new_v4(),
             external_id: Some(uuid::Uuid::new_v4().to_string()),
             group_jid: "120363012345678901@g.us".to_string(),
             group_name: "مجموعة صيادلة القاهرة".to_string(),
@@ -537,7 +537,7 @@ async fn main() -> anyhow::Result<()> {
     let batch_messages: Vec<_> = messages_to_process
         .iter()
         .map(|m| {
-            pharma_core::ai::BatchMessage::new(&m.id, &m.content)
+            pharma_core::ai::BatchMessage::new(m.id, &m.content)
                 .with_sender(m.sender_name.as_deref().unwrap_or(""))
                 .with_group(&m.group_name)
         })

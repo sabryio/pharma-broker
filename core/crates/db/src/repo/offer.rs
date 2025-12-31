@@ -5,6 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::*;
+use uuid::Uuid;
 
 use crate::entity::offer::{self, Entity as Offer, Status};
 use crate::traits::OfferRepository;
@@ -23,7 +24,7 @@ impl SeaOrmOfferRepo {
 
 #[async_trait]
 impl OfferRepository for SeaOrmOfferRepo {
-    async fn get_by_id(&self, id: &str) -> Result<Option<offer::Model>> {
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<offer::Model>> {
         Offer::find_by_id(id)
             .one(&*self.db)
             .await
@@ -82,7 +83,7 @@ impl OfferRepository for SeaOrmOfferRepo {
         active.insert(&*self.db).await.map_err(Error::from)
     }
 
-    async fn update_status(&self, id: &str, status: Status) -> Result<offer::Model> {
+    async fn update_status(&self, id: Uuid, status: Status) -> Result<offer::Model> {
         let offer = Offer::find_by_id(id)
             .one(&*self.db)
             .await?

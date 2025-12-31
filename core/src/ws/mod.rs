@@ -34,8 +34,8 @@ use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQ
 /// Payload for match status change events
 #[derive(Debug, Clone, Serialize)]
 pub struct MatchStatusEvent {
-    pub match_id: String,
-    pub user_id: String,
+    pub match_id: Uuid,
+    pub user_id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

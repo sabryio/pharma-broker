@@ -27,6 +27,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use pharma_core::ai::{Intent, ParsedItem, PharmaParser, PharmaParserConfig};
 use pharma_core::repository::create_connection;
 use pharma_db::entity::raw_message::{self, Entity as RawMessage};
+use uuid::Uuid;
 
 // ============================================================================
 // Configuration
@@ -151,7 +152,7 @@ fn get_config_interactive() -> Config {
 
 #[derive(Debug, Clone)]
 struct TestMessage {
-    id: String,
+    id: Uuid,
     content: String,
     sender_name: Option<String>,
     group_name: Option<String>,
@@ -167,7 +168,7 @@ struct ModelConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct ModelResult {
     model_name: String,
-    message_id: String,
+    message_id: Uuid,
     message_content: String,
     items_count: usize,
     latency_ms: u128,
@@ -949,7 +950,7 @@ async fn main() -> anyhow::Result<()> {
             let sender = msg.sender_name.clone();
             let group = msg.group_name.clone();
             let model_name = model.name.clone();
-            let msg_id = msg.id.clone();
+            let message_id = msg.id;
             let msg_content = msg.content.clone();
             let timeout_secs = config.timeout_secs;
 
@@ -970,7 +971,7 @@ async fn main() -> anyhow::Result<()> {
                 match result {
                     Ok(Ok(items)) => ModelResult {
                         model_name,
-                        message_id: msg_id,
+                        message_id,
                         message_content: truncate(&msg_content, 200),
                         items_count: items.len(),
                         latency_ms: latency,
@@ -980,7 +981,7 @@ async fn main() -> anyhow::Result<()> {
                     },
                     Ok(Err(e)) => ModelResult {
                         model_name,
-                        message_id: msg_id,
+                        message_id,
                         message_content: truncate(&msg_content, 200),
                         items_count: 0,
                         latency_ms: latency,
@@ -990,7 +991,7 @@ async fn main() -> anyhow::Result<()> {
                     },
                     Err(_) => ModelResult {
                         model_name,
-                        message_id: msg_id,
+                        message_id,
                         message_content: truncate(&msg_content, 200),
                         items_count: 0,
                         latency_ms: latency,

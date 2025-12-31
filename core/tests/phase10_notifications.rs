@@ -11,13 +11,14 @@ use pharma_core::notify::{
     CompositeNotifier, EmailConfig, EmailNotifier, MatchNotifier, NullNotifier, TelegramConfig,
     TelegramNotifier,
 };
+use uuid::Uuid;
 
 /// Create a test match
 fn test_match() -> Match {
     Match {
-        id: "match-123".to_string(),
-        offer_id: "offer-1".to_string(),
-        request_id: "request-1".to_string(),
+        id: Uuid::new_v4(),
+        offer_id: Uuid::new_v4(),
+        request_id: Uuid::new_v4(),
         score: 0.85,
         reasoning: Some("High medication similarity".to_string()),
         matched_by: Some("AUTO".to_string()),
@@ -102,7 +103,7 @@ async fn test_null_notifier() {
         .await;
     assert!(result.is_ok());
 
-    let result = notifier.notify_auto_confirmed("match-1", 0.95).await;
+    let result = notifier.notify_auto_confirmed(Uuid::new_v4(), 0.95).await;
     assert!(result.is_ok());
 }
 

@@ -28,13 +28,8 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Offers::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(Offers::Id)
-                            .string_len(36)
-                            .not_null()
-                            .primary_key(),
-                    )
-                    .col(ColumnDef::new(Offers::RawMessageId).string_len(36))
+                    .col(ColumnDef::new(Offers::Id).uuid().not_null().primary_key())
+                    .col(ColumnDef::new(Offers::RawMessageId).uuid())
                     .col(
                         ColumnDef::new(Offers::SourcePhone)
                             .string_len(20)

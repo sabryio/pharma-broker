@@ -25,7 +25,7 @@ pub enum QueueStatus {
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: Uuid,
-    pub request_id: String,
+    pub request_id: Uuid,
     pub status: QueueStatus,
     pub priority: i32,
     pub attempts: i32,

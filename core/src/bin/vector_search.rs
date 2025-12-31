@@ -105,7 +105,7 @@ fn find_similar(
     let mut results: Vec<ScoredMapping> = mappings
         .iter()
         .filter_map(|m| {
-            m.get_embedding().map(|emb| ScoredMapping {
+            m.get_embedding().map(|emb: Vec<f32>| ScoredMapping {
                 mapping: m.clone(),
                 score: cosine_similarity(query_embedding, &emb),
             })

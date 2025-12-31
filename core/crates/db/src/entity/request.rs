@@ -12,8 +12,8 @@ pub use super::common::{ItemStatus as Status, UrgencyLevel};
 #[sea_orm(table_name = "requests")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: String,
-    pub raw_message_id: String,
+    pub id: Uuid,
+    pub raw_message_id: Uuid,
     pub source_phone: String,
     pub source_name: Option<String>,
     pub source_group: String,
@@ -65,8 +65,8 @@ impl Default for Model {
     fn default() -> Self {
         use chrono::Utc;
         Self {
-            id: String::new(),
-            raw_message_id: String::new(),
+            id: Uuid::new_v4(),
+            raw_message_id: Uuid::new_v4(),
             source_phone: String::new(),
             source_name: None,
             source_group: String::new(),
@@ -139,7 +139,7 @@ impl Model {
 /// ```
 #[derive(Debug, Clone)]
 pub struct RequestBuilder {
-    raw_message_id: String,
+    raw_message_id: Uuid,
     medication: String,
     source_phone: String,
     source_group: String,
@@ -160,14 +160,14 @@ pub struct RequestBuilder {
 impl RequestBuilder {
     /// Create a new builder with required fields
     pub fn new(
-        raw_message_id: impl Into<String>,
+        raw_message_id: Uuid,
         medication: impl Into<String>,
         source_phone: impl Into<String>,
         source_group: impl Into<String>,
     ) -> Self {
         let medication = medication.into();
         Self {
-            raw_message_id: raw_message_id.into(),
+            raw_message_id,
             medication: medication.clone(),
             source_phone: source_phone.into(),
             source_group: source_group.into(),
@@ -283,7 +283,7 @@ impl RequestBuilder {
         let now = Utc::now();
 
         Model {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             raw_message_id: self.raw_message_id,
             source_phone: self.source_phone,
             source_name: self.source_name,
@@ -312,8 +312,9 @@ mod tests {
 
     #[test]
     fn test_request_builder_minimal() {
+        let msg_id = Uuid::new_v4();
         let request =
-            RequestBuilder::new("msg-1", "Ozempic 1mg", "+201234567890", "group@g.us").build();
+            RequestBuilder::new(msg_id, "Ozempic 1mg", "+201234567890", "group@g.us").build();
 
         assert_eq!(request.medication, "Ozempic 1mg");
         assert_eq!(request.source_phone, "+201234567890");
@@ -323,17 +324,17 @@ mod tests {
 
     #[test]
     fn test_request_builder_full() {
-        let request =
-            RequestBuilder::new("msg-2", "Insulin Lantus", "+201111111111", "pharma@g.us")
-                .source_name("Pharmacy ABC")
-                .quantity(3.0)
-                .max_price(500.0)
-                .unit("pens")
-                .critical()
-                .expiry_requirement("At least 6 months")
-                .ai_confidence(0.88)
-                .notes("Urgent patient need")
-                .build();
+        let msg_id = Uuid::new_v4();
+        let request = RequestBuilder::new(msg_id, "Insulin Lantus", "+201111111111", "pharma@g.us")
+            .source_name("Pharmacy ABC")
+            .quantity(3.0)
+            .max_price(500.0)
+            .unit("pens")
+            .critical()
+            .expiry_requirement("At least 6 months")
+            .ai_confidence(0.88)
+            .notes("Urgent patient need")
+            .build();
 
         assert_eq!(request.medication, "Insulin Lantus");
         assert_eq!(request.source_name, Some("Pharmacy ABC".to_string()));
@@ -352,7 +353,10 @@ mod tests {
         let normal = Model::default();
         assert!(!normal.is_urgent());
 
-        let urgent = RequestBuilder::new("m", "med", "p", "g").urgent().build();
+        let msg_id = Uuid::new_v4();
+        let urgent = RequestBuilder::new(msg_id, "med", "p", "g")
+            .urgent()
+            .build();
         assert!(urgent.is_urgent());
     }
 }

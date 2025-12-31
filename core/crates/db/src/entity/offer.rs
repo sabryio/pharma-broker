@@ -12,8 +12,8 @@ pub use super::common::{ItemStatus as Status, UrgencyLevel};
 #[sea_orm(table_name = "offers")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: String,
-    pub raw_message_id: String,
+    pub id: Uuid,
+    pub raw_message_id: Uuid,
     pub source_phone: String,
     pub source_name: Option<String>,
     pub source_group: String,
@@ -67,8 +67,8 @@ impl Default for Model {
     fn default() -> Self {
         use chrono::Utc;
         Self {
-            id: String::new(),
-            raw_message_id: String::new(),
+            id: Uuid::new_v4(),
+            raw_message_id: Uuid::new_v4(),
             source_phone: String::new(),
             source_name: None,
             source_group: String::new(),
@@ -140,7 +140,7 @@ impl Model {
 /// ```
 #[derive(Debug, Clone)]
 pub struct OfferBuilder {
-    raw_message_id: String,
+    raw_message_id: Uuid,
     medication: String,
     source_phone: String,
     source_group: String,
@@ -163,14 +163,14 @@ pub struct OfferBuilder {
 impl OfferBuilder {
     /// Create a new builder with required fields
     pub fn new(
-        raw_message_id: impl Into<String>,
+        raw_message_id: Uuid,
         medication: impl Into<String>,
         source_phone: impl Into<String>,
         source_group: impl Into<String>,
     ) -> Self {
         let medication = medication.into();
         Self {
-            raw_message_id: raw_message_id.into(),
+            raw_message_id,
             medication: medication.clone(),
             source_phone: source_phone.into(),
             source_group: source_group.into(),
@@ -294,7 +294,7 @@ impl OfferBuilder {
         let now = Utc::now();
 
         Model {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             raw_message_id: self.raw_message_id,
             source_phone: self.source_phone,
             source_name: self.source_name,
@@ -325,8 +325,9 @@ mod tests {
 
     #[test]
     fn test_offer_builder_minimal() {
+        let msg_id = Uuid::new_v4();
         let offer =
-            OfferBuilder::new("msg-1", "Aspirin 100mg", "+201234567890", "group@g.us").build();
+            OfferBuilder::new(msg_id, "Aspirin 100mg", "+201234567890", "group@g.us").build();
 
         assert_eq!(offer.medication, "Aspirin 100mg");
         assert_eq!(offer.source_phone, "+201234567890");
@@ -336,7 +337,8 @@ mod tests {
 
     #[test]
     fn test_offer_builder_full() {
-        let offer = OfferBuilder::new("msg-2", "Ozempic 1mg", "+201111111111", "pharma@g.us")
+        let msg_id = Uuid::new_v4();
+        let offer = OfferBuilder::new(msg_id, "Ozempic 1mg", "+201111111111", "pharma@g.us")
             .source_name("Dr. Ahmed")
             .quantity(5.0)
             .price(1500.0)
@@ -361,7 +363,8 @@ mod tests {
         let normal = Model::default();
         assert!(!normal.is_urgent());
 
-        let urgent = OfferBuilder::new("m", "med", "p", "g")
+        let msg_id = Uuid::new_v4();
+        let urgent = OfferBuilder::new(msg_id, "med", "p", "g")
             .urgency_level(UrgencyLevel::Critical)
             .build();
         assert!(urgent.is_urgent());

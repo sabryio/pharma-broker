@@ -1,6 +1,7 @@
 //! RawMessage Service - Incoming WhatsApp message management
 
 use sea_orm::*;
+use uuid::Uuid;
 
 use crate::entity::raw_message::{self, Entity as RawMessage};
 use crate::{Error, Result};
@@ -20,7 +21,7 @@ impl RawMessageService {
     /// Get message by ID
     pub async fn get_by_id(
         db: &DatabaseConnection,
-        id: &str,
+        id: Uuid,
     ) -> Result<Option<raw_message::Model>> {
         RawMessage::find_by_id(id)
             .one(db)
@@ -65,7 +66,7 @@ impl RawMessageService {
     }
 
     /// Mark message as processed
-    pub async fn mark_processed(db: &DatabaseConnection, id: &str) -> Result<raw_message::Model> {
+    pub async fn mark_processed(db: &DatabaseConnection, id: Uuid) -> Result<raw_message::Model> {
         let msg = RawMessage::find_by_id(id)
             .one(db)
             .await?
@@ -80,7 +81,7 @@ impl RawMessageService {
     /// Mark message as failed with error
     pub async fn mark_failed(
         db: &DatabaseConnection,
-        id: &str,
+        id: Uuid,
         error: &str,
     ) -> Result<raw_message::Model> {
         let msg = RawMessage::find_by_id(id)

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[sea_orm(table_name = "medication_mappings")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: String,
+    pub id: Uuid,
     pub arabic_name: String,
     pub english_name: String,
     pub synonyms: Option<Vec<String>>,
@@ -26,7 +26,7 @@ impl Model {
     pub fn new(arabic_name: impl Into<String>, english_name: impl Into<String>) -> Self {
         let now = chrono::Utc::now();
         Self {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             arabic_name: arabic_name.into(),
             english_name: english_name.into(),
             synonyms: None,

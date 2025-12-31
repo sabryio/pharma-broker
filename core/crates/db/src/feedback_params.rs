@@ -4,6 +4,7 @@
 //! self-documenting parameter objects.
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 // =============================================================================
 // FeedbackScores
@@ -98,7 +99,7 @@ impl FeedbackScores {
 #[derive(Debug, Clone)]
 pub struct CreateFeedbackParams {
     /// The match ID this feedback is for
-    pub match_id: String,
+    pub match_id: Uuid,
     /// The user who provided the feedback
     pub user_id: String,
     /// Whether the match was confirmed (true) or rejected (false)
@@ -110,13 +111,13 @@ pub struct CreateFeedbackParams {
 impl CreateFeedbackParams {
     /// Create new feedback parameters
     pub fn new(
-        match_id: impl Into<String>,
+        match_id: Uuid,
         user_id: impl Into<String>,
         confirmed: bool,
         scores: FeedbackScores,
     ) -> Self {
         Self {
-            match_id: match_id.into(),
+            match_id,
             user_id: user_id.into(),
             confirmed,
             scores,
@@ -124,13 +125,9 @@ impl CreateFeedbackParams {
     }
 
     /// Create confirmation feedback with estimated scores
-    pub fn confirmed(
-        match_id: impl Into<String>,
-        user_id: impl Into<String>,
-        total_score: f64,
-    ) -> Self {
+    pub fn confirmed(match_id: Uuid, user_id: impl Into<String>, total_score: f64) -> Self {
         Self {
-            match_id: match_id.into(),
+            match_id,
             user_id: user_id.into(),
             confirmed: true,
             scores: FeedbackScores::from_total_estimated(total_score),
@@ -138,13 +135,9 @@ impl CreateFeedbackParams {
     }
 
     /// Create rejection feedback with estimated scores
-    pub fn rejected(
-        match_id: impl Into<String>,
-        user_id: impl Into<String>,
-        total_score: f64,
-    ) -> Self {
+    pub fn rejected(match_id: Uuid, user_id: impl Into<String>, total_score: f64) -> Self {
         Self {
-            match_id: match_id.into(),
+            match_id,
             user_id: user_id.into(),
             confirmed: false,
             scores: FeedbackScores::from_total_estimated(total_score),
@@ -249,8 +242,9 @@ mod tests {
 
     #[test]
     fn test_create_feedback_params() {
-        let params = CreateFeedbackParams::confirmed("match-123", "user-456", 0.85);
-        assert_eq!(params.match_id, "match-123");
+        let match_id = Uuid::new_v4();
+        let params = CreateFeedbackParams::confirmed(match_id, "user-456", 0.85);
+        assert_eq!(params.match_id, match_id);
         assert_eq!(params.user_id, "user-456");
         assert!(params.confirmed);
     }

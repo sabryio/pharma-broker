@@ -255,7 +255,7 @@ impl BatchProcessor {
             warn!(msg_id = %msg.id, error = %error, "Parse error");
             let _ = self
                 .raw_message_repo
-                .mark_processed(&msg.id, Some(error))
+                .mark_processed(msg.id, Some(error))
                 .await;
             return;
         }
@@ -263,7 +263,7 @@ impl BatchProcessor {
         // Handle no items
         if result.items.is_empty() {
             info!(msg_id = %msg.id, "No items extracted");
-            let _ = self.raw_message_repo.mark_processed(&msg.id, None).await;
+            let _ = self.raw_message_repo.mark_processed(msg.id, None).await;
             return;
         }
 
@@ -286,7 +286,7 @@ impl BatchProcessor {
         // Check if needs review queue
         if self.multi_pass_config.needs_review(avg_confidence) {
             let review_item = ReviewQueueItem::for_low_confidence(
-                &msg.id,
+                msg.id,
                 serde_json::to_value(&result.items).unwrap_or_default(),
                 avg_confidence,
                 "low_confidence",
@@ -322,7 +322,7 @@ impl BatchProcessor {
         }
 
         // Mark as processed
-        let _ = self.raw_message_repo.mark_processed(&msg.id, None).await;
+        let _ = self.raw_message_repo.mark_processed(msg.id, None).await;
     }
 
     /// Create offer or request from parsed item with pre-generated embedding
@@ -335,7 +335,7 @@ impl BatchProcessor {
         match item.item_type.as_str() {
             "OFFER" | "BOTH" => {
                 let offer = Offer {
-                    id: uuid::Uuid::new_v4().to_string(),
+                    id: uuid::Uuid::new_v4(),
                     raw_message_id: msg.id.clone(),
                     medication: item.medication.clone(),
                     medication_raw: item.medication.clone(),
@@ -365,7 +365,7 @@ impl BatchProcessor {
                     let _ = self.ws_tx.send(WsEvent::NewOffer(offer.clone()));
 
                     // Enqueue for matching
-                    let _ = self.match_queue_repo.enqueue(&offer.id, 0).await;
+                    let _ = self.match_queue_repo.enqueue(offer.id, 0).await;
 
                     // Audit log
                     let audit = AuditLog::system(
@@ -385,7 +385,7 @@ impl BatchProcessor {
         match item.item_type.as_str() {
             "REQUEST" | "BOTH" => {
                 let request = Request {
-                    id: uuid::Uuid::new_v4().to_string(),
+                    id: uuid::Uuid::new_v4(),
                     raw_message_id: msg.id.clone(),
                     medication: item.medication.clone(),
                     medication_raw: item.medication.clone(),
@@ -413,7 +413,7 @@ impl BatchProcessor {
                     let _ = self.ws_tx.send(WsEvent::NewRequest(request.clone()));
 
                     // Enqueue for matching
-                    let _ = self.match_queue_repo.enqueue(&request.id, 0).await;
+                    let _ = self.match_queue_repo.enqueue(request.id, 0).await;
 
                     // Audit log
                     let audit = AuditLog::system(

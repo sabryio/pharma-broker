@@ -11,6 +11,7 @@ pub use telegram::{TelegramConfig, TelegramNotifier};
 
 use async_trait::async_trait;
 use tokio::sync::broadcast;
+use uuid::Uuid;
 
 use crate::Result;
 use crate::domain::Match;
@@ -28,13 +29,13 @@ pub trait MatchNotifier: Send + Sync {
     async fn notify_new_match(&self, match_entity: &Match, action: MatchAction) -> Result<()>;
 
     /// Notify that a match has been auto-confirmed
-    async fn notify_auto_confirmed(&self, match_id: &str, score: f64) -> Result<()>;
+    async fn notify_auto_confirmed(&self, match_id: Uuid, score: f64) -> Result<()>;
 
     /// Notify that a match is suggested for operator approval
     async fn notify_suggested(&self, match_entity: &Match) -> Result<()>;
 
     /// Notify that a match has been queued for review
-    async fn notify_queued_for_review(&self, match_id: &str, reason: &str) -> Result<()>;
+    async fn notify_queued_for_review(&self, match_id: Uuid, reason: &str) -> Result<()>;
 }
 
 // ============================================================================
@@ -75,7 +76,7 @@ impl MatchNotifier for WebSocketNotifier {
         Ok(())
     }
 
-    async fn notify_auto_confirmed(&self, match_id: &str, score: f64) -> Result<()> {
+    async fn notify_auto_confirmed(&self, match_id: Uuid, score: f64) -> Result<()> {
         tracing::info!(
             match_id = %match_id,
             score = score,
@@ -84,8 +85,8 @@ impl MatchNotifier for WebSocketNotifier {
 
         // Broadcast auto-confirmation event
         self.broadcast(WsEvent::MatchConfirmed(crate::ws::MatchStatusEvent {
-            match_id: match_id.to_string(),
-            user_id: "system".to_string(),
+            match_id,
+            user_id: Uuid::nil(), // System user represented as nil UUID
             notes: Some(format!("Auto-confirmed with score {:.2}", score)),
             reason: None,
         }));
@@ -106,7 +107,7 @@ impl MatchNotifier for WebSocketNotifier {
         Ok(())
     }
 
-    async fn notify_queued_for_review(&self, match_id: &str, reason: &str) -> Result<()> {
+    async fn notify_queued_for_review(&self, match_id: Uuid, reason: &str) -> Result<()> {
         tracing::info!(
             match_id = %match_id,
             reason = %reason,
@@ -159,7 +160,7 @@ impl MatchNotifier for CompositeNotifier {
         Ok(())
     }
 
-    async fn notify_auto_confirmed(&self, match_id: &str, score: f64) -> Result<()> {
+    async fn notify_auto_confirmed(&self, match_id: Uuid, score: f64) -> Result<()> {
         for notifier in &self.notifiers {
             if let Err(e) = notifier.notify_auto_confirmed(match_id, score).await {
                 tracing::warn!(error = %e, "Notifier failed for auto_confirmed");
@@ -177,7 +178,7 @@ impl MatchNotifier for CompositeNotifier {
         Ok(())
     }
 
-    async fn notify_queued_for_review(&self, match_id: &str, reason: &str) -> Result<()> {
+    async fn notify_queued_for_review(&self, match_id: Uuid, reason: &str) -> Result<()> {
         for notifier in &self.notifiers {
             if let Err(e) = notifier.notify_queued_for_review(match_id, reason).await {
                 tracing::warn!(error = %e, "Notifier failed for queued_for_review");
@@ -200,7 +201,7 @@ impl MatchNotifier for NullNotifier {
         Ok(())
     }
 
-    async fn notify_auto_confirmed(&self, _: &str, _: f64) -> Result<()> {
+    async fn notify_auto_confirmed(&self, _: Uuid, _: f64) -> Result<()> {
         Ok(())
     }
 
@@ -208,7 +209,7 @@ impl MatchNotifier for NullNotifier {
         Ok(())
     }
 
-    async fn notify_queued_for_review(&self, _: &str, _: &str) -> Result<()> {
+    async fn notify_queued_for_review(&self, _: Uuid, _: &str) -> Result<()> {
         Ok(())
     }
 }
@@ -224,17 +225,13 @@ mod tests {
     #[tokio::test]
     async fn test_null_notifier() {
         let notifier = NullNotifier;
+        let match_id = Uuid::new_v4();
 
         // Should not fail
+        assert!(notifier.notify_auto_confirmed(match_id, 0.95).await.is_ok());
         assert!(
             notifier
-                .notify_auto_confirmed("test-id", 0.95)
-                .await
-                .is_ok()
-        );
-        assert!(
-            notifier
-                .notify_queued_for_review("test-id", "low_confidence")
+                .notify_queued_for_review(match_id, "low_confidence")
                 .await
                 .is_ok()
         );
@@ -243,31 +240,29 @@ mod tests {
     #[tokio::test]
     async fn test_composite_notifier_empty() {
         let notifier = CompositeNotifier::new();
+        let match_id = Uuid::new_v4();
 
         // Empty composite should not fail
-        assert!(
-            notifier
-                .notify_auto_confirmed("test-id", 0.95)
-                .await
-                .is_ok()
-        );
+        assert!(notifier.notify_auto_confirmed(match_id, 0.95).await.is_ok());
     }
 
     #[tokio::test]
     async fn test_websocket_notifier() {
         let (tx, _rx) = broadcast::channel(16);
         let notifier = WebSocketNotifier::new(tx);
+        let match_id1 = Uuid::new_v4();
+        let match_id2 = Uuid::new_v4();
 
         // Should not fail even with no receivers
         assert!(
             notifier
-                .notify_auto_confirmed("match-123", 0.92)
+                .notify_auto_confirmed(match_id1, 0.92)
                 .await
                 .is_ok()
         );
         assert!(
             notifier
-                .notify_queued_for_review("match-456", "low_score")
+                .notify_queued_for_review(match_id2, "low_score")
                 .await
                 .is_ok()
         );

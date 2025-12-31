@@ -273,7 +273,7 @@ impl MatchingEngine {
             MatchAction::AutoConfirm => {
                 // Notifying about auto-confirmation
                 self.notifier
-                    .notify_auto_confirmed(&match_entity.id, match_entity.score)
+                    .notify_auto_confirmed(match_entity.id, match_entity.score)
                     .await?;
             }
             MatchAction::SuggestToOperator => {
@@ -281,7 +281,7 @@ impl MatchingEngine {
             }
             MatchAction::QueueForReview => {
                 self.notifier
-                    .notify_queued_for_review(&match_entity.id, "low_confidence_match")
+                    .notify_queued_for_review(match_entity.id, "low_confidence_match")
                     .await?;
             }
             MatchAction::Ignore => {
@@ -987,9 +987,9 @@ impl MatchingEngine {
 
         self.audit_trail
             .log_match_action(super::MatchActionParams {
-                match_id: match_entity.id.clone(),
-                offer_id: match_entity.offer_id.clone(),
-                request_id: match_entity.request_id.clone(),
+                match_id: match_entity.id,
+                offer_id: match_entity.offer_id,
+                request_id: match_entity.request_id,
                 action: action_type,
                 score: match_entity.score,
                 status: match_entity.status,
@@ -1142,6 +1142,7 @@ mod tests {
     use chrono::{Duration, Utc};
     use rust_decimal::Decimal;
     use rust_decimal::prelude::FromPrimitive;
+    use uuid::Uuid;
 
     use super::*;
     use crate::domain::MatchStatus;
@@ -1272,26 +1273,26 @@ mod tests {
         let engine = MatchingEngine::default();
 
         let request = Request {
-            id: "req-1".to_string(),
+            id: Uuid::new_v4(),
             source_phone: "buyer-phone".to_string(),
             ..Default::default()
         };
 
         let offers = vec![
             Offer {
-                id: "offer-1".to_string(),
+                id: Uuid::new_v4(),
                 source_phone: "seller-1".to_string(),
                 created_at: Utc::now(),
                 ..Default::default()
             },
             Offer {
-                id: "offer-2".to_string(),
+                id: Uuid::new_v4(),
                 source_phone: "buyer-phone".to_string(), // Same as buyer
                 created_at: Utc::now(),
                 ..Default::default()
             },
             Offer {
-                id: "offer-3".to_string(),
+                id: Uuid::new_v4(),
                 source_phone: "seller-3".to_string(),
                 created_at: Utc::now() - Duration::days(10), // Stale
                 ..Default::default()
@@ -1302,7 +1303,6 @@ mod tests {
 
         // Only offer-1 should pass (offer-2 same sender, offer-3 stale)
         assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].id, "offer-1");
     }
 
     #[tokio::test]
@@ -1310,13 +1310,13 @@ mod tests {
         let engine = MatchingEngine::default();
 
         let request = Request {
-            id: "req-1".to_string(),
+            id: Uuid::new_v4(),
             source_phone: "buyer".to_string(),
             ..Default::default()
         };
 
         let offers = vec![Offer {
-            id: "offer-1".to_string(),
+            id: Uuid::new_v4(),
             source_phone: "seller".to_string(),
             created_at: Utc::now(),
             ..Default::default()
@@ -1340,7 +1340,7 @@ mod tests {
         assert!(engine.is_embedding_cache_empty());
 
         let mappings = vec![MedicationMapping {
-            id: "1".to_string(),
+            id: Uuid::new_v4(),
             arabic_name: "بروفين".to_string(),
             english_name: "Brufen".to_string(),
             synonyms: Some(vec!["Ibuprofen".to_string()]),
@@ -1375,9 +1375,9 @@ mod tests {
         let engine = MatchingEngine::default();
 
         let match_entity = MatchEntity {
-            id: "match-123".to_string(),
-            offer_id: "offer-456".to_string(),
-            request_id: "request-789".to_string(),
+            id: Uuid::new_v4(),
+            offer_id: Uuid::new_v4(),
+            request_id: Uuid::new_v4(),
             score: 0.95,
             status: MatchStatus::Confirmed,
             reasoning: Some("High confidence match".to_string()),

@@ -104,7 +104,7 @@ impl MatchProcessor {
 
     /// Process a single match queue item
     async fn process_item(&self, item: MatchQueueItem) {
-        let request_id = &item.request_id;
+        let request_id = item.request_id;
 
         // 1. Fetch the request
         let request = match self.request_repo.get_by_id(request_id).await {
@@ -113,13 +113,13 @@ impl MatchProcessor {
                 warn!(request_id = %request_id, "Request not found, marking failed");
                 let _ = self
                     .match_queue_repo
-                    .fail(&item.id, "Request not found")
+                    .fail(item.id, "Request not found")
                     .await;
                 return;
             }
             Err(e) => {
                 error!(error = %e, request_id = %request_id, "Failed to fetch request");
-                let _ = self.match_queue_repo.fail(&item.id, &e.to_string()).await;
+                let _ = self.match_queue_repo.fail(item.id, &e.to_string()).await;
                 return;
             }
         };
@@ -131,7 +131,7 @@ impl MatchProcessor {
                 error!(error = %e, "Failed to fetch active offers");
                 let _ = self
                     .match_queue_repo
-                    .fail(&item.id, "Failed to fetch offers")
+                    .fail(item.id, "Failed to fetch offers")
                     .await;
                 return;
             }
@@ -142,7 +142,7 @@ impl MatchProcessor {
 
         for offer in active_offers {
             // Skip if already matched
-            if let Ok(exists) = self.match_repo.exists(&offer.id, &request.id).await
+            if let Ok(exists) = self.match_repo.exists(offer.id, request.id).await
                 && exists
             {
                 continue;
@@ -166,7 +166,7 @@ impl MatchProcessor {
             if score.confidence != ConfidenceBand::None && action != MatchAction::Ignore {
                 // Create Match
                 let match_entity = MatchEntity {
-                    id: Uuid::new_v4().to_string(),
+                    id: Uuid::new_v4(),
                     offer_id: offer.id.clone(),
                     request_id: request.id.clone(),
                     score: score.total,
@@ -199,7 +199,7 @@ impl MatchProcessor {
         }
 
         // 4. Mark completed
-        if let Err(e) = self.match_queue_repo.complete(&item.id).await {
+        if let Err(e) = self.match_queue_repo.complete(item.id).await {
             error!(error = %e, item_id = %item.id, "Failed to complete queue item");
         } else {
             info!(

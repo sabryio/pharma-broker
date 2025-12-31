@@ -8,6 +8,7 @@ use axum::{
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::routes::AppState;
 use crate::domain::{AuditLog, FeedbackRecord, ItemStatus, MatchStatus};
@@ -239,7 +240,7 @@ where
 /// Confirm match request body
 #[derive(Debug, Deserialize)]
 pub struct ConfirmRequest {
-    pub matched_by: String,
+    pub matched_by: Uuid,
     #[serde(default)]
     pub notes: String,
 }
@@ -248,7 +249,7 @@ pub struct ConfirmRequest {
 /// Ported from: legacy/api/handlers/match_handler.go:ConfirmMatchGin
 pub async fn confirm_match<RQ, A, MM>(
     State(state): State<AppState<RQ, A, MM>>,
-    Path(id): Path<String>,
+    Path(id): Path<uuid::Uuid>,
     Json(req): Json<ConfirmRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)>
 where
@@ -259,7 +260,7 @@ where
     // Get the match first
     let match_entity = state
         .match_repo
-        .get_by_id(&id)
+        .get_by_id(id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Match not found".to_string()))?;
@@ -268,9 +269,9 @@ where
     state
         .match_repo
         .update_status(UpdateMatchStatusParams::new(
-            &id,
+            id,
             MatchStatus::Confirmed,
-            &req.matched_by,
+            req.matched_by,
             &req.notes,
         ))
         .await
@@ -279,39 +280,36 @@ where
     // Update offer and request status to MATCHED
     let _ = state
         .offer_repo
-        .update_status(&match_entity.offer_id, ItemStatus::Matched)
+        .update_status(match_entity.offer_id, ItemStatus::Matched)
         .await;
     let _ = state
         .request_repo
-        .update_status(&match_entity.request_id, ItemStatus::Matched)
+        .update_status(match_entity.request_id, ItemStatus::Matched)
         .await;
 
     // Record feedback for learning system
-    // Parse match_id as UUID for feedback record
-    if let Ok(match_uuid) = uuid::Uuid::parse_str(&id) {
-        let feedback = FeedbackRecord::new(
-            match_uuid,
-            req.matched_by.clone(),
-            true,                      // confirmed = positive feedback
-            match_entity.score * 0.9,  // Estimate medication score from total
-            match_entity.score * 0.8,  // Estimate dosage score
-            match_entity.score * 0.85, // Estimate quantity score
-            match_entity.score * 0.95, // Estimate price score
-            0.7,                       // Default recency score
-            match_entity.score,
-        );
+    let feedback = FeedbackRecord::new(
+        id, // match_id as Uuid
+        req.matched_by.clone(),
+        true,                      // confirmed = positive feedback
+        match_entity.score * 0.9,  // Estimate medication score from total
+        match_entity.score * 0.8,  // Estimate dosage score
+        match_entity.score * 0.85, // Estimate quantity score
+        match_entity.score * 0.95, // Estimate price score
+        0.7,                       // Default recency score
+        match_entity.score,
+    );
 
-        if let Err(e) = state.feedback_repo.save(&feedback).await {
-            tracing::warn!(error = %e, match_id = %id, "Failed to record confirmation feedback");
-        } else {
-            tracing::info!(match_id = %id, user = %req.matched_by, "Recorded confirmation feedback");
-        }
+    if let Err(e) = state.feedback_repo.save(&feedback).await {
+        tracing::warn!(error = %e, match_id = %id, "Failed to record confirmation feedback");
+    } else {
+        tracing::info!(match_id = %id, user = %req.matched_by, "Recorded confirmation feedback");
     }
 
     // Broadcast WebSocket event for match confirmation
     let ws_event = WsEvent::MatchConfirmed(MatchStatusEvent {
-        match_id: id.clone(),
-        user_id: req.matched_by.clone(),
+        match_id: id,
+        user_id: req.matched_by,
         notes: if req.notes.is_empty() {
             None
         } else {
@@ -324,7 +322,7 @@ where
     }
 
     // Task 5.3: Audit Logging
-    let audit_log = AuditLog::match_confirmed(&id, &req.matched_by, match_entity.score);
+    let audit_log = AuditLog::match_confirmed(&id.to_string(), req.matched_by, match_entity.score);
     if let Err(e) = state.audit_log_repo.save(&audit_log).await {
         tracing::warn!(error = %e, match_id = %id, "Failed to save audit log for match confirmation");
     }
@@ -344,7 +342,7 @@ where
 #[derive(Debug, Deserialize)]
 pub struct RejectRequest {
     #[serde(default)]
-    pub matched_by: String,
+    pub matched_by: Uuid,
     #[serde(default)]
     pub reason: String,
 }
@@ -353,7 +351,7 @@ pub struct RejectRequest {
 /// Ported from: legacy/api/handlers/match_handler.go:RejectMatchGin
 pub async fn reject_match<RQ, A, MM>(
     State(state): State<AppState<RQ, A, MM>>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
     Json(req): Json<RejectRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)>
 where
@@ -364,7 +362,7 @@ where
     // Get the match first for score data
     let match_entity = state
         .match_repo
-        .get_by_id(&id)
+        .get_by_id(id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Match not found".to_string()))?;
@@ -373,38 +371,36 @@ where
     state
         .match_repo
         .update_status(UpdateMatchStatusParams::new(
-            &id,
+            id,
             MatchStatus::Rejected,
-            &req.matched_by,
+            req.matched_by,
             &req.reason,
         ))
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Record negative feedback for learning system
-    if let Ok(match_uuid) = uuid::Uuid::parse_str(&id) {
-        let feedback = FeedbackRecord::new(
-            match_uuid,
-            req.matched_by.clone(),
-            false, // confirmed = false (rejection is negative feedback)
-            match_entity.score * 0.9,
-            match_entity.score * 0.8,
-            match_entity.score * 0.85,
-            match_entity.score * 0.95,
-            0.7,
-            match_entity.score,
-        );
+    let feedback = FeedbackRecord::new(
+        id, // match_id as uuid
+        req.matched_by.clone(),
+        false, // confirmed = false (rejection is negative feedback)
+        match_entity.score * 0.9,
+        match_entity.score * 0.8,
+        match_entity.score * 0.85,
+        match_entity.score * 0.95,
+        0.7,
+        match_entity.score,
+    );
 
-        if let Err(e) = state.feedback_repo.save(&feedback).await {
-            tracing::warn!(error = %e, match_id = %id, "Failed to record rejection feedback");
-        } else {
-            tracing::info!(match_id = %id, user = %req.matched_by, reason = %req.reason, "Recorded rejection feedback");
-        }
+    if let Err(e) = state.feedback_repo.save(&feedback).await {
+        tracing::warn!(error = %e, match_id = %id, "Failed to record rejection feedback");
+    } else {
+        tracing::info!(match_id = %id, user = %req.matched_by, reason = %req.reason, "Recorded rejection feedback");
     }
     // Broadcast WebSocket event for match rejection
     let ws_event = WsEvent::MatchRejected(MatchStatusEvent {
-        match_id: id.clone(),
-        user_id: req.matched_by.clone(),
+        match_id: id,
+        user_id: req.matched_by,
         notes: None,
         reason: if req.reason.is_empty() {
             None
@@ -418,8 +414,8 @@ where
 
     // Task 5.3: Audit Logging
     let audit_log = AuditLog::match_rejected(
-        &id,
-        &req.matched_by,
+        id,
+        req.matched_by,
         if req.reason.is_empty() {
             None
         } else {

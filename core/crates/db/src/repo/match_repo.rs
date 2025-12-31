@@ -5,6 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::*;
+use uuid::Uuid;
 
 use crate::entity::match_::{self, Entity as Match, MatchStatus};
 use crate::traits::MatchRepository;
@@ -23,7 +24,7 @@ impl SeaOrmMatchRepo {
 
 #[async_trait]
 impl MatchRepository for SeaOrmMatchRepo {
-    async fn get_by_id(&self, id: &str) -> Result<Option<match_::Model>> {
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<match_::Model>> {
         Match::find_by_id(id)
             .one(&*self.db)
             .await
@@ -50,7 +51,7 @@ impl MatchRepository for SeaOrmMatchRepo {
             .map_err(Error::from)
     }
 
-    async fn exists(&self, offer_id: &str, request_id: &str) -> Result<bool> {
+    async fn exists(&self, offer_id: Uuid, request_id: Uuid) -> Result<bool> {
         let count = Match::find()
             .filter(match_::Column::OfferId.eq(offer_id))
             .filter(match_::Column::RequestId.eq(request_id))
@@ -66,7 +67,7 @@ impl MatchRepository for SeaOrmMatchRepo {
 
     async fn update_status(
         &self,
-        params: crate::params::UpdateMatchStatusParams<'_>,
+        params: crate::params::UpdateMatchStatusParams,
     ) -> Result<match_::Model> {
         let m = Match::find_by_id(params.id)
             .one(&*self.db)

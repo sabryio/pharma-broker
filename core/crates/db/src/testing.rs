@@ -143,9 +143,9 @@ pub fn new_test_group(jid: &str, name: &str, monitored: bool) -> group::ActiveMo
 
 /// Creates a test raw_message ActiveModel
 pub fn new_test_raw_message() -> raw_message::ActiveModel {
-    let id = Uuid::new_v4().to_string();
+    let id = Uuid::new_v4();
     raw_message::ActiveModel {
-        id: Set(id.clone()),
+        id: Set(id),
         external_id: Set(Some(Uuid::new_v4().to_string())),
         group_jid: Set("test-group@g.us".to_string()),
         group_name: Set("Test Group".to_string()),
@@ -164,11 +164,11 @@ pub fn new_test_raw_message() -> raw_message::ActiveModel {
 }
 
 /// Creates a test offer ActiveModel
-pub fn new_test_offer(raw_message_id: &str) -> offer::ActiveModel {
+pub fn new_test_offer(raw_message_id: Uuid) -> offer::ActiveModel {
     let now = Utc::now();
     offer::ActiveModel {
-        id: Set(Uuid::new_v4().to_string()),
-        raw_message_id: Set(raw_message_id.to_string()),
+        id: Set(Uuid::new_v4()),
+        raw_message_id: Set(raw_message_id),
         source_phone: Set("+201234567890".to_string()),
         source_name: Set(Some("Test Seller".to_string())),
         source_group: Set("test-group@g.us".to_string()),
@@ -192,11 +192,11 @@ pub fn new_test_offer(raw_message_id: &str) -> offer::ActiveModel {
 }
 
 /// Creates a test request ActiveModel
-pub fn new_test_request(raw_message_id: &str) -> request::ActiveModel {
+pub fn new_test_request(raw_message_id: Uuid) -> request::ActiveModel {
     let now = Utc::now();
     request::ActiveModel {
-        id: Set(Uuid::new_v4().to_string()),
-        raw_message_id: Set(raw_message_id.to_string()),
+        id: Set(Uuid::new_v4()),
+        raw_message_id: Set(raw_message_id),
         source_phone: Set("+201098765432".to_string()),
         source_name: Set(Some("Test Buyer".to_string())),
         source_group: Set("test-group@g.us".to_string()),
@@ -218,11 +218,11 @@ pub fn new_test_request(raw_message_id: &str) -> request::ActiveModel {
 }
 
 /// Creates a test match ActiveModel
-pub fn new_test_match(offer_id: &str, request_id: &str) -> match_::ActiveModel {
+pub fn new_test_match(offer_id: Uuid, request_id: Uuid) -> match_::ActiveModel {
     match_::ActiveModel {
-        id: Set(Uuid::new_v4().to_string()),
-        offer_id: Set(offer_id.to_string()),
-        request_id: Set(request_id.to_string()),
+        id: Set(Uuid::new_v4()),
+        offer_id: Set(offer_id),
+        request_id: Set(request_id),
         score: Set(0.85),
         reasoning: Set(Some("Strong medication match".to_string())),
         matched_by: Set(Some("AUTO".to_string())),
@@ -249,10 +249,10 @@ pub fn new_test_audit_log(action: &str, entity_id: &str) -> audit_log::ActiveMod
 }
 
 /// Creates a test feedback_record ActiveModel
-pub fn new_test_feedback(match_id: &str, confirmed: bool) -> feedback_record::ActiveModel {
+pub fn new_test_feedback(match_id: Uuid, confirmed: bool) -> feedback_record::ActiveModel {
     feedback_record::ActiveModel {
         id: Set(Uuid::new_v4()),
-        match_id: Set(match_id.to_string()),
+        match_id: Set(match_id),
         user_id: Set("test-user".to_string()),
         confirmed: Set(confirmed),
         medication_score: Set(0.9),
@@ -281,10 +281,10 @@ pub fn new_test_weight_history(source: &str) -> weight_history::ActiveModel {
 }
 
 /// Creates a test review_queue ActiveModel
-pub fn new_test_review_queue(raw_message_id: &str) -> review_queue::ActiveModel {
+pub fn new_test_review_queue(raw_message_id: Uuid) -> review_queue::ActiveModel {
     review_queue::ActiveModel {
         id: Set(Uuid::new_v4()),
-        raw_message_id: Set(raw_message_id.to_string()),
+        raw_message_id: Set(raw_message_id),
         ai_result: Set(serde_json::json!({"items": []})),
         confidence: Set(0.45),
         reason: Set("low_confidence".to_string()),
@@ -297,11 +297,11 @@ pub fn new_test_review_queue(raw_message_id: &str) -> review_queue::ActiveModel 
 }
 
 /// Creates a test match_queue ActiveModel
-pub fn new_test_match_queue(request_id: &str) -> match_queue::ActiveModel {
+pub fn new_test_match_queue(request_id: Uuid) -> match_queue::ActiveModel {
     let now = Utc::now();
     match_queue::ActiveModel {
         id: Set(Uuid::new_v4()),
-        request_id: Set(request_id.to_string()),
+        request_id: Set(request_id),
         status: Set(match_queue::QueueStatus::Pending),
         priority: Set(0),
         attempts: Set(0),
@@ -316,7 +316,7 @@ pub fn new_test_match_queue(request_id: &str) -> match_queue::ActiveModel {
 pub fn new_test_medication_mapping(arabic: &str, english: &str) -> medication_mapping::ActiveModel {
     let now = Utc::now();
     medication_mapping::ActiveModel {
-        id: Set(Uuid::new_v4().to_string()),
+        id: Set(Uuid::new_v4()),
         arabic_name: Set(arabic.to_string()),
         english_name: Set(english.to_string()),
         synonyms: Set(None),

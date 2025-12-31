@@ -5,6 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::*;
+use uuid::Uuid;
 
 use crate::entity::review_queue::{self, Entity as ReviewQueue, ReviewStatus};
 use crate::traits::{ReviewQueueRepository, ReviewQueueStats};
@@ -28,10 +29,8 @@ impl ReviewQueueRepository for SeaOrmReviewQueueRepo {
         active.insert(&*self.db).await.map_err(Error::from)
     }
 
-    async fn get_by_id(&self, id: &str) -> Result<Option<review_queue::Model>> {
-        let uuid = uuid::Uuid::parse_str(id)
-            .map_err(|_| Error::Validation(format!("Invalid UUID: {}", id)))?;
-        ReviewQueue::find_by_id(uuid)
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<review_queue::Model>> {
+        ReviewQueue::find_by_id(id)
             .one(&*self.db)
             .await
             .map_err(Error::from)
@@ -66,12 +65,9 @@ impl ReviewQueueRepository for SeaOrmReviewQueueRepo {
 
     async fn update_status(
         &self,
-        params: crate::params::UpdateReviewStatusParams<'_>,
+        params: crate::params::UpdateReviewStatusParams,
     ) -> Result<review_queue::Model> {
-        let uuid = uuid::Uuid::parse_str(params.id)
-            .map_err(|_| Error::Validation(format!("Invalid UUID: {}", params.id)))?;
-
-        let item = ReviewQueue::find_by_id(uuid)
+        let item = ReviewQueue::find_by_id(params.id)
             .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Review item not found: {}", params.id)))?;
@@ -122,7 +118,7 @@ impl ReviewQueueRepository for SeaOrmReviewQueueRepo {
             .map_err(Error::from)
     }
 
-    async fn exists_for_message(&self, raw_message_id: &str) -> Result<bool> {
+    async fn exists_for_message(&self, raw_message_id: Uuid) -> Result<bool> {
         let count = ReviewQueue::find()
             .filter(review_queue::Column::RawMessageId.eq(raw_message_id))
             .count(&*self.db)

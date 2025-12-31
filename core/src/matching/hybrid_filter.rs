@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::domain::MedicationMapping;
 use crate::matching::{arabic, cosine_similarity};
@@ -321,7 +322,7 @@ impl HybridMappingFilter {
     pub fn map_to_mappings(map: &HashMap<String, String>) -> Vec<MedicationMapping> {
         map.iter()
             .map(|(arabic, english)| MedicationMapping {
-                id: String::new(),
+                id: Uuid::new_v4(),
                 arabic_name: arabic.clone(),
                 english_name: english.clone(),
                 synonyms: None,
@@ -377,7 +378,7 @@ mod tests {
         let now = Utc::now();
         vec![
             MedicationMapping {
-                id: "1".to_string(),
+                id: Uuid::new_v4(),
                 arabic_name: "بروفين".to_string(),
                 english_name: "Brufen".to_string(),
                 synonyms: Some(vec!["Ibuprofen".to_string(), "ايبوبروفين".to_string()]),
@@ -386,7 +387,7 @@ mod tests {
                 updated_at: now,
             },
             MedicationMapping {
-                id: "2".to_string(),
+                id: Uuid::new_v4(),
                 arabic_name: "بنادول".to_string(),
                 english_name: "Panadol".to_string(),
                 synonyms: Some(vec!["Paracetamol".to_string()]),
@@ -395,7 +396,7 @@ mod tests {
                 updated_at: now,
             },
             MedicationMapping {
-                id: "3".to_string(),
+                id: Uuid::new_v4(),
                 arabic_name: "أوجمنتين".to_string(),
                 english_name: "Augmentin".to_string(),
                 synonyms: None,
@@ -404,7 +405,7 @@ mod tests {
                 updated_at: now,
             },
             MedicationMapping {
-                id: "4".to_string(),
+                id: Uuid::new_v4(),
                 arabic_name: "فلاجيل".to_string(),
                 english_name: "Flagyl".to_string(),
                 synonyms: None,

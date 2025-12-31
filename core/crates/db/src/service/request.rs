@@ -1,6 +1,7 @@
 //! Request Service - Medication demand request management
 
 use sea_orm::{prelude::Expr, *};
+use uuid::Uuid;
 
 use crate::entity::offer::Status;
 use crate::entity::request::{self, Entity as Request};
@@ -19,7 +20,7 @@ impl RequestService {
     }
 
     /// Get request by ID
-    pub async fn get_by_id(db: &DatabaseConnection, id: &str) -> Result<Option<request::Model>> {
+    pub async fn get_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<request::Model>> {
         Request::find_by_id(id).one(db).await.map_err(Error::from)
     }
 
@@ -115,7 +116,7 @@ impl RequestService {
     /// Update request status
     pub async fn update_status(
         db: &DatabaseConnection,
-        id: &str,
+        id: Uuid,
         status: Status,
     ) -> Result<request::Model> {
         let request = Request::find_by_id(id)
@@ -130,17 +131,17 @@ impl RequestService {
     }
 
     /// Mark request as matched
-    pub async fn mark_matched(db: &DatabaseConnection, id: &str) -> Result<request::Model> {
+    pub async fn mark_matched(db: &DatabaseConnection, id: Uuid) -> Result<request::Model> {
         Self::update_status(db, id, Status::Matched).await
     }
 
     /// Mark request as expired
-    pub async fn mark_expired(db: &DatabaseConnection, id: &str) -> Result<request::Model> {
+    pub async fn mark_expired(db: &DatabaseConnection, id: Uuid) -> Result<request::Model> {
         Self::update_status(db, id, Status::Expired).await
     }
 
     /// Mark request as duplicate
-    pub async fn mark_duplicate(db: &DatabaseConnection, id: &str) -> Result<request::Model> {
+    pub async fn mark_duplicate(db: &DatabaseConnection, id: Uuid) -> Result<request::Model> {
         Self::update_status(db, id, Status::Duplicate).await
     }
 
@@ -158,7 +159,7 @@ impl RequestService {
     }
 
     /// Delete a request
-    pub async fn delete(db: &DatabaseConnection, id: &str) -> Result<bool> {
+    pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool> {
         let result = Request::delete_by_id(id).exec(db).await?;
         Ok(result.rows_affected > 0)
     }

@@ -4,89 +4,95 @@
 //! following best Rust practices for API design.
 
 use chrono::Duration;
+use uuid::Uuid;
 
 use super::entity::common::MatchStatus;
 use super::entity::review_queue::ReviewStatus;
 
 /// Parameters for updating match status
 #[derive(Debug, Clone)]
-pub struct UpdateMatchStatusParams<'a> {
+pub struct UpdateMatchStatusParams {
     /// Match ID to update
-    pub id: &'a str,
+    pub id: Uuid,
     /// New status
     pub status: MatchStatus,
     /// Who performed the match (operator ID or "AUTO")
-    pub matched_by: &'a str,
+    pub matched_by: String,
     /// Optional notes about the status change
-    pub notes: &'a str,
+    pub notes: String,
 }
 
-impl<'a> UpdateMatchStatusParams<'a> {
-    pub fn new(id: &'a str, status: MatchStatus, matched_by: &'a str, notes: &'a str) -> Self {
+impl UpdateMatchStatusParams {
+    pub fn new(
+        id: Uuid,
+        status: MatchStatus,
+        matched_by: impl Into<String>,
+        notes: impl Into<String>,
+    ) -> Self {
         Self {
             id,
             status,
-            matched_by,
-            notes,
+            matched_by: matched_by.into(),
+            notes: notes.into(),
         }
     }
 
     /// Create params for auto-confirmation
-    pub fn auto_confirm(id: &'a str) -> Self {
+    pub fn auto_confirm(id: Uuid) -> Self {
         Self {
             id,
             status: MatchStatus::Confirmed,
-            matched_by: "AUTO",
-            notes: "Auto-confirmed by matching engine",
+            matched_by: "AUTO".to_string(),
+            notes: "Auto-confirmed by matching engine".to_string(),
         }
     }
 }
 
 /// Parameters for updating review queue status
 #[derive(Debug, Clone)]
-pub struct UpdateReviewStatusParams<'a> {
+pub struct UpdateReviewStatusParams {
     /// Review item ID
-    pub id: &'a str,
+    pub id: Uuid,
     /// New status
     pub status: ReviewStatus,
     /// Who reviewed the item
-    pub reviewed_by: &'a str,
+    pub reviewed_by: String,
     /// Optional notes
-    pub notes: Option<&'a str>,
+    pub notes: Option<String>,
 }
 
-impl<'a> UpdateReviewStatusParams<'a> {
+impl UpdateReviewStatusParams {
     pub fn new(
-        id: &'a str,
+        id: Uuid,
         status: ReviewStatus,
-        reviewed_by: &'a str,
-        notes: Option<&'a str>,
+        reviewed_by: impl Into<String>,
+        notes: Option<String>,
     ) -> Self {
         Self {
             id,
             status,
-            reviewed_by,
+            reviewed_by: reviewed_by.into(),
             notes,
         }
     }
 
     /// Create approve params
-    pub fn approve(id: &'a str, reviewed_by: &'a str) -> Self {
+    pub fn approve(id: Uuid, reviewed_by: impl Into<String>) -> Self {
         Self {
             id,
             status: ReviewStatus::Approved,
-            reviewed_by,
+            reviewed_by: reviewed_by.into(),
             notes: None,
         }
     }
 
     /// Create reject params with reason
-    pub fn reject(id: &'a str, reviewed_by: &'a str, reason: &'a str) -> Self {
+    pub fn reject(id: Uuid, reviewed_by: impl Into<String>, reason: impl Into<String>) -> Self {
         Self {
             id,
             status: ReviewStatus::Rejected,
-            reviewed_by,
-            notes: Some(reason),
+            reviewed_by: reviewed_by.into(),
+            notes: Some(reason.into()),
         }
     }
 }

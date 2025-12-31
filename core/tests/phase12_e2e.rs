@@ -18,7 +18,7 @@ use pharma_core::ws::WsEvent;
 /// Create a test raw message
 fn create_raw_message() -> RawMessage {
     RawMessage {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: uuid::Uuid::new_v4(),
         external_id: Some(uuid::Uuid::new_v4().to_string()),
         group_jid: "pharmacy-group@g.us".to_string(),
         group_name: "Pharmacy Exchange".to_string(),
@@ -40,8 +40,8 @@ fn create_raw_message() -> RawMessage {
 fn create_offer() -> Offer {
     let now = Utc::now();
     Offer {
-        id: uuid::Uuid::new_v4().to_string(),
-        raw_message_id: uuid::Uuid::new_v4().to_string(),
+        id: uuid::Uuid::new_v4(),
+        raw_message_id: uuid::Uuid::new_v4(),
         source_phone: "+201234567890".to_string(),
         source_name: Some("Test Seller".to_string()),
         source_group: "pharmacy-group@g.us".to_string(),
@@ -68,8 +68,8 @@ fn create_offer() -> Offer {
 fn create_matching_request() -> Request {
     let now = Utc::now();
     Request {
-        id: uuid::Uuid::new_v4().to_string(),
-        raw_message_id: uuid::Uuid::new_v4().to_string(),
+        id: uuid::Uuid::new_v4(),
+        raw_message_id: uuid::Uuid::new_v4(),
         source_phone: "+201098765432".to_string(),
         source_name: Some("Test Buyer".to_string()),
         source_group: "pharmacy-group@g.us".to_string(),
@@ -93,9 +93,9 @@ fn create_matching_request() -> Request {
 /// Create a match between offer and request
 fn create_match(offer: &Offer, request: &Request, score: f64) -> Match {
     Match {
-        id: uuid::Uuid::new_v4().to_string(),
-        offer_id: offer.id.clone(),
-        request_id: request.id.clone(),
+        id: uuid::Uuid::new_v4(),
+        offer_id: offer.id,
+        request_id: request.id,
         score,
         reasoning: Some(format!(
             "Medication match: {} vs {}",
@@ -118,7 +118,7 @@ fn create_match(offer: &Offer, request: &Request, score: f64) -> Match {
 fn test_e2e_message_to_match_flow() {
     // Step 1: Create raw message
     let raw_message = create_raw_message();
-    assert!(!raw_message.id.is_empty());
+    assert!(!raw_message.id.to_string().is_empty());
     assert!(raw_message.processed_at.is_none());
 
     // Step 2: Parse into offer

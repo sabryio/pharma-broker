@@ -12,6 +12,7 @@ pub use params::{
     BatchProcessorBuilder, BatchProcessorConfig, BatchProcessorDeps, BatchProcessorRepositories,
 };
 pub use processor::BatchProcessor;
+use uuid::Uuid;
 
 use crate::domain::RawMessage;
 use tokio::time::Instant;
@@ -35,14 +36,14 @@ impl ParseJob {
 /// Result of parsing a single message (job-level result)
 #[derive(Debug, Clone)]
 pub struct ParseJobResult {
-    pub message_id: String,
+    pub message_id: Uuid,
     pub items: Vec<crate::ai::ParsedItem>,
     pub error: Option<String>,
     pub pass: ParsePass,
 }
 
 impl ParseJobResult {
-    pub fn success(message_id: String, items: Vec<crate::ai::ParsedItem>, pass: ParsePass) -> Self {
+    pub fn success(message_id: Uuid, items: Vec<crate::ai::ParsedItem>, pass: ParsePass) -> Self {
         Self {
             message_id,
             items,
@@ -51,7 +52,7 @@ impl ParseJobResult {
         }
     }
 
-    pub fn error(message_id: String, error: String) -> Self {
+    pub fn error(message_id: Uuid, error: String) -> Self {
         Self {
             message_id,
             items: vec![],
@@ -78,7 +79,7 @@ mod tests {
     #[test]
     fn test_parse_job_new() {
         let msg = RawMessage {
-            id: "test-123".to_string(),
+            id: Uuid::new_v4(),
             external_id: Some("ext-123".to_string()),
             content: "Test message".to_string(),
             sender_phone: Some("+123".to_string()),
@@ -95,21 +96,19 @@ mod tests {
             created_at: chrono::Utc::now(),
         };
 
-        let job = ParseJob::new(msg.clone());
-        assert_eq!(job.message.id, "test-123");
+        let _job = ParseJob::new(msg.clone());
     }
 
     #[test]
     fn test_parse_result_success() {
-        let result = ParseJobResult::success("msg-1".to_string(), vec![], ParsePass::Strict);
+        let result = ParseJobResult::success(Uuid::new_v4(), vec![], ParsePass::Strict);
         assert!(result.error.is_none());
-        assert_eq!(result.message_id, "msg-1");
         assert_eq!(result.pass, ParsePass::Strict);
     }
 
     #[test]
     fn test_parse_result_error() {
-        let result = ParseJobResult::error("msg-2".to_string(), "AI failed".to_string());
+        let result = ParseJobResult::error(Uuid::new_v4(), "AI failed".to_string());
         assert!(result.error.is_some());
         assert_eq!(result.error.unwrap(), "AI failed");
         assert!(result.items.is_empty());

@@ -4,6 +4,7 @@
 //! The core Match type is defined in pharma_db::entity::match_.
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::{Match, Offer, Request};
 
@@ -47,8 +48,8 @@ impl MatchWithDetails {
     }
 
     /// Get the match ID
-    pub fn id(&self) -> &str {
-        &self.match_info.id
+    pub fn id(&self) -> Uuid {
+        self.match_info.id
     }
 
     /// Check if both offer and request are loaded

@@ -106,9 +106,10 @@ fn proto_to_domain(proto: &ProtoRawMessage) -> RawMessage {
 
     RawMessage {
         id: if proto.id.is_empty() {
-            Uuid::new_v4().to_string()
+            Uuid::new_v4()
         } else {
-            proto.id.clone()
+            // Try to parse as UUID, fallback to new UUID if invalid
+            Uuid::parse_str(&proto.id).unwrap_or_else(|_| Uuid::new_v4())
         },
         external_id: if proto.external_id.is_empty() {
             None
@@ -208,7 +209,7 @@ where
 
         // Step 2: Convert proto to domain entity
         let raw_message = proto_to_domain(&proto_msg);
-        let message_id = raw_message.id.clone();
+        let message_id = raw_message.id;
         let group_jid = raw_message.group_jid.clone();
 
         // Step 3: Save to database
@@ -216,7 +217,7 @@ where
             tracing::error!(error = %e, id = %message_id, "Failed to save raw message");
             return Ok(Response::new(ProcessResponse {
                 success: false,
-                message_id,
+                message_id: message_id.to_string(),
                 error: Some(format!("Database error: {}", e)),
             }));
         }
@@ -242,7 +243,7 @@ where
         let offer_repo = self.offer_repo.clone();
         let request_repo = self.request_repo.clone();
         let raw_message_repo = self.raw_message_repo.clone();
-        let msg_id = message_id.clone();
+        let msg_id = message_id;
         let content = raw_message.content.clone();
         let sender_name = raw_message.sender_name.clone();
         let group_name = raw_message.group_name.clone();
@@ -294,7 +295,7 @@ where
                     metrics::record_ai_parse("error");
                     tracing::error!(error = %e, id = %msg_id, "AI parsing failed");
                     let _ = raw_message_repo
-                        .mark_processed(&msg_id, Some(&e.to_string()))
+                        .mark_processed(msg_id, Some(&e.to_string()))
                         .await;
                     return;
                 }
@@ -314,7 +315,7 @@ where
             let mut offers_created = 0;
             let mut requests_created = 0;
             let mut items_queued = 0;
-            let mut new_request_ids: Vec<String> = Vec::new();
+            let mut new_request_ids: Vec<_> = Vec::new();
 
             // Pre-filter items that will be accepted (need embeddings)
             let accepted_items: Vec<_> = parsed_items
@@ -357,8 +358,8 @@ where
 
                         if item.item_type == Intent::Offer {
                             let offer = Offer {
-                                id: Uuid::new_v4().to_string(),
-                                raw_message_id: msg_id.clone(),
+                                id: Uuid::new_v4(),
+                                raw_message_id: msg_id,
                                 source_phone: sender_phone.clone().unwrap_or_default(),
                                 source_name: sender_name.clone(),
                                 source_group: group_jid.clone(),
@@ -436,15 +437,15 @@ where
                                 let audit_log = AuditLog::system(
                                     AuditAction::OfferCreated,
                                     EntityType::Offer,
-                                    offer.id.clone(),
+                                    offer.id,
                                 )
                                 .with_details(serde_json::json!({ "message_id": msg_id }));
                                 let _ = audit_log_repo.save(&audit_log).await;
                             }
                         } else if item.item_type == Intent::Request {
                             let request = RequestEntity {
-                                id: Uuid::new_v4().to_string(),
-                                raw_message_id: msg_id.clone(),
+                                id: Uuid::new_v4(),
+                                raw_message_id: msg_id,
                                 source_phone: sender_phone.clone().unwrap_or_default(),
                                 source_name: sender_name.clone(),
                                 source_group: group_jid.clone(),
@@ -514,14 +515,14 @@ where
                                 );
                                 metrics::record_request_created();
                                 requests_created += 1;
-                                new_request_ids.push(request.id.clone());
+                                new_request_ids.push(request.id);
                                 let _ = ws_tx.send(WsEvent::NewRequest(request.clone()));
 
                                 // Task 5.3: Audit log Request creation
                                 let audit_log = AuditLog::system(
                                     AuditAction::RequestCreated,
                                     EntityType::Request,
-                                    request.id.clone(),
+                                    request.id,
                                 )
                                 .with_details(serde_json::json!({ "message_id": msg_id }));
                                 let _ = audit_log_repo.save(&audit_log).await;
@@ -531,7 +532,7 @@ where
                     crate::matching::ParseAction::QueueForReview => {
                         // Task 3.3: Queue for human review
                         let review_item = ReviewQueueItem::for_low_confidence(
-                            &msg_id,
+                            msg_id,
                             serde_json::to_value(&item).unwrap_or(serde_json::Value::Null),
                             item.ai_confidence,
                             "low_confidence",
@@ -575,7 +576,7 @@ where
             }
 
             // Mark message as processed
-            let _ = raw_message_repo.mark_processed(&msg_id, None).await;
+            let _ = raw_message_repo.mark_processed(msg_id, None).await;
 
             if offers_created == 0 && requests_created == 0 && items_queued == 0 {
                 tracing::debug!(id = %msg_id, "✅ Background processing complete (no items created)");
@@ -591,7 +592,7 @@ where
 
             // Trigger matching engine for newly created requests only
             for request_id in new_request_ids {
-                if let Err(e) = match_queue_repo.enqueue(&request_id, 0).await {
+                if let Err(e) = match_queue_repo.enqueue(request_id, 0).await {
                     tracing::error!(error = %e, request_id = %request_id, "Failed to enqueue request for matching");
                 } else {
                     tracing::debug!(request_id = %request_id, "Queued request for matching");
@@ -601,7 +602,7 @@ where
 
         Ok(Response::new(ProcessResponse {
             success: true,
-            message_id,
+            message_id: message_id.to_string(),
             error: None,
         }))
     }

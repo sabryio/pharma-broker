@@ -3,14 +3,14 @@
 //! Type-safe repository interfaces for database operations.
 //! These traits are designed to be compatible with the core domain types.
 //!
-//! ## ID Newtypes
-//! Repository methods accept `&str` for ID parameters to maintain dyn-compatibility.
-//! Call sites can use ID newtypes (OfferId, RequestId, etc.) by calling `.as_ref()`
-//! or `.as_str()` when passing them to repository methods.
+//! ## ID Types
+//! Repository methods accept `Uuid` for ID parameters where entities use UUID primary keys.
+//! For entities with string IDs (like Group with JID), methods accept `&str`.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::Result;
 use crate::params::{
@@ -43,7 +43,7 @@ pub use crate::entity::common::{ItemStatus, MatchStatus, UrgencyLevel};
 #[async_trait]
 pub trait OfferRepository: Send + Sync {
     /// Get an offer by its ID
-    async fn get_by_id(&self, id: &str) -> Result<Option<OfferModel>>;
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<OfferModel>>;
     async fn get_active(&self, limit: i64, offset: i64) -> Result<Vec<OfferModel>>;
     async fn search(&self, query: &str, limit: i64, offset: i64) -> Result<Vec<OfferModel>>;
     async fn count_active(&self) -> Result<i64>;
@@ -53,7 +53,7 @@ pub trait OfferRepository: Send + Sync {
     ) -> Result<Option<OfferModel>>;
     async fn save(&self, offer: &OfferModel) -> Result<OfferModel>;
     /// Update the status of an offer by its ID
-    async fn update_status(&self, id: &str, status: ItemStatus) -> Result<OfferModel>;
+    async fn update_status(&self, id: Uuid, status: ItemStatus) -> Result<OfferModel>;
     async fn find_semantic_duplicates(
         &self,
         params: SemanticDuplicateParams<'_>,
@@ -65,7 +65,7 @@ pub trait OfferRepository: Send + Sync {
 #[async_trait]
 pub trait RequestRepository: Send + Sync {
     /// Get a request by its ID
-    async fn get_by_id(&self, id: &str) -> Result<Option<RequestModel>>;
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<RequestModel>>;
     async fn get_active(&self, limit: i64, offset: i64) -> Result<Vec<RequestModel>>;
     async fn search(&self, query: &str, limit: i64, offset: i64) -> Result<Vec<RequestModel>>;
     async fn count_active(&self) -> Result<i64>;
@@ -75,7 +75,7 @@ pub trait RequestRepository: Send + Sync {
     ) -> Result<Option<RequestModel>>;
     async fn save(&self, request: &RequestModel) -> Result<RequestModel>;
     /// Update the status of a request by its ID
-    async fn update_status(&self, id: &str, status: ItemStatus) -> Result<RequestModel>;
+    async fn update_status(&self, id: Uuid, status: ItemStatus) -> Result<RequestModel>;
     async fn find_semantic_duplicates(
         &self,
         params: SemanticDuplicateParams<'_>,
@@ -87,13 +87,13 @@ pub trait RequestRepository: Send + Sync {
 #[async_trait]
 pub trait MatchRepository: Send + Sync {
     /// Get a match by its ID
-    async fn get_by_id(&self, id: &str) -> Result<Option<MatchModel>>;
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<MatchModel>>;
     async fn get_pending(&self, limit: i64, offset: i64) -> Result<Vec<MatchModel>>;
     async fn count_pending(&self) -> Result<i64>;
     /// Check if a match exists between an offer and request
-    async fn exists(&self, offer_id: &str, request_id: &str) -> Result<bool>;
+    async fn exists(&self, offer_id: Uuid, request_id: Uuid) -> Result<bool>;
     async fn save(&self, m: &MatchModel) -> Result<MatchModel>;
-    async fn update_status(&self, params: UpdateMatchStatusParams<'_>) -> Result<MatchModel>;
+    async fn update_status(&self, params: UpdateMatchStatusParams) -> Result<MatchModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
 }
 
@@ -102,10 +102,10 @@ pub trait MatchRepository: Send + Sync {
 pub trait RawMessageRepository: Send + Sync {
     async fn save(&self, message: &RawMessageModel) -> Result<RawMessageModel>;
     /// Get a raw message by its ID
-    async fn get_by_id(&self, id: &str) -> Result<Option<RawMessageModel>>;
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<RawMessageModel>>;
     async fn get_unprocessed(&self, limit: i64) -> Result<Vec<RawMessageModel>>;
     /// Mark a message as processed
-    async fn mark_processed(&self, id: &str, error: Option<&str>) -> Result<RawMessageModel>;
+    async fn mark_processed(&self, id: Uuid, error: Option<&str>) -> Result<RawMessageModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
 }
 
@@ -134,7 +134,7 @@ pub trait GroupRepository: Send + Sync {
 pub trait FeedbackRepository: Send + Sync {
     async fn save(&self, record: &FeedbackModel) -> Result<FeedbackModel>;
     /// Get feedback records for a match
-    async fn get_by_match(&self, match_id: &str) -> Result<Vec<FeedbackModel>>;
+    async fn get_by_match(&self, match_id: Uuid) -> Result<Vec<FeedbackModel>>;
     async fn get_by_date_range(
         &self,
         start: DateTime<Utc>,
@@ -143,7 +143,7 @@ pub trait FeedbackRepository: Send + Sync {
     async fn get_stats(&self, start: DateTime<Utc>, end: DateTime<Utc>) -> Result<FeedbackStats>;
     async fn count(&self) -> Result<i64>;
     /// Get a single feedback record by match ID
-    async fn get_by_match_id(&self, match_id: &str) -> Result<Option<FeedbackModel>>;
+    async fn get_by_match_id(&self, match_id: Uuid) -> Result<Option<FeedbackModel>>;
 }
 
 /// Feedback statistics for learning
@@ -182,7 +182,7 @@ pub trait WeightHistoryRepository: Send + Sync {
     async fn get_current(&self) -> Result<Option<WeightHistoryModel>>;
     async fn get_history(&self, limit: i64) -> Result<Vec<WeightHistoryModel>>;
     /// Get weight history by ID
-    async fn get_by_id(&self, id: &str) -> Result<Option<WeightHistoryModel>>;
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<WeightHistoryModel>>;
     async fn count(&self) -> Result<i64>;
 }
 
@@ -191,7 +191,7 @@ pub trait WeightHistoryRepository: Send + Sync {
 pub trait ReviewQueueRepository: Send + Sync {
     async fn save(&self, item: &ReviewQueueModel) -> Result<ReviewQueueModel>;
     /// Get a review queue item by ID
-    async fn get_by_id(&self, id: &str) -> Result<Option<ReviewQueueModel>>;
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<ReviewQueueModel>>;
     async fn get_pending(&self, limit: i64, offset: i64) -> Result<Vec<ReviewQueueModel>>;
     async fn get_by_status(
         &self,
@@ -199,12 +199,11 @@ pub trait ReviewQueueRepository: Send + Sync {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<ReviewQueueModel>>;
-    async fn update_status(&self, params: UpdateReviewStatusParams<'_>)
-    -> Result<ReviewQueueModel>;
+    async fn update_status(&self, params: UpdateReviewStatusParams) -> Result<ReviewQueueModel>;
     async fn get_stats(&self) -> Result<ReviewQueueStats>;
     async fn count_pending(&self) -> Result<i64>;
     /// Check if a review queue item exists for a message
-    async fn exists_for_message(&self, raw_message_id: &str) -> Result<bool>;
+    async fn exists_for_message(&self, raw_message_id: Uuid) -> Result<bool>;
 }
 
 /// Review queue statistics
@@ -256,10 +255,10 @@ pub trait AuditLogRepository: Send + Sync {
 #[async_trait]
 pub trait MatchQueueRepository: Send + Sync {
     /// Enqueue a request for matching
-    async fn enqueue(&self, request_id: &str, priority: i32) -> Result<MatchQueueModel>;
+    async fn enqueue(&self, request_id: Uuid, priority: i32) -> Result<MatchQueueModel>;
     async fn fetch_batch(&self, limit: i64) -> Result<Vec<MatchQueueModel>>;
-    async fn complete(&self, id: &uuid::Uuid) -> Result<()>;
-    async fn fail(&self, id: &uuid::Uuid, error: &str) -> Result<()>;
+    async fn complete(&self, id: Uuid) -> Result<()>;
+    async fn fail(&self, id: Uuid, error: &str) -> Result<()>;
     async fn count_pending(&self) -> Result<i64>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
 }

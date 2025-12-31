@@ -23,7 +23,7 @@ impl SeaOrmMedicationMappingRepo {
 #[async_trait]
 impl MedicationMappingRepository for SeaOrmMedicationMappingRepo {
     async fn save(&self, model: &medication_mapping::Model) -> Result<medication_mapping::Model> {
-        let existing = MedicationMapping::find_by_id(&model.id)
+        let existing = MedicationMapping::find_by_id(model.id)
             .one(&*self.db)
             .await?;
         let active: medication_mapping::ActiveModel = model.clone().into();

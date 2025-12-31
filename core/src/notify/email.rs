@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use tracing::{info, warn};
+use uuid::Uuid;
 
 use crate::Result;
 use crate::domain::Match;
@@ -209,7 +210,7 @@ impl MatchNotifier for EmailNotifier {
         self.send_email(&subject, &html).await
     }
 
-    async fn notify_auto_confirmed(&self, match_id: &str, score: f64) -> Result<()> {
+    async fn notify_auto_confirmed(&self, match_id: Uuid, score: f64) -> Result<()> {
         let subject = format!(
             "[PharmaBroker] Match Auto-Confirmed (Score: {:.0}%)",
             score * 100.0
@@ -228,7 +229,7 @@ impl MatchNotifier for EmailNotifier {
         self.send_email(&subject, &html).await
     }
 
-    async fn notify_queued_for_review(&self, match_id: &str, reason: &str) -> Result<()> {
+    async fn notify_queued_for_review(&self, match_id: Uuid, reason: &str) -> Result<()> {
         let subject = "[PharmaBroker] Match Queued for Review".to_string();
         let html = format!(
             "<h2>👀 Match Queued for Review</h2><p>Reason: {}</p><p>ID: {}</p>",
@@ -247,9 +248,9 @@ mod tests {
 
     fn test_match() -> Match {
         Match {
-            id: "match-123".to_string(),
-            offer_id: "offer-456".to_string(),
-            request_id: "req-789".to_string(),
+            id: Uuid::new_v4(),
+            offer_id: Uuid::new_v4(),
+            request_id: Uuid::new_v4(),
             score: 0.85,
             reasoning: Some("High similarity".to_string()),
             matched_by: Some("system".to_string()),

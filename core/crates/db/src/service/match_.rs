@@ -1,6 +1,7 @@
 //! Match Service - Offer-Request match management
 
 use sea_orm::*;
+use uuid::Uuid;
 
 use crate::entity::match_::{self, Entity as Match, MatchStatus};
 use crate::{Error, Result};
@@ -18,7 +19,7 @@ impl MatchService {
     }
 
     /// Get match by ID
-    pub async fn get_by_id(db: &DatabaseConnection, id: &str) -> Result<Option<match_::Model>> {
+    pub async fn get_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<match_::Model>> {
         Match::find_by_id(id).one(db).await.map_err(Error::from)
     }
 
@@ -73,7 +74,7 @@ impl MatchService {
     }
 
     /// Confirm a match
-    pub async fn confirm(db: &DatabaseConnection, id: &str) -> Result<match_::Model> {
+    pub async fn confirm(db: &DatabaseConnection, id: Uuid) -> Result<match_::Model> {
         let m = Match::find_by_id(id)
             .one(db)
             .await?
@@ -88,7 +89,7 @@ impl MatchService {
     /// Reject a match
     pub async fn reject(
         db: &DatabaseConnection,
-        id: &str,
+        id: Uuid,
         notes: Option<&str>,
     ) -> Result<match_::Model> {
         let m = Match::find_by_id(id)
@@ -105,7 +106,7 @@ impl MatchService {
     }
 
     /// Expire a match
-    pub async fn expire(db: &DatabaseConnection, id: &str) -> Result<match_::Model> {
+    pub async fn expire(db: &DatabaseConnection, id: Uuid) -> Result<match_::Model> {
         let m = Match::find_by_id(id)
             .one(db)
             .await?
@@ -135,7 +136,7 @@ impl MatchService {
     }
 
     /// Delete a match
-    pub async fn delete(db: &DatabaseConnection, id: &str) -> Result<bool> {
+    pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool> {
         let result = Match::delete_by_id(id).exec(db).await?;
         Ok(result.rows_affected > 0)
     }

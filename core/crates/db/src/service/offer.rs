@@ -1,6 +1,7 @@
 //! Offer Service - Medication supply offer management
 
 use sea_orm::{prelude::Expr, *};
+use uuid::Uuid;
 
 use crate::entity::offer::{self, Entity as Offer, Status};
 use crate::{Error, Result};
@@ -15,7 +16,7 @@ impl OfferService {
     }
 
     /// Get offer by ID
-    pub async fn get_by_id(db: &DatabaseConnection, id: &str) -> Result<Option<offer::Model>> {
+    pub async fn get_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<offer::Model>> {
         Offer::find_by_id(id).one(db).await.map_err(Error::from)
     }
 
@@ -112,7 +113,7 @@ impl OfferService {
     /// Update offer status
     pub async fn update_status(
         db: &DatabaseConnection,
-        id: &str,
+        id: Uuid,
         status: Status,
     ) -> Result<offer::Model> {
         let offer = Offer::find_by_id(id)
@@ -127,17 +128,17 @@ impl OfferService {
     }
 
     /// Mark offer as matched
-    pub async fn mark_matched(db: &DatabaseConnection, id: &str) -> Result<offer::Model> {
+    pub async fn mark_matched(db: &DatabaseConnection, id: Uuid) -> Result<offer::Model> {
         Self::update_status(db, id, Status::Matched).await
     }
 
     /// Mark offer as expired
-    pub async fn mark_expired(db: &DatabaseConnection, id: &str) -> Result<offer::Model> {
+    pub async fn mark_expired(db: &DatabaseConnection, id: Uuid) -> Result<offer::Model> {
         Self::update_status(db, id, Status::Expired).await
     }
 
     /// Mark offer as duplicate
-    pub async fn mark_duplicate(db: &DatabaseConnection, id: &str) -> Result<offer::Model> {
+    pub async fn mark_duplicate(db: &DatabaseConnection, id: Uuid) -> Result<offer::Model> {
         Self::update_status(db, id, Status::Duplicate).await
     }
 
@@ -155,7 +156,7 @@ impl OfferService {
     }
 
     /// Delete an offer
-    pub async fn delete(db: &DatabaseConnection, id: &str) -> Result<bool> {
+    pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool> {
         let result = Offer::delete_by_id(id).exec(db).await?;
         Ok(result.rows_affected > 0)
     }

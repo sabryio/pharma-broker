@@ -8,13 +8,14 @@ use tokio::sync::broadcast;
 use chrono::Utc;
 use pharma_core::domain::{Match, MatchStatus};
 use pharma_core::ws::WsEvent;
+use uuid::Uuid;
 
 /// Create a test match for WebSocket events
 fn create_test_match() -> Match {
     Match {
-        id: "match-123".to_string(),
-        offer_id: "offer-1".to_string(),
-        request_id: "request-1".to_string(),
+        id: Uuid::new_v4(),
+        offer_id: Uuid::new_v4(),
+        request_id: Uuid::new_v4(),
         score: 0.85,
         reasoning: Some("High medication similarity".to_string()),
         matched_by: Some("AUTO".to_string()),
@@ -40,7 +41,7 @@ async fn test_websocket_broadcast() {
     let event2 = rx2.recv().await.unwrap();
 
     match event1 {
-        WsEvent::NewMatch(m) => assert_eq!(m.id, "match-123"),
+        WsEvent::NewMatch(m) => assert_eq!(m.id, match_entity.id),
         _ => panic!("Expected NewMatch event"),
     }
 

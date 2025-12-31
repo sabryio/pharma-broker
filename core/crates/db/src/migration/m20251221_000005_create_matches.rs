@@ -18,12 +18,13 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(Matches::Id)
-                            .string_len(36)
+                            .uuid()
                             .not_null()
-                            .primary_key(),
+                            .primary_key()
+                            .default(Expr::cust("gen_random_uuid()")),
                     )
-                    .col(ColumnDef::new(Matches::OfferId).string_len(36).not_null())
-                    .col(ColumnDef::new(Matches::RequestId).string_len(36).not_null())
+                    .col(ColumnDef::new(Matches::OfferId).uuid().not_null())
+                    .col(ColumnDef::new(Matches::RequestId).uuid().not_null())
                     .col(ColumnDef::new(Matches::Score).double().not_null())
                     .col(ColumnDef::new(Matches::Reasoning).text())
                     .col(ColumnDef::new(Matches::MatchedBy).string_len(50))

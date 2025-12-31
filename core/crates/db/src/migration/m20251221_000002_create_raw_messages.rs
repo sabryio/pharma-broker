@@ -15,7 +15,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(RawMessages::Id)
-                            .string_len(36)
+                            .uuid()
                             .not_null()
                             .primary_key(),
                     )

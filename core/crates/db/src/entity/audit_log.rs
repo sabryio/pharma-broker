@@ -92,11 +92,7 @@ impl Model {
     }
 
     /// Create a match rejected audit entry
-    pub fn match_rejected(
-        match_id: impl Into<String>,
-        user_id: impl Into<String>,
-        reason: Option<&str>,
-    ) -> Self {
+    pub fn match_rejected(match_id: Uuid, user_id: Uuid, reason: Option<&str>) -> Self {
         let mut entry = Self::new(
             AuditAction::MatchRejected,
             EntityType::Match,

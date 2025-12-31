@@ -25,7 +25,7 @@ pub enum ReviewStatus {
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: Uuid,
-    pub raw_message_id: String,
+    pub raw_message_id: Uuid,
     #[sea_orm(column_type = "JsonBinary")]
     pub ai_result: serde_json::Value,
     pub confidence: f64,
@@ -45,14 +45,14 @@ impl ActiveModelBehavior for ActiveModel {}
 impl Model {
     /// Create a review queue item for low confidence parse results
     pub fn for_low_confidence(
-        raw_message_id: &str,
+        raw_message_id: Uuid,
         ai_result: serde_json::Value,
         confidence: f64,
         reason: &str,
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
-            raw_message_id: raw_message_id.to_string(),
+            raw_message_id,
             ai_result,
             confidence,
             reason: reason.to_string(),

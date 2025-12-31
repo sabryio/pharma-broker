@@ -22,11 +22,7 @@ impl MigrationTrait for Migration {
                             .primary_key()
                             .default(Expr::cust("gen_random_uuid()")),
                     )
-                    .col(
-                        ColumnDef::new(FeedbackRecords::MatchId)
-                            .string_len(36)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(FeedbackRecords::MatchId).uuid().not_null())
                     .col(ColumnDef::new(FeedbackRecords::UserId).text().not_null())
                     .col(
                         ColumnDef::new(FeedbackRecords::Confirmed)

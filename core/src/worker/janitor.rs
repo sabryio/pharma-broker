@@ -262,6 +262,7 @@ mod tests {
     use chrono::{DateTime, Utc};
     use pharma_db::Result as DbResult;
     use sea_orm::{MockDatabase, MockExecResult};
+    use uuid::Uuid;
     use std::{
         sync::{
             Arc,
@@ -293,13 +294,13 @@ mod tests {
         async fn save(&self, _: &RawMessageModel) -> DbResult<RawMessageModel> {
             unimplemented!()
         }
-        async fn get_by_id(&self, _: &str) -> DbResult<Option<RawMessageModel>> {
+        async fn get_by_id(&self, _: Uuid) -> DbResult<Option<RawMessageModel>> {
             unimplemented!()
         }
         async fn get_unprocessed(&self, _: i64) -> DbResult<Vec<RawMessageModel>> {
             unimplemented!()
         }
-        async fn mark_processed(&self, _: &str, _: Option<&str>) -> DbResult<RawMessageModel> {
+        async fn mark_processed(&self, _: Uuid, _: Option<&str>) -> DbResult<RawMessageModel> {
             unimplemented!()
         }
         async fn delete_before(&self, _: &DateTime<Utc>) -> DbResult<u64> {
@@ -344,7 +345,7 @@ mod tests {
 
     #[async_trait]
     impl OfferRepository for MockRepo {
-        async fn get_by_id(&self, _: &str) -> DbResult<Option<OfferModel>> {
+        async fn get_by_id(&self, _: Uuid) -> DbResult<Option<OfferModel>> {
             unimplemented!()
         }
         async fn get_active(&self, _: i64, _: i64) -> DbResult<Vec<OfferModel>> {
@@ -365,7 +366,7 @@ mod tests {
         async fn save(&self, _: &OfferModel) -> DbResult<OfferModel> {
             unimplemented!()
         }
-        async fn update_status(&self, _: &str, _: ItemStatus) -> DbResult<OfferModel> {
+        async fn update_status(&self, _: Uuid, _: ItemStatus) -> DbResult<OfferModel> {
             unimplemented!()
         }
         async fn find_semantic_duplicates(
@@ -382,7 +383,7 @@ mod tests {
 
     #[async_trait]
     impl RequestRepository for MockRepo {
-        async fn get_by_id(&self, _: &str) -> DbResult<Option<RequestModel>> {
+        async fn get_by_id(&self, _: Uuid) -> DbResult<Option<RequestModel>> {
             unimplemented!()
         }
         async fn get_active(&self, _: i64, _: i64) -> DbResult<Vec<RequestModel>> {
@@ -403,7 +404,7 @@ mod tests {
         async fn save(&self, _: &RequestModel) -> DbResult<RequestModel> {
             unimplemented!()
         }
-        async fn update_status(&self, _: &str, _: ItemStatus) -> DbResult<RequestModel> {
+        async fn update_status(&self, _: Uuid, _: ItemStatus) -> DbResult<RequestModel> {
             unimplemented!()
         }
         async fn find_semantic_duplicates(
@@ -420,7 +421,7 @@ mod tests {
 
     #[async_trait]
     impl MatchRepository for MockRepo {
-        async fn get_by_id(&self, _: &str) -> DbResult<Option<MatchModel>> {
+        async fn get_by_id(&self, _: Uuid) -> DbResult<Option<MatchModel>> {
             unimplemented!()
         }
         async fn get_pending(&self, _: i64, _: i64) -> DbResult<Vec<MatchModel>> {
@@ -429,13 +430,13 @@ mod tests {
         async fn count_pending(&self) -> DbResult<i64> {
             unimplemented!()
         }
-        async fn exists(&self, _: &str, _: &str) -> DbResult<bool> {
+        async fn exists(&self, _: Uuid, _: Uuid) -> DbResult<bool> {
             unimplemented!()
         }
         async fn save(&self, _: &MatchModel) -> DbResult<MatchModel> {
             unimplemented!()
         }
-        async fn update_status(&self, _: UpdateMatchStatusParams<'_>) -> DbResult<MatchModel> {
+        async fn update_status(&self, _: UpdateMatchStatusParams) -> DbResult<MatchModel> {
             unimplemented!()
         }
         async fn delete_before(&self, _: &DateTime<Utc>) -> DbResult<u64> {
@@ -446,16 +447,16 @@ mod tests {
 
     #[async_trait]
     impl MatchQueueRepository for MockRepo {
-        async fn enqueue(&self, _: &str, _: i32) -> DbResult<MatchQueueModel> {
+        async fn enqueue(&self, _: Uuid, _: i32) -> DbResult<MatchQueueModel> {
             unimplemented!()
         }
         async fn fetch_batch(&self, _: i64) -> DbResult<Vec<MatchQueueModel>> {
             unimplemented!()
         }
-        async fn complete(&self, _: &uuid::Uuid) -> DbResult<()> {
+        async fn complete(&self, _: uuid::Uuid) -> DbResult<()> {
             unimplemented!()
         }
-        async fn fail(&self, _: &uuid::Uuid, _: &str) -> DbResult<()> {
+        async fn fail(&self, _: uuid::Uuid, _: &str) -> DbResult<()> {
             unimplemented!()
         }
         async fn count_pending(&self) -> DbResult<i64> {

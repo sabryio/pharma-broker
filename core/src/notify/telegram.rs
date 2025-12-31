@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::Serialize;
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 use crate::Result;
 use crate::domain::Match;
@@ -155,7 +156,7 @@ impl MatchNotifier for TelegramNotifier {
         self.send_message(&message, silent).await
     }
 
-    async fn notify_auto_confirmed(&self, match_id: &str, score: f64) -> Result<()> {
+    async fn notify_auto_confirmed(&self, match_id: Uuid, score: f64) -> Result<()> {
         let message = format!(
             "✅ <b>Match Auto-Confirmed</b>\n\n\
              📊 Score: {:.1}%\n\
@@ -179,7 +180,7 @@ impl MatchNotifier for TelegramNotifier {
         self.send_message(&message, false).await
     }
 
-    async fn notify_queued_for_review(&self, match_id: &str, reason: &str) -> Result<()> {
+    async fn notify_queued_for_review(&self, match_id: Uuid, reason: &str) -> Result<()> {
         let message = format!(
             "👀 <b>Match Queued for Review</b>\n\n\
              📝 Reason: {}\n\
@@ -199,9 +200,9 @@ mod tests {
 
     fn test_match() -> Match {
         Match {
-            id: "match-123".to_string(),
-            offer_id: "offer-456".to_string(),
-            request_id: "req-789".to_string(),
+            id: Uuid::new_v4(),
+            offer_id: Uuid::new_v4(),
+            request_id: Uuid::new_v4(),
             score: 0.85,
             reasoning: Some("High similarity".to_string()),
             matched_by: Some("system".to_string()),

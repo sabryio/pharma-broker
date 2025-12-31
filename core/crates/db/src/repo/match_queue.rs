@@ -5,6 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::*;
+use uuid::Uuid;
 
 use crate::entity::match_queue::{self, Entity as MatchQueue, QueueStatus};
 use crate::traits::MatchQueueRepository;
@@ -23,10 +24,10 @@ impl SeaOrmMatchQueueRepo {
 
 #[async_trait]
 impl MatchQueueRepository for SeaOrmMatchQueueRepo {
-    async fn enqueue(&self, request_id: &str, priority: i32) -> Result<match_queue::Model> {
+    async fn enqueue(&self, request_id: Uuid, priority: i32) -> Result<match_queue::Model> {
         let model = match_queue::ActiveModel {
             id: Set(uuid::Uuid::new_v4()),
-            request_id: Set(request_id.to_string()),
+            request_id: Set(request_id),
             priority: Set(priority),
             status: Set(QueueStatus::Pending),
             attempts: Set(0),
@@ -60,8 +61,8 @@ impl MatchQueueRepository for SeaOrmMatchQueueRepo {
         Ok(items)
     }
 
-    async fn complete(&self, id: &uuid::Uuid) -> Result<()> {
-        let item = MatchQueue::find_by_id(*id)
+    async fn complete(&self, id: uuid::Uuid) -> Result<()> {
+        let item = MatchQueue::find_by_id(id)
             .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Queue item not found: {}", id)))?;
@@ -73,8 +74,8 @@ impl MatchQueueRepository for SeaOrmMatchQueueRepo {
         Ok(())
     }
 
-    async fn fail(&self, id: &uuid::Uuid, error: &str) -> Result<()> {
-        let item = MatchQueue::find_by_id(*id)
+    async fn fail(&self, id: uuid::Uuid, error: &str) -> Result<()> {
+        let item = MatchQueue::find_by_id(id)
             .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Queue item not found: {}", id)))?;

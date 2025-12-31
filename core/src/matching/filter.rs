@@ -439,10 +439,11 @@ impl MatchFilter {
 mod tests {
     use super::*;
     use rstest::rstest;
+    use uuid::Uuid;
 
     fn create_offer(phone: &str, name: &str, age_days: i64) -> Offer {
         Offer {
-            id: "offer-1".to_string(),
+            id: Uuid::new_v4(),
             source_phone: phone.to_string(),
             source_name: Some(name.to_string()),
             created_at: Utc::now() - Duration::days(age_days),
@@ -452,7 +453,7 @@ mod tests {
 
     fn create_request(phone: &str, name: &str) -> Request {
         Request {
-            id: "request-1".to_string(),
+            id: Uuid::new_v4(),
             source_phone: phone.to_string(),
             source_name: Some(name.to_string()),
             ..Default::default()
