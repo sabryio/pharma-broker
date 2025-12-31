@@ -33,11 +33,11 @@ impl Default for WarmStartConfig {
     fn default() -> Self {
         Self {
             prior_weights: Weights {
-                medication: 0.35, // Medication match is most important
-                dosage: 0.25,
-                quantity: 0.15,
-                price: 0.15,
-                recency: 0.10,
+                medication: 0.55, // Medication match is DOMINANT even in cold start
+                dosage: 0.10, // Reduced: was causing false positives (e.g., "12.5mg" matching unrelated meds)
+                quantity: 0.10,
+                price: 0.10,
+                recency: 0.15,
             },
             prior_strength: 50,           // Equivalent to 50 samples
             decay_half_life: 14,          // Prior halves every 2 weeks
@@ -339,7 +339,7 @@ mod tests {
     fn test_default_warm_start_config() {
         let config = WarmStartConfig::default();
 
-        assert!((config.prior_weights.medication - 0.35).abs() < 0.001);
+        assert!((config.prior_weights.medication - 0.55).abs() < 0.001);
         assert_eq!(config.prior_strength, 50);
         assert_eq!(config.decay_half_life, 14);
         assert_eq!(config.min_samples_for_learning, 20);
@@ -362,7 +362,7 @@ mod tests {
         let effective = manager.get_effective_weights(&learned, 10);
 
         // Should return prior weights
-        assert!((effective.medication - 0.35).abs() < 0.001);
+        assert!((effective.medication - 0.55).abs() < 0.001);
     }
 
     #[test]
@@ -380,9 +380,10 @@ mod tests {
         // With 100 samples, should blend with prior
         let effective = manager.get_effective_weights(&learned, 100);
 
-        // Should be between prior (0.35) and learned (0.50)
-        assert!(effective.medication > 0.35);
-        assert!(effective.medication < 0.50);
+        // Should be between prior (0.55) and learned (0.50)
+        // Since prior is now higher, learned pulls it down
+        assert!(effective.medication > 0.50);
+        assert!(effective.medication < 0.55);
     }
 
     #[test]

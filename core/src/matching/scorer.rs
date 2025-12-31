@@ -47,7 +47,7 @@ impl Scorer {
             thresholds: RwLock::new(thresholds.unwrap_or_default()),
             recency_half_life: RwLock::new(24.0), // 24 hours default
             decay_type: RwLock::new(DecayType::Exponential),
-            min_medication_score: RwLock::new(0.5),
+            min_medication_score: RwLock::new(0.7), // Raised from 0.5 to reduce false positives
             medication_gate_enabled: RwLock::new(true),
         }
     }
