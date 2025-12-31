@@ -142,7 +142,12 @@ impl MatchProcessor {
         // 3. Perform matching
         let mut matches_created = 0;
 
-        for offer in active_offers {
+        // Apply matching filter (stale/same-sender etc.)
+        let candidates = self
+            .matching_engine
+            .filter_offers_for_request(&active_offers, &request);
+
+        for offer in candidates {
             // Skip if already matched
             if let Ok(exists) = self.repos.match_repo.exists(offer.id, request.id).await
                 && exists
@@ -167,7 +172,7 @@ impl MatchProcessor {
                         crate::matching::cosine_similarity(o.as_slice(), r.as_slice())
                             .unwrap_or(0.0)
                     }
-                    _ => self.fallback_similarity(&offer, &request),
+                    _ => self.fallback_similarity(offer, &request),
                 },
             };
 
@@ -175,7 +180,7 @@ impl MatchProcessor {
             let participant_id_str = request.participant_id.to_string();
             let (score, action) = self
                 .matching_engine
-                .score_match(&offer, &request, med_score, Some(&participant_id_str))
+                .score_match(offer, &request, med_score, Some(&participant_id_str))
                 .await;
 
             // Check if actionable
