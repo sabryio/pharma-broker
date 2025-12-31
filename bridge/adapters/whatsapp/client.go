@@ -200,14 +200,18 @@ func (c *Client) handleMessage(evt *events.Message) {
 
 	// Log if sender phone looks unusual (not a typical phone number pattern)
 	senderPhone := evt.Info.Sender.User
+	senderJID := evt.Info.Sender.String()
+
 	if evt.Info.Sender.Server == "lid" {
 		// Try to resolve LID to Phone Number from local store
 		pnJID, err := c.wa.Store.LIDs.GetPNForLID(context.Background(), evt.Info.Sender)
 		if err == nil && !pnJID.IsEmpty() {
 			senderPhone = pnJID.User
+			senderJID = pnJID.String()
 			c.logger.Debug().
 				Str("lid", evt.Info.Sender.User).
 				Str("pn", senderPhone).
+				Str("resolved_jid", senderJID).
 				Msg("✅ Resolved LID to Phone Number")
 		} else {
 			c.logger.Debug().
@@ -227,7 +231,7 @@ func (c *Client) handleMessage(evt *events.Message) {
 		ExternalID:  domain.MessageID(evt.Info.ID),
 		GroupJID:    domain.JID(evt.Info.Chat.String()),
 		GroupName:   evt.Info.Chat.String(),
-		SenderJID:   domain.JID(evt.Info.Sender.String()),
+		SenderJID:   domain.JID(senderJID),
 		SenderPhone: domain.Phone(senderPhone),
 		SenderName:  evt.Info.PushName,
 		Content:     content,
@@ -277,21 +281,24 @@ func (c *Client) handleHistorySync(v *events.HistorySync) {
 			var senderJID domain.JID
 			var senderPhone domain.Phone
 			if key.Participant != nil {
-				senderJID = domain.JID(*key.Participant)
 				if parsed, err := types.ParseJID(*key.Participant); err == nil {
 					user := parsed.User
+					sJID := parsed.String()
 					if parsed.Server == "lid" {
 						pnJID, err := c.wa.Store.LIDs.GetPNForLID(context.Background(), parsed)
 						if err == nil && !pnJID.IsEmpty() {
 							user = pnJID.User
+							sJID = pnJID.String()
 							c.logger.Debug().
 								Str("msg_id", msgID.String()).
 								Str("lid", parsed.User).
 								Str("pn", user).
+								Str("resolved_jid", sJID).
 								Msg("✅ Resolved HistorySync LID to Phone Number")
 						}
 					}
 					senderPhone = domain.Phone(user)
+					senderJID = domain.JID(sJID)
 					// Log history sync sender
 					c.logger.Debug().Str("msg_id", msgID.String()).Str("sender_phone", user).Msg("📚 History sync sender processed")
 				}
@@ -353,4 +360,91 @@ func (c *Client) GetJoinedGroups(ctx context.Context) ([]domain.GroupInfo, error
 	return result, nil
 }
 
+// SendMessage sends a plain text message to a JID.
+func (c *Client) SendMessage(ctx context.Context, to domain.JID, content string) error {
+	target, err := types.ParseJID(to.String())
+	if err != nil {
+		return fmt.Errorf("invalid destination JID: %w", err)
+	}
+
+	_, err = c.wa.SendMessage(ctx, target, &waProto.Message{
+		Conversation: &content,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	c.logger.Debug().Str("to", to.String()).Msg("📤 Sent text message")
+	return nil
+}
+
+// SendContactCard sends contact information (VCard) to a target JID.
+func (c *Client) SendContactCard(ctx context.Context, to domain.JID, contactJID domain.JID, name string, phone string) error {
+	target, err := types.ParseJID(to.String())
+	if err != nil {
+		return fmt.Errorf("invalid destination JID: %w", err)
+	}
+
+	cJID, err := types.ParseJID(contactJID.String())
+	if err != nil {
+		return fmt.Errorf("invalid contact JID: %w", err)
+	}
+
+	waid := phone
+
+	// If it's a LID, try to resolve to PN for a clickable card
+	if cJID.Server == "lid" {
+		pnJID, err := c.wa.Store.LIDs.GetPNForLID(ctx, cJID)
+		if err == nil && !pnJID.IsEmpty() {
+			waid = pnJID.User
+			c.logger.Debug().
+				Str("lid", cJID.User).
+				Str("resolved_pn", waid).
+				Msg("✅ Resolved LID to PN for VCard")
+		} else {
+			c.logger.Debug().
+				Str("lid", cJID.User).
+				Msg("ℹ️ Could not resolve LID to PN for VCard (using provided phone/LID)")
+		}
+	}
+
+	// Clean waid (must be digits only for waid parameter)
+	waid = cleanPhone(waid)
+
+	// Basic vCard 3.0 format
+	// FN: Full Name
+	// TEL: Phone number with + prefix
+	// waid: WhatsApp ID (phone number without +)
+	vcard := fmt.Sprintf("BEGIN:VCARD\nVERSION:3.0\nFN:%s\nTEL;type=CELL;type=VOICE;waid=%s:+%s\nEND:VCARD",
+		name, waid, waid)
+
+	_, err = c.wa.SendMessage(ctx, target, &waProto.Message{
+		ContactMessage: &waProto.ContactMessage{
+			DisplayName: &name,
+			Vcard:       &vcard,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send contact card: %w", err)
+	}
+
+	c.logger.Debug().
+		Str("to", to.String()).
+		Str("contact", name).
+		Str("waid", waid).
+		Msg("👤 Sent contact card")
+	return nil
+}
+
+func cleanPhone(p string) string {
+	res := ""
+	for _, c := range p {
+		if c >= '0' && c <= '9' {
+			res += string(c)
+		}
+	}
+	return res
+}
+
 var _ ports.MessageSource = (*Client)(nil)
+var _ ports.MessageProvider = (*Client)(nil)
