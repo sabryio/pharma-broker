@@ -184,7 +184,7 @@ impl QualityAnalysis {
             ("groups", "jid", "Duplicate group JIDs"),
             (
                 "medication_mappings",
-                "raw_name",
+                "arabic_name",
                 "Duplicate medication mappings",
             ),
         ];

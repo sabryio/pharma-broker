@@ -35,7 +35,7 @@ pub mod testing;
 use std::sync::Arc;
 
 pub use migration::run_migrations;
-pub use sea_orm::{Database, DatabaseConnection, DbErr};
+pub use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
 
 // Export diagnostics types
 pub use diagnostics::{DatabaseHealth, DbDiagnostics, IndexStats, QueryPlanAnalysis, TableStats};

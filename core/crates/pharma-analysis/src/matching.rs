@@ -20,6 +20,7 @@ impl AnalysisPhase for MatchingAnalysis {
     async fn run(&self, db: &DatabaseConnection) -> anyhow::Result<()> {
         print_header("Matching Engine Analysis");
 
+        self.diagnose_scores(db).await?;
         self.analyze_scores(db).await?;
         self.analyze_outcomes(db).await?;
         self.analyze_feedback(db).await?;
@@ -31,6 +32,113 @@ impl AnalysisPhase for MatchingAnalysis {
 }
 
 impl MatchingAnalysis {
+    /// Diagnostic: Check actual match data to identify score storage issues
+    async fn diagnose_scores(&self, db: &DatabaseConnection) -> anyhow::Result<()> {
+        print_subheader("Match Data Diagnostic (Sample)");
+
+        // Get 5 sample matches to inspect raw data
+        let sql = r#"
+            SELECT id, score, status, 
+                   offer_id, request_id, 
+                   reasoning,
+                   created_at
+            FROM matches 
+            ORDER BY created_at DESC 
+            LIMIT 5
+        "#;
+
+        let rows = db
+            .query_all(Statement::from_string(DbBackend::Postgres, sql.to_string()))
+            .await?;
+
+        if rows.is_empty() {
+            println!("No matches found in database.");
+            return Ok(());
+        }
+
+        let mut table = Table::new();
+        table.add_row(row![
+            "ID",
+            "Score",
+            "Status",
+            "Offer ID",
+            "Request ID",
+            "Created"
+        ]);
+
+        for row in &rows {
+            let id: uuid::Uuid = row.try_get_by_index(0)?;
+            let score: f64 = row.try_get_by_index(1).unwrap_or(0.0);
+            let status: String = row.try_get_by_index(2)?;
+            let offer_id: uuid::Uuid = row.try_get_by_index(3)?;
+            let request_id: uuid::Uuid = row.try_get_by_index(4)?;
+            let created: chrono::DateTime<chrono::Utc> = row.try_get_by_index(6)?;
+
+            let id_str = id.to_string();
+            let offer_str = offer_id.to_string();
+            let request_str = request_id.to_string();
+
+            let score_colored = if score >= 0.9 {
+                format!("{:.4}", score).green()
+            } else if score >= 0.7 {
+                format!("{:.4}", score).yellow()
+            } else if score > 0.0 {
+                format!("{:.4}", score).normal()
+            } else {
+                format!("{:.4}", score).red().bold()
+            };
+
+            table.add_row(row![
+                &id_str[..8.min(id_str.len())],
+                score_colored,
+                status,
+                &offer_str[..8.min(offer_str.len())],
+                &request_str[..8.min(request_str.len())],
+                created.format("%Y-%m-%d %H:%M").to_string()
+            ]);
+        }
+
+        table.printstd();
+
+        // Count matches with zero scores
+        let zero_sql = "SELECT COUNT(*) FROM matches WHERE score = 0";
+        let zero_count: i64 = db
+            .query_one(Statement::from_string(
+                DbBackend::Postgres,
+                zero_sql.to_string(),
+            ))
+            .await?
+            .map(|r| r.try_get_by_index(0).unwrap_or(0))
+            .unwrap_or(0);
+
+        let total_sql = "SELECT COUNT(*) FROM matches";
+        let total: i64 = db
+            .query_one(Statement::from_string(
+                DbBackend::Postgres,
+                total_sql.to_string(),
+            ))
+            .await?
+            .map(|r| r.try_get_by_index(0).unwrap_or(0))
+            .unwrap_or(0);
+
+        if zero_count > 0 {
+            println!(
+                "\n{} {}/{} matches have score = 0 ({:.1}%)",
+                "⚠️ WARNING:".red().bold(),
+                fmt_num(zero_count),
+                fmt_num(total),
+                (zero_count as f64 / total as f64) * 100.0
+            );
+            println!(
+                "This indicates match scores were not properly saved when matches were created."
+            );
+        } else {
+            println!("\n{} All matches have non-zero scores.", "✅".green());
+        }
+
+        Ok(())
+    }
+
     async fn analyze_scores(&self, db: &DatabaseConnection) -> anyhow::Result<()> {
         print_subheader("Score Distribution by Confidence Band");
 
@@ -75,7 +183,8 @@ impl MatchingAnalysis {
         for row in &rows {
             let band: String = row.try_get_by_index(0)?;
             let count: i64 = row.try_get_by_index(1)?;
-            let avg: f64 = row.try_get_by_index(2).unwrap_or(0.0);
+            let avg_dec: rust_decimal::Decimal = row.try_get_by_index(2).unwrap_or_default();
+            let avg: f64 = avg_dec.try_into().unwrap_or(0.0);
             let confirmed: i64 = row.try_get_by_index(3).unwrap_or(0);
             let rejected: i64 = row.try_get_by_index(4).unwrap_or(0);
             let pending: i64 = row.try_get_by_index(5).unwrap_or(0);
@@ -135,10 +244,15 @@ impl MatchingAnalysis {
         for row in &rows {
             let status: String = row.try_get_by_index(0)?;
             let count: i64 = row.try_get_by_index(1)?;
-            let avg: f64 = row.try_get_by_index(2).unwrap_or(0.0);
-            let min: f64 = row.try_get_by_index(3).unwrap_or(0.0);
-            let max: f64 = row.try_get_by_index(4).unwrap_or(0.0);
-            let stddev: f64 = row.try_get_by_index(5).unwrap_or(0.0);
+            let avg_dec: rust_decimal::Decimal = row.try_get_by_index(2).unwrap_or_default();
+            let min_dec: rust_decimal::Decimal = row.try_get_by_index(3).unwrap_or_default();
+            let max_dec: rust_decimal::Decimal = row.try_get_by_index(4).unwrap_or_default();
+            let stddev_dec: rust_decimal::Decimal = row.try_get_by_index(5).unwrap_or_default();
+
+            let avg: f64 = avg_dec.try_into().unwrap_or(0.0);
+            let min: f64 = min_dec.try_into().unwrap_or(0.0);
+            let max: f64 = max_dec.try_into().unwrap_or(0.0);
+            let stddev: f64 = stddev_dec.try_into().unwrap_or(0.0);
 
             let status_colored = match status.as_str() {
                 "CONFIRMED" => status.green(),

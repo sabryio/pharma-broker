@@ -30,7 +30,7 @@ use pharma_analysis::{
     health::HealthAnalysis, integrity::IntegrityAnalysis, matching::MatchingAnalysis,
     quality::QualityAnalysis, stale::StaleMatchesAnalysis, timeseries::TimeSeriesAnalysis,
 };
-use pharma_db::Database;
+use pharma_db::{ConnectOptions, Database};
 use std::env;
 
 #[derive(Parser)]
@@ -93,6 +93,18 @@ enum Commands {
         execute: bool,
     },
 
+    /// Auto-confirm high-confidence matches and generate feedback records
+    #[command(name = "auto-confirm")]
+    AutoConfirm {
+        /// Minimum score threshold for auto-confirmation (default: 0.9)
+        #[arg(long, default_value = "0.9")]
+        threshold: f64,
+
+        /// Actually execute the confirmations (default is dry-run)
+        #[arg(long)]
+        execute: bool,
+    },
+
     /// Run ALL analysis phases
     All,
 }
@@ -112,6 +124,9 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| {
             "postgres://postgres:password@localhost:5432/pharmabroker?sslmode=disable".to_string()
         });
+
+    let mut opt = ConnectOptions::new(database_url.to_owned());
+    opt.sqlx_logging(false);
 
     // Print header
     println!(
@@ -134,7 +149,7 @@ async fn main() -> anyhow::Result<()> {
     println!();
 
     // Connect to database
-    let db = Database::connect(&database_url).await?;
+    let db = Database::connect(opt).await?;
     println!("{}", "✅ Database connected".green());
 
     let command = cli.command.unwrap_or(Commands::All);
@@ -166,6 +181,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Expire { days, execute } => {
             expire_matches(&db, days, execute).await?;
+        }
+        Commands::AutoConfirm { threshold, execute } => {
+            auto_confirm_matches(&db, threshold, execute).await?;
         }
         Commands::All => {
             run_all_phases(&db).await?;
@@ -252,6 +270,125 @@ async fn expire_matches(
         );
         println!("\n💡 Add --execute flag to actually expire these matches");
     }
+
+    Ok(())
+}
+
+async fn auto_confirm_matches(
+    db: &pharma_db::DatabaseConnection,
+    threshold: f64,
+    execute: bool,
+) -> anyhow::Result<()> {
+    use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+    println!(
+        "\n✅ {} high-confidence matches (score >= {:.2})",
+        if execute {
+            "Auto-confirming"
+        } else {
+            "Would auto-confirm"
+        },
+        threshold
+    );
+
+    // First, count matches that would be affected
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM matches WHERE score >= {} AND status = 'PENDING'",
+        threshold
+    );
+    let count: i64 = db
+        .query_one(Statement::from_string(DbBackend::Postgres, count_sql))
+        .await?
+        .map(|r| r.try_get_by_index(0).unwrap_or(0))
+        .unwrap_or(0);
+
+    println!(
+        "📊 Found {} pending matches with score >= {:.2}",
+        count, threshold
+    );
+
+    if count == 0 {
+        println!("{}", "No matches to confirm.".yellow());
+        return Ok(());
+    }
+
+    if !execute {
+        println!(
+            "{}",
+            format!("📊 {} matches would be auto-confirmed (dry-run)", count).yellow()
+        );
+        println!(
+            "\n💡 Add --execute flag to actually confirm these matches and create feedback records"
+        );
+        return Ok(());
+    }
+
+    // Get match IDs and scores to process
+    let select_sql = format!(
+        "SELECT id, score FROM matches WHERE score >= {} AND status = 'PENDING'",
+        threshold
+    );
+    let rows = db
+        .query_all(Statement::from_string(DbBackend::Postgres, select_sql))
+        .await?;
+
+    let mut confirmed_count = 0;
+    let mut feedback_count = 0;
+
+    for row in &rows {
+        let match_id: uuid::Uuid = row.try_get_by_index(0)?;
+        let score: f64 = row.try_get_by_index(1)?;
+
+        // 1. Update match status to CONFIRMED
+        let update_sql = format!(
+            "UPDATE matches SET status = 'CONFIRMED', confirmed_at = NOW(), matched_by = 'auto-confirm' WHERE id = '{}'",
+            match_id
+        );
+        if let Err(e) = db
+            .execute(Statement::from_string(DbBackend::Postgres, update_sql))
+            .await
+        {
+            eprintln!("  ⚠️ Failed to confirm match {}: {}", match_id, e);
+            continue;
+        }
+        confirmed_count += 1;
+
+        // 2. Create feedback record
+        let feedback_id = uuid::Uuid::new_v4();
+        let insert_sql = format!(
+            r#"INSERT INTO feedback_records 
+               (id, match_id, user_id, confirmed, medication_score, dosage_score, quantity_score, price_score, recency_score, total_score, created_at)
+               VALUES ('{}', '{}', 'auto-confirm', true, {}, {}, {}, {}, 0.7, {}, NOW())"#,
+            feedback_id,
+            match_id,
+            score * 0.9,  // Estimated medication score
+            score * 0.8,  // Estimated dosage score
+            score * 0.85, // Estimated quantity score
+            score * 0.95, // Estimated price score
+            score
+        );
+        if let Err(e) = db
+            .execute(Statement::from_string(DbBackend::Postgres, insert_sql))
+            .await
+        {
+            eprintln!(
+                "  ⚠️ Failed to create feedback for match {}: {}",
+                match_id, e
+            );
+        } else {
+            feedback_count += 1;
+        }
+    }
+
+    println!(
+        "{}",
+        format!(
+            "✅ Confirmed {} matches, created {} feedback records",
+            confirmed_count, feedback_count
+        )
+        .green()
+        .bold()
+    );
 
     Ok(())
 }
