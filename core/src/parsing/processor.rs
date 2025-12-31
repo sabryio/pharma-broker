@@ -236,11 +236,11 @@ impl BatchProcessor {
 
             match parse_result {
                 Ok(items) => {
-                    results.push(ParseJobResult::success(msg.id.clone(), items, pass));
+                    results.push(ParseJobResult::success(msg.id, items, pass));
                 }
                 Err(e) => {
                     error!(error = %e, msg_id = %msg.id, "AI parsing failed");
-                    results.push(ParseJobResult::error(msg.id.clone(), e.to_string()));
+                    results.push(ParseJobResult::error(msg.id, e.to_string()));
                 }
             }
         }
@@ -336,7 +336,7 @@ impl BatchProcessor {
             "OFFER" | "BOTH" => {
                 let offer = Offer {
                     id: uuid::Uuid::new_v4(),
-                    raw_message_id: msg.id.clone(),
+                    raw_message_id: msg.id,
                     medication: item.medication.clone(),
                     medication_raw: item.medication.clone(),
                     quantity: Decimal::from_f64(item.quantity),
@@ -368,11 +368,8 @@ impl BatchProcessor {
                     let _ = self.match_queue_repo.enqueue(offer.id, 0).await;
 
                     // Audit log
-                    let audit = AuditLog::system(
-                        AuditAction::OfferCreated,
-                        EntityType::Offer,
-                        offer.id.clone(),
-                    );
+                    let audit =
+                        AuditLog::system(AuditAction::OfferCreated, EntityType::Offer, offer.id);
                     let _ = self.audit_log_repo.save(&audit).await;
 
                     let mut stats = self.stats.write().await;
@@ -386,7 +383,7 @@ impl BatchProcessor {
             "REQUEST" | "BOTH" => {
                 let request = Request {
                     id: uuid::Uuid::new_v4(),
-                    raw_message_id: msg.id.clone(),
+                    raw_message_id: msg.id,
                     medication: item.medication.clone(),
                     medication_raw: item.medication.clone(),
                     quantity: Decimal::from_f64(item.quantity),
@@ -419,7 +416,7 @@ impl BatchProcessor {
                     let audit = AuditLog::system(
                         AuditAction::RequestCreated,
                         EntityType::Request,
-                        request.id.clone(),
+                        request.id,
                     );
                     let _ = self.audit_log_repo.save(&audit).await;
 

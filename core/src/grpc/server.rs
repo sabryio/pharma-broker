@@ -212,14 +212,33 @@ where
         let message_id = raw_message.id;
         let group_jid = raw_message.group_jid.clone();
 
-        // Step 3: Save to database
-        if let Err(e) = self.raw_message_repo.save(&raw_message).await {
-            tracing::error!(error = %e, id = %message_id, "Failed to save raw message");
-            return Ok(Response::new(ProcessResponse {
-                success: false,
-                message_id: message_id.to_string(),
-                error: Some(format!("Database error: {}", e)),
-            }));
+        // Step 3: Save to database (handle duplicates gracefully)
+        match self.raw_message_repo.save(&raw_message).await {
+            Ok(_) => {
+                // New message saved successfully
+            }
+            Err(e) => {
+                // Check if this is a duplicate key error
+                let error_str = e.to_string();
+                if error_str.contains("duplicate key") || error_str.contains("unique constraint") {
+                    tracing::info!(
+                        id = %message_id,
+                        "⏭️ Message already exists, skipping (duplicate)"
+                    );
+                    return Ok(Response::new(ProcessResponse {
+                        success: true,
+                        message_id: message_id.to_string(),
+                        error: None,
+                    }));
+                }
+                // Other database errors
+                tracing::error!(error = %e, id = %message_id, "Failed to save raw message");
+                return Ok(Response::new(ProcessResponse {
+                    success: false,
+                    message_id: message_id.to_string(),
+                    error: Some(format!("Database error: {}", e)),
+                }));
+            }
         }
 
         // Record message received metric

@@ -290,7 +290,7 @@ where
     // Record feedback for learning system
     let feedback = FeedbackRecord::new(
         id, // match_id as Uuid
-        req.matched_by.clone(),
+        req.matched_by,
         true,                      // confirmed = positive feedback
         match_entity.score * 0.9,  // Estimate medication score from total
         match_entity.score * 0.8,  // Estimate dosage score
@@ -322,7 +322,7 @@ where
     }
 
     // Task 5.3: Audit Logging
-    let audit_log = AuditLog::match_confirmed(&id.to_string(), req.matched_by, match_entity.score);
+    let audit_log = AuditLog::match_confirmed(id.to_string(), req.matched_by, match_entity.score);
     if let Err(e) = state.audit_log_repo.save(&audit_log).await {
         tracing::warn!(error = %e, match_id = %id, "Failed to save audit log for match confirmation");
     }
@@ -382,7 +382,7 @@ where
     // Record negative feedback for learning system
     let feedback = FeedbackRecord::new(
         id, // match_id as uuid
-        req.matched_by.clone(),
+        req.matched_by,
         false, // confirmed = false (rejection is negative feedback)
         match_entity.score * 0.9,
         match_entity.score * 0.8,

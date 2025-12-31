@@ -1,5 +1,6 @@
 use crate::repository::{
-    AuditLogRepository, MatchQueueRepository, MatchRepository, OfferRepository, RequestRepository,
+    AuditLogRepository, FeedbackRepository, MatchQueueRepository, MatchRepository, OfferRepository,
+    RequestRepository,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -15,15 +16,22 @@ use crate::domain::{
     MatchStatus, Offer, Request,
 };
 use crate::matching::{MatchAction, MatchingEngine};
+use crate::repository::FeedbackModel;
 use crate::ws::WsEvent;
+
+/// Repository dependencies for MatchProcessor
+pub struct MatchProcessorRepos {
+    pub match_queue: Arc<dyn MatchQueueRepository>,
+    pub offer: Arc<dyn OfferRepository>,
+    pub request: Arc<dyn RequestRepository>,
+    pub match_repo: Arc<dyn MatchRepository>,
+    pub audit_log: Arc<dyn AuditLogRepository>,
+    pub feedback: Arc<dyn FeedbackRepository>,
+}
 
 /// MatchProcessor handles the background processing of match queue items
 pub struct MatchProcessor {
-    match_queue_repo: Arc<dyn MatchQueueRepository>,
-    offer_repo: Arc<dyn OfferRepository>,
-    request_repo: Arc<dyn RequestRepository>,
-    match_repo: Arc<dyn MatchRepository>,
-    audit_log_repo: Arc<dyn AuditLogRepository>,
+    repos: MatchProcessorRepos,
     matching_engine: Arc<MatchingEngine>,
     ws_tx: broadcast::Sender<WsEvent>,
     worker_id: String,
@@ -31,20 +39,12 @@ pub struct MatchProcessor {
 
 impl MatchProcessor {
     pub fn new(
-        match_queue_repo: Arc<dyn MatchQueueRepository>,
-        offer_repo: Arc<dyn OfferRepository>,
-        request_repo: Arc<dyn RequestRepository>,
-        match_repo: Arc<dyn MatchRepository>,
-        audit_log_repo: Arc<dyn AuditLogRepository>,
+        repos: MatchProcessorRepos,
         matching_engine: Arc<MatchingEngine>,
         ws_tx: broadcast::Sender<WsEvent>,
     ) -> Self {
         Self {
-            match_queue_repo,
-            offer_repo,
-            request_repo,
-            match_repo,
-            audit_log_repo,
+            repos,
             matching_engine,
             ws_tx,
             worker_id: Uuid::new_v4().to_string(),
@@ -88,7 +88,7 @@ impl MatchProcessor {
 
     /// Process a batch of pending items
     async fn process_batch(&self) -> Result<usize> {
-        let items = self.match_queue_repo.fetch_batch(10).await?;
+        let items = self.repos.match_queue.fetch_batch(10).await?;
         let count = items.len();
 
         if count > 0 {
@@ -107,30 +107,32 @@ impl MatchProcessor {
         let request_id = item.request_id;
 
         // 1. Fetch the request
-        let request = match self.request_repo.get_by_id(request_id).await {
+        let request = match self.repos.request.get_by_id(request_id).await {
             Ok(Some(req)) => req,
             Ok(None) => {
                 warn!(request_id = %request_id, "Request not found, marking failed");
                 let _ = self
-                    .match_queue_repo
+                    .repos
+                    .match_queue
                     .fail(item.id, "Request not found")
                     .await;
                 return;
             }
             Err(e) => {
                 error!(error = %e, request_id = %request_id, "Failed to fetch request");
-                let _ = self.match_queue_repo.fail(item.id, &e.to_string()).await;
+                let _ = self.repos.match_queue.fail(item.id, &e.to_string()).await;
                 return;
             }
         };
 
         // 2. Fetch active offers
-        let active_offers = match self.offer_repo.get_active(100, 0).await {
+        let active_offers = match self.repos.offer.get_active(100, 0).await {
             Ok(offers) => offers,
             Err(e) => {
                 error!(error = %e, "Failed to fetch active offers");
                 let _ = self
-                    .match_queue_repo
+                    .repos
+                    .match_queue
                     .fail(item.id, "Failed to fetch offers")
                     .await;
                 return;
@@ -142,7 +144,7 @@ impl MatchProcessor {
 
         for offer in active_offers {
             // Skip if already matched
-            if let Ok(exists) = self.match_repo.exists(offer.id, request.id).await
+            if let Ok(exists) = self.repos.match_repo.exists(offer.id, request.id).await
                 && exists
             {
                 continue;
@@ -164,21 +166,28 @@ impl MatchProcessor {
 
             // Check if actionable
             if score.confidence != ConfidenceBand::None && action != MatchAction::Ignore {
+                // Determine status based on action
+                let (status, confirmed_at) = if action == MatchAction::AutoConfirm {
+                    (MatchStatus::Confirmed, Some(Utc::now()))
+                } else {
+                    (MatchStatus::Pending, None)
+                };
+
                 // Create Match
                 let match_entity = MatchEntity {
                     id: Uuid::new_v4(),
-                    offer_id: offer.id.clone(),
-                    request_id: request.id.clone(),
+                    offer_id: offer.id,
+                    request_id: request.id,
                     score: score.total,
                     reasoning: Some(score.breakdown.clone()),
                     matched_by: Some(format!("worker:{}", self.worker_id)),
-                    status: MatchStatus::Pending,
+                    status,
                     created_at: Utc::now(),
-                    confirmed_at: None,
+                    confirmed_at,
                     notes: None,
                 };
 
-                if let Err(e) = self.match_repo.save(&match_entity).await {
+                if let Err(e) = self.repos.match_repo.save(&match_entity).await {
                     error!(error = %e, "Failed to save match");
                 } else {
                     matches_created += 1;
@@ -186,20 +195,37 @@ impl MatchProcessor {
                     // Notify
                     let _ = self.ws_tx.send(WsEvent::NewMatch(match_entity.clone()));
 
+                    // Create feedback record for auto-confirmed matches
+                    if action == MatchAction::AutoConfirm {
+                        let feedback =
+                            FeedbackModel::confirmed(match_entity.id, "system:auto", score.total);
+                        if let Err(e) = self.repos.feedback.save(&feedback).await {
+                            error!(error = %e, match_id = %match_entity.id, "Failed to save auto-confirm feedback");
+                        } else {
+                            info!(match_id = %match_entity.id, score = %score.total, "✅ Auto-confirmed match with feedback");
+                        }
+                    }
+
                     // Audit Log
-                    let audit_log = AuditLog::system(
-                        AuditAction::MatchCreated,
-                        EntityType::Match,
-                        match_entity.id.clone(),
-                    )
-                    .with_details(serde_json::json!({ "score": score.total }));
-                    let _ = self.audit_log_repo.save(&audit_log).await;
+                    let audit_action = if action == MatchAction::AutoConfirm {
+                        AuditAction::MatchAutoConfirmed
+                    } else {
+                        AuditAction::MatchCreated
+                    };
+                    let audit_log =
+                        AuditLog::system(audit_action, EntityType::Match, match_entity.id)
+                            .with_details(serde_json::json!({
+                                "score": score.total,
+                                "action": format!("{:?}", action),
+                                "auto_confirmed": action == MatchAction::AutoConfirm
+                            }));
+                    let _ = self.repos.audit_log.save(&audit_log).await;
                 }
             }
         }
 
         // 4. Mark completed
-        if let Err(e) = self.match_queue_repo.complete(item.id).await {
+        if let Err(e) = self.repos.match_queue.complete(item.id).await {
             error!(error = %e, item_id = %item.id, "Failed to complete queue item");
         } else {
             info!(

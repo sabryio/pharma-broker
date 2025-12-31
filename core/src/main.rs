@@ -19,7 +19,7 @@ use pharma_core::repository::{
     SeaOrmMedicationMappingRepo, SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo,
     SeaOrmReviewQueueRepo, create_connection,
 };
-use pharma_core::worker::match_processor::MatchProcessor;
+use pharma_core::worker::match_processor::{MatchProcessor, MatchProcessorRepos};
 
 /// Initialize tracing subscriber with optional tokio-console support
 fn init_tracing() {
@@ -136,15 +136,15 @@ async fn main() -> anyhow::Result<()> {
     let rx_match = worker_shutdown_rx.clone();
     let rx_janitor = worker_shutdown_rx.clone();
 
-    let processor = MatchProcessor::new(
-        match_queue_repo.clone(),
-        offer_repo.clone(),
-        request_repo.clone(),
-        match_repo.clone(),
-        audit_log_repo.clone(),
-        matching_engine.clone(),
-        ws_tx.clone(),
-    );
+    let processor_repos = MatchProcessorRepos {
+        match_queue: match_queue_repo.clone(),
+        offer: offer_repo.clone(),
+        request: request_repo.clone(),
+        match_repo: match_repo.clone(),
+        audit_log: audit_log_repo.clone(),
+        feedback: feedback_repo.clone(),
+    };
+    let processor = MatchProcessor::new(processor_repos, matching_engine.clone(), ws_tx.clone());
     let worker_handle = tokio::spawn(async move {
         processor.run(rx_match).await;
     });
