@@ -22,6 +22,12 @@ service PharmaCore {
     rpc SyncGroups(SyncGroupsRequest) returns (SyncGroupsResponse);
 }
 
+// PharmaBridgeService is the interface for Core to call Bridge
+service PharmaBridge {
+    // ConnectMatch tells the bridge to notify parties (and operator) about a match
+    rpc ConnectMatch(ConnectMatchRequest) returns (ConnectMatchResponse);
+}
+
 // RawMessage represents an incoming WhatsApp message
 message RawMessage {
     string id = 1;
@@ -96,4 +102,22 @@ message SyncGroupsResponse {
     int32 added = 2;
     int32 updated = 3;
     string error = 4;
+}
+
+// ConnectMatchRequest for notifying parties about a match
+message ConnectMatchRequest {
+    string match_id = 1;
+    string offerer_jid = 2;
+    string offerer_phone = 3;
+    string offerer_name = 4;
+    string requester_jid = 5;
+    string requester_phone = 6;
+    string requester_name = 7;
+    string medication = 8;
+}
+
+// ConnectMatchResponse result of connectivity action
+message ConnectMatchResponse {
+    bool success = 1;
+    string error = 2;
 }

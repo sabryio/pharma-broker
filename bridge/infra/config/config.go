@@ -28,15 +28,17 @@ type Config struct {
 // GRPCConfig holds gRPC client configuration.
 type GRPCConfig struct {
 	CoreAddr       string        `mapstructure:"core_addr"`
+	Port           string        `mapstructure:"port"`
 	ConnectTimeout time.Duration `mapstructure:"connect_timeout"`
 }
 
 // WhatsAppConfig holds WhatsApp client configuration.
 type WhatsAppConfig struct {
-	StorePath  string        `mapstructure:"store_path"`
-	QRRetries  int           `mapstructure:"qr_retries"`
-	QRTimeout  time.Duration `mapstructure:"qr_timeout"`
-	QRTerminal bool          `mapstructure:"qr_terminal"`
+	StorePath   string        `mapstructure:"store_path"`
+	QRRetries   int           `mapstructure:"qr_retries"`
+	QRTimeout   time.Duration `mapstructure:"qr_timeout"`
+	QRTerminal  bool          `mapstructure:"qr_terminal"`
+	OperatorJID string        `mapstructure:"operator_jid"`
 }
 
 // HTTPConfig holds HTTP server configuration.
@@ -148,6 +150,7 @@ func Load() (*Config, error) {
 func setDefaults(v *viper.Viper) {
 	// gRPC
 	v.SetDefault("grpc.core_addr", "localhost:50051")
+	v.SetDefault("grpc.port", "50052")
 	v.SetDefault("grpc.connect_timeout", 5*time.Second)
 
 	// WhatsApp
@@ -155,6 +158,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("whatsapp.qr_retries", 5)
 	v.SetDefault("whatsapp.qr_timeout", 60*time.Second)
 	v.SetDefault("whatsapp.qr_terminal", true)
+	v.SetDefault("whatsapp.operator_jid", "")
 
 	// HTTP
 	v.SetDefault("http.port", "5050")

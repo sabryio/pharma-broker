@@ -44,8 +44,6 @@ const TABLES: &[&str] = &[
     "offers",
     "requests",
     "raw_messages",
-    "medication_mappings",
-    "groups",
     "config",
     "bot_users",
 ];

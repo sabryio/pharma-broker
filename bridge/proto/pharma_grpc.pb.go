@@ -285,3 +285,111 @@ var PharmaCore_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "proto/pharma.proto",
 }
+
+const (
+	PharmaBridge_ConnectMatch_FullMethodName = "/pharma.PharmaBridge/ConnectMatch"
+)
+
+// PharmaBridgeClient is the client API for PharmaBridge service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// PharmaBridgeService is the interface for Core to call Bridge
+type PharmaBridgeClient interface {
+	// ConnectMatch tells the bridge to notify parties (and operator) about a match
+	ConnectMatch(ctx context.Context, in *ConnectMatchRequest, opts ...grpc.CallOption) (*ConnectMatchResponse, error)
+}
+
+type pharmaBridgeClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewPharmaBridgeClient(cc grpc.ClientConnInterface) PharmaBridgeClient {
+	return &pharmaBridgeClient{cc}
+}
+
+func (c *pharmaBridgeClient) ConnectMatch(ctx context.Context, in *ConnectMatchRequest, opts ...grpc.CallOption) (*ConnectMatchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConnectMatchResponse)
+	err := c.cc.Invoke(ctx, PharmaBridge_ConnectMatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// PharmaBridgeServer is the server API for PharmaBridge service.
+// All implementations must embed UnimplementedPharmaBridgeServer
+// for forward compatibility.
+//
+// PharmaBridgeService is the interface for Core to call Bridge
+type PharmaBridgeServer interface {
+	// ConnectMatch tells the bridge to notify parties (and operator) about a match
+	ConnectMatch(context.Context, *ConnectMatchRequest) (*ConnectMatchResponse, error)
+	mustEmbedUnimplementedPharmaBridgeServer()
+}
+
+// UnimplementedPharmaBridgeServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedPharmaBridgeServer struct{}
+
+func (UnimplementedPharmaBridgeServer) ConnectMatch(context.Context, *ConnectMatchRequest) (*ConnectMatchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ConnectMatch not implemented")
+}
+func (UnimplementedPharmaBridgeServer) mustEmbedUnimplementedPharmaBridgeServer() {}
+func (UnimplementedPharmaBridgeServer) testEmbeddedByValue()                      {}
+
+// UnsafePharmaBridgeServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to PharmaBridgeServer will
+// result in compilation errors.
+type UnsafePharmaBridgeServer interface {
+	mustEmbedUnimplementedPharmaBridgeServer()
+}
+
+func RegisterPharmaBridgeServer(s grpc.ServiceRegistrar, srv PharmaBridgeServer) {
+	// If the following call panics, it indicates UnimplementedPharmaBridgeServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&PharmaBridge_ServiceDesc, srv)
+}
+
+func _PharmaBridge_ConnectMatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConnectMatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PharmaBridgeServer).ConnectMatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PharmaBridge_ConnectMatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PharmaBridgeServer).ConnectMatch(ctx, req.(*ConnectMatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// PharmaBridge_ServiceDesc is the grpc.ServiceDesc for PharmaBridge service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var PharmaBridge_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pharma.PharmaBridge",
+	HandlerType: (*PharmaBridgeServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ConnectMatch",
+			Handler:    _PharmaBridge_ConnectMatch_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/pharma.proto",
+}

@@ -693,6 +693,160 @@ func (x *SyncGroupsResponse) GetError() string {
 	return ""
 }
 
+// ConnectMatchRequest for notifying parties about a match
+type ConnectMatchRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	MatchId        string                 `protobuf:"bytes,1,opt,name=match_id,json=matchId,proto3" json:"match_id,omitempty"`
+	OffererJid     string                 `protobuf:"bytes,2,opt,name=offerer_jid,json=offererJid,proto3" json:"offerer_jid,omitempty"`
+	OffererPhone   string                 `protobuf:"bytes,3,opt,name=offerer_phone,json=offererPhone,proto3" json:"offerer_phone,omitempty"`
+	OffererName    string                 `protobuf:"bytes,4,opt,name=offerer_name,json=offererName,proto3" json:"offerer_name,omitempty"`
+	RequesterJid   string                 `protobuf:"bytes,5,opt,name=requester_jid,json=requesterJid,proto3" json:"requester_jid,omitempty"`
+	RequesterPhone string                 `protobuf:"bytes,6,opt,name=requester_phone,json=requesterPhone,proto3" json:"requester_phone,omitempty"`
+	RequesterName  string                 `protobuf:"bytes,7,opt,name=requester_name,json=requesterName,proto3" json:"requester_name,omitempty"`
+	Medication     string                 `protobuf:"bytes,8,opt,name=medication,proto3" json:"medication,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ConnectMatchRequest) Reset() {
+	*x = ConnectMatchRequest{}
+	mi := &file_proto_pharma_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConnectMatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConnectMatchRequest) ProtoMessage() {}
+
+func (x *ConnectMatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_pharma_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConnectMatchRequest.ProtoReflect.Descriptor instead.
+func (*ConnectMatchRequest) Descriptor() ([]byte, []int) {
+	return file_proto_pharma_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ConnectMatchRequest) GetMatchId() string {
+	if x != nil {
+		return x.MatchId
+	}
+	return ""
+}
+
+func (x *ConnectMatchRequest) GetOffererJid() string {
+	if x != nil {
+		return x.OffererJid
+	}
+	return ""
+}
+
+func (x *ConnectMatchRequest) GetOffererPhone() string {
+	if x != nil {
+		return x.OffererPhone
+	}
+	return ""
+}
+
+func (x *ConnectMatchRequest) GetOffererName() string {
+	if x != nil {
+		return x.OffererName
+	}
+	return ""
+}
+
+func (x *ConnectMatchRequest) GetRequesterJid() string {
+	if x != nil {
+		return x.RequesterJid
+	}
+	return ""
+}
+
+func (x *ConnectMatchRequest) GetRequesterPhone() string {
+	if x != nil {
+		return x.RequesterPhone
+	}
+	return ""
+}
+
+func (x *ConnectMatchRequest) GetRequesterName() string {
+	if x != nil {
+		return x.RequesterName
+	}
+	return ""
+}
+
+func (x *ConnectMatchRequest) GetMedication() string {
+	if x != nil {
+		return x.Medication
+	}
+	return ""
+}
+
+// ConnectMatchResponse result of connectivity action
+type ConnectMatchResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConnectMatchResponse) Reset() {
+	*x = ConnectMatchResponse{}
+	mi := &file_proto_pharma_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConnectMatchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConnectMatchResponse) ProtoMessage() {}
+
+func (x *ConnectMatchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_pharma_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConnectMatchResponse.ProtoReflect.Descriptor instead.
+func (*ConnectMatchResponse) Descriptor() ([]byte, []int) {
+	return file_proto_pharma_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ConnectMatchResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *ConnectMatchResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_proto_pharma_proto protoreflect.FileDescriptor
 
 const file_proto_pharma_proto_rawDesc = "" +
@@ -752,7 +906,22 @@ const file_proto_pharma_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05added\x18\x02 \x01(\x05R\x05added\x12\x18\n" +
 	"\aupdated\x18\x03 \x01(\x05R\aupdated\x12\x14\n" +
-	"\x05error\x18\x04 \x01(\tR\x05error2\xde\x02\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error\"\xae\x02\n" +
+	"\x13ConnectMatchRequest\x12\x19\n" +
+	"\bmatch_id\x18\x01 \x01(\tR\amatchId\x12\x1f\n" +
+	"\vofferer_jid\x18\x02 \x01(\tR\n" +
+	"offererJid\x12#\n" +
+	"\rofferer_phone\x18\x03 \x01(\tR\foffererPhone\x12!\n" +
+	"\fofferer_name\x18\x04 \x01(\tR\voffererName\x12#\n" +
+	"\rrequester_jid\x18\x05 \x01(\tR\frequesterJid\x12'\n" +
+	"\x0frequester_phone\x18\x06 \x01(\tR\x0erequesterPhone\x12%\n" +
+	"\x0erequester_name\x18\a \x01(\tR\rrequesterName\x12\x1e\n" +
+	"\n" +
+	"medication\x18\b \x01(\tR\n" +
+	"medication\"F\n" +
+	"\x14ConnectMatchResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error2\xde\x02\n" +
 	"\n" +
 	"PharmaCore\x12=\n" +
 	"\x0eProcessMessage\x12\x12.pharma.RawMessage\x1a\x17.pharma.ProcessResponse\x127\n" +
@@ -760,7 +929,9 @@ const file_proto_pharma_proto_rawDesc = "" +
 	"\vHealthCheck\x12\x15.pharma.HealthRequest\x1a\x16.pharma.HealthResponse\x12U\n" +
 	"\x12GetMonitoredGroups\x12\x1e.pharma.MonitoredGroupsRequest\x1a\x1f.pharma.MonitoredGroupsResponse\x12C\n" +
 	"\n" +
-	"SyncGroups\x12\x19.pharma.SyncGroupsRequest\x1a\x1a.pharma.SyncGroupsResponseB\x15Z\x13pharma-bridge/protob\x06proto3"
+	"SyncGroups\x12\x19.pharma.SyncGroupsRequest\x1a\x1a.pharma.SyncGroupsResponse2Y\n" +
+	"\fPharmaBridge\x12I\n" +
+	"\fConnectMatch\x12\x1b.pharma.ConnectMatchRequest\x1a\x1c.pharma.ConnectMatchResponseB\x15Z\x13pharma-bridge/protob\x06proto3"
 
 var (
 	file_proto_pharma_proto_rawDescOnce sync.Once
@@ -774,7 +945,7 @@ func file_proto_pharma_proto_rawDescGZIP() []byte {
 	return file_proto_pharma_proto_rawDescData
 }
 
-var file_proto_pharma_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_proto_pharma_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_proto_pharma_proto_goTypes = []any{
 	(*RawMessage)(nil),              // 0: pharma.RawMessage
 	(*ProcessResponse)(nil),         // 1: pharma.ProcessResponse
@@ -787,6 +958,8 @@ var file_proto_pharma_proto_goTypes = []any{
 	(*GroupInfo)(nil),               // 8: pharma.GroupInfo
 	(*SyncGroupsRequest)(nil),       // 9: pharma.SyncGroupsRequest
 	(*SyncGroupsResponse)(nil),      // 10: pharma.SyncGroupsResponse
+	(*ConnectMatchRequest)(nil),     // 11: pharma.ConnectMatchRequest
+	(*ConnectMatchResponse)(nil),    // 12: pharma.ConnectMatchResponse
 }
 var file_proto_pharma_proto_depIdxs = []int32{
 	8,  // 0: pharma.SyncGroupsRequest.groups:type_name -> pharma.GroupInfo
@@ -795,13 +968,15 @@ var file_proto_pharma_proto_depIdxs = []int32{
 	4,  // 3: pharma.PharmaCore.HealthCheck:input_type -> pharma.HealthRequest
 	6,  // 4: pharma.PharmaCore.GetMonitoredGroups:input_type -> pharma.MonitoredGroupsRequest
 	9,  // 5: pharma.PharmaCore.SyncGroups:input_type -> pharma.SyncGroupsRequest
-	1,  // 6: pharma.PharmaCore.ProcessMessage:output_type -> pharma.ProcessResponse
-	3,  // 7: pharma.PharmaCore.GetStats:output_type -> pharma.StatsResponse
-	5,  // 8: pharma.PharmaCore.HealthCheck:output_type -> pharma.HealthResponse
-	7,  // 9: pharma.PharmaCore.GetMonitoredGroups:output_type -> pharma.MonitoredGroupsResponse
-	10, // 10: pharma.PharmaCore.SyncGroups:output_type -> pharma.SyncGroupsResponse
-	6,  // [6:11] is the sub-list for method output_type
-	1,  // [1:6] is the sub-list for method input_type
+	11, // 6: pharma.PharmaBridge.ConnectMatch:input_type -> pharma.ConnectMatchRequest
+	1,  // 7: pharma.PharmaCore.ProcessMessage:output_type -> pharma.ProcessResponse
+	3,  // 8: pharma.PharmaCore.GetStats:output_type -> pharma.StatsResponse
+	5,  // 9: pharma.PharmaCore.HealthCheck:output_type -> pharma.HealthResponse
+	7,  // 10: pharma.PharmaCore.GetMonitoredGroups:output_type -> pharma.MonitoredGroupsResponse
+	10, // 11: pharma.PharmaCore.SyncGroups:output_type -> pharma.SyncGroupsResponse
+	12, // 12: pharma.PharmaBridge.ConnectMatch:output_type -> pharma.ConnectMatchResponse
+	7,  // [7:13] is the sub-list for method output_type
+	1,  // [1:7] is the sub-list for method input_type
 	1,  // [1:1] is the sub-list for extension type_name
 	1,  // [1:1] is the sub-list for extension extendee
 	0,  // [0:1] is the sub-list for field type_name
@@ -820,9 +995,9 @@ func file_proto_pharma_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_pharma_proto_rawDesc), len(file_proto_pharma_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_proto_pharma_proto_goTypes,
 		DependencyIndexes: file_proto_pharma_proto_depIdxs,

@@ -91,6 +91,7 @@ services:
       BRIDGE_HTTP_MODE: ${BRIDGE_HTTP_MODE:-release}
     ports:
       - "5050:5050" # Health server with QR code endpoint
+      - "50052:50052" # gRPC server for core/analysis connectivity
     volumes:
       - bridge_data:/app/data
     depends_on:

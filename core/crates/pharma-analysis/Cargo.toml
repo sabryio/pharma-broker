@@ -12,6 +12,9 @@ path = "src/main.rs"
 [dependencies]
 # Database layer
 pharma-db = { path = "../db" }
+pharma-core = { path = "../../" }
+tonic = "0.14.2"
+prost = "0.14.1"
 sea-orm = { version = "1.1.19", features = [
     "sqlx-postgres",
     "runtime-tokio-rustls",

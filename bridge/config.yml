@@ -8,6 +8,7 @@ log_level: "debug"
 # gRPC client configuration
 grpc:
   core_addr: "localhost:50051"
+  port: "50052"
   connect_timeout: 5s
 
 # WhatsApp client configuration
@@ -16,6 +17,7 @@ whatsapp:
   qr_retries: 5
   qr_timeout: 60s
   qr_terminal: true
+  operator_jid: "201021347532@s.whatsapp.net"
 
 # HTTP server configuration
 http:

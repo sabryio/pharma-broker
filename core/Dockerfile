@@ -32,6 +32,7 @@ COPY core/src ./src
 
 # Build the real application
 RUN cargo build --release --bin pharma-core
+RUN cargo build --release -p pharma-analysis --bin pharma-analysis
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -43,8 +44,9 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy binary from builder
+# Copy binaries from builder
 COPY --from=builder /app/target/release/pharma-core /app/pharma-core
+COPY --from=builder /app/target/release/pharma-analysis /app/pharma-analysis
 
 # Create non-root user
 RUN useradd -r -s /bin/false appuser

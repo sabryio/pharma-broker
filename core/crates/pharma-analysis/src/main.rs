@@ -30,7 +30,9 @@ use pharma_analysis::{
     health::HealthAnalysis, integrity::IntegrityAnalysis, matching::MatchingAnalysis,
     quality::QualityAnalysis, stale::StaleMatchesAnalysis, timeseries::TimeSeriesAnalysis,
 };
+use pharma_core::grpc::pharma::{ConnectMatchRequest, pharma_bridge_client::PharmaBridgeClient};
 use pharma_db::{ConnectOptions, Database};
+use prettytable::format;
 use std::env;
 
 // ============================================================================
@@ -57,6 +59,23 @@ fn contains_arabic(text: &str) -> bool {
             '\u{FE70}'..='\u{FEFF}'    // Arabic Presentation Forms-B
         )
     })
+}
+
+/// Formats a phone number for display, hiding LIDs.
+fn format_phone(phone: &str) -> String {
+    if phone.is_empty() {
+        return "-".to_string();
+    }
+    // LIDs are usually long numeric strings (14+ digits) or end in @lid
+    if phone.len() > 13 || phone.contains("@lid") {
+        return "Hidden (LID)".bright_black().to_string();
+    }
+    // Format regular phone numbers with a '+' if missing
+    if phone.starts_with('2') || phone.starts_with('1') {
+        format!("+{}", phone)
+    } else {
+        phone.to_string()
+    }
 }
 
 /// Reverses a string (for RTL display).
@@ -390,13 +409,13 @@ async fn auto_confirm_matches(
 
     println!("\n📋 Preview of top matches to confirm:");
     let mut table = Table::new();
+    table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
     table.add_row(row![
-        "ID",
-        "Score",
-        "Offer (Med | Sender | Group)",
-        "Offer Phone",
-        "Request (Med | Sender | Group)",
-        "Request Phone"
+        "ID".bold(),
+        "Score".bold(),
+        "Medication".bold(),
+        "Seller (Name | Phone)".bold(),
+        "Buyer (Name | Phone)".bold()
     ]);
 
     for row in &preview_rows {
@@ -406,34 +425,33 @@ async fn auto_confirm_matches(
         let offer_raw: Option<String> = row.try_get_by_index(3).ok();
         let offer_phone: Option<String> = row.try_get_by_index(4).ok();
         let offer_name: Option<String> = row.try_get_by_index(5).ok();
-        let offer_group: Option<String> = row.try_get_by_index(6).ok();
+        let _offer_group: Option<String> = row.try_get_by_index(6).ok();
         let request_med: Option<String> = row.try_get_by_index(7).ok();
         let request_raw: Option<String> = row.try_get_by_index(8).ok();
         let request_phone: Option<String> = row.try_get_by_index(9).ok();
         let request_name: Option<String> = row.try_get_by_index(10).ok();
-        let request_group: Option<String> = row.try_get_by_index(11).ok();
+        let _request_group: Option<String> = row.try_get_by_index(11).ok();
 
-        // Use name if available, otherwise raw Arabic text
-        let o_sender = offer_name
+        // Use name if available, otherwise raw identifier (cleaned)
+        let o_name = offer_name
             .map(|s| format_arabic(&s))
-            .unwrap_or_else(|| format_arabic(&offer_raw.unwrap_or_else(|| "-".to_string())));
-        let r_sender = request_name
-            .map(|s| format_arabic(&s))
-            .unwrap_or_else(|| format_arabic(&request_raw.unwrap_or_else(|| "-".to_string())));
+            .unwrap_or_else(|| format_arabic(&offer_raw.unwrap_or_else(|| "Unknown".to_string())));
+        let r_name = request_name.map(|s| format_arabic(&s)).unwrap_or_else(|| {
+            format_arabic(&request_raw.unwrap_or_else(|| "Unknown".to_string()))
+        });
 
-        // Apply Arabic formatting to med and group names as well
+        let o_phone = format_phone(&offer_phone.unwrap_or_default());
+        let r_phone = format_phone(&request_phone.unwrap_or_default());
+
         let o_med = format_arabic(&offer_med.unwrap_or_else(|| "-".to_string()));
-        let o_group = format_arabic(&offer_group.unwrap_or_else(|| "Unknown Group".to_string()));
-        let r_med = format_arabic(&request_med.unwrap_or_else(|| "-".to_string()));
-        let r_group = format_arabic(&request_group.unwrap_or_else(|| "Unknown Group".to_string()));
+        let _r_med = format_arabic(&request_med.unwrap_or_else(|| "-".to_string()));
 
         table.add_row(row![
-            &id.to_string()[..8],
+            &id.to_string()[..8].cyan(),
             format!("{:.4}", score).green(),
-            format!("{} | {} | {}", o_med, o_sender, o_group),
-            offer_phone.unwrap_or_else(|| "-".to_string()),
-            format!("{} | {} | {}", r_med, r_sender, r_group),
-            request_phone.unwrap_or_else(|| "-".to_string())
+            o_med.bold(),
+            format!("{} | {}", o_name, o_phone),
+            format!("{} | {}", r_name, r_phone)
         ]);
     }
     table.printstd();
@@ -456,7 +474,17 @@ async fn auto_confirm_matches(
     // Get match IDs and scores to process (apply limit if specified)
     let limit_clause = limit.map(|n| format!(" LIMIT {}", n)).unwrap_or_default();
     let select_sql = format!(
-        "SELECT id, score FROM matches WHERE score >= {} AND status = 'PENDING' ORDER BY score DESC{}",
+        "SELECT m.id, m.score, \
+                o.source_phone as offer_phone, o.source_name as offer_name, o.medication as offer_med, \
+                r.source_phone as request_phone, r.source_name as request_name, r.medication as request_med, \
+                rom.sender_jid as offerer_jid, rrm.sender_jid as requester_jid \
+         FROM matches m \
+         LEFT JOIN offers o ON m.offer_id = o.id \
+         LEFT JOIN requests r ON m.request_id = r.id \
+         LEFT JOIN raw_messages rom ON o.raw_message_id = rom.id \
+         LEFT JOIN raw_messages rrm ON r.raw_message_id = rrm.id \
+         WHERE m.score >= {} AND m.status = 'PENDING' \
+         ORDER BY m.score DESC{}",
         threshold, limit_clause
     );
     let rows = db
@@ -465,10 +493,31 @@ async fn auto_confirm_matches(
 
     let mut confirmed_count = 0;
     let mut feedback_count = 0;
+    let mut notification_count = 0;
 
-    for row in &rows {
+    // Connect to Bridge gRPC server
+    let bridge_url =
+        std::env::var("BRIDGE_GRPC_URL").unwrap_or_else(|_| "http://bridge:50052".into());
+    let mut bridge_client = match PharmaBridgeClient::connect(bridge_url.clone()).await {
+        Ok(client) => Some(client),
+        Err(e) => {
+            eprintln!("  ⚠️ Could not connect to bridge at {}: {}", bridge_url, e);
+            None
+        }
+    };
+
+    for row in rows {
         let match_id: uuid::Uuid = row.try_get_by_index(0)?;
         let score: f64 = row.try_get_by_index(1)?;
+
+        let offer_phone: String = row.try_get_by_index(2).unwrap_or_default();
+        let offer_name: String = row.try_get_by_index(3).unwrap_or_default();
+        let offer_med: String = row.try_get_by_index(4).unwrap_or_default();
+        let request_phone: String = row.try_get_by_index(5).unwrap_or_default();
+        let request_name: String = row.try_get_by_index(6).unwrap_or_default();
+        let _request_med: String = row.try_get_by_index(7).unwrap_or_default();
+        let offerer_jid: String = row.try_get_by_index(8).unwrap_or_default();
+        let requester_jid: String = row.try_get_by_index(9).unwrap_or_default();
 
         // 1. Update match status to CONFIRMED
         let update_sql = format!(
@@ -484,13 +533,11 @@ async fn auto_confirm_matches(
         }
         confirmed_count += 1;
 
-        // 2. Create feedback record using the entity model (validates entity structure)
+        // 2. Create feedback record
         let feedback = FeedbackRecord::confirmed(match_id, "auto-confirm", score);
 
-        // Insert using the entity's ActiveModel
         use pharma_db::entity::feedback_record::ActiveModel;
-        use sea_orm::ActiveModelTrait;
-        use sea_orm::Set;
+        use sea_orm::{ActiveModelTrait, Set};
 
         let active = ActiveModel {
             id: Set(feedback.id),
@@ -514,13 +561,32 @@ async fn auto_confirm_matches(
         } else {
             feedback_count += 1;
         }
+
+        // 3. Notify bridge to connect parties
+        if let Some(ref mut client) = bridge_client {
+            let req = tonic::Request::new(ConnectMatchRequest {
+                match_id: match_id.to_string(),
+                offerer_jid,
+                offerer_phone: offer_phone,
+                offerer_name: offer_name,
+                requester_jid,
+                requester_phone: request_phone,
+                requester_name: request_name,
+                medication: offer_med,
+            });
+
+            match client.connect_match(req).await {
+                Ok(_) => notification_count += 1,
+                Err(e) => eprintln!("  ⚠️ Failed to notify bridge for match {}: {}", match_id, e),
+            }
+        }
     }
 
     println!(
-        "{}",
+        "\n{}",
         format!(
-            "✅ Confirmed {} matches, created {} feedback records",
-            confirmed_count, feedback_count
+            "✅ Confirmed {} matches, created {} feedback records, notified bridge for {} matches",
+            confirmed_count, feedback_count, notification_count
         )
         .green()
         .bold()

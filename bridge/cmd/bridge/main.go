@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"os"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
+	"google.golang.org/grpc"
 
 	grpcadapter "pharma-bridge/adapters/grpc"
 	qradapter "pharma-bridge/adapters/qr"
@@ -62,6 +64,7 @@ func main() {
 		// Adapters
 		fx.Provide(provideQRHandler),
 		fx.Provide(provideCoreSender),
+		fx.Provide(provideBridgeServer),
 		fx.Provide(provideRetrySender),
 		fx.Provide(provideWhatsAppClient),
 
@@ -74,6 +77,7 @@ func main() {
 		// Lifecycle
 		fx.Invoke(registerRoutes),
 		fx.Invoke(startHTTPServer),
+		fx.Invoke(startBridgeGRPCServer),
 		fx.Invoke(startBridge),
 	)
 
@@ -151,6 +155,14 @@ func provideCoreSender(
 	})
 
 	return sender, nil
+}
+
+func provideBridgeServer(
+	waClient *whatsapp.Client,
+	cfg *config.Config,
+	logger zerolog.Logger,
+) *grpcadapter.BridgeServer {
+	return grpcadapter.NewBridgeServer(waClient, cfg.WhatsApp.OperatorJID, logger)
 }
 
 func provideRetrySender(
@@ -350,6 +362,31 @@ func startHTTPServer(lc fx.Lifecycle, server *infrahttp.Server, cfg *config.Conf
 		},
 		OnStop: func(ctx context.Context) error {
 			return server.Shutdown(ctx)
+		},
+	})
+}
+
+func startBridgeGRPCServer(lc fx.Lifecycle, bridgeServer *grpcadapter.BridgeServer, cfg *config.Config, logger zerolog.Logger) {
+	server := grpc.NewServer()
+	bridgeServer.Register(server)
+
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			lis, err := net.Listen("tcp", ":"+cfg.GRPC.Port)
+			if err != nil {
+				return err
+			}
+			go func() {
+				logger.Info().Str("port", cfg.GRPC.Port).Msg("📡 Bridge gRPC server listening")
+				if err := server.Serve(lis); err != nil {
+					logger.Error().Err(err).Msg("Bridge gRPC server failed")
+				}
+			}()
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			server.GracefulStop()
+			return nil
 		},
 	})
 }
