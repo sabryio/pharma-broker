@@ -46,6 +46,9 @@ pub struct Model {
     // Status
     pub status: MedicationStatus,
 
+    // AI Semantic Support
+    pub embedding: Option<PgVector>,
+
     // Metadata
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
@@ -82,6 +85,7 @@ impl Model {
             therapeutic_class: None,
             atc_code: None,
             status: MedicationStatus::Active,
+            embedding: None,
             created_at: now,
             updated_at: now,
             created_by: None,

@@ -36,6 +36,7 @@ use std::sync::Arc;
 
 pub use migration::run_migrations;
 pub use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
+pub use pgvector::Vector;
 
 // Export diagnostics types
 pub use diagnostics::{DatabaseHealth, DbDiagnostics, IndexStats, QueryPlanAnalysis, TableStats};

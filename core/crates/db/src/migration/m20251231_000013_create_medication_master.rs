@@ -66,6 +66,14 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Add embedding column (Vector(768)) separately since sea-orm-migration doesn't natively support vector type yet
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "ALTER TABLE medication_master ADD COLUMN IF NOT EXISTS embedding vector(768)",
+            )
+            .await?;
+
         // Add unique constraint on canonical_name + strength
         manager
             .create_index(
@@ -103,10 +111,112 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Vector index for AI-driven suggestions (HNSW for performance)
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "CREATE INDEX IF NOT EXISTS idx_medication_master_embedding 
+                 ON medication_master USING hnsw (embedding vector_cosine_ops)",
+            )
+            .await?;
+
+        // Integrate logic from m20251231_000015: Add columns to offers and requests
+
+        // --- OFFERS ---
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Alias::new("offers"))
+                    .add_column(
+                        ColumnDef::new(Alias::new("master_medication_id"))
+                            .uuid()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(Alias::new("medication_curated"))
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager.get_connection().execute_unprepared(
+            "ALTER TABLE offers ADD CONSTRAINT fk_offers_master_medication 
+             FOREIGN KEY (master_medication_id) REFERENCES medication_master(id) ON DELETE SET NULL"
+        ).await?;
+
+        manager.get_connection().execute_unprepared(
+            "CREATE INDEX IF NOT EXISTS idx_offers_master_med ON offers(master_medication_id) WHERE master_medication_id IS NOT NULL"
+        ).await?;
+
+        // --- REQUESTS ---
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Alias::new("requests"))
+                    .add_column(
+                        ColumnDef::new(Alias::new("master_medication_id"))
+                            .uuid()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(Alias::new("medication_curated"))
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager.get_connection().execute_unprepared(
+            "ALTER TABLE requests ADD CONSTRAINT fk_requests_master_medication 
+             FOREIGN KEY (master_medication_id) REFERENCES medication_master(id) ON DELETE SET NULL"
+        ).await?;
+
+        manager.get_connection().execute_unprepared(
+            "CREATE INDEX IF NOT EXISTS idx_requests_master_med ON requests(master_medication_id) WHERE master_medication_id IS NOT NULL"
+        ).await?;
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // Drop FKs and Columns first
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "ALTER TABLE offers DROP CONSTRAINT IF EXISTS fk_offers_master_medication",
+            )
+            .await?;
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "ALTER TABLE requests DROP CONSTRAINT IF EXISTS fk_requests_master_medication",
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Alias::new("offers"))
+                    .drop_column(Alias::new("master_medication_id"))
+                    .drop_column(Alias::new("medication_curated"))
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Alias::new("requests"))
+                    .drop_column(Alias::new("master_medication_id"))
+                    .drop_column(Alias::new("medication_curated"))
+                    .to_owned(),
+            )
+            .await?;
+
         manager
             .drop_table(Table::drop().table(MedicationMaster::Table).to_owned())
             .await

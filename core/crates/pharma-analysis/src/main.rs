@@ -30,11 +30,13 @@ use pharma_analysis::{
     health::HealthAnalysis, integrity::IntegrityAnalysis, matching::MatchingAnalysis,
     quality::QualityAnalysis, stale::StaleMatchesAnalysis, timeseries::TimeSeriesAnalysis,
 };
+use pharma_core::ai::PharmaParser;
 use pharma_core::grpc::pharma::{ConnectMatchRequest, pharma_bridge_client::PharmaBridgeClient};
-use pharma_db::{ConnectOptions, Database};
+use pharma_db::{ConnectOptions, Database, Vector};
 use prettytable::format;
 use sea_orm::ConnectionTrait;
 use std::env;
+use std::sync::Arc;
 use unicode_width::UnicodeWidthStr;
 
 // Column width constants for aligned table output
@@ -287,6 +289,9 @@ async fn main() -> anyhow::Result<()> {
     let mut opt = ConnectOptions::new(database_url.to_owned());
     opt.sqlx_logging(false);
 
+    // Initialize AI client
+    let ai_client = Arc::new(PharmaParser::from_env());
+
     // Print header
     println!(
         "{}",
@@ -349,7 +354,7 @@ async fn main() -> anyhow::Result<()> {
             auto_confirm_matches(&db, threshold, limit, execute).await?;
         }
         Commands::Curate { action } => {
-            handle_curate_action(&db, action).await?;
+            handle_curate_action(&db, action, ai_client).await?;
         }
         Commands::All => {
             run_all_phases(&db).await?;
@@ -762,6 +767,7 @@ fn truncate_url(url: &str) -> String {
 async fn handle_curate_action(
     db: &pharma_db::DatabaseConnection,
     action: CurateAction,
+    ai_client: Arc<PharmaParser>,
 ) -> anyhow::Result<()> {
     use prettytable::{Table, row};
     use sea_orm::{DbBackend, Statement};
@@ -901,6 +907,15 @@ async fn handle_curate_action(
             use pharma_db::entity::medication_master;
             use sea_orm::{ActiveModelTrait, Set};
 
+            println!("🤖 Generating embedding for master medication...");
+            let embedding = match ai_client.embed_batch(std::slice::from_ref(&name)).await {
+                Ok(embs) if !embs.is_empty() => Some(Vector::from(embs[0].clone())),
+                _ => {
+                    println!("⚠️ Failed to generate embedding, creating without it.");
+                    None
+                }
+            };
+
             let model = medication_master::ActiveModel {
                 id: Set(uuid::Uuid::new_v4()),
                 canonical_name: Set(name.clone()),
@@ -913,6 +928,7 @@ async fn handle_curate_action(
                 therapeutic_class: Set(None),
                 atc_code: Set(None),
                 status: Set(medication_master::MedicationStatus::Active),
+                embedding: Set(embedding),
                 created_at: Set(chrono::Utc::now()),
                 updated_at: Set(chrono::Utc::now()),
                 created_by: Set(Some("cli".to_string())),
@@ -1029,17 +1045,47 @@ async fn handle_curate_action(
         }
 
         CurateAction::Suggest { alias } => {
-            println!("\n🔍 Suggestions for: \"{}\"", alias);
+            println!("\n🔍 Finding suggestions for: \"{}\"", alias);
 
             let normalized = alias.to_lowercase().trim().to_string();
 
-            // Use trigram similarity to find candidates
-            let suggest_sql = format!(
+            // 1. Semantic Search (AI-driven)
+            println!("🤖 Generating embedding for search...");
+            let query_vec = match ai_client.embed_batch(std::slice::from_ref(&alias)).await {
+                Ok(embs) if !embs.is_empty() => Some(embs[0].clone()),
+                _ => None,
+            };
+
+            let semantic_results = if let Some(vec) = query_vec {
+                let vec_str = format!("{:?}", vec);
+                let semantic_sql = format!(
+                    "SELECT 
+                        id, 
+                        canonical_name, 
+                        strength,
+                        1 - (embedding <=> '{}') as score,
+                        'AI Semantic' as method
+                     FROM medication_master
+                     WHERE embedding IS NOT NULL
+                     ORDER BY embedding <=> '{}'
+                     LIMIT 3",
+                    vec_str, vec_str
+                );
+                db.query_all(Statement::from_string(DbBackend::Postgres, semantic_sql))
+                    .await
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+
+            // 2. Trigram Similarity (Fuzzy)
+            let fuzzy_sql = format!(
                 "SELECT 
                     id, 
                     canonical_name, 
                     strength,
-                    similarity(canonical_name, '{}') as score
+                    similarity(canonical_name, '{}') as score,
+                    'Fuzzy String' as method
                  FROM medication_master
                  WHERE canonical_name % '{}' OR canonical_name ILIKE '%{}%'
                  ORDER BY score DESC
@@ -1049,30 +1095,52 @@ async fn handle_curate_action(
                 normalized.replace("'", "''")
             );
 
-            let rows = db
-                .query_all(Statement::from_string(DbBackend::Postgres, suggest_sql))
+            let fuzzy_results = db
+                .query_all(Statement::from_string(DbBackend::Postgres, fuzzy_sql))
                 .await?;
 
-            if rows.is_empty() {
+            if semantic_results.is_empty() && fuzzy_results.is_empty() {
                 println!("❌ No suggestions found.");
             } else {
                 let mut table = Table::new();
                 table.set_format(*format::consts::FORMAT_CLEAN);
                 table.add_row(row![
                     "ID".bold(),
+                    "Method".bold(),
                     "Master Medication".bold(),
                     "Strength".bold(),
                     "Confidence".bold()
                 ]);
 
-                for row in &rows {
+                // Combine and deduplicate by ID, preferring semantic method if both found the same ID
+                let mut combined = std::collections::HashMap::new();
+
+                for row in semantic_results {
                     let id: uuid::Uuid = row.try_get_by_index(0)?;
+                    combined.insert(id, row);
+                }
+
+                for row in fuzzy_results {
+                    let id: uuid::Uuid = row.try_get_by_index(0)?;
+                    combined.entry(id).or_insert(row);
+                }
+
+                let mut sorted: Vec<_> = combined.into_iter().collect();
+                sorted.sort_by(|a, b| {
+                    let score_a: f32 = a.1.try_get_by_index(3).unwrap_or(0.0);
+                    let score_b: f32 = b.1.try_get_by_index(3).unwrap_or(0.0);
+                    score_b.partial_cmp(&score_a).unwrap()
+                });
+
+                for (id, row) in sorted {
                     let name: String = row.try_get_by_index(1)?;
                     let strength: Option<String> = row.try_get_by_index(2)?;
                     let score: f32 = row.try_get_by_index(3)?;
+                    let method: String = row.try_get_by_index(4)?;
 
                     table.add_row(row![
                         id.to_string().dimmed(),
+                        method.cyan(),
                         name.green(),
                         strength.unwrap_or_default().yellow(),
                         format!("{:.1}%", score * 100.0).bold()
