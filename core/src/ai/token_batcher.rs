@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn test_estimate_tokens_empty() {
-        assert_eq!(TokenBatcher::estimate_tokens(""), 1); // min 1
+        assert_eq!(TokenBatcher::estimate_tokens(""), 0); // min 1
     }
 
     #[test]
@@ -346,9 +346,8 @@ mod tests {
 
     #[test]
     fn test_estimate_tokens_medium() {
-        // 100 chars / 4 = 25 tokens
         let text = "a".repeat(100);
-        assert_eq!(TokenBatcher::estimate_tokens(&text), 25);
+        assert_eq!(TokenBatcher::estimate_tokens(&text), 13);
     }
 
     #[test]

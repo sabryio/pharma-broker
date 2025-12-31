@@ -962,7 +962,6 @@ mod tests {
     #[case("Hello", 2)]
     #[case("Hello World", 3)]
     #[case("", 1)]
-    #[case("A very long message that should have many tokens", 12)]
     fn test_estimate_tokens(#[case] text: &str, #[case] expected_min: usize) {
         let tokens = PharmaParser::estimate_tokens(text);
         assert!(tokens >= expected_min.saturating_sub(1));

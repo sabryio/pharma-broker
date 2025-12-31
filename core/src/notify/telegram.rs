@@ -222,7 +222,8 @@ mod tests {
         assert!(message.contains("💡"));
         assert!(message.contains("High similarity")); // reasoning field
         assert!(message.contains("85.0%"));
-        assert!(message.contains("match-123"));
+        // Match ID is now a UUID, just verify it's present in the message
+        assert!(message.contains(&match_entity.id.to_string()));
     }
 
     #[test]

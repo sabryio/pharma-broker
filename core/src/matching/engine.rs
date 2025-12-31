@@ -1374,8 +1374,9 @@ mod tests {
     async fn test_audit_trail_integration() {
         let engine = MatchingEngine::default();
 
+        let match_id = Uuid::new_v4();
         let match_entity = MatchEntity {
-            id: Uuid::new_v4(),
+            id: match_id,
             offer_id: Uuid::new_v4(),
             request_id: Uuid::new_v4(),
             score: 0.95,
@@ -1391,9 +1392,12 @@ mod tests {
         assert!(result.is_ok());
 
         // Get match history
-        let history = engine.get_match_audit_history("match-123").await.unwrap();
+        let history = engine
+            .get_match_audit_history(&match_id.to_string())
+            .await
+            .unwrap();
         assert_eq!(history.len(), 1);
-        assert_eq!(history[0].match_id, Some("match-123".to_string()));
+        assert_eq!(history[0].match_id, Some(match_id.to_string()));
     }
 
     #[tokio::test]

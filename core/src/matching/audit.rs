@@ -873,10 +873,11 @@ mod tests {
     #[tokio::test]
     async fn test_audit_trail_log_match_action() {
         let trail = AuditTrail::new(AuditTrailConfig::default());
+        let match_id = Uuid::new_v4();
 
         trail
             .log_match_action(MatchActionParams {
-                match_id: Uuid::new_v4(),
+                match_id,
                 offer_id: Uuid::new_v4(),
                 request_id: Uuid::new_v4(),
                 action: ActionType::AutoConfirm,
@@ -888,7 +889,10 @@ mod tests {
             .await
             .unwrap();
 
-        let history = trail.get_match_history("match-123").await.unwrap();
+        let history = trail
+            .get_match_history(&match_id.to_string())
+            .await
+            .unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].event_type, AuditEventType::MatchAutoConfirmed);
         assert_eq!(history[0].actor, "AUTO");
