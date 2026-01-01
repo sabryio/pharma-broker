@@ -1127,15 +1127,15 @@ async fn handle_curate_action(
 
                 let mut sorted: Vec<_> = combined.into_iter().collect();
                 sorted.sort_by(|a, b| {
-                    let score_a: f32 = a.1.try_get_by_index(3).unwrap_or(0.0);
-                    let score_b: f32 = b.1.try_get_by_index(3).unwrap_or(0.0);
+                    let score_a: f64 = a.1.try_get_by_index(3).unwrap_or(0.0);
+                    let score_b: f64 = b.1.try_get_by_index(3).unwrap_or(0.0);
                     score_b.partial_cmp(&score_a).unwrap()
                 });
 
                 for (id, row) in sorted {
                     let name: String = row.try_get_by_index(1)?;
                     let strength: Option<String> = row.try_get_by_index(2)?;
-                    let score: f32 = row.try_get_by_index(3)?;
+                    let score: f64 = row.try_get_by_index(3)?;
                     let method: String = row.try_get_by_index(4)?;
 
                     table.add_row(row![

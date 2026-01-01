@@ -13,7 +13,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use pharma_core::api::handlers::init_start_time;
 use pharma_core::api::{create_router, routes::AppState};
 use pharma_core::grpc::{GrpcDependencies, GrpcRepositories, PharmaCoreService, start_grpc_server};
-use pharma_core::matching::{MatchingEngine, MatchingEngineConfig};
+use pharma_core::matching::{
+    MatchingEngine, MatchingEngineConfig, MedicationResolver, MedicationResolverConfig,
+};
 use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
     SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
@@ -221,15 +223,37 @@ async fn main() -> anyhow::Result<()> {
         audit_log: audit_log_repo,
         match_queue: match_queue_repo.clone(),
         medication_mapping: medication_mapping_repo,
-        medication_master: medication_master_repo,
-        medication_alias: medication_alias_repo,
+        medication_master: medication_master_repo.clone(),
+        medication_alias: medication_alias_repo.clone(),
         match_repo: match_repo.clone(),
     };
-    let grpc_deps = GrpcDependencies {
-        ai_client,
-        ws_tx: ws_tx.clone(),
-        matching_engine: matching_engine.clone(),
+
+    // Create medication resolver for dynamic resolution
+    let medication_resolver_config = MedicationResolverConfig {
+        auto_approve_threshold: std::env::var("MED_RESOLVER_AUTO_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0.92),
+        minimum_threshold: std::env::var("MED_RESOLVER_MIN_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0.70),
+        create_aliases: true,
+        auto_create_masters: false,
     };
+    let medication_resolver = Arc::new(MedicationResolver::new(
+        medication_resolver_config,
+        medication_master_repo,
+        medication_alias_repo,
+    ));
+    tracing::info!(
+        auto_threshold = %medication_resolver.config().auto_approve_threshold,
+        min_threshold = %medication_resolver.config().minimum_threshold,
+        "🔗 Medication resolver initialized"
+    );
+
+    let grpc_deps = GrpcDependencies::new(ai_client, ws_tx.clone(), matching_engine.clone())
+        .with_medication_resolver(medication_resolver);
     let grpc_service = PharmaCoreService::new(grpc_repos, grpc_deps);
 
     // Shutdown signal for graceful termination (Ctrl+C and SIGTERM)

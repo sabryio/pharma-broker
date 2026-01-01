@@ -29,6 +29,7 @@ use crate::domain::{
 };
 use crate::matching::AutoActionHandler;
 use crate::matching::MatchingEngine;
+use crate::matching::MedicationResolver;
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, FindDuplicateParams, GroupRepository,
     MatchQueueRepository, MatchRepository, MedicationMappingRepository, OfferRepository,
@@ -63,6 +64,7 @@ where
     pub ai_client: Arc<PharmaParser>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub matching_engine: Arc<MatchingEngine>,
+    pub medication_resolver: Option<Arc<MedicationResolver>>,
     pub auto_action: AutoActionHandler,
     start_time: std::time::Instant,
 }
@@ -99,6 +101,7 @@ where
             ai_client: deps.ai_client,
             ws_tx: deps.ws_tx,
             matching_engine: deps.matching_engine,
+            medication_resolver: deps.medication_resolver,
             auto_action: AutoActionHandler::from_env(),
             start_time: std::time::Instant::now(),
         }
@@ -349,6 +352,7 @@ where
         let auto_action = self.auto_action.clone();
         let match_queue_repo = self.match_queue_repo.clone();
         let medication_mapping_repo = self.medication_mapping_repo.clone();
+        let medication_resolver = self.medication_resolver.clone();
 
         tokio::spawn(async move {
             tracing::info!(id = %msg_id, "🤖 Starting AI parsing (background)");
@@ -448,6 +452,31 @@ where
                         // Get pre-generated embedding
                         let content_embedding = embeddings_map.get(&item.medication).cloned();
 
+                        // Dynamic medication resolution
+                        let (master_medication_id, medication_curated) =
+                            if let Some(resolver) = &medication_resolver {
+                                let resolution = if let Some(emb) = &content_embedding {
+                                    resolver.resolve_with_embedding(&item.medication, emb).await
+                                } else {
+                                    resolver.resolve(&item.medication).await
+                                };
+
+                                if resolution.master_medication_id.is_some() {
+                                    tracing::info!(
+                                        medication = %item.medication,
+                                        master_id = ?resolution.master_medication_id,
+                                        method = %resolution.method,
+                                        confidence = %resolution.confidence,
+                                        auto_approved = %resolution.auto_approved,
+                                        "🔗 Dynamic medication resolution"
+                                    );
+                                }
+
+                                (resolution.master_medication_id, resolution.auto_approved)
+                            } else {
+                                (None, false)
+                            };
+
                         if item.item_type == Intent::Offer {
                             let offer = Offer {
                                 id: Uuid::new_v4(),
@@ -468,8 +497,8 @@ where
                                 urgency_level: convert_urgency_level(item.urgency_level),
                                 expiry_info: item.expiry.clone(),
                                 ai_confidence: item.ai_confidence,
-                                master_medication_id: None, // Will be set via curation
-                                medication_curated: false,
+                                master_medication_id, // Dynamic resolution
+                                medication_curated,
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };
@@ -553,8 +582,8 @@ where
                                 notes: item.notes.clone(),
                                 status: ItemStatus::Active,
                                 content_embedding: content_embedding.clone().map(PgVector::from),
-                                master_medication_id: None, // Will be set via curation
-                                medication_curated: false,
+                                master_medication_id, // Dynamic resolution (reuse from above)
+                                medication_curated,
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };

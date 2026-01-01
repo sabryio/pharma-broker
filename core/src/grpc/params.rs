@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use crate::ai::PharmaParser;
-use crate::matching::MatchingEngine;
+use crate::matching::{MatchingEngine, MedicationResolver};
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
     MedicationAliasRepository, MedicationMappingRepository, MedicationMasterRepository,
@@ -49,6 +49,7 @@ pub struct GrpcDependencies {
     pub ai_client: Arc<PharmaParser>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub matching_engine: Arc<MatchingEngine>,
+    pub medication_resolver: Option<Arc<MedicationResolver>>,
 }
 
 impl GrpcDependencies {
@@ -61,6 +62,12 @@ impl GrpcDependencies {
             ai_client,
             ws_tx,
             matching_engine,
+            medication_resolver: None,
         }
+    }
+
+    pub fn with_medication_resolver(mut self, resolver: Arc<MedicationResolver>) -> Self {
+        self.medication_resolver = Some(resolver);
+        self
     }
 }

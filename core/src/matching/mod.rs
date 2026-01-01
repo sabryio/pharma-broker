@@ -18,6 +18,7 @@ mod fuzzy;
 mod historical;
 mod hybrid_filter;
 mod learner;
+mod medication_resolver;
 mod scheduler;
 mod score_types;
 mod scorer;
@@ -114,6 +115,11 @@ pub use thresholds::{SmoothConfidenceResult, SmoothThresholdCalculator, SmoothTh
 
 // --- warm_start ---
 pub use warm_start::{OutlierDetector, OutlierDetectorConfig, WarmStartConfig, WarmStartManager};
+
+// --- medication_resolver ---
+pub use medication_resolver::{
+    MedicationResolver, MedicationResolverConfig, ResolutionMethod, ResolutionResult,
+};
 
 // --- score_types ---
 pub use score_types::{
