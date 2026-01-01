@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Badge } from '@/components/ui/badge'
 import { MatchCountInline } from '@/components/ui/match-count-badge'
+import { ReclassifyDialog } from '@/components/ui/reclassify-dialog'
 import {
   MessageCircle,
   Filter,
@@ -10,6 +11,8 @@ import {
   ChevronRight,
   Loader2,
   AlertCircle,
+  ArrowRightLeft,
+  MoreHorizontal,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useOffers } from '@/hooks/use-offers-requests'
@@ -20,80 +23,26 @@ import {
   flexRender,
   createColumnHelper,
 } from '@tanstack/react-table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 import type { Offer, OfferStatus } from '@/schema/offer-request'
 
 export const Route = createFileRoute('/offers')({
   component: Offers,
 })
 
-const columnHelper = createColumnHelper<Offer>()
-
-const columns = [
-  columnHelper.accessor('medication', {
-    header: 'Medication Name',
-    cell: (info) => (
-      <span className="font-medium text-foreground">{info.getValue()}</span>
-    ),
-  }),
-  columnHelper.accessor('quantity', {
-    header: 'Quantity',
-    cell: (info) => {
-      const qty = info.getValue()
-      const unit = info.row.original.unit
-      return (
-        <span className="text-muted-foreground">
-          {qty ? `${qty} ${unit || 'units'}` : '-'}
-        </span>
-      )
-    },
-  }),
-  columnHelper.accessor('price', {
-    header: 'Price',
-    cell: (info) => {
-      const price = info.getValue()
-      const currency = info.row.original.currency || 'EGP'
-      return (
-        <span className="font-medium text-teal">
-          {price ? `${price} ${currency}` : '-'}
-        </span>
-      )
-    },
-  }),
-  columnHelper.accessor('confirmed_match_count', {
-    header: 'Matches',
-    cell: (info) => (
-      <MatchCountInline count={info.getValue() ?? 0} variant="offer" />
-    ),
-  }),
-  columnHelper.accessor('group_id', {
-    header: 'Source',
-    cell: () => <MessageCircle className="w-5 h-5 text-emerald" />,
-  }),
-  columnHelper.accessor('status', {
-    header: 'Status',
-    cell: (info) => {
-      const status = info.getValue() as OfferStatus
-      return (
-        <Badge
-          variant="outline"
-          className={cn(
-            'font-medium',
-            status === 'Active'
-              ? 'border-emerald/50 text-emerald bg-emerald/10'
-              : status === 'Matched'
-                ? 'border-teal/50 text-teal bg-teal/10'
-                : 'border-amber/50 text-amber bg-amber/10',
-          )}
-        >
-          {status}
-        </Badge>
-      )
-    },
-  }),
-]
-
 function Offers() {
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
+  const [reclassifyItem, setReclassifyItem] = useState<{
+    id: string
+    medication: string
+    medicationRaw: string
+  } | null>(null)
 
   const { data, isLoading, isError, error } = useOffers({
     limit: pagination.pageSize,
@@ -103,6 +52,106 @@ function Offers() {
   const offers = useMemo(() => data?.data || [], [data])
   const totalCount = data?.meta?.total || 0
   const pageCount = Math.ceil(totalCount / pagination.pageSize)
+
+  const columnHelper = createColumnHelper<Offer>()
+
+  const columns = useMemo(
+    () => [
+      columnHelper.accessor('medication', {
+        header: 'Medication Name',
+        cell: (info) => (
+          <span className="font-medium text-foreground">{info.getValue()}</span>
+        ),
+      }),
+      columnHelper.accessor('quantity', {
+        header: 'Quantity',
+        cell: (info) => {
+          const qty = info.getValue()
+          const unit = info.row.original.unit
+          return (
+            <span className="text-muted-foreground">
+              {qty ? `${qty} ${unit || 'units'}` : '-'}
+            </span>
+          )
+        },
+      }),
+      columnHelper.accessor('price', {
+        header: 'Price',
+        cell: (info) => {
+          const price = info.getValue()
+          const currency = info.row.original.currency || 'EGP'
+          return (
+            <span className="font-medium text-teal">
+              {price ? `${price} ${currency}` : '-'}
+            </span>
+          )
+        },
+      }),
+      columnHelper.accessor('confirmed_match_count', {
+        header: 'Matches',
+        cell: (info) => (
+          <MatchCountInline count={info.getValue() ?? 0} variant="offer" />
+        ),
+      }),
+      columnHelper.accessor('group_id', {
+        header: 'Source',
+        cell: () => <MessageCircle className="w-5 h-5 text-emerald" />,
+      }),
+      columnHelper.accessor('status', {
+        header: 'Status',
+        cell: (info) => {
+          const status = info.getValue() as OfferStatus
+          return (
+            <Badge
+              variant="outline"
+              className={cn(
+                'font-medium',
+                status === 'Active'
+                  ? 'border-emerald/50 text-emerald bg-emerald/10'
+                  : status === 'Matched'
+                    ? 'border-teal/50 text-teal bg-teal/10'
+                    : 'border-amber/50 text-amber bg-amber/10',
+              )}
+            >
+              {status}
+            </Badge>
+          )
+        },
+      }),
+      columnHelper.display({
+        id: 'actions',
+        header: '',
+        cell: (info) => {
+          const offer = info.row.original
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() =>
+                    setReclassifyItem({
+                      id: offer.id,
+                      medication: offer.medication,
+                      medicationRaw: offer.medication_raw,
+                    })
+                  }
+                  className="gap-2 text-amber"
+                >
+                  <ArrowRightLeft className="w-4 h-4" />
+                  Convert to Request
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      }),
+    ],
+    [columnHelper],
+  )
 
   const table = useReactTable({
     data: offers,
@@ -199,7 +248,7 @@ function Offers() {
                   <tr
                     key={row.id}
                     className={cn(
-                      'border-b border-border/50 hover:bg-secondary/30 transition-colors cursor-pointer animate-fade-in',
+                      'border-b border-border/50 hover:bg-secondary/30 transition-colors animate-fade-in',
                     )}
                     style={{ animationDelay: `${index * 30}ms` }}
                   >
@@ -251,6 +300,17 @@ function Offers() {
           )}
         </div>
       </div>
+
+      {/* Reclassify Dialog */}
+      <ReclassifyDialog
+        open={!!reclassifyItem}
+        onOpenChange={(open) => !open && setReclassifyItem(null)}
+        itemId={reclassifyItem?.id ?? ''}
+        itemType="offer"
+        medication={reclassifyItem?.medication ?? ''}
+        medicationRaw={reclassifyItem?.medicationRaw}
+        onSuccess={() => setReclassifyItem(null)}
+      />
     </DashboardLayout>
   )
 }

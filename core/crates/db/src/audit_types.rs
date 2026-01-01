@@ -17,6 +17,7 @@ pub enum AuditAction {
     RequestCreated,
     OfferExpired,
     RequestExpired,
+    ItemReclassified,
 
     // Weight/Config actions
     WeightsUpdated,
@@ -49,6 +50,7 @@ impl std::fmt::Display for AuditAction {
             Self::RequestCreated => write!(f, "request_created"),
             Self::OfferExpired => write!(f, "offer_expired"),
             Self::RequestExpired => write!(f, "request_expired"),
+            Self::ItemReclassified => write!(f, "item_reclassified"),
             Self::WeightsUpdated => write!(f, "weights_updated"),
             Self::WeightsRollback => write!(f, "weights_rollback"),
             Self::ABTestCreated => write!(f, "ab_test_created"),

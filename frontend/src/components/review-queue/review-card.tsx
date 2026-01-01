@@ -34,6 +34,7 @@ import {
   Sparkles,
   Send,
   Loader2,
+  ArrowRightLeft,
 } from 'lucide-react'
 
 interface ReviewCardProps {
@@ -41,6 +42,7 @@ interface ReviewCardProps {
   offer?: ReviewOffer
   request?: ReviewRequest
   onCurate?: (name: string, aliasId?: string | null) => void
+  onReclassify?: (id: string, type: 'offer' | 'request', medication: string, medicationRaw?: string) => void
   aiStatus?: 'Approved' | 'Flagged' | 'Rejected' | null
   aiConfidence?: number | null
   aiExplanation?: string | null
@@ -476,6 +478,7 @@ export function ReviewCard({
   offer,
   request,
   onCurate,
+  onReclassify,
   aiStatus,
   aiConfidence,
   aiExplanation,
@@ -484,41 +487,42 @@ export function ReviewCard({
 
   if (isOffer && offer) {
     return (
-      <div
-        className={cn(
-          'relative overflow-hidden',
-          'p-6 rounded-2xl',
-          'bg-linear-to-br from-card/80 via-card/60 to-card/40',
-          'border border-teal/30 hover:border-teal/50',
-          'shadow-xl shadow-teal/10 hover:shadow-teal/20',
-          'backdrop-blur-xl',
-          'transition-all duration-500 ease-out',
-          'hover:translate-y-[-2px]',
-        )}
-      >
-        {/* Animated gradient border effect */}
-        <div className="absolute inset-0 -z-10 bg-linear-to-br from-teal/20 via-transparent to-teal/10 opacity-50" />
-        <div className="absolute top-0 right-0 w-32 h-32 -z-10 bg-teal/10 rounded-full blur-3xl" />
+      <div className="flex flex-col h-full">
+        <div
+          className={cn(
+            'relative overflow-hidden flex-1',
+            'p-6 rounded-2xl',
+            'bg-linear-to-br from-card/80 via-card/60 to-card/40',
+            'border border-teal/30 hover:border-teal/50',
+            'shadow-xl shadow-teal/10 hover:shadow-teal/20',
+            'backdrop-blur-xl',
+            'transition-all duration-500 ease-out',
+            'hover:translate-y-[-2px]',
+          )}
+        >
+          {/* Animated gradient border effect */}
+          <div className="absolute inset-0 -z-10 bg-linear-to-br from-teal/20 via-transparent to-teal/10 opacity-50" />
+          <div className="absolute top-0 right-0 w-32 h-32 -z-10 bg-teal/10 rounded-full blur-3xl" />
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-teal to-teal/60 flex items-center justify-center shadow-lg shadow-teal/30">
-                <Package className="w-5 h-5 text-white" />
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-xl bg-linear-to-br from-teal to-teal/60 flex items-center justify-center shadow-lg shadow-teal/30">
+                  <Package className="w-5 h-5 text-white" />
+                </div>
+                <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald animate-pulse shadow-lg shadow-emerald/50" />
               </div>
-              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald animate-pulse shadow-lg shadow-emerald/50" />
-            </div>
-            <div>
-              <span className="text-sm font-bold text-teal uppercase tracking-wider">
-                Supply Offer
-              </span>
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Sparkles className="w-3 h-3" />
-                <span>Available</span>
+              <div>
+                <span className="text-sm font-bold text-teal uppercase tracking-wider">
+                  Supply Offer
+                </span>
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <Sparkles className="w-3 h-3" />
+                  <span>Available</span>
+                </div>
               </div>
             </div>
-          </div>
           {aiStatus && (
             <Popover>
               <PopoverTrigger asChild>
@@ -667,24 +671,45 @@ export function ReviewCard({
           <span className="px-2">Supply Side</span>
           <div className="flex-1 h-px bg-linear-to-l from-teal/40 to-transparent" />
         </div>
+        </div>
+
+        {/* Reclassify Button - Outside the card */}
+        {onReclassify && (
+          <button
+            onClick={() => onReclassify(offer.id, 'offer', offer.product, offer.medicationRaw ?? undefined)}
+            className={cn(
+              'mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl',
+              'bg-linear-to-r from-violet-500/10 to-fuchsia-500/10',
+              'border border-violet-500/30 hover:border-violet-500/50',
+              'text-violet-400 hover:text-violet-300',
+              'transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]',
+              'shadow-lg hover:shadow-violet-500/20',
+              'text-sm font-medium',
+            )}
+          >
+            <ArrowRightLeft className="w-4 h-4" />
+            <span>Reclassify as Request</span>
+          </button>
+        )}
       </div>
     )
   }
 
   if (!isOffer && request) {
     return (
-      <div
-        className={cn(
-          'relative overflow-hidden',
-          'p-6 rounded-2xl',
-          'bg-linear-to-br from-card/80 via-card/60 to-card/40',
-          'border border-amber/30 hover:border-amber/50',
-          'shadow-xl shadow-amber/10 hover:shadow-amber/20',
-          'backdrop-blur-xl',
-          'transition-all duration-500 ease-out',
-          'hover:translate-y-[-2px]',
-        )}
-      >
+      <div className="flex flex-col h-full">
+        <div
+          className={cn(
+            'relative overflow-hidden flex-1',
+            'p-6 rounded-2xl',
+            'bg-linear-to-br from-card/80 via-card/60 to-card/40',
+            'border border-amber/30 hover:border-amber/50',
+            'shadow-xl shadow-amber/10 hover:shadow-amber/20',
+            'backdrop-blur-xl',
+            'transition-all duration-500 ease-out',
+            'hover:translate-y-[-2px]',
+          )}
+        >
         {/* Animated gradient border effect */}
         <div className="absolute inset-0 -z-10 bg-linear-to-br from-amber/20 via-transparent to-amber/10 opacity-50" />
         <div className="absolute top-0 right-0 w-32 h-32 -z-10 bg-amber/10 rounded-full blur-3xl" />
@@ -870,6 +895,26 @@ export function ReviewCard({
           <span className="px-2">Demand Side</span>
           <div className="flex-1 h-px bg-linear-to-l from-amber/40 to-transparent" />
         </div>
+        </div>
+
+        {/* Reclassify Button - Outside the card */}
+        {onReclassify && (
+          <button
+            onClick={() => onReclassify(request.id, 'request', request.product, request.medicationRaw ?? undefined)}
+            className={cn(
+              'mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl',
+              'bg-linear-to-r from-violet-500/10 to-fuchsia-500/10',
+              'border border-violet-500/30 hover:border-violet-500/50',
+              'text-violet-400 hover:text-violet-300',
+              'transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]',
+              'shadow-lg hover:shadow-violet-500/20',
+              'text-sm font-medium',
+            )}
+          >
+            <ArrowRightLeft className="w-4 h-4" />
+            <span>Reclassify as Offer</span>
+          </button>
+        )}
       </div>
     )
   }

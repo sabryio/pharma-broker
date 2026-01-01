@@ -8,6 +8,8 @@ import type { OfferWithMatches, RequestWithMatches } from './types'
 import { ReviewCard } from './review-card'
 import { MatchConfidenceMeter } from './match-confidence-meter'
 import { CurationDialog } from './curation-dialog'
+import { ReclassifyDialog } from '@/components/ui/reclassify-dialog'
+import type { ItemType } from '@/api/offers'
 
 interface RelatedMatchCarouselProps {
   /** Grouped data - either offers with their requests or requests with their offers */
@@ -46,6 +48,18 @@ export function RelatedMatchCarousel({
     null,
   )
   const [curationAliasId, setCurationAliasId] = useState<string | null>(null)
+  
+  // Reclassify dialog state
+  const [reclassifyItem, setReclassifyItem] = useState<{
+    id: string
+    type: ItemType
+    medication: string
+    medicationRaw?: string
+  } | null>(null)
+
+  const handleReclassify = useCallback((id: string, type: 'offer' | 'request', medication: string, medicationRaw?: string) => {
+    setReclassifyItem({ id, type, medication, medicationRaw })
+  }, [])
 
   const isOfferMode = anchorMode === 'offer'
   const groups = isOfferMode ? groupedByOffer : groupedByRequest
@@ -180,6 +194,7 @@ export function RelatedMatchCarousel({
                   setCurationMedication(name)
                   setCurationAliasId(id ?? null)
                 }}
+                onReclassify={handleReclassify}
               />
             ) : (
               <ReviewCard
@@ -189,6 +204,7 @@ export function RelatedMatchCarousel({
                   setCurationMedication(name)
                   setCurationAliasId(id ?? null)
                 }}
+                onReclassify={handleReclassify}
               />
             )}
             {/* Fixed indicator badge */}
@@ -281,6 +297,7 @@ export function RelatedMatchCarousel({
                   setCurationMedication(name)
                   setCurationAliasId(id ?? null)
                 }}
+                onReclassify={handleReclassify}
                 aiStatus={
                   currentMatch.aiStatus as
                     | 'Approved'
@@ -300,6 +317,7 @@ export function RelatedMatchCarousel({
                   setCurationMedication(name)
                   setCurationAliasId(id ?? null)
                 }}
+                onReclassify={handleReclassify}
                 aiStatus={
                   currentMatch.aiStatus as
                     | 'Approved'
@@ -361,6 +379,21 @@ export function RelatedMatchCarousel({
         onSuccess={() => {
           // Success handled via toast and optimistic UI if we had it
           // For now, it stays matched but shows as "Verified" if refreshed
+        }}
+      />
+
+      <ReclassifyDialog
+        open={!!reclassifyItem}
+        onOpenChange={(open) => {
+          if (!open) setReclassifyItem(null)
+        }}
+        itemId={reclassifyItem?.id ?? ''}
+        itemType={reclassifyItem?.type ?? 'offer'}
+        medication={reclassifyItem?.medication ?? ''}
+        medicationRaw={reclassifyItem?.medicationRaw}
+        onSuccess={() => {
+          setReclassifyItem(null)
+          // The dialog will invalidate queries automatically
         }}
       />
     </div>

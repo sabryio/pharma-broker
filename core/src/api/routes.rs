@@ -16,7 +16,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use super::{
     audit_trail, calibration, confidence, curation, diagnostics, embedding_cache, groups, handlers,
-    match_filter, match_reviews, review_queue, weights,
+    match_filter, match_reviews, reclassify, review_queue, weights,
 };
 use crate::ai::PharmaParser;
 use crate::matching::MatchingEngine;
@@ -135,6 +135,15 @@ where
         .route(
             "/api/curation/suggestions",
             get(curation::get_suggestions::<RQ, A, MM>),
+        )
+        // Reclassification (Offer <-> Request)
+        .route(
+            "/api/reclassify",
+            post(reclassify::reclassify_item::<RQ, A, MM>),
+        )
+        .route(
+            "/api/items/{item_type}/{id}",
+            get(reclassify::get_item::<RQ, A, MM>),
         )
         // Stats
         .route("/api/stats", get(handlers::get_stats::<RQ, A, MM>))

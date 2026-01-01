@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Badge } from '@/components/ui/badge'
 import { MatchCountInline } from '@/components/ui/match-count-badge'
+import { ReclassifyDialog } from '@/components/ui/reclassify-dialog'
 import {
   Flame,
   Filter,
@@ -10,6 +11,8 @@ import {
   ChevronRight,
   Loader2,
   AlertCircle,
+  ArrowRightLeft,
+  MoreHorizontal,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRequests } from '@/hooks/use-offers-requests'
@@ -20,6 +23,13 @@ import {
   flexRender,
   createColumnHelper,
 } from '@tanstack/react-table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 import type {
   Request,
   RequestStatus,
@@ -30,79 +40,13 @@ export const Route = createFileRoute('/requests')({
   component: Requests,
 })
 
-const columnHelper = createColumnHelper<Request>()
-
-const columns = [
-  columnHelper.accessor('medication', {
-    header: 'Medication Needed',
-    cell: (info) => (
-      <span className="font-medium text-foreground">{info.getValue()}</span>
-    ),
-  }),
-  columnHelper.accessor('quantity', {
-    header: 'Quantity Requested',
-    cell: (info) => {
-      const qty = info.getValue()
-      const unit = info.row.original.unit
-      return (
-        <span className="text-muted-foreground">
-          {qty ? `${qty} ${unit || 'units'}` : '-'}
-        </span>
-      )
-    },
-  }),
-  columnHelper.accessor('max_price', {
-    header: 'Max Price',
-    cell: (info) => {
-      const price = info.getValue()
-      const currency = info.row.original.currency || 'EGP'
-      return (
-        <span className="font-medium text-amber">
-          {price ? `${price} ${currency}` : '-'}
-        </span>
-      )
-    },
-  }),
-  columnHelper.accessor('confirmed_match_count', {
-    header: 'Matches',
-    cell: (info) => (
-      <MatchCountInline count={info.getValue() ?? 0} variant="request" />
-    ),
-  }),
-  columnHelper.accessor('urgency_level', {
-    header: 'Urgent',
-    cell: (info) => {
-      const urgency = info.getValue() as UrgencyLevel
-      return urgency !== 'Normal' ? (
-        <Flame className="w-5 h-5 text-amber" />
-      ) : null
-    },
-  }),
-  columnHelper.accessor('status', {
-    header: 'Status',
-    cell: (info) => {
-      const status = info.getValue() as RequestStatus
-      return (
-        <Badge
-          variant="outline"
-          className={cn(
-            'font-medium',
-            status === 'Active'
-              ? 'border-amber/50 text-amber bg-amber/10'
-              : status === 'Matched'
-                ? 'border-teal/50 text-teal bg-teal/10'
-                : 'border-muted-foreground/50 text-muted-foreground bg-muted/10',
-          )}
-        >
-          {status}
-        </Badge>
-      )
-    },
-  }),
-]
-
 function Requests() {
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
+  const [reclassifyItem, setReclassifyItem] = useState<{
+    id: string
+    medication: string
+    medicationRaw: string
+  } | null>(null)
 
   const { data, isLoading, isError, error } = useRequests({
     limit: pagination.pageSize,
@@ -112,6 +56,111 @@ function Requests() {
   const requests = useMemo(() => data?.data || [], [data])
   const totalCount = data?.meta?.total || 0
   const pageCount = Math.ceil(totalCount / pagination.pageSize)
+
+  const columnHelper = createColumnHelper<Request>()
+
+  const columns = useMemo(
+    () => [
+      columnHelper.accessor('medication', {
+        header: 'Medication Needed',
+        cell: (info) => (
+          <span className="font-medium text-foreground">{info.getValue()}</span>
+        ),
+      }),
+      columnHelper.accessor('quantity', {
+        header: 'Quantity Requested',
+        cell: (info) => {
+          const qty = info.getValue()
+          const unit = info.row.original.unit
+          return (
+            <span className="text-muted-foreground">
+              {qty ? `${qty} ${unit || 'units'}` : '-'}
+            </span>
+          )
+        },
+      }),
+      columnHelper.accessor('max_price', {
+        header: 'Max Price',
+        cell: (info) => {
+          const price = info.getValue()
+          const currency = info.row.original.currency || 'EGP'
+          return (
+            <span className="font-medium text-amber">
+              {price ? `${price} ${currency}` : '-'}
+            </span>
+          )
+        },
+      }),
+      columnHelper.accessor('confirmed_match_count', {
+        header: 'Matches',
+        cell: (info) => (
+          <MatchCountInline count={info.getValue() ?? 0} variant="request" />
+        ),
+      }),
+      columnHelper.accessor('urgency_level', {
+        header: 'Urgent',
+        cell: (info) => {
+          const urgency = info.getValue() as UrgencyLevel
+          return urgency !== 'Normal' ? (
+            <Flame className="w-5 h-5 text-amber" />
+          ) : null
+        },
+      }),
+      columnHelper.accessor('status', {
+        header: 'Status',
+        cell: (info) => {
+          const status = info.getValue() as RequestStatus
+          return (
+            <Badge
+              variant="outline"
+              className={cn(
+                'font-medium',
+                status === 'Active'
+                  ? 'border-amber/50 text-amber bg-amber/10'
+                  : status === 'Matched'
+                    ? 'border-teal/50 text-teal bg-teal/10'
+                    : 'border-muted-foreground/50 text-muted-foreground bg-muted/10',
+              )}
+            >
+              {status}
+            </Badge>
+          )
+        },
+      }),
+      columnHelper.display({
+        id: 'actions',
+        header: '',
+        cell: (info) => {
+          const request = info.row.original
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() =>
+                    setReclassifyItem({
+                      id: request.id,
+                      medication: request.medication,
+                      medicationRaw: request.medication_raw,
+                    })
+                  }
+                  className="gap-2 text-emerald"
+                >
+                  <ArrowRightLeft className="w-4 h-4" />
+                  Convert to Offer
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      }),
+    ],
+    [columnHelper],
+  )
 
   const table = useReactTable({
     data: requests,
@@ -211,7 +260,7 @@ function Requests() {
                   <tr
                     key={row.id}
                     className={cn(
-                      'border-b border-border/50 hover:bg-secondary/30 transition-colors cursor-pointer animate-fade-in',
+                      'border-b border-border/50 hover:bg-secondary/30 transition-colors animate-fade-in',
                     )}
                     style={{ animationDelay: `${index * 30}ms` }}
                   >
@@ -263,6 +312,17 @@ function Requests() {
           )}
         </div>
       </div>
+
+      {/* Reclassify Dialog */}
+      <ReclassifyDialog
+        open={!!reclassifyItem}
+        onOpenChange={(open) => !open && setReclassifyItem(null)}
+        itemId={reclassifyItem?.id ?? ''}
+        itemType="request"
+        medication={reclassifyItem?.medication ?? ''}
+        medicationRaw={reclassifyItem?.medicationRaw}
+        onSuccess={() => setReclassifyItem(null)}
+      />
     </DashboardLayout>
   )
 }

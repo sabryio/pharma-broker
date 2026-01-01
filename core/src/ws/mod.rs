@@ -64,6 +64,14 @@ pub enum WsEvent {
     },
     /// Item queued for review
     ReviewQueued(Uuid),
+    /// Item reclassified (offer to request or vice versa)
+    ItemReclassified {
+        source_id: Uuid,
+        source_type: String,
+        new_id: Uuid,
+        new_type: String,
+        user_id: Uuid,
+    },
     /// Ping message (keep-alive)
     Ping,
 }

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use sea_orm::prelude::Expr;
 use sea_orm::*;
 use uuid::Uuid;
 
@@ -91,6 +92,26 @@ impl MatchRepository for SeaOrmMatchRepo {
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64> {
         let result = Match::delete_many()
             .filter(match_::Column::CreatedAt.lt(*cutoff))
+            .exec(&*self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    async fn cancel_matches_for_offer(&self, offer_id: Uuid) -> Result<u64> {
+        let result = Match::update_many()
+            .col_expr(match_::Column::Status, Expr::value(MatchStatus::Expired))
+            .filter(match_::Column::OfferId.eq(offer_id))
+            .filter(match_::Column::Status.eq(MatchStatus::Pending))
+            .exec(&*self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    async fn cancel_matches_for_request(&self, request_id: Uuid) -> Result<u64> {
+        let result = Match::update_many()
+            .col_expr(match_::Column::Status, Expr::value(MatchStatus::Expired))
+            .filter(match_::Column::RequestId.eq(request_id))
+            .filter(match_::Column::Status.eq(MatchStatus::Pending))
             .exec(&*self.db)
             .await?;
         Ok(result.rows_affected)

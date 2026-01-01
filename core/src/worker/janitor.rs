@@ -449,6 +449,12 @@ mod tests {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             Ok(self.deleted_count)
         }
+        async fn cancel_matches_for_offer(&self, _offer_id: Uuid) -> DbResult<u64> {
+            unimplemented!()
+        }
+        async fn cancel_matches_for_request(&self, _request_id: Uuid) -> DbResult<u64> {
+            unimplemented!()
+        }
     }
 
     #[async_trait]

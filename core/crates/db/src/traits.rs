@@ -104,6 +104,10 @@ pub trait MatchRepository: Send + Sync {
     async fn save(&self, m: &MatchModel) -> Result<MatchModel>;
     async fn update_status(&self, params: UpdateMatchStatusParams) -> Result<MatchModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
+    /// Cancel all pending matches that reference a specific offer (used when reclassifying)
+    async fn cancel_matches_for_offer(&self, offer_id: Uuid) -> Result<u64>;
+    /// Cancel all pending matches that reference a specific request (used when reclassifying)
+    async fn cancel_matches_for_request(&self, request_id: Uuid) -> Result<u64>;
 }
 
 /// Raw message repository trait
