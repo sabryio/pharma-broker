@@ -55,3 +55,33 @@ export const StatsSchema = z.object({
 })
 
 export type Stats = z.infer<typeof StatsSchema>
+
+// Request status (same as Offer status)
+export const RequestStatusSchema = OfferStatusSchema
+
+export type RequestStatus = z.infer<typeof RequestStatusSchema>
+
+// Request schema matching Rust's Request entity
+export const RequestSchema = z.object({
+  id: z.string().uuid(),
+  raw_message_id: z.string().uuid(),
+  participant_id: z.string().uuid(),
+  group_id: z.string().uuid(),
+  medication: z.string(),
+  medication_raw: z.string(),
+  quantity: z.string().nullable(), // Decimal comes as string from Rust
+  unit: z.string().nullable(),
+  max_price: z.string().nullable(), // Decimal comes as string from Rust
+  currency: z.string().nullable(),
+  urgency_level: UrgencyLevelSchema,
+  expiry_requirement: z.string().nullable(),
+  ai_confidence: z.number(),
+  notes: z.string().nullable(),
+  status: RequestStatusSchema,
+  master_medication_id: z.string().uuid().nullable(),
+  medication_curated: z.boolean(),
+  created_at: z.string(), // ISO date string
+  updated_at: z.string(), // ISO date string
+})
+
+export type Request = z.infer<typeof RequestSchema>

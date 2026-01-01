@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Badge } from '@/components/ui/badge'
 import {
-  MessageCircle,
+  Flame,
   Filter,
   Plus,
   ChevronLeft,
@@ -11,7 +11,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useOffers } from '@/hooks/use-offers-requests'
+import { useRequests } from '@/hooks/use-offers-requests'
 import { useState, useMemo } from 'react'
 import {
   useReactTable,
@@ -19,23 +19,27 @@ import {
   flexRender,
   createColumnHelper,
 } from '@tanstack/react-table'
-import type { Offer, OfferStatus } from '@/schema/offer-request'
+import type {
+  Request,
+  RequestStatus,
+  UrgencyLevel,
+} from '@/schema/offer-request'
 
-export const Route = createFileRoute('/offers')({
-  component: Offers,
+export const Route = createFileRoute('/requests')({
+  component: Requests,
 })
 
-const columnHelper = createColumnHelper<Offer>()
+const columnHelper = createColumnHelper<Request>()
 
 const columns = [
   columnHelper.accessor('medication', {
-    header: 'Medication Name',
+    header: 'Medication Needed',
     cell: (info) => (
       <span className="font-medium text-foreground">{info.getValue()}</span>
     ),
   }),
   columnHelper.accessor('quantity', {
-    header: 'Quantity',
+    header: 'Quantity Requested',
     cell: (info) => {
       const qty = info.getValue()
       const unit = info.row.original.unit
@@ -46,36 +50,41 @@ const columns = [
       )
     },
   }),
-  columnHelper.accessor('price', {
-    header: 'Price',
+  columnHelper.accessor('max_price', {
+    header: 'Max Price',
     cell: (info) => {
       const price = info.getValue()
       const currency = info.row.original.currency || 'EGP'
       return (
-        <span className="font-medium text-teal">
+        <span className="font-medium text-amber">
           {price ? `${price} ${currency}` : '-'}
         </span>
       )
     },
   }),
-  columnHelper.accessor('group_id', {
-    header: 'Source',
-    cell: () => <MessageCircle className="w-5 h-5 text-emerald" />,
+  columnHelper.accessor('urgency_level', {
+    header: 'Urgent',
+    cell: (info) => {
+      const urgency = info.getValue() as UrgencyLevel
+      return urgency !== 'Normal' ? (
+        <Flame className="w-5 h-5 text-amber" />
+      ) : null
+    },
   }),
   columnHelper.accessor('status', {
     header: 'Status',
     cell: (info) => {
-      const status = info.getValue() as OfferStatus
+      const status = info.getValue() as RequestStatus
       return (
         <Badge
           variant="outline"
           className={cn(
             'font-medium',
             status === 'Active'
-              ? 'border-emerald/50 text-emerald bg-emerald/10'
+              ? 'border-amber/50 text-amber bg-amber/10'
               : status === 'Matched'
                 ? 'border-teal/50 text-teal bg-teal/10'
-                : 'border-amber/50 text-amber bg-amber/10',
+                : 'border-muted-foreground/50 text-muted-foreground bg-muted/10',
           )}
         >
           {status}
@@ -85,20 +94,20 @@ const columns = [
   }),
 ]
 
-function Offers() {
+function Requests() {
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
 
-  const { data, isLoading, isError, error } = useOffers({
+  const { data, isLoading, isError, error } = useRequests({
     limit: pagination.pageSize,
     offset: pagination.pageIndex * pagination.pageSize,
   })
 
-  const offers = useMemo(() => data?.data || [], [data])
+  const requests = useMemo(() => data?.data || [], [data])
   const totalCount = data?.meta?.total || 0
   const pageCount = Math.ceil(totalCount / pagination.pageSize)
 
   const table = useReactTable({
-    data: offers,
+    data: requests,
     columns,
     getCoreRowModel: getCoreRowModel(),
     manualPagination: true,
@@ -114,31 +123,34 @@ function Offers() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">
-              Offers Management
+              Requests Management
             </h1>
             <p className="text-muted-foreground">
-              Manage your medication offers
+              Track and manage medication requests
               {totalCount > 0 && (
-                <span className="ml-2 text-teal">({totalCount} total)</span>
+                <span className="ml-2 text-amber">({totalCount} total)</span>
               )}
             </p>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-primary-foreground font-medium hover:bg-teal/90 transition-colors">
+          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber text-primary-foreground font-medium hover:bg-amber/90 transition-colors">
             <Plus className="w-4 h-4" />
-            Add Offer
+            New Request
           </button>
         </div>
 
         {/* Filters */}
         <div className="flex items-center gap-3">
-          <button className="px-4 py-2 rounded-full bg-teal text-primary-foreground text-sm font-medium">
+          <button className="px-4 py-2 rounded-full bg-amber text-primary-foreground text-sm font-medium">
             All
           </button>
           <button className="px-4 py-2 rounded-full bg-secondary text-foreground text-sm font-medium hover:bg-secondary/80 transition-colors">
-            Active
+            Open
           </button>
           <button className="px-4 py-2 rounded-full bg-secondary text-foreground text-sm font-medium hover:bg-secondary/80 transition-colors">
-            Matched
+            Fulfilled
+          </button>
+          <button className="px-4 py-2 rounded-full bg-secondary text-foreground text-sm font-medium hover:bg-secondary/80 transition-colors">
+            Urgent
           </button>
           <button className="ml-auto flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary text-muted-foreground text-sm hover:text-foreground transition-colors">
             <Filter className="w-4 h-4" />
@@ -150,21 +162,21 @@ function Offers() {
         <div className="glass-card rounded-xl overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
-              <Loader2 className="w-8 h-8 text-teal animate-spin" />
+              <Loader2 className="w-8 h-8 text-amber animate-spin" />
             </div>
           ) : isError ? (
             <div className="flex flex-col items-center justify-center h-64 gap-3">
               <AlertCircle className="w-10 h-10 text-destructive" />
               <p className="text-muted-foreground">
-                {error?.message || 'Failed to load offers'}
+                {error?.message || 'Failed to load requests'}
               </p>
               <p className="text-xs text-muted-foreground">
                 Make sure the backend is running on port 8081
               </p>
             </div>
-          ) : offers.length === 0 ? (
+          ) : requests.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 gap-3">
-              <p className="text-muted-foreground">No offers found</p>
+              <p className="text-muted-foreground">No requests found</p>
             </div>
           ) : (
             <table className="w-full">
@@ -211,7 +223,7 @@ function Offers() {
           )}
 
           {/* Pagination */}
-          {!isLoading && !isError && offers.length > 0 && (
+          {!isLoading && !isError && requests.length > 0 && (
             <div className="flex items-center justify-between px-6 py-4 border-t border-border">
               <div className="text-sm text-muted-foreground">
                 Showing {pagination.pageIndex * pagination.pageSize + 1} -{' '}

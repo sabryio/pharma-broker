@@ -1,6 +1,6 @@
 import apiClient from './client'
 import type { ApiResponse, PaginationParams } from '@/schema/api'
-import type { Offer, Stats } from '@/schema/offers'
+import type { Offer, Stats, Request } from '@/schema/offer-request'
 
 /**
  * Fetch paginated offers from the API
@@ -13,6 +13,24 @@ export async function getOffers(
   const response = await apiClient.get<ApiResponse<Offer[]>>('/api/offers', {
     params: { limit, offset },
   })
+
+  return response.data
+}
+
+/**
+ * Fetch paginated requests from the API
+ */
+export async function getRequests(
+  params: PaginationParams = {},
+): Promise<ApiResponse<Request[]>> {
+  const { limit = 20, offset = 0 } = params
+
+  const response = await apiClient.get<ApiResponse<Request[]>>(
+    '/api/requests',
+    {
+      params: { limit, offset },
+    },
+  )
 
   return response.data
 }
