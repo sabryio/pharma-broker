@@ -38,6 +38,7 @@ impl Default for WarmStartConfig {
                 quantity: 0.10,
                 price: 0.10,
                 recency: 0.15,
+                ai_logic: 0.0,
             },
             prior_strength: 50,           // Equivalent to 50 samples
             decay_half_life: 14,          // Prior halves every 2 weeks
@@ -114,6 +115,8 @@ impl WarmStartManager {
             price: data_weight * learned_weights.price + prior_weight * config.prior_weights.price,
             recency: data_weight * learned_weights.recency
                 + prior_weight * config.prior_weights.recency,
+            ai_logic: data_weight * learned_weights.ai_logic
+                + prior_weight * config.prior_weights.ai_logic,
         };
 
         tracing::debug!(
@@ -356,6 +359,7 @@ mod tests {
             quantity: 0.10,
             price: 0.10,
             recency: 0.10,
+            ai_logic: 0.0,
         };
 
         // With only 10 samples (< 20 min), should use pure prior
@@ -375,6 +379,7 @@ mod tests {
             quantity: 0.10,
             price: 0.10,
             recency: 0.10,
+            ai_logic: 0.0,
         };
 
         // With 100 samples, should blend with prior
@@ -400,6 +405,7 @@ mod tests {
             quantity: 0.10,
             price: 0.10,
             recency: 0.10,
+            ai_logic: 0.0,
         };
 
         // When disabled, should return learned weights

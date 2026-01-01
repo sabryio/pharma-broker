@@ -280,6 +280,7 @@ pub fn new_test_feedback(match_id: Uuid, confirmed: bool) -> feedback_record::Ac
         quantity_score: Set(0.7),
         price_score: Set(0.6),
         recency_score: Set(0.5),
+        ai_logic_score: Set(0.0),
         total_score: Set(0.75),
         created_at: Set(Utc::now()),
     }
@@ -294,6 +295,7 @@ pub fn new_test_weight_history(source: &str) -> weight_history::ActiveModel {
         quantity_weight: Set(0.15),
         price_weight: Set(0.15),
         recency_weight: Set(0.15),
+        ai_logic_weight: Set(0.0),
         source: Set(source.to_string()),
         sample_count: Set(100),
         created_at: Set(Utc::now()),

@@ -19,14 +19,14 @@ use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use super::{
-    ABTestConfig, ABTestManager, ABTestResult, AuditTrail, AuditTrailConfig, AutoActionHandler,
-    CalibrationConfig, CalibrationReport, ConfidenceCalibrator, ConfidenceConfig,
-    ConfidenceManager, ConfidenceManagerStats, EmbeddingCache, EmbeddingCacheStatsSnapshot,
-    HistoricalLearner, HistoricalLearnerStats, HistoricalLearningConfig, JobStatus, LearnerError,
-    MatchAction, MatchFilter, MatchFilterConfig, MatchFilterStatsSnapshot, MatchScore,
-    MedicationAffinity, OutlierDetector, OutlierDetectorConfig, PerformanceMetrics,
-    SchedulerConfig, SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner,
-    Weights,
+    ABTestConfig, ABTestManager, ABTestResult, AIClient, AIReviewer, AuditTrail, AuditTrailConfig,
+    AutoActionHandler, CalibrationConfig, CalibrationReport, ConfidenceCalibrator,
+    ConfidenceConfig, ConfidenceManager, ConfidenceManagerStats, EmbeddingCache,
+    EmbeddingCacheStatsSnapshot, HistoricalLearner, HistoricalLearnerStats,
+    HistoricalLearningConfig, JobStatus, LearnerError, MatchAction, MatchFilter, MatchFilterConfig,
+    MatchFilterStatsSnapshot, MatchScore, MedicationAffinity, OutlierDetector,
+    OutlierDetectorConfig, PerformanceMetrics, ReviewResult, ReviewStatus, SchedulerConfig,
+    SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
 };
 
 /// Runtime state for the learning scheduler job
@@ -117,6 +117,10 @@ pub struct MatchingEngine {
     feedback_repo: Option<Arc<dyn FeedbackRepository>>,
     /// Repository for audit logging
     audit_log_repo: Option<Arc<dyn AuditLogRepository>>,
+    /// AI client for semantic operations
+    pub ai_client: Arc<AIClient>,
+    /// AI expert reviewer
+    pub ai_reviewer: Arc<AIReviewer>,
 }
 
 impl Default for MatchingEngine {
@@ -140,6 +144,9 @@ impl MatchingEngine {
         let audit_trail = AuditTrail::new(config.audit_trail.clone());
         let historical_learner = HistoricalLearner::new(config.historical.clone());
 
+        let ai_client = Arc::new(AIClient::from_env());
+        let ai_reviewer = Arc::new(AIReviewer::new(ai_client.clone()));
+
         Self {
             scorer,
             learner,
@@ -160,6 +167,8 @@ impl MatchingEngine {
             notifier: Arc::new(crate::notify::NullNotifier), // Default to null, can be replaced
             feedback_repo: None,
             audit_log_repo: None,
+            ai_client,
+            ai_reviewer,
         }
     }
 
@@ -204,7 +213,9 @@ impl MatchingEngine {
         self.scorer.update_weights(effective_weights);
 
         // Score the match
-        let mut score = self.scorer.score_match(offer, request, medication_score);
+        let mut score = self
+            .scorer
+            .score_match(offer, request, medication_score, None);
 
         // Apply historical learning bonus/penalty
         let historical_bonus = self
@@ -227,6 +238,53 @@ impl MatchingEngine {
         let action = self.auto_action.determine_action(score.total).await;
 
         (score, action)
+    }
+
+    /// Score a match with optional AI-driven logic scoring
+    pub async fn score_match_ai(
+        &self,
+        offer: &Offer,
+        request: &Request,
+        medication_score: f64,
+        user_id: Option<&str>,
+        use_ai_logic: bool,
+    ) -> (MatchScore, MatchAction, Option<ReviewResult>) {
+        let mut ai_score = None;
+        let mut review_result = None;
+
+        if use_ai_logic {
+            // Call AI for logic scoring
+            let review_res = self
+                .ai_reviewer
+                .audit_match(
+                    offer,
+                    request,
+                    medication_score,
+                    "Internal AI Matching Request",
+                )
+                .await;
+
+            if let Ok(res) = review_res {
+                ai_score = Some(match res.status {
+                    ReviewStatus::Approved => (res.confidence as f64).max(0.95),
+                    ReviewStatus::Flagged => (res.confidence as f64).min(0.70),
+                    ReviewStatus::Rejected => 0.1,
+                });
+                review_result = Some(res);
+            }
+        }
+
+        // Get weights
+        let weights = self.get_weights_for_scoring(user_id).await;
+        self.scorer.update_weights(weights);
+
+        // Score
+        let score = self
+            .scorer
+            .score_match(offer, request, medication_score, ai_score);
+
+        let action = self.auto_action.determine_action(score.total).await;
+        (score, action, review_result)
     }
 
     /// Score a match with historical bonus details
@@ -1206,6 +1264,7 @@ mod tests {
                 quantity: 0.10,
                 price: 0.10,
                 recency: 0.10,
+                ai_logic: 0.0,
             },
             start_time: Utc::now() - Duration::hours(1),
             end_time: Utc::now() + Duration::hours(1),
@@ -1254,6 +1313,7 @@ mod tests {
                 quantity: 0.10,
                 price: 0.10,
                 recency: 0.10,
+                ai_logic: 0.0,
             },
             ..Default::default()
         };

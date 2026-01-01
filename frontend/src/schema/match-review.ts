@@ -56,6 +56,9 @@ export const MatchReviewItemSchema = z.object({
   createdAt: z.string(),
   confirmedAt: z.string().nullable(),
   notes: z.string().nullable(),
+  aiStatus: z.string().nullable().optional(),
+  aiConfidence: z.number().nullable().optional(),
+  aiExplanation: z.string().nullable().optional(),
 })
 
 export const MatchReviewListResponseSchema = z.object({

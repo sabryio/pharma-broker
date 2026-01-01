@@ -13,6 +13,7 @@ pub struct Model {
     pub quantity_weight: f64,
     pub price_weight: f64,
     pub recency_weight: f64,
+    pub ai_logic_weight: f64,
     pub source: String,
     pub sample_count: i32,
     pub created_at: DateTimeUtc,

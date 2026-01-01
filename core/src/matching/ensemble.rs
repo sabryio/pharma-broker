@@ -45,6 +45,8 @@ pub struct EnsembleConfig {
     pub historical_weight: f64,
     /// Weight for recency scoring
     pub recency_weight: f64,
+    /// Weight for AI decision logic
+    pub ai_logic_weight: f64,
     /// Minimum score to consider a match
     pub min_score_threshold: f64,
     /// Enable detailed explanations
@@ -60,6 +62,7 @@ impl Default for EnsembleConfig {
             dosage_weight: 0.15,
             historical_weight: 0.15,
             recency_weight: 0.05,
+            ai_logic_weight: 0.0, // Disabled by default
             min_score_threshold: 0.5,
             enable_explanations: true,
         }
@@ -73,7 +76,8 @@ impl EnsembleConfig {
             + self.fuzzy_weight
             + self.dosage_weight
             + self.historical_weight
-            + self.recency_weight;
+            + self.recency_weight
+            + self.ai_logic_weight;
 
         if total > 0.0 {
             self.embedding_weight /= total;
@@ -81,6 +85,7 @@ impl EnsembleConfig {
             self.dosage_weight /= total;
             self.historical_weight /= total;
             self.recency_weight /= total;
+            self.ai_logic_weight /= total;
         }
     }
 
@@ -91,6 +96,7 @@ impl EnsembleConfig {
             + self.dosage_weight
             + self.historical_weight
             + self.recency_weight
+            + self.ai_logic_weight
     }
 }
 
@@ -132,6 +138,8 @@ pub struct StrategyContext {
     pub historical_affinity: Option<f64>,
     /// Current timestamp for recency calculations
     pub now: DateTime<Utc>,
+    /// AI-generated logic score (0.0 to 1.0)
+    pub ai_score: Option<f64>,
 }
 
 impl StrategyContext {
@@ -155,6 +163,11 @@ impl StrategyContext {
 
     pub fn with_historical_affinity(mut self, affinity: f64) -> Self {
         self.historical_affinity = Some(affinity);
+        self
+    }
+
+    pub fn with_ai_score(mut self, score: f64) -> Self {
+        self.ai_score = Some(score);
         self
     }
 }
@@ -546,6 +559,47 @@ impl MatchingStrategy for RecencyStrategy {
     }
 }
 
+/// AI-driven logic decision strategy
+pub struct AIDecisionStrategy {
+    weight: RwLock<f64>,
+    enabled: RwLock<bool>,
+}
+
+impl AIDecisionStrategy {
+    pub fn new(weight: f64) -> Self {
+        Self {
+            weight: RwLock::new(weight),
+            enabled: RwLock::new(weight > 0.0),
+        }
+    }
+}
+
+impl MatchingStrategy for AIDecisionStrategy {
+    fn name(&self) -> &str {
+        "ai_logic"
+    }
+
+    fn score(&self, _offer: &Offer, _request: &Request, context: &StrategyContext) -> f64 {
+        context.ai_score.unwrap_or(0.0)
+    }
+
+    fn weight(&self) -> f64 {
+        *self.weight.read().unwrap()
+    }
+
+    fn set_weight(&self, weight: f64) {
+        *self.weight.write().unwrap() = weight;
+    }
+
+    fn is_enabled(&self) -> bool {
+        *self.enabled.read().unwrap()
+    }
+
+    fn enable(&self, enabled: bool) {
+        *self.enabled.write().unwrap() = enabled;
+    }
+}
+
 // =============================================================================
 // Statistics
 // =============================================================================
@@ -594,6 +648,7 @@ impl EnsembleMatcher {
                 config.historical_weight,
             )),
             Arc::new(RecencyStrategy::new(config.recency_weight, 24.0)),
+            Arc::new(AIDecisionStrategy::new(config.ai_logic_weight)),
         ];
 
         Self {
@@ -959,6 +1014,7 @@ mod tests {
             dosage_weight: 0.3,
             historical_weight: 0.3,
             recency_weight: 0.1,
+            ai_logic_weight: 0.2,
             min_score_threshold: 0.5,
             enable_explanations: true,
         };

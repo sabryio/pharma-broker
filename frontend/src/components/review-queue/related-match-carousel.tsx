@@ -118,7 +118,7 @@ export function RelatedMatchCarousel({
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <div className="px-4 py-2 rounded-lg bg-gradient-to-r from-secondary/80 to-secondary/40 border border-border/50">
+          <div className="px-4 py-2 rounded-lg bg-linear-to-r from-secondary/80 to-secondary/40 border border-border/50">
             <span className="text-sm font-medium">
               {isOfferMode ? 'Offer' : 'Request'}{' '}
               <span className="text-teal font-bold">{anchorIndex + 1}</span>
@@ -143,7 +143,7 @@ export function RelatedMatchCarousel({
           onClick={() => onAnchorModeChange(isOfferMode ? 'request' : 'offer')}
           className={cn(
             'flex items-center gap-2 px-4 py-2 rounded-lg',
-            'bg-gradient-to-r from-violet-500/20 to-fuchsia-500/20',
+            'bg-linear-to-r from-violet-500/20 to-fuchsia-500/20',
             'border border-violet-500/30 hover:border-violet-500/50',
             'transition-all duration-300 hover:scale-105',
           )}
@@ -189,7 +189,7 @@ export function RelatedMatchCarousel({
               />
             )}
             {/* Fixed indicator badge */}
-            <div className="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-teal/80 to-emerald/80 text-white text-xs font-medium shadow-lg">
+            <div className="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-linear-to-r from-teal/80 to-emerald/80 text-white text-xs font-medium shadow-lg">
               ⚓ Anchored
             </div>
           </div>
@@ -221,7 +221,7 @@ export function RelatedMatchCarousel({
                   disabled={relatedIndex === 0}
                   className={cn(
                     'p-2 rounded-full transition-all duration-200',
-                    'bg-gradient-to-r from-amber/20 to-orange-500/20',
+                    'bg-linear-to-r from-amber/20 to-orange-500/20',
                     'border border-amber/30 hover:border-amber/60',
                     'hover:scale-110 active:scale-95',
                     'disabled:opacity-30 disabled:cursor-not-allowed',
@@ -239,7 +239,7 @@ export function RelatedMatchCarousel({
                       className={cn(
                         'w-2 h-2 rounded-full transition-all duration-300',
                         idx === relatedIndex
-                          ? 'w-6 bg-gradient-to-r from-amber to-orange-500'
+                          ? 'w-6 bg-linear-to-r from-amber to-orange-500'
                           : 'bg-muted-foreground/30 hover:bg-muted-foreground/50',
                       )}
                     />
@@ -256,7 +256,7 @@ export function RelatedMatchCarousel({
                   disabled={relatedIndex === totalMatches - 1}
                   className={cn(
                     'p-2 rounded-full transition-all duration-200',
-                    'bg-gradient-to-r from-amber/20 to-orange-500/20',
+                    'bg-linear-to-r from-amber/20 to-orange-500/20',
                     'border border-amber/30 hover:border-amber/60',
                     'hover:scale-110 active:scale-95',
                     'disabled:opacity-30 disabled:cursor-not-allowed',
@@ -275,6 +275,9 @@ export function RelatedMatchCarousel({
                 type="request"
                 request={(currentMatch as { request: any }).request}
                 onCurate={setCurationMedication}
+                aiStatus={currentMatch.aiStatus}
+                aiConfidence={currentMatch.aiConfidence}
+                aiExplanation={currentMatch.aiExplanation}
               />
             ) : (
               <ReviewCard
@@ -284,10 +287,13 @@ export function RelatedMatchCarousel({
                   setCurationMedication(name)
                   setCurationAliasId(aliasId || null)
                 }}
+                aiStatus={currentMatch.aiStatus}
+                aiConfidence={currentMatch.aiConfidence}
+                aiExplanation={currentMatch.aiExplanation}
               />
             )}
             {/* Carousel indicator badge */}
-            <div className="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-amber/80 to-orange-500/80 text-white text-xs font-medium shadow-lg">
+            <div className="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-linear-to-r from-amber/80 to-orange-500/80 text-white text-xs font-medium shadow-lg">
               🔄 {relatedIndex + 1}/{totalMatches}
             </div>
           </div>
@@ -299,7 +305,7 @@ export function RelatedMatchCarousel({
             onClick={() => handleAction('rejected')}
             className={cn(
               'flex items-center gap-2 px-8 py-3 rounded-xl font-medium',
-              'bg-gradient-to-r from-red-500/20 to-rose-500/20',
+              'bg-linear-to-r from-red-500/20 to-rose-500/20',
               'border border-red-500/30 hover:border-red-500/60',
               'text-red-400 hover:text-red-300',
               'transition-all duration-300 hover:scale-105 active:scale-95',
@@ -312,7 +318,7 @@ export function RelatedMatchCarousel({
             onClick={() => handleAction('approved')}
             className={cn(
               'flex items-center gap-2 px-8 py-3 rounded-xl font-medium',
-              'bg-gradient-to-r from-emerald/20 to-teal/20',
+              'bg-linear-to-r from-emerald/20 to-teal/20',
               'border border-emerald/30 hover:border-emerald/60',
               'text-emerald hover:text-emerald/90',
               'transition-all duration-300 hover:scale-105 active:scale-95',

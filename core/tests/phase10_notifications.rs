@@ -26,6 +26,9 @@ fn test_match() -> Match {
         created_at: Utc::now(),
         confirmed_at: None,
         notes: None,
+        ai_status: None,
+        ai_confidence: None,
+        ai_explanation: None,
     }
 }
 

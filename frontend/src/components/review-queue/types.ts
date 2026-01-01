@@ -42,6 +42,9 @@ export interface Review {
   offer: ReviewOffer
   request: ReviewRequest
   issues: string[]
+  aiStatus?: 'Approved' | 'Flagged' | 'Rejected' | null
+  aiConfidence?: number | null
+  aiExplanation?: string | null
 }
 
 export interface AdjustmentSettings {
@@ -71,6 +74,9 @@ export interface MatchEntry {
   matchUuid: string
   confidence: number
   issues: string[]
+  aiStatus?: 'Approved' | 'Flagged' | 'Rejected' | null
+  aiConfidence?: number | null
+  aiExplanation?: string | null
 }
 
 /** An offer with all its related request matches */
@@ -109,6 +115,9 @@ export function groupByOffer(reviews: Review[]): OfferWithMatches[] {
       confidence: review.confidence,
       issues: review.issues,
       request: review.request,
+      aiStatus: review.aiStatus,
+      aiConfidence: review.aiConfidence,
+      aiExplanation: review.aiExplanation,
     })
   }
 
@@ -142,6 +151,9 @@ export function groupByRequest(reviews: Review[]): RequestWithMatches[] {
       confidence: review.confidence,
       issues: review.issues,
       offer: review.offer,
+      aiStatus: review.aiStatus,
+      aiConfidence: review.aiConfidence,
+      aiExplanation: review.aiExplanation,
     })
   }
 

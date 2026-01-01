@@ -77,6 +77,7 @@ pub struct WeightHistory {
     pub quantity_weight: f64,
     pub price_weight: f64,
     pub recency_weight: f64,
+    pub ai_logic_weight: f64,
     pub source: WeightSource,
     pub performance_metrics: Option<PerformanceMetrics>,
     pub notes: Option<String>,
@@ -217,6 +218,14 @@ impl WeightLearner {
                 stats.rejected_avg_recency,
             ),
         );
+        correlations.insert(
+            "ai_logic".to_string(),
+            calc_corr(
+                stats.ai_logic_diff,
+                stats.confirmed_avg_ai_logic,
+                stats.rejected_avg_ai_logic,
+            ),
+        );
 
         correlations
     }
@@ -239,6 +248,7 @@ impl WeightLearner {
             quantity: current.quantity * (1.0 + lr * correlations.get("quantity").unwrap_or(&0.0)),
             price: current.price * (1.0 + lr * correlations.get("price").unwrap_or(&0.0)),
             recency: current.recency * (1.0 + lr * correlations.get("recency").unwrap_or(&0.0)),
+            ai_logic: current.ai_logic * (1.0 + lr * correlations.get("ai_logic").unwrap_or(&0.0)),
         }
     }
 
@@ -263,6 +273,7 @@ impl WeightLearner {
             quantity: constrain(current.quantity, adjusted.quantity),
             price: constrain(current.price, adjusted.price),
             recency: constrain(current.recency, adjusted.recency),
+            ai_logic: constrain(current.ai_logic, adjusted.ai_logic),
         }
     }
 
@@ -273,16 +284,18 @@ impl WeightLearner {
             + weights.dosage
             + weights.quantity
             + weights.price
-            + weights.recency;
+            + weights.recency
+            + weights.ai_logic;
 
         if sum == 0.0 {
             // Fallback to equal weights
             return Weights {
-                medication: 0.20,
-                dosage: 0.20,
-                quantity: 0.20,
-                price: 0.20,
-                recency: 0.20,
+                medication: 1.0 / 6.0,
+                dosage: 1.0 / 6.0,
+                quantity: 1.0 / 6.0,
+                price: 1.0 / 6.0,
+                recency: 1.0 / 6.0,
+                ai_logic: 1.0 / 6.0,
             };
         }
 
@@ -292,6 +305,7 @@ impl WeightLearner {
             quantity: weights.quantity / sum,
             price: weights.price / sum,
             recency: weights.recency / sum,
+            ai_logic: weights.ai_logic / sum,
         }
     }
 
@@ -476,6 +490,7 @@ mod tests {
             quantity: 0.20,
             price: 0.15,
             recency: 0.10,
+            ai_logic: 0.0,
         };
 
         let mut correlations = HashMap::new();
@@ -521,6 +536,7 @@ mod tests {
             quantity: 0.20,
             price: 0.10,
             recency: 0.10,
+            ai_logic: 0.0,
         };
 
         let adjusted = Weights {
@@ -529,6 +545,7 @@ mod tests {
             quantity: 0.21,   // Small change (0.01 < 0.02)
             price: 0.15,      // Acceptable change
             recency: 0.10,    // No change
+            ai_logic: 0.05,   // Acceptable change
         };
 
         let constrained = learner.apply_constraints(&current, &adjusted);
@@ -556,6 +573,7 @@ mod tests {
             quantity: 0.20,
             price: 0.15,
             recency: 0.10,
+            ai_logic: 0.0,
         };
         // Sum = 1.05
 
@@ -565,7 +583,8 @@ mod tests {
             + normalized.dosage
             + normalized.quantity
             + normalized.price
-            + normalized.recency;
+            + normalized.recency
+            + normalized.ai_logic;
 
         assert!((sum - 1.0).abs() < 0.0001, "sum: {}", sum);
 
@@ -590,6 +609,7 @@ mod tests {
             quantity: 0.0,
             price: 0.0,
             recency: 0.0,
+            ai_logic: 0.0,
         };
 
         let normalized = learner.normalize_weights(&weights);
@@ -602,7 +622,8 @@ mod tests {
             + normalized.dosage
             + normalized.quantity
             + normalized.price
-            + normalized.recency;
+            + normalized.recency
+            + normalized.ai_logic;
         assert!((sum - 1.0).abs() < 0.0001);
     }
 
@@ -662,6 +683,10 @@ mod tests {
 
             confirmed_avg_total: 0.88,
             rejected_avg_total: 0.75,
+
+            confirmed_avg_ai_logic: 0.85,
+            rejected_avg_ai_logic: 0.80,
+            ai_logic_diff: 0.05,
         };
 
         let current = Weights::default();
@@ -674,7 +699,8 @@ mod tests {
             + weights.dosage
             + weights.quantity
             + weights.price
-            + weights.recency;
+            + weights.recency
+            + weights.ai_logic;
         assert!((sum - 1.0).abs() < 0.0001, "sum: {}", sum);
 
         // Metrics should reflect stats

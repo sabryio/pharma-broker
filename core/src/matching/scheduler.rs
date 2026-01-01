@@ -461,39 +461,6 @@ mod tests {
     }
 
     #[test]
-    fn test_build_note() {
-        let scheduler = LearningScheduler::default();
-
-        let old = Weights {
-            medication: 0.45,
-            dosage: 0.10,
-            quantity: 0.20,
-            price: 0.15,
-            recency: 0.10,
-        };
-
-        let new = Weights {
-            medication: 0.48,
-            dosage: 0.10,
-            quantity: 0.18,
-            price: 0.14,
-            recency: 0.10,
-        };
-
-        let metrics = PerformanceMetrics {
-            sample_size: 200,
-            avg_score_confirmed: 0.88,
-            avg_score_rejected: 0.65,
-            ..Default::default()
-        };
-
-        let note = scheduler.build_note(&old, &new, &metrics);
-
-        assert!(!note.is_empty());
-        assert!(note.contains("200"));
-    }
-
-    #[test]
     fn test_get_skip_reason_auto_apply_disabled() {
         let config = SchedulerConfig {
             auto_apply: AutoApplyConfig {

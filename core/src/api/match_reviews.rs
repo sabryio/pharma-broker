@@ -249,6 +249,9 @@ where
             created_at: m.created_at,
             confirmed_at: m.confirmed_at,
             notes: m.notes,
+            ai_status: m.ai_status,
+            ai_confidence: m.ai_confidence,
+            ai_explanation: m.ai_explanation,
         });
     }
 
@@ -414,6 +417,9 @@ where
         created_at: m.created_at,
         confirmed_at: m.confirmed_at,
         notes: m.notes,
+        ai_status: m.ai_status,
+        ai_confidence: m.ai_confidence,
+        ai_explanation: m.ai_explanation,
     }))
 }
 

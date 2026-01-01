@@ -41,6 +41,9 @@ interface ReviewCardProps {
   offer?: ReviewOffer
   request?: ReviewRequest
   onCurate?: (name: string, aliasId?: string | null) => void
+  aiStatus?: 'Approved' | 'Flagged' | 'Rejected' | null
+  aiConfidence?: number | null
+  aiExplanation?: string | null
 }
 
 /**
@@ -134,7 +137,7 @@ function SenderBadge({
           <button
             className={cn(
               'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs',
-              'bg-gradient-to-r border backdrop-blur-sm cursor-pointer',
+              'bg-linear-to-r border backdrop-blur-sm cursor-pointer',
               'hover:scale-105 active:scale-95 transition-all duration-200',
               accentColor === 'teal'
                 ? 'from-teal/10 to-teal/5 border-teal/30 hover:border-teal/50'
@@ -160,7 +163,7 @@ function SenderBadge({
         <PopoverContent
           className={cn(
             'w-72 p-0 overflow-hidden',
-            'bg-gradient-to-br from-card via-card to-card/80',
+            'bg-linear-to-br from-card via-card to-card/80',
             'border shadow-xl',
             accentColor === 'teal'
               ? 'border-teal/30 shadow-teal/20'
@@ -173,8 +176,8 @@ function SenderBadge({
             className={cn(
               'px-4 py-3 border-b',
               accentColor === 'teal'
-                ? 'bg-gradient-to-r from-teal/20 to-teal/5 border-teal/20'
-                : 'bg-gradient-to-r from-amber/20 to-amber/5 border-amber/20',
+                ? 'bg-linear-to-r from-teal/20 to-teal/5 border-teal/20'
+                : 'bg-linear-to-r from-amber/20 to-amber/5 border-amber/20',
             )}
           >
             <div className="flex items-center gap-3">
@@ -264,14 +267,14 @@ function SenderBadge({
                   'w-full gap-2 group relative overflow-hidden',
                   'transition-all duration-300',
                   accentColor === 'teal'
-                    ? 'bg-gradient-to-r from-teal to-teal/80 hover:from-teal/90 hover:to-teal/70 text-white shadow-lg shadow-teal/30'
-                    : 'bg-gradient-to-r from-amber to-amber/80 hover:from-amber/90 hover:to-amber/70 text-white shadow-lg shadow-amber/30',
+                    ? 'bg-linear-to-r from-teal to-teal/80 hover:from-teal/90 hover:to-teal/70 text-white shadow-lg shadow-teal/30'
+                    : 'bg-linear-to-r from-amber to-amber/80 hover:from-amber/90 hover:to-amber/70 text-white shadow-lg shadow-amber/30',
                 )}
               >
                 <Send className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 <span className="font-medium">Send Message</span>
                 {/* Shimmer effect */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
               </Button>
             </div>
           )}
@@ -281,8 +284,8 @@ function SenderBadge({
             className={cn(
               'h-1',
               accentColor === 'teal'
-                ? 'bg-gradient-to-r from-transparent via-teal/50 to-transparent'
-                : 'bg-gradient-to-r from-transparent via-amber/50 to-transparent',
+                ? 'bg-linear-to-r from-transparent via-teal/50 to-transparent'
+                : 'bg-linear-to-r from-transparent via-amber/50 to-transparent',
             )}
           />
         </PopoverContent>
@@ -301,8 +304,8 @@ function SenderBadge({
             className={cn(
               'absolute top-0 left-0 right-0 h-1',
               accentColor === 'teal'
-                ? 'bg-gradient-to-r from-teal/50 via-teal to-teal/50'
-                : 'bg-gradient-to-r from-amber/50 via-amber to-amber/50',
+                ? 'bg-linear-to-r from-teal/50 via-teal to-teal/50'
+                : 'bg-linear-to-r from-amber/50 via-amber to-amber/50',
             )}
           />
 
@@ -473,6 +476,9 @@ export function ReviewCard({
   offer,
   request,
   onCurate,
+  aiStatus,
+  aiConfidence,
+  aiExplanation,
 }: ReviewCardProps) {
   const isOffer = type === 'offer'
 
@@ -513,6 +519,64 @@ export function ReviewCard({
               </div>
             </div>
           </div>
+          {aiStatus && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold cursor-help transition-all',
+                    aiStatus === 'Approved' &&
+                      'bg-emerald/10 text-emerald border border-emerald/30 shadow-sm shadow-emerald/20',
+                    aiStatus === 'Flagged' &&
+                      'bg-amber/10 text-amber border border-amber/30 shadow-sm shadow-amber/20',
+                    aiStatus === 'Rejected' &&
+                      'bg-destructive/10 text-destructive border border-destructive/30 shadow-sm shadow-destructive/20',
+                  )}
+                >
+                  <Sparkles
+                    className={cn(
+                      'w-3 h-3',
+                      aiStatus === 'Approved' && 'animate-pulse',
+                    )}
+                  />
+                  <span>AI {aiStatus}</span>
+                  {aiConfidence && (
+                    <span className="opacity-70">
+                      {Math.round(aiConfidence * 100)}%
+                    </span>
+                  )}
+                </div>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-3 text-xs leading-relaxed">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-1 rounded bg-teal/10">
+                    <Sparkles className="w-3.5 h-3.5 text-teal" />
+                  </div>
+                  <span className="font-bold">AI Audit Result</span>
+                </div>
+                <p className="text-muted-foreground">
+                  {aiExplanation ||
+                    `This match was automatically ${aiStatus.toLowerCase()} by the AI review system based on medication similarity and historical patterns.`}
+                </p>
+                {aiConfidence && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="flex-1 h-1 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          'h-full rounded-full',
+                          aiStatus === 'Approved' ? 'bg-emerald' : 'bg-amber',
+                        )}
+                        style={{ width: `${aiConfidence * 100}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[10px]">
+                      {Math.round(aiConfidence * 100)}%
+                    </span>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
 
         {/* Source Group & Sender */}
@@ -644,6 +708,64 @@ export function ReviewCard({
               </div>
             </div>
           </div>
+          {aiStatus && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold cursor-help transition-all',
+                    aiStatus === 'Approved' &&
+                      'bg-emerald/10 text-emerald border border-emerald/30 shadow-sm shadow-emerald/20',
+                    aiStatus === 'Flagged' &&
+                      'bg-amber/10 text-amber border border-amber/30 shadow-sm shadow-amber/20',
+                    aiStatus === 'Rejected' &&
+                      'bg-destructive/10 text-destructive border border-destructive/30 shadow-sm shadow-destructive/20',
+                  )}
+                >
+                  <Sparkles
+                    className={cn(
+                      'w-3 h-3',
+                      aiStatus === 'Approved' && 'animate-pulse',
+                    )}
+                  />
+                  <span>AI {aiStatus}</span>
+                  {aiConfidence && (
+                    <span className="opacity-70">
+                      {Math.round(aiConfidence * 100)}%
+                    </span>
+                  )}
+                </div>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-3 text-xs leading-relaxed">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-1 rounded bg-teal/10">
+                    <Sparkles className="w-3.5 h-3.5 text-teal" />
+                  </div>
+                  <span className="font-bold">AI Audit Result</span>
+                </div>
+                <p className="text-muted-foreground">
+                  {aiExplanation ||
+                    `This match was automatically ${aiStatus.toLowerCase()} by the AI review system based on medication similarity and historical patterns.`}
+                </p>
+                {aiConfidence && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="flex-1 h-1 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          'h-full rounded-full',
+                          aiStatus === 'Approved' ? 'bg-emerald' : 'bg-amber',
+                        )}
+                        style={{ width: `${aiConfidence * 100}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[10px]">
+                      {Math.round(aiConfidence * 100)}%
+                    </span>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
 
         {/* Source Group & Sender */}

@@ -19,6 +19,7 @@ mod historical;
 mod hybrid_filter;
 mod learner;
 mod medication_resolver;
+mod reviewer;
 mod scheduler;
 mod score_types;
 mod scorer;
@@ -33,6 +34,9 @@ mod weights;
 
 // --- weights ---
 pub use weights::{Thresholds, Weights};
+
+// --- ai_client ---
+pub use ai_client::Client as AIClient;
 
 // --- scorer ---
 pub use scorer::{MatchScore, Scorer};
@@ -125,6 +129,9 @@ pub use medication_resolver::{
 pub use score_types::{
     ComponentScore, ConfidenceScore, NormalizedWeights, ScoreBreakdown, Weight, WeightError,
 };
+
+// --- reviewer ---
+pub use reviewer::{AIReviewer, ReviewResult, ReviewStatus};
 
 // =============================================================================
 // Types defined in this module

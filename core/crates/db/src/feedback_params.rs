@@ -26,6 +26,8 @@ pub struct FeedbackScores {
     pub price: f64,
     /// Recency/freshness score (0.0 - 1.0)
     pub recency: f64,
+    /// AI logic decision score (0.0 - 1.0)
+    pub ai_logic: f64,
     /// Total weighted score (0.0 - 1.0)
     pub total: f64,
 }
@@ -38,6 +40,7 @@ impl FeedbackScores {
         quantity: f64,
         price: f64,
         recency: f64,
+        ai_logic: f64,
         total: f64,
     ) -> Self {
         Self {
@@ -46,6 +49,7 @@ impl FeedbackScores {
             quantity,
             price,
             recency,
+            ai_logic,
             total,
         }
     }
@@ -61,6 +65,7 @@ impl FeedbackScores {
             quantity: total * 0.85,
             price: total * 0.95,
             recency: 0.7,
+            ai_logic: 0.0,
             total,
         }
     }
@@ -73,6 +78,7 @@ impl FeedbackScores {
             && in_range(self.quantity)
             && in_range(self.price)
             && in_range(self.recency)
+            && in_range(self.ai_logic)
             && in_range(self.total)
     }
 
@@ -84,6 +90,7 @@ impl FeedbackScores {
             quantity: self.quantity.clamp(0.0, 1.0),
             price: self.price.clamp(0.0, 1.0),
             recency: self.recency.clamp(0.0, 1.0),
+            ai_logic: self.ai_logic.clamp(0.0, 1.0),
             total: self.total.clamp(0.0, 1.0),
         }
     }
@@ -211,7 +218,7 @@ mod tests {
 
     #[test]
     fn test_feedback_scores_new() {
-        let scores = FeedbackScores::new(0.9, 0.8, 0.85, 0.95, 0.7, 0.88);
+        let scores = FeedbackScores::new(0.9, 0.8, 0.85, 0.95, 0.7, 0.0, 0.88);
         assert!((scores.medication - 0.9).abs() < 0.001);
         assert!((scores.total - 0.88).abs() < 0.001);
     }
@@ -225,19 +232,20 @@ mod tests {
 
     #[test]
     fn test_feedback_scores_validation() {
-        let valid = FeedbackScores::new(0.9, 0.8, 0.85, 0.95, 0.7, 0.88);
+        let valid = FeedbackScores::new(0.9, 0.8, 0.85, 0.95, 0.7, 0.0, 0.88);
         assert!(valid.is_valid());
 
-        let invalid = FeedbackScores::new(1.5, 0.8, 0.85, 0.95, 0.7, 0.88);
+        let invalid = FeedbackScores::new(1.5, 0.8, 0.85, 0.95, 0.7, 0.0, 0.88);
         assert!(!invalid.is_valid());
     }
 
     #[test]
     fn test_feedback_scores_clamped() {
-        let scores = FeedbackScores::new(1.5, -0.1, 0.85, 0.95, 0.7, 0.88);
+        let scores = FeedbackScores::new(1.5, -0.1, 0.85, 0.95, 0.7, 1.2, 0.88);
         let clamped = scores.clamped();
         assert!((clamped.medication - 1.0).abs() < 0.001);
         assert!((clamped.dosage - 0.0).abs() < 0.001);
+        assert!((clamped.ai_logic - 1.0).abs() < 0.001);
     }
 
     #[test]

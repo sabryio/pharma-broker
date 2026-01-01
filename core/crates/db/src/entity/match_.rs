@@ -23,6 +23,10 @@ pub struct Model {
     pub created_at: DateTimeUtc,
     pub confirmed_at: Option<DateTimeUtc>,
     pub notes: Option<String>,
+    pub ai_status: Option<String>,
+    #[sea_orm(column_type = "Double", nullable)]
+    pub ai_confidence: Option<f64>,
+    pub ai_explanation: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -77,6 +81,9 @@ impl Default for Model {
             created_at: Utc::now(),
             confirmed_at: None,
             notes: None,
+            ai_status: None,
+            ai_confidence: None,
+            ai_explanation: None,
         }
     }
 }

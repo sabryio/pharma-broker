@@ -13,6 +13,7 @@ pub struct Weights {
     pub quantity: f64,
     pub price: f64,
     pub recency: f64,
+    pub ai_logic: f64,
 }
 
 impl Default for Weights {
@@ -24,6 +25,7 @@ impl Default for Weights {
             quantity: 0.05,
             price: 0.05,
             recency: 0.10,
+            ai_logic: 0.0, // Disabled by default
         }
     }
 }

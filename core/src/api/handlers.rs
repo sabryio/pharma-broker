@@ -297,6 +297,7 @@ where
         match_entity.score * 0.85, // Estimate quantity score
         match_entity.score * 0.95, // Estimate price score
         0.7,                       // Default recency score
+        match_entity.score * 0.8,  // Estimate AI logic score
         match_entity.score,
     );
 
@@ -389,6 +390,7 @@ where
         match_entity.score * 0.85,
         match_entity.score * 0.95,
         0.7,
+        match_entity.score * 0.8, // Estimate AI logic score
         match_entity.score,
     );
 

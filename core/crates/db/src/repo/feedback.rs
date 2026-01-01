@@ -88,6 +88,8 @@ impl FeedbackRepository for SeaOrmFeedbackRepo {
         let rejected_avg_price = avg(&rejected, |r| r.price_score);
         let confirmed_avg_recency = avg(&confirmed, |r| r.recency_score);
         let rejected_avg_recency = avg(&rejected, |r| r.recency_score);
+        let confirmed_avg_ai_logic = avg(&confirmed, |r| r.ai_logic_score);
+        let rejected_avg_ai_logic = avg(&rejected, |r| r.ai_logic_score);
         let confirmed_avg_total = avg(&confirmed, |r| r.total_score);
         let rejected_avg_total = avg(&rejected, |r| r.total_score);
 
@@ -113,6 +115,9 @@ impl FeedbackRepository for SeaOrmFeedbackRepo {
             confirmed_avg_recency,
             rejected_avg_recency,
             recency_diff: confirmed_avg_recency - rejected_avg_recency,
+            confirmed_avg_ai_logic,
+            rejected_avg_ai_logic,
+            ai_logic_diff: confirmed_avg_ai_logic - rejected_avg_ai_logic,
             confirmed_avg_total,
             rejected_avg_total,
         })

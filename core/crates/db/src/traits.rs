@@ -192,6 +192,9 @@ pub struct FeedbackStats {
     pub confirmed_avg_recency: f64,
     pub rejected_avg_recency: f64,
     pub recency_diff: f64,
+    pub confirmed_avg_ai_logic: f64,
+    pub rejected_avg_ai_logic: f64,
+    pub ai_logic_diff: f64,
     pub confirmed_avg_total: f64,
     pub rejected_avg_total: f64,
 }
@@ -423,6 +426,9 @@ pub struct MatchReviewItem {
     pub created_at: DateTime<Utc>,
     pub confirmed_at: Option<DateTime<Utc>>,
     pub notes: Option<String>,
+    pub ai_status: Option<String>,
+    pub ai_confidence: Option<f64>,
+    pub ai_explanation: Option<String>,
 }
 
 /// Match review statistics

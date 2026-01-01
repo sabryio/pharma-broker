@@ -21,6 +21,7 @@ pub struct Model {
     pub quantity_score: f64,
     pub price_score: f64,
     pub recency_score: f64,
+    pub ai_logic_score: f64,
     pub total_score: f64,
     pub created_at: DateTimeUtc,
 }
@@ -56,6 +57,7 @@ impl Model {
             quantity_score: params.scores.quantity,
             price_score: params.scores.price,
             recency_score: params.scores.recency,
+            ai_logic_score: params.scores.ai_logic,
             total_score: params.scores.total,
             created_at: chrono::Utc::now(),
         }
@@ -74,6 +76,7 @@ impl Model {
         quantity_score: f64,
         price_score: f64,
         recency_score: f64,
+        ai_logic_score: f64,
         total_score: f64,
     ) -> Self {
         Self {
@@ -86,6 +89,7 @@ impl Model {
             quantity_score,
             price_score,
             recency_score,
+            ai_logic_score,
             total_score,
             created_at: chrono::Utc::now(),
         }
@@ -117,6 +121,7 @@ impl Model {
             quantity: self.quantity_score,
             price: self.price_score,
             recency: self.recency_score,
+            ai_logic: self.ai_logic_score,
             total: self.total_score,
         }
     }
@@ -157,7 +162,7 @@ mod tests {
     #[test]
     fn test_scores_extraction() {
         let match_id = Uuid::new_v4();
-        let record = Model::new(match_id, "u", true, 0.9, 0.8, 0.7, 0.6, 0.5, 0.75);
+        let record = Model::new(match_id, "u", true, 0.9, 0.8, 0.7, 0.6, 0.5, 0.0, 0.75);
         let scores = record.scores();
 
         assert!((scores.medication - 0.9).abs() < 0.001);

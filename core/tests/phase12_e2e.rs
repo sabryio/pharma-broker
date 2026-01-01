@@ -105,6 +105,9 @@ fn create_match(offer: &Offer, request: &Request, score: f64) -> Match {
         created_at: Utc::now(),
         confirmed_at: None,
         notes: None,
+        ai_status: None,
+        ai_confidence: None,
+        ai_explanation: None,
     }
 }
 

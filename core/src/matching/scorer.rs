@@ -17,6 +17,7 @@ pub struct MatchScore {
     pub quantity_score: f64,
     pub price_score: f64,
     pub recency_score: f64,
+    pub ai_logic_score: f64,
     pub total: f64,
     pub confidence: ConfidenceBand,
     pub breakdown: String,
@@ -184,6 +185,7 @@ impl Scorer {
         offer: &Offer,
         request: &Request,
         medication_score: f64,
+        ai_logic_score: Option<f64>,
     ) -> MatchScore {
         // Medication gate check
         let gate_enabled = *self.medication_gate_enabled.read().unwrap();
@@ -196,6 +198,7 @@ impl Scorer {
                 quantity_score: 0.0,
                 price_score: 0.0,
                 recency_score: 0.0,
+                ai_logic_score: 0.0,
                 total: 0.0,
                 confidence: ConfidenceBand::None,
                 breakdown: format!(
@@ -207,6 +210,7 @@ impl Scorer {
         }
 
         let weights = self.weights.read().unwrap();
+        let ai_logic_score = ai_logic_score.unwrap_or(0.0);
 
         let qty_score = self.quantity_score(offer.quantity_f64(), request.quantity_f64());
         let price_score = self.price_score(offer.price_f64(), request.max_price_f64());
@@ -225,18 +229,20 @@ impl Scorer {
             + dosage_score * weights.dosage
             + qty_score * weights.quantity
             + price_score * weights.price
-            + recency_score * weights.recency;
+            + recency_score * weights.recency
+            + ai_logic_score * weights.ai_logic;
 
         let total = total.clamp(0.0, 1.0);
         let confidence = self.get_confidence_band(total);
 
         let breakdown = format!(
-            "Med:{:.0}% Dos:{:.0}% Qty:{:.0}% Price:{:.0}% Rec:{:.0}%",
+            "Med:{:.0}% Dos:{:.0}% Qty:{:.0}% Price:{:.0}% Rec:{:.0}% AI:{:.0}%",
             medication_score * 100.0,
             dosage_score * 100.0,
             qty_score * 100.0,
             price_score * 100.0,
-            recency_score * 100.0
+            recency_score * 100.0,
+            ai_logic_score * 100.0
         );
 
         MatchScore {
@@ -245,6 +251,7 @@ impl Scorer {
             quantity_score: qty_score,
             price_score,
             recency_score,
+            ai_logic_score,
             total,
             confidence,
             breakdown,
@@ -348,6 +355,7 @@ mod tests {
             quantity: 0.2,
             price: 0.05,
             recency: 0.05,
+            ai_logic: 0.0,
         };
 
         scorer.update_weights(new_weights.clone());

@@ -704,6 +704,7 @@ async fn auto_confirm_matches(
             recency_score: Set(feedback.recency_score),
             total_score: Set(feedback.total_score),
             created_at: Set(feedback.created_at),
+            ai_logic_score: Set(feedback.ai_logic_score),
         };
 
         if let Err(e) = active.insert(db).await {

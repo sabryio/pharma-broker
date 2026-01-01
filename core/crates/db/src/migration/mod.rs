@@ -19,6 +19,7 @@ mod m20251221_000011_create_weight_history;
 mod m20251231_000012_create_participants;
 mod m20251231_000013_create_medication_master;
 mod m20251231_000014_create_medication_aliases;
+mod m20260101_000015_add_ai_fields;
 
 pub struct Migrator;
 
@@ -41,6 +42,8 @@ impl MigratorTrait for Migrator {
             // Medication Curation System (Phase 1)
             Box::new(m20251231_000013_create_medication_master::Migration),
             Box::new(m20251231_000014_create_medication_aliases::Migration),
+            // AI Matching & Reviewer (Phase 1)
+            Box::new(m20260101_000015_add_ai_fields::Migration),
         ]
     }
 }

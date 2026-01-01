@@ -423,6 +423,7 @@ mod tests {
                 quantity: 0.10,
                 price: 0.10,
                 recency: 0.10,
+                ai_logic: 0.0,
             },
             start_time: Utc::now() - Duration::hours(1),
             end_time: Utc::now() + Duration::hours(1),
@@ -538,6 +539,7 @@ mod tests {
             quantity: 0.15,
             price: 0.15,
             recency: 0.10,
+            ai_logic: 0.0,
         };
         let manager = ABTestManager::new(base.clone());
 

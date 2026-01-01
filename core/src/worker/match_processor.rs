@@ -190,9 +190,15 @@ impl MatchProcessor {
 
             // Score match
             let participant_id_str = request.participant_id.to_string();
-            let (score, action) = self
+            let (score, action, review) = self
                 .matching_engine
-                .score_match(offer, &request, med_score, Some(&participant_id_str))
+                .score_match_ai(
+                    offer,
+                    &request,
+                    med_score,
+                    Some(&participant_id_str),
+                    true, // Defaulting to true for now, can be made configurable
+                )
                 .await;
 
             // Check if actionable
@@ -216,6 +222,9 @@ impl MatchProcessor {
                     created_at: Utc::now(),
                     confirmed_at,
                     notes: None,
+                    ai_status: review.as_ref().map(|r| format!("{:?}", r.status)),
+                    ai_confidence: review.as_ref().map(|r| r.confidence as f64),
+                    ai_explanation: review.as_ref().map(|r| r.explanation.clone()),
                 };
 
                 if let Err(e) = self.repos.match_repo.save(&match_entity).await {
