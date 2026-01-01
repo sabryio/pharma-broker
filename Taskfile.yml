@@ -200,7 +200,19 @@ tasks:
   frontend:docker:
     desc: Run frontend in Docker with live reload
     cmds:
-      - docker compose up frontend --build
+      - docker compose up frontend -d
+
+  frontend:docker:rebuild:
+    desc: Rebuild frontend Docker image and restart (use after adding new dependencies)
+    cmds:
+      - docker compose down frontend
+      - docker compose build frontend --no-cache
+      - docker compose up frontend -d
+
+  frontend:docker:logs:
+    desc: View frontend Docker logs
+    cmds:
+      - docker compose logs frontend -f
 
   # ============================================================================
   # Docker Compose

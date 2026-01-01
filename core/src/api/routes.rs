@@ -12,6 +12,7 @@ use axum::{
 };
 use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::broadcast;
+use tower_http::cors::{Any, CorsLayer};
 
 use super::{
     audit_trail, calibration, confidence, curation, diagnostics, embedding_cache, groups, handlers,
@@ -306,6 +307,13 @@ where
         // WebSocket
         .route("/ws", get(ws::ws_handler::<RQ, A, MM>))
         .with_state(state)
+        // CORS: Allow all origins for development
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
 }
 
 /// Handler for /metrics endpoint
