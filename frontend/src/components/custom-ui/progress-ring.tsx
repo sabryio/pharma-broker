@@ -28,7 +28,12 @@ export function ProgressRing({
         className,
       )}
     >
-      <svg width={size} height={size} className="transform -rotate-90">
+      <svg
+        width={size}
+        height={size}
+        className="transform -rotate-90"
+        style={{ overflow: 'visible' }}
+      >
         {/* Background circle */}
         <circle
           cx={size / 2}
@@ -52,7 +57,7 @@ export function ProgressRing({
           strokeDashoffset={offset}
           className="transition-all duration-1000 ease-out"
           style={{
-            filter: 'drop-shadow(0 0 8px hsl(var(--emerald) / 0.5))',
+            filter: 'drop-shadow(0 0 8px rgba(0, 230, 118, 0.5))',
           }}
         />
         <defs>
@@ -61,10 +66,10 @@ export function ProgressRing({
             x1="0%"
             y1="0%"
             x2="100%"
-            y2="0%"
+            y2="100%"
           >
-            <stop offset="0%" stopColor="hsl(var(--teal))" />
-            <stop offset="100%" stopColor="hsl(var(--emerald))" />
+            <stop offset="0%" stopColor="#00F2FF" />
+            <stop offset="100%" stopColor="#00E676" />
           </linearGradient>
         </defs>
       </svg>

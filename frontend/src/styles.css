@@ -57,6 +57,12 @@
   --emerald: oklch(0.75 0.2 160);
   --purple: oklch(0.7 0.25 300);
 
+  /* Hex equivalents for SVG gradients (oklch not supported in SVG defs) */
+  --teal-hex: #00F2FF;
+  --emerald-hex: #00E676;
+  --amber-hex: #FFB800;
+  --purple-hex: #B388FF;
+
   /* Glass effects */
   --glass-bg: oklch(0.16 0.02 260);
   --glass-border: oklch(0.32 0.02 260);
