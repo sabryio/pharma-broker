@@ -102,6 +102,29 @@ services:
     networks:
       - pharmabroker-network
 
+  # React Frontend (Bun + Vite with live reload)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pharma-frontend
+    environment:
+      TZ: Africa/Cairo
+      # API endpoint for the frontend to connect to core
+      VITE_API_URL: http://localhost:8081
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount entire frontend for live reload
+      - ./frontend:/app
+      # Keep node_modules inside container (don't sync to host)
+      - /app/node_modules
+    depends_on:
+      - core
+    restart: unless-stopped
+    networks:
+      - pharmabroker-network
+
   # Monitoring Services
   prometheus:
     image: prom/prometheus:latest

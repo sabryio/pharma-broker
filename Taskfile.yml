@@ -3,6 +3,7 @@ version: "3"
 vars:
   CORE_DIR: core
   BRIDGE_DIR: bridge
+  FRONTEND_DIR: frontend
 
 tasks:
   default:
@@ -161,6 +162,45 @@ tasks:
     dir: "{{.BRIDGE_DIR}}"
     cmds:
       - go test ./...
+
+  # ============================================================================
+  # Frontend (Bun + React + Vite)
+  # ============================================================================
+
+  frontend:dev:
+    desc: Run frontend dev server with hot reload
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - bun run dev
+
+  frontend:build:
+    desc: Build frontend for production
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - bun run build
+
+  frontend:test:
+    desc: Run frontend tests
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - bun run test
+
+  frontend:lint:
+    desc: Lint and format frontend code
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - bun run check
+
+  frontend:install:
+    desc: Install frontend dependencies
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - bun install
+
+  frontend:docker:
+    desc: Run frontend in Docker with live reload
+    cmds:
+      - docker compose up frontend --build
 
   # ============================================================================
   # Docker Compose
