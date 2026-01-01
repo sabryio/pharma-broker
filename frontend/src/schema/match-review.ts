@@ -78,7 +78,7 @@ export const MatchReviewStatsSchema = z.object({
 
 export const UpdateMatchReviewRequestSchema = z.object({
   action: z.enum(['approved', 'rejected']),
-  reviewed_by: z.string(),
+  reviewed_by: z.uuid(),
   notes: z.string().optional(),
 })
 
@@ -92,7 +92,7 @@ export const UpdateMatchReviewResponseSchema = z.object({
 export const BulkUpdateRequestSchema = z.object({
   ids: z.array(z.uuid()),
   action: z.enum(['approved', 'rejected']),
-  reviewed_by: z.string(),
+  reviewed_by: z.uuid(),
 })
 
 export const BulkUpdateResponseSchema = z.object({

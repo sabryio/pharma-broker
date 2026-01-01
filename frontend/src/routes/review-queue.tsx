@@ -395,7 +395,7 @@ export default function ReviewQueue() {
     })
 
     bulkMutation.mutate(
-      { ids, action, reviewed_by: 'current-user' },
+      { ids, action, reviewed_by: '00000000-0000-0000-0000-000000000001' },
       {
         onError: () => {
           setOptimisticallyRemoved((prev) => {

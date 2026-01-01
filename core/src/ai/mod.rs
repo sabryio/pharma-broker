@@ -9,6 +9,7 @@ mod params;
 mod pharma_parser;
 mod pharma_prompts;
 mod pharma_types;
+mod preprocessor;
 mod token_batcher;
 
 // Circuit breaker for resilient network calls
@@ -23,6 +24,9 @@ pub use feedback_loop::{
 
 // Parameter structs for clean APIs
 pub use params::{ExtractionData, MedicationCorrectionData, MissedExtractionData};
+
+// Message pre-processor for intent segmentation
+pub use preprocessor::{MessagePreprocessor, MessageSegment, SegmentIntent};
 
 // Token batching for efficient AI calls
 pub use token_batcher::{

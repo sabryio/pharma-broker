@@ -314,6 +314,7 @@ mod tests {
             medication_curated: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            confirmed_match_count: 0,
         };
 
         // Verify the status check logic
@@ -349,6 +350,7 @@ mod tests {
             medication_curated: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            confirmed_match_count: 0,
         };
 
         // Verify the status check logic
@@ -383,6 +385,7 @@ mod tests {
             medication_curated: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            confirmed_match_count: 0,
         };
 
         // Verify the status check logic

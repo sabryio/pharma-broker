@@ -59,6 +59,7 @@ fn create_offer() -> Offer {
         medication_curated: false,
         created_at: now,
         updated_at: now,
+        confirmed_match_count: 0,
     }
 }
 
@@ -86,6 +87,7 @@ fn create_matching_request() -> Request {
         medication_curated: false,
         created_at: now,
         updated_at: now,
+        confirmed_match_count: 0,
     }
 }
 

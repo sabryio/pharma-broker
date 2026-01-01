@@ -125,6 +125,7 @@ impl PharmaParser {
 
     /// Parse a single message with optional medication mappings
     /// Automatically enhances prompts with learned examples from feedback loop
+    /// and pre-processes mixed offer/request messages for better accuracy
     pub async fn parse(
         &self,
         content: &str,
@@ -138,6 +139,15 @@ impl PharmaParser {
             warn!("Circuit breaker open, rejecting request");
             return Err(ParseError::CircuitOpen);
         }
+
+        // Pre-process content for mixed intent messages
+        let preprocessor = super::preprocessor::MessagePreprocessor::instance();
+        let (processed_content, has_mixed_intents) = if preprocessor.has_mixed_intents(content) {
+            debug!("Detected mixed offer/request message, adding intent hints");
+            (preprocessor.preprocess(content), true)
+        } else {
+            (content.to_string(), false)
+        };
 
         // Enhance system prompt with learned examples from feedback loop
         let enhanced_system_prompt = self
@@ -157,7 +167,7 @@ impl PharmaParser {
             .max(512);
 
         // Check if content needs to be split due to context limits
-        let content_tokens = Self::estimate_tokens(content);
+        let content_tokens = Self::estimate_tokens(&processed_content);
 
         if content_tokens > available {
             // Content too large - split into chunks and merge results
@@ -181,9 +191,14 @@ impl PharmaParser {
                 .await;
         }
 
-        // Build user prompt with mappings
-        let user_prompt =
-            build_user_prompt_with_mappings(content, sender_name, group_name, reply_to, mappings);
+        // Build user prompt with mappings (using processed content with intent hints)
+        let user_prompt = build_user_prompt_with_mappings(
+            &processed_content,
+            sender_name,
+            group_name,
+            reply_to,
+            mappings,
+        );
 
         // Get learned medication mappings from feedback loop
         let learned_mappings = self.feedback_loop.get_medication_mappings();
@@ -198,7 +213,7 @@ impl PharmaParser {
         // Rebuild user prompt with combined mappings if we have learned ones
         let final_user_prompt = if all_mappings.is_some() {
             build_user_prompt_with_mappings(
-                content,
+                &processed_content,
                 sender_name,
                 group_name,
                 reply_to,
@@ -211,6 +226,7 @@ impl PharmaParser {
         debug!(
             learned_examples = self.feedback_loop.example_count(),
             learned_corrections = self.feedback_loop.correction_count(),
+            has_mixed_intents = has_mixed_intents,
             "Parsing with feedback loop enhancements"
         );
 
@@ -224,7 +240,11 @@ impl PharmaParser {
                 self.circuit_breaker.record_success();
                 let items_count = parse_result.items.len();
                 if items_count > 0 {
-                    info!(items = items_count, "AI parsing complete");
+                    info!(
+                        items = items_count,
+                        mixed_intents = has_mixed_intents,
+                        "AI parsing complete"
+                    );
                 } else {
                     debug!("AI parsing complete (no items found)");
                 }

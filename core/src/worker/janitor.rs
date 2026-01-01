@@ -379,6 +379,9 @@ mod tests {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             Ok(self.deleted_count)
         }
+        async fn increment_match_count(&self, _id: Uuid) -> DbResult<OfferModel> {
+            unimplemented!()
+        }
     }
 
     #[async_trait]
@@ -416,6 +419,9 @@ mod tests {
         async fn delete_before(&self, _: &DateTime<Utc>) -> DbResult<u64> {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             Ok(self.deleted_count)
+        }
+        async fn increment_match_count(&self, _id: Uuid) -> DbResult<RequestModel> {
+            unimplemented!()
         }
     }
 

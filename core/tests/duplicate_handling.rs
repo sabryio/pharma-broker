@@ -40,6 +40,7 @@ fn create_request_with_status(status: ItemStatus) -> Request {
         medication_curated: false,
         created_at: now,
         updated_at: now,
+        confirmed_match_count: 0,
     }
 }
 
@@ -68,6 +69,7 @@ fn create_offer_with_status(status: ItemStatus) -> Offer {
         medication_curated: false,
         created_at: now,
         updated_at: now,
+        confirmed_match_count: 0,
     }
 }
 

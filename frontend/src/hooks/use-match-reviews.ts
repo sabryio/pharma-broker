@@ -61,6 +61,9 @@ export function useMatchReviewStats() {
 export function useUpdateMatchReviewStatus() {
   const queryClient = useQueryClient()
 
+  // TODO: Get from auth context when implemented
+  const CURRENT_USER_ID = '00000000-0000-0000-0000-000000000001'
+
   return useMutation({
     mutationFn: ({
       id,
@@ -73,7 +76,7 @@ export function useUpdateMatchReviewStatus() {
     }) => {
       return updateMatchReviewStatus(id, {
         action,
-        reviewed_by: 'current-user', // TODO: Get from auth context
+        reviewed_by: CURRENT_USER_ID,
         notes,
       })
     },

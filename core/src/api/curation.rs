@@ -244,39 +244,36 @@ where
     let normalized_name = normalize_arabic_text(&name);
 
     // Check exact match on canonical_name
-    if let Some(ref en_name) = req.name {
-        if let Ok(Some(existing)) = state.medication_master_repo.find_by_name(en_name).await {
-            return Err((
-                StatusCode::CONFLICT,
-                format!(
-                    "Master medication '{}' already exists with id: {}",
-                    en_name, existing.id
-                ),
-            ));
-        }
+    if let Some(ref en_name) = req.name
+        && let Ok(Some(existing)) = state.medication_master_repo.find_by_name(en_name).await
+    {
+        return Err((
+            StatusCode::CONFLICT,
+            format!(
+                "Master medication '{}' already exists with id: {}",
+                en_name, existing.id
+            ),
+        ));
     }
 
     // Check semantic similarity - if very high match exists, reject as duplicate
-    if let Ok(embedding) = state.ai_client.embed(&normalized_name).await {
-        if let Ok(similar) = state
+    if let Ok(embedding) = state.ai_client.embed(&normalized_name).await
+        && let Ok(similar) = state
             .medication_master_repo
             .search_semantic(&embedding, 1)
             .await
-        {
-            if let Some((existing, score)) = similar.first() {
-                if *score > 0.95 {
-                    return Err((
-                        StatusCode::CONFLICT,
-                        format!(
-                            "Similar master medication '{}' already exists ({}% match). Use existing master id: {}",
-                            existing.canonical_name,
-                            (score * 100.0) as i32,
-                            existing.id
-                        ),
-                    ));
-                }
-            }
-        }
+        && let Some((existing, score)) = similar.first()
+        && *score > 0.95
+    {
+        return Err((
+            StatusCode::CONFLICT,
+            format!(
+                "Similar master medication '{}' already exists ({}% match). Use existing master id: {}",
+                existing.canonical_name,
+                (score * 100.0) as i32,
+                existing.id
+            ),
+        ));
     }
 
     // Generate embedding for the new master

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::routes::AppState;
-use crate::domain::{AuditLog, FeedbackRecord, ItemStatus, MatchStatus};
+use crate::domain::{AuditLog, FeedbackRecord, MatchStatus};
 use crate::metrics;
 use crate::repository::{
     AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository, UpdateMatchStatusParams,
@@ -277,15 +277,25 @@ where
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Update offer and request status to MATCHED
-    let _ = state
+    // NOTE: We do NOT update offer/request status to MATCHED because:
+    // - One offer can be matched with multiple requests
+    // - One request can be matched with multiple offers
+
+    // Increment confirmed match count for both offer and request
+    if let Err(e) = state
         .offer_repo
-        .update_status(match_entity.offer_id, ItemStatus::Matched)
-        .await;
-    let _ = state
+        .increment_match_count(match_entity.offer_id)
+        .await
+    {
+        tracing::warn!(error = %e, offer_id = %match_entity.offer_id, "Failed to increment offer match count");
+    }
+    if let Err(e) = state
         .request_repo
-        .update_status(match_entity.request_id, ItemStatus::Matched)
-        .await;
+        .increment_match_count(match_entity.request_id)
+        .await
+    {
+        tracing::warn!(error = %e, request_id = %match_entity.request_id, "Failed to increment request match count");
+    }
 
     // Record feedback for learning system
     let feedback = FeedbackRecord::new(

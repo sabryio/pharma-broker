@@ -499,6 +499,7 @@ where
                                 ai_confidence: item.ai_confidence,
                                 master_medication_id, // Dynamic resolution
                                 medication_curated,
+                                confirmed_match_count: 0,
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };
@@ -584,6 +585,7 @@ where
                                 content_embedding: content_embedding.clone().map(PgVector::from),
                                 master_medication_id, // Dynamic resolution (reuse from above)
                                 medication_curated,
+                                confirmed_match_count: 0,
                                 created_at: Utc::now(),
                                 updated_at: Utc::now(),
                             };

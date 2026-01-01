@@ -36,6 +36,7 @@ export const OfferSchema = z.object({
   ai_confidence: z.number(),
   master_medication_id: z.string().uuid().nullable(),
   medication_curated: z.boolean(),
+  confirmed_match_count: z.number().default(0),
   created_at: z.string(), // ISO date string
   updated_at: z.string(), // ISO date string
 })
@@ -80,6 +81,7 @@ export const RequestSchema = z.object({
   status: RequestStatusSchema,
   master_medication_id: z.string().uuid().nullable(),
   medication_curated: z.boolean(),
+  confirmed_match_count: z.number().default(0),
   created_at: z.string(), // ISO date string
   updated_at: z.string(), // ISO date string
 })

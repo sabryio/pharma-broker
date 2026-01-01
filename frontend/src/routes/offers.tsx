@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Badge } from '@/components/ui/badge'
+import { MatchCountInline } from '@/components/ui/match-count-badge'
 import {
   MessageCircle,
   Filter,
@@ -57,6 +58,12 @@ const columns = [
         </span>
       )
     },
+  }),
+  columnHelper.accessor('confirmed_match_count', {
+    header: 'Matches',
+    cell: (info) => (
+      <MatchCountInline count={info.getValue() ?? 0} variant="offer" />
+    ),
   }),
   columnHelper.accessor('group_id', {
     header: 'Source',

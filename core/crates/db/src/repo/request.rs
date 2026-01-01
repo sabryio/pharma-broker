@@ -96,6 +96,18 @@ impl RequestRepository for SeaOrmRequestRepo {
         active.update(&*self.db).await.map_err(Error::from)
     }
 
+    async fn increment_match_count(&self, id: Uuid) -> Result<request::Model> {
+        let request = Request::find_by_id(id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("Request not found: {}", id)))?;
+
+        let mut active: request::ActiveModel = request.clone().into();
+        active.confirmed_match_count = Set(request.confirmed_match_count + 1);
+        active.updated_at = Set(Utc::now());
+        active.update(&*self.db).await.map_err(Error::from)
+    }
+
     async fn find_semantic_duplicates(
         &self,
         params: crate::params::SemanticDuplicateParams<'_>,

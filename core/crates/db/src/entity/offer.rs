@@ -34,6 +34,7 @@ pub struct Model {
     pub content_embedding: Option<PgVector>, // Vector(768) for semantic search
     pub master_medication_id: Option<Uuid>,  // FK to medication_master for deterministic matching
     pub medication_curated: bool,            // Whether medication has been curated
+    pub confirmed_match_count: i32,          // Number of confirmed matches for this offer
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }
@@ -118,6 +119,7 @@ impl Default for Model {
             content_embedding: None,
             master_medication_id: None,
             medication_curated: false,
+            confirmed_match_count: 0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -333,6 +335,7 @@ impl OfferBuilder {
             content_embedding: self.content_embedding,
             master_medication_id: None,
             medication_curated: false,
+            confirmed_match_count: 0,
             created_at: now,
             updated_at: now,
         }

@@ -59,6 +59,8 @@ pub trait OfferRepository: Send + Sync {
     async fn save(&self, offer: &OfferModel) -> Result<OfferModel>;
     /// Update the status of an offer by its ID
     async fn update_status(&self, id: Uuid, status: ItemStatus) -> Result<OfferModel>;
+    /// Increment the confirmed match count for an offer
+    async fn increment_match_count(&self, id: Uuid) -> Result<OfferModel>;
     async fn find_semantic_duplicates(
         &self,
         params: SemanticDuplicateParams<'_>,
@@ -81,6 +83,8 @@ pub trait RequestRepository: Send + Sync {
     async fn save(&self, request: &RequestModel) -> Result<RequestModel>;
     /// Update the status of a request by its ID
     async fn update_status(&self, id: Uuid, status: ItemStatus) -> Result<RequestModel>;
+    /// Increment the confirmed match count for a request
+    async fn increment_match_count(&self, id: Uuid) -> Result<RequestModel>;
     async fn find_semantic_duplicates(
         &self,
         params: SemanticDuplicateParams<'_>,

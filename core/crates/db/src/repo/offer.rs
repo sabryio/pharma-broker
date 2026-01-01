@@ -95,6 +95,18 @@ impl OfferRepository for SeaOrmOfferRepo {
         active.update(&*self.db).await.map_err(Error::from)
     }
 
+    async fn increment_match_count(&self, id: Uuid) -> Result<offer::Model> {
+        let offer = Offer::find_by_id(id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("Offer not found: {}", id)))?;
+
+        let mut active: offer::ActiveModel = offer.clone().into();
+        active.confirmed_match_count = Set(offer.confirmed_match_count + 1);
+        active.updated_at = Set(Utc::now());
+        active.update(&*self.db).await.map_err(Error::from)
+    }
+
     async fn find_semantic_duplicates(
         &self,
         params: crate::params::SemanticDuplicateParams<'_>,

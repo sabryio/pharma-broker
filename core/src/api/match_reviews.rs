@@ -13,8 +13,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::routes::AppState;
-use crate::domain::{AuditAction, AuditLog, EntityType, MatchStatus};
+use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackRecord, MatchStatus};
 use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::ws::{MatchStatusEvent, WsEvent};
 use pharma_db::traits::{MatchReviewItem, MatchReviewStats, OfferSummary, RequestSummary};
 
 // ============================================================================
@@ -47,7 +48,7 @@ pub struct MatchReviewListResponse {
 #[derive(Debug, Deserialize)]
 pub struct UpdateMatchReviewRequest {
     pub action: String,
-    pub reviewed_by: String,
+    pub reviewed_by: Uuid,
     pub notes: Option<String>,
 }
 
@@ -64,7 +65,7 @@ pub struct UpdateMatchReviewResponse {
 pub struct BulkUpdateRequest {
     pub ids: Vec<Uuid>,
     pub action: String,
-    pub reviewed_by: String,
+    pub reviewed_by: Uuid,
 }
 
 #[derive(Debug, Serialize)]
@@ -445,10 +446,18 @@ where
 {
     let status = parse_action(&req.action)?;
 
+    // Get the match first to access offer_id and request_id
+    let match_entity = state
+        .match_repo
+        .get_by_id(id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Match not found".to_string()))?;
+
     let params = crate::repository::UpdateMatchStatusParams::new(
         id,
         status,
-        &req.reviewed_by,
+        req.reviewed_by,
         req.notes.as_deref().unwrap_or(""),
     );
 
@@ -458,13 +467,93 @@ where
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // If confirmed, increment match counts, record feedback and broadcast event
+    // NOTE: We do NOT update offer/request status to MATCHED because:
+    // - One offer can be matched with multiple requests
+    // - One request can be matched with multiple offers
+    if status == MatchStatus::Confirmed {
+        // Increment confirmed match count for both offer and request
+        if let Err(e) = state
+            .offer_repo
+            .increment_match_count(match_entity.offer_id)
+            .await
+        {
+            tracing::warn!(error = %e, offer_id = %match_entity.offer_id, "Failed to increment offer match count");
+        }
+        if let Err(e) = state
+            .request_repo
+            .increment_match_count(match_entity.request_id)
+            .await
+        {
+            tracing::warn!(error = %e, request_id = %match_entity.request_id, "Failed to increment request match count");
+        }
+
+        // Record feedback for learning system
+        let feedback = FeedbackRecord::new(
+            id,
+            req.reviewed_by,
+            true,                      // confirmed = positive feedback
+            match_entity.score * 0.9,  // Estimate medication score
+            match_entity.score * 0.8,  // Estimate dosage score
+            match_entity.score * 0.85, // Estimate quantity score
+            match_entity.score * 0.95, // Estimate price score
+            0.7,                       // Default recency score
+            match_entity.score * 0.8,  // Estimate AI logic score
+            match_entity.score,
+        );
+
+        if let Err(e) = state.feedback_repo.save(&feedback).await {
+            tracing::warn!(error = %e, match_id = %id, "Failed to record confirmation feedback");
+        }
+
+        // Broadcast WebSocket event
+        let ws_event = WsEvent::MatchConfirmed(MatchStatusEvent {
+            match_id: id,
+            user_id: req.reviewed_by,
+            notes: req.notes.clone(),
+            reason: None,
+        });
+        if let Err(e) = state.ws_tx.send(ws_event) {
+            tracing::warn!(error = %e, "Failed to broadcast match confirmation event");
+        }
+    } else if status == MatchStatus::Rejected {
+        // Record negative feedback for learning system
+        let feedback = FeedbackRecord::new(
+            id,
+            req.reviewed_by,
+            false, // rejected = negative feedback
+            match_entity.score * 0.9,
+            match_entity.score * 0.8,
+            match_entity.score * 0.85,
+            match_entity.score * 0.95,
+            0.7,
+            match_entity.score * 0.8,
+            match_entity.score,
+        );
+
+        if let Err(e) = state.feedback_repo.save(&feedback).await {
+            tracing::warn!(error = %e, match_id = %id, "Failed to record rejection feedback");
+        }
+
+        // Broadcast WebSocket event
+        let ws_event = WsEvent::MatchRejected(MatchStatusEvent {
+            match_id: id,
+            user_id: req.reviewed_by,
+            notes: req.notes.clone(),
+            reason: Some("Rejected by reviewer".to_string()),
+        });
+        if let Err(e) = state.ws_tx.send(ws_event) {
+            tracing::warn!(error = %e, "Failed to broadcast match rejection event");
+        }
+    }
+
     let audit_action = match status {
         MatchStatus::Confirmed => AuditAction::MatchConfirmed,
         MatchStatus::Rejected => AuditAction::MatchRejected,
         _ => AuditAction::MatchCreated,
     };
 
-    let audit_log = AuditLog::new(audit_action, EntityType::Match, id, &req.reviewed_by)
+    let audit_log = AuditLog::new(audit_action, EntityType::Match, id, req.reviewed_by)
         .with_details(serde_json::json!({
             "action": req.action,
             "notes": req.notes
@@ -504,11 +593,64 @@ where
     let mut updated_count = 0;
 
     for id in &req.ids {
+        // Get the match first to access offer_id and request_id
+        let match_entity = match state.match_repo.get_by_id(*id).await {
+            Ok(Some(m)) => m,
+            _ => continue,
+        };
+
         let params =
-            crate::repository::UpdateMatchStatusParams::new(*id, status, &req.reviewed_by, "");
+            crate::repository::UpdateMatchStatusParams::new(*id, status, req.reviewed_by, "");
 
         if state.match_repo.update_status(params).await.is_ok() {
             updated_count += 1;
+
+            // Record feedback and increment match counts (no offer/request status update for many-to-many matching)
+            if status == MatchStatus::Confirmed {
+                // Increment confirmed match count for both offer and request
+                if let Err(e) = state
+                    .offer_repo
+                    .increment_match_count(match_entity.offer_id)
+                    .await
+                {
+                    tracing::warn!(error = %e, offer_id = %match_entity.offer_id, "Failed to increment offer match count (bulk)");
+                }
+                if let Err(e) = state
+                    .request_repo
+                    .increment_match_count(match_entity.request_id)
+                    .await
+                {
+                    tracing::warn!(error = %e, request_id = %match_entity.request_id, "Failed to increment request match count (bulk)");
+                }
+
+                let feedback = FeedbackRecord::new(
+                    *id,
+                    req.reviewed_by,
+                    true,
+                    match_entity.score * 0.9,
+                    match_entity.score * 0.8,
+                    match_entity.score * 0.85,
+                    match_entity.score * 0.95,
+                    0.7,
+                    match_entity.score * 0.8,
+                    match_entity.score,
+                );
+                let _ = state.feedback_repo.save(&feedback).await;
+            } else if status == MatchStatus::Rejected {
+                let feedback = FeedbackRecord::new(
+                    *id,
+                    req.reviewed_by,
+                    false,
+                    match_entity.score * 0.9,
+                    match_entity.score * 0.8,
+                    match_entity.score * 0.85,
+                    match_entity.score * 0.95,
+                    0.7,
+                    match_entity.score * 0.8,
+                    match_entity.score,
+                );
+                let _ = state.feedback_repo.save(&feedback).await;
+            }
 
             let audit_action = match status {
                 MatchStatus::Confirmed => AuditAction::MatchConfirmed,
@@ -516,11 +658,29 @@ where
                 _ => AuditAction::MatchCreated,
             };
 
-            let audit_log = AuditLog::new(audit_action, EntityType::Match, *id, &req.reviewed_by)
+            let audit_log = AuditLog::new(audit_action, EntityType::Match, *id, req.reviewed_by)
                 .with_details(serde_json::json!({ "bulk": true, "action": req.action }));
 
             let _ = state.audit_log_repo.save(&audit_log).await;
         }
+    }
+
+    // Broadcast bulk update event
+    if updated_count > 0 {
+        let ws_event = if status == MatchStatus::Confirmed {
+            WsEvent::BulkMatchUpdate {
+                action: "confirmed".to_string(),
+                count: updated_count,
+                user_id: req.reviewed_by,
+            }
+        } else {
+            WsEvent::BulkMatchUpdate {
+                action: "rejected".to_string(),
+                count: updated_count,
+                user_id: req.reviewed_by,
+            }
+        };
+        let _ = state.ws_tx.send(ws_event);
     }
 
     tracing::info!(

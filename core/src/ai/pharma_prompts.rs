@@ -203,6 +203,26 @@ Output:
   }]
 }
 
+## ✅ Mixed OFFER + REQUEST Message (CRITICAL PATTERN)
+Input: "📌موجود زاكتاجيكت ديسفيرال انبريل 50 جونابيور 150 📢مطلوب زولادكس صغير مطلوب لانتوس اقلام مطلوب جونال 900"
+Output:
+{
+  "items": [
+    {"type": "OFFER", "medication": "Zactagect", "medication_raw": "زاكتاجيكت", "ai_confidence": 0.92},
+    {"type": "OFFER", "medication": "Desferal", "medication_raw": "ديسفيرال", "ai_confidence": 0.92},
+    {"type": "OFFER", "medication": "Enbrel 50mg", "medication_raw": "انبريل 50", "ai_confidence": 0.92},
+    {"type": "OFFER", "medication": "Gonapure 150", "medication_raw": "جونابيور 150", "ai_confidence": 0.92},
+    {"type": "REQUEST", "medication": "Zoladex Small", "medication_raw": "زولادكس صغير", "ai_confidence": 0.90},
+    {"type": "REQUEST", "medication": "Lantus Pens", "medication_raw": "لانتوس اقلام", "ai_confidence": 0.90},
+    {"type": "REQUEST", "medication": "Gonal-F 900", "medication_raw": "جونال 900", "ai_confidence": 0.90}
+  ]
+}
+CRITICAL: When a message contains BOTH "موجود/متوفر/عندي" AND "مطلوب/محتاج/عايز", you MUST:
+1. Items AFTER "موجود/متوفر/عندي" are OFFERS until you see a REQUEST marker
+2. Items AFTER "مطلوب/محتاج/عايز" are REQUESTS
+3. Each "مطلوب" resets context to REQUEST mode
+4. Parse ALL items - do not skip any medication
+
 ## ❌ Bad Example (Avoid)
 Input: "للتواصل 01012345678"
 CORRECT Output: {"items": []}

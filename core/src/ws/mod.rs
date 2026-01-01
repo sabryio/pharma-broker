@@ -56,6 +56,12 @@ pub enum WsEvent {
     MatchConfirmed(MatchStatusEvent),
     /// Match was rejected by operator
     MatchRejected(MatchStatusEvent),
+    /// Bulk match update completed
+    BulkMatchUpdate {
+        action: String,
+        count: usize,
+        user_id: Uuid,
+    },
     /// Item queued for review
     ReviewQueued(Uuid),
     /// Ping message (keep-alive)
