@@ -1,7 +1,23 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import type { ReviewOffer, ReviewRequest } from './types'
+
 import {
   Package,
   DollarSign,
@@ -15,6 +31,8 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Send,
+  Loader2,
 } from 'lucide-react'
 
 interface ReviewCardProps {
@@ -67,9 +85,8 @@ function HighlightedMessage({
     </span>
   )
 }
-
 /**
- * Sender info badge component
+ * Sender info badge component with creative popover and message composer
  */
 function SenderBadge({
   name,
@@ -80,35 +97,312 @@ function SenderBadge({
   jid: string | null
   accentColor: 'teal' | 'amber'
 }) {
-  const displayName = name || (jid ? jid.split('@')[0] : 'Unknown Sender')
+  const [isComposerOpen, setIsComposerOpen] = useState(false)
+  const [message, setMessage] = useState('')
+  const [isSending, setIsSending] = useState(false)
+
+  const displayName = name || 'Unknown'
+  const displayJid = jid ? jid.split('@')[0] : null
+  const fullJid = jid || 'N/A'
+
+  // Generate initials for avatar
+  const initials = displayName
+    .split(' ')
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+
+  const handleSendMessage = async () => {
+    if (!message.trim() || !jid) return
+
+    setIsSending(true)
+    // TODO: Implement actual WhatsApp message sending via API
+    // For now, simulate a delay
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    setIsSending(false)
+    setMessage('')
+    setIsComposerOpen(false)
+  }
 
   return (
-    <div
-      className={cn(
-        'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs',
-        'bg-linear-to-r border backdrop-blur-sm',
-        accentColor === 'teal'
-          ? 'from-teal/10 to-teal/5 border-teal/20'
-          : 'from-amber/10 to-amber/5 border-amber/20',
-      )}
-    >
-      <div
-        className={cn(
-          'w-5 h-5 rounded-full flex items-center justify-center',
-          accentColor === 'teal' ? 'bg-teal/20' : 'bg-amber/20',
-        )}
-      >
-        <User
+    <>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            className={cn(
+              'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs',
+              'bg-gradient-to-r border backdrop-blur-sm cursor-pointer',
+              'hover:scale-105 active:scale-95 transition-all duration-200',
+              accentColor === 'teal'
+                ? 'from-teal/10 to-teal/5 border-teal/30 hover:border-teal/50'
+                : 'from-amber/10 to-amber/5 border-amber/30 hover:border-amber/50',
+            )}
+          >
+            <div
+              className={cn(
+                'w-6 h-6 rounded-full flex items-center justify-center shrink-0',
+                'text-[10px] font-bold',
+                accentColor === 'teal'
+                  ? 'bg-teal/20 text-teal'
+                  : 'bg-amber/20 text-amber',
+              )}
+            >
+              {initials || <User className="w-3 h-3" />}
+            </div>
+            <span className="font-medium text-foreground truncate max-w-[100px]">
+              {displayName}
+            </span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
           className={cn(
-            'w-3 h-3',
-            accentColor === 'teal' ? 'text-teal' : 'text-amber',
+            'w-72 p-0 overflow-hidden',
+            'bg-gradient-to-br from-card via-card to-card/80',
+            'border shadow-xl',
+            accentColor === 'teal'
+              ? 'border-teal/30 shadow-teal/20'
+              : 'border-amber/30 shadow-amber/20',
           )}
-        />
-      </div>
-      <span className="font-medium text-foreground truncate max-w-[150px]">
-        {displayName}
-      </span>
-    </div>
+          sideOffset={8}
+        >
+          {/* Header with gradient */}
+          <div
+            className={cn(
+              'px-4 py-3 border-b',
+              accentColor === 'teal'
+                ? 'bg-gradient-to-r from-teal/20 to-teal/5 border-teal/20'
+                : 'bg-gradient-to-r from-amber/20 to-amber/5 border-amber/20',
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className={cn(
+                  'w-10 h-10 rounded-full flex items-center justify-center',
+                  'font-bold text-lg',
+                  accentColor === 'teal'
+                    ? 'bg-teal/30 text-teal'
+                    : 'bg-amber/30 text-amber',
+                )}
+              >
+                {initials || <User className="w-5 h-5" />}
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="font-semibold text-foreground text-sm truncate">
+                  {displayName}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  Sender
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-4 space-y-3">
+            {/* JID */}
+            {/* <div className="flex items-start gap-2">
+              <div
+                className={cn(
+                  'w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5',
+                  accentColor === 'teal' ? 'bg-teal/10' : 'bg-amber/10',
+                )}
+              >
+                <MessageSquare
+                  className={cn(
+                    'w-3.5 h-3.5',
+                    accentColor === 'teal' ? 'text-teal' : 'text-amber',
+                  )}
+                />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  WhatsApp ID
+                </span>
+                <span className="text-xs font-mono text-foreground break-all">
+                  {fullJid}
+                </span>
+              </div>
+            </div> */}
+
+            {/* Short JID */}
+            {displayJid && (
+              <div className="flex items-start gap-2">
+                <div
+                  className={cn(
+                    'w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5',
+                    accentColor === 'teal' ? 'bg-teal/10' : 'bg-amber/10',
+                  )}
+                >
+                  <Hash
+                    className={cn(
+                      'w-3.5 h-3.5',
+                      accentColor === 'teal' ? 'text-teal' : 'text-amber',
+                    )}
+                  />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                    Phone Number
+                  </span>
+                  <span className="text-xs font-medium text-foreground">
+                    {displayJid}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Send Message Button */}
+          {jid && (
+            <div className="px-4 pb-4">
+              <Button
+                onClick={() => setIsComposerOpen(true)}
+                className={cn(
+                  'w-full gap-2 group relative overflow-hidden',
+                  'transition-all duration-300',
+                  accentColor === 'teal'
+                    ? 'bg-gradient-to-r from-teal to-teal/80 hover:from-teal/90 hover:to-teal/70 text-white shadow-lg shadow-teal/30'
+                    : 'bg-gradient-to-r from-amber to-amber/80 hover:from-amber/90 hover:to-amber/70 text-white shadow-lg shadow-amber/30',
+                )}
+              >
+                <Send className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                <span className="font-medium">Send Message</span>
+                {/* Shimmer effect */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+              </Button>
+            </div>
+          )}
+
+          {/* Footer glow */}
+          <div
+            className={cn(
+              'h-1',
+              accentColor === 'teal'
+                ? 'bg-gradient-to-r from-transparent via-teal/50 to-transparent'
+                : 'bg-gradient-to-r from-transparent via-amber/50 to-transparent',
+            )}
+          />
+        </PopoverContent>
+      </Popover>
+
+      {/* Message Composer Dialog */}
+      <Dialog open={isComposerOpen} onOpenChange={setIsComposerOpen}>
+        <DialogContent
+          className={cn(
+            'sm:max-w-md overflow-hidden',
+            accentColor === 'teal' ? 'border-teal/30' : 'border-amber/30',
+          )}
+        >
+          {/* Gradient header */}
+          <div
+            className={cn(
+              'absolute top-0 left-0 right-0 h-1',
+              accentColor === 'teal'
+                ? 'bg-gradient-to-r from-teal/50 via-teal to-teal/50'
+                : 'bg-gradient-to-r from-amber/50 via-amber to-amber/50',
+            )}
+          />
+
+          <DialogHeader className="pt-2">
+            <DialogTitle className="flex items-center gap-3">
+              <div
+                className={cn(
+                  'w-10 h-10 rounded-full flex items-center justify-center font-bold',
+                  accentColor === 'teal'
+                    ? 'bg-teal/20 text-teal'
+                    : 'bg-amber/20 text-amber',
+                )}
+              >
+                {initials || <User className="w-5 h-5" />}
+              </div>
+              <div className="flex flex-col">
+                <span>Message {displayName}</span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  via WhatsApp
+                </span>
+              </div>
+            </DialogTitle>
+            <DialogDescription>
+              Compose your message below. It will be sent to{' '}
+              {displayJid || fullJid}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <Textarea
+              placeholder="Type your message..."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className={cn(
+                'min-h-[120px] resize-none',
+                'focus:ring-2',
+                accentColor === 'teal'
+                  ? 'focus:ring-teal/30 focus:border-teal/50'
+                  : 'focus:ring-amber/30 focus:border-amber/50',
+              )}
+              dir="auto"
+            />
+
+            {/* Quick message templates */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setMessage('مرحباً، هل العرض ما زال متاحاً؟')}
+                className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
+              >
+                🇪🇬 Ask availability
+              </button>
+              <button
+                onClick={() => setMessage('Hello, is this still available?')}
+                className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
+              >
+                🇬🇧 Ask availability
+              </button>
+              <button
+                onClick={() =>
+                  setMessage('شكراً على العرض، سأتواصل معك قريباً.')
+                }
+                className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
+              >
+                🇪🇬 Thank you
+              </button>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsComposerOpen(false)}
+              disabled={isSending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSendMessage}
+              disabled={!message.trim() || isSending}
+              className={cn(
+                'gap-2 min-w-[120px]',
+                accentColor === 'teal'
+                  ? 'bg-teal hover:bg-teal/90'
+                  : 'bg-amber hover:bg-amber/90',
+              )}
+            >
+              {isSending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Send
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
