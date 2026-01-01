@@ -273,7 +273,6 @@ impl MatchProcessor {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,7 +310,7 @@ mod tests {
         // Verify the status check logic
         assert_eq!(request.status, ItemStatus::Duplicate);
         assert_ne!(request.status, ItemStatus::Active);
-        
+
         // The condition in process_item should skip this request
         let should_skip = request.status != ItemStatus::Active;
         assert!(should_skip, "Duplicate request should be skipped");
@@ -345,7 +344,7 @@ mod tests {
 
         // Verify the status check logic
         assert_eq!(request.status, ItemStatus::Active);
-        
+
         // The condition in process_item should NOT skip this request
         let should_skip = request.status != ItemStatus::Active;
         assert!(!should_skip, "Active request should NOT be skipped");
@@ -380,7 +379,7 @@ mod tests {
         // Verify the status check logic
         assert_eq!(request.status, ItemStatus::Matched);
         assert_ne!(request.status, ItemStatus::Active);
-        
+
         // The condition in process_item should skip this request
         let should_skip = request.status != ItemStatus::Active;
         assert!(should_skip, "Matched request should be skipped");
@@ -398,11 +397,7 @@ mod tests {
 
         for status in non_active_statuses {
             let should_skip = status != ItemStatus::Active;
-            assert!(
-                should_skip,
-                "Status {:?} should be skipped",
-                status
-            );
+            assert!(should_skip, "Status {:?} should be skipped", status);
         }
     }
 }

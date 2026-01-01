@@ -354,3 +354,58 @@ pub struct CurationStats {
     pub total_aliases: i64,
     pub pending_aliases: i64,
 }
+
+// ============================================================================
+// Match Review Types
+// ============================================================================
+
+/// Summary of an offer for match review display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfferSummary {
+    pub id: Uuid,
+    pub product: String,
+    pub source: String,
+    pub quantity: Option<String>,
+    pub price: Option<String>,
+    pub expiry: Option<String>,
+}
+
+/// Summary of a request for match review display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestSummary {
+    pub id: Uuid,
+    pub product: String,
+    pub source: String,
+    pub quantity: Option<String>,
+    pub max_price: Option<String>,
+    pub urgency: String,
+}
+
+/// Enriched match review item with joined offer and request data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchReviewItem {
+    pub id: Uuid,
+    pub confidence: f64,
+    pub status: MatchStatus,
+    pub reasoning: Option<String>,
+    pub issues: Vec<String>,
+    pub offer: OfferSummary,
+    pub request: RequestSummary,
+    pub created_at: DateTime<Utc>,
+    pub confirmed_at: Option<DateTime<Utc>>,
+    pub notes: Option<String>,
+}
+
+/// Match review statistics
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchReviewStats {
+    pub pending: i64,
+    pub confirmed_today: i64,
+    pub rejected_today: i64,
+    pub total_pending: i64,
+    pub avg_confidence: f64,
+}

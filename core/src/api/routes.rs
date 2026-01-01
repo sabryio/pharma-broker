@@ -16,7 +16,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use super::{
     audit_trail, calibration, confidence, curation, diagnostics, embedding_cache, groups, handlers,
-    match_filter, review_queue, weights,
+    match_filter, match_reviews, review_queue, weights,
 };
 use crate::ai::PharmaParser;
 use crate::matching::MatchingEngine;
@@ -153,7 +153,7 @@ where
             "/api/weights/influence",
             get(weights::get_influence::<RQ, A, MM>),
         )
-        // Review Queue
+        // Review Queue (AI Parsing)
         .route(
             "/api/review-queue",
             get(review_queue::list_review_items::<RQ, A, MM>),
@@ -169,6 +169,27 @@ where
         .route(
             "/api/review-queue/{id}/status",
             put(review_queue::update_review_status::<RQ, A, MM>),
+        )
+        // Match Reviews (Offer-Request Matches)
+        .route(
+            "/api/match-reviews",
+            get(match_reviews::list_match_reviews::<RQ, A, MM>),
+        )
+        .route(
+            "/api/match-reviews/stats",
+            get(match_reviews::get_match_review_stats::<RQ, A, MM>),
+        )
+        .route(
+            "/api/match-reviews/{id}",
+            get(match_reviews::get_match_review::<RQ, A, MM>),
+        )
+        .route(
+            "/api/match-reviews/{id}/status",
+            put(match_reviews::update_match_review_status::<RQ, A, MM>),
+        )
+        .route(
+            "/api/match-reviews/bulk",
+            post(match_reviews::bulk_update_match_reviews::<RQ, A, MM>),
         )
         // Confidence Management
         .route(

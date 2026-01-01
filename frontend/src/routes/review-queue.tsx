@@ -9,6 +9,8 @@ import {
   History,
   Keyboard,
   Layers,
+  Loader2,
+  RefreshCw,
   Undo2,
   AlertTriangle,
 } from 'lucide-react'
@@ -30,118 +32,31 @@ import {
   ReviewStatsCards,
 } from '@/components/review-queue'
 import { useNotifications } from '@/hooks/use-notifications'
+import {
+  useMatchReviews,
+  useMatchReviewStats,
+  useUpdateMatchReviewStatus,
+  useBulkUpdateMatchReviews,
+} from '@/hooks/use-match-reviews'
 import { cn } from '@/lib/utils'
-
-// Sample data - will be replaced with API data
-const initialPendingReviews: Review[] = [
-  {
-    id: 1,
-    confidence: 67,
-    offer: {
-      product: 'Amoxicillin 500mg',
-      source: 'Cairo Pharma',
-      quantity: '500 units',
-      price: '45 EGP',
-      expiry: '06/2025',
-    },
-    request: {
-      product: 'Amoxicillin 500mg',
-      source: 'Delta Clinic',
-      quantity: '400 units',
-      maxPrice: '50 EGP',
-      urgency: 'Medium',
-    },
-    issues: [
-      'Quantity mismatch: 20% oversupply',
-      'Price within acceptable range',
-    ],
-  },
-  {
-    id: 2,
-    confidence: 58,
-    offer: {
-      product: 'Metformin 850mg',
-      source: 'Alex Distributors',
-      quantity: '300 units',
-      price: '38 EGP',
-      expiry: '03/2025',
-    },
-    request: {
-      product: 'Metformin 500mg',
-      source: 'Giza Medical',
-      quantity: '350 units',
-      maxPrice: '42 EGP',
-      urgency: 'High',
-    },
-    issues: ['Dosage mismatch: 850mg vs 500mg', 'Quantity shortage: 14%'],
-  },
-  {
-    id: 3,
-    confidence: 72,
-    offer: {
-      product: 'Omeprazole 20mg',
-      source: 'Nile Pharma',
-      quantity: '200 units',
-      price: '55 EGP',
-      expiry: '09/2025',
-    },
-    request: {
-      product: 'Omeprazole 20mg',
-      source: 'Aswan Hospital',
-      quantity: '180 units',
-      maxPrice: '52 EGP',
-      urgency: 'Low',
-    },
-    issues: ['Price exceeds max by 5.8%'],
-  },
-  {
-    id: 4,
-    confidence: 61,
-    offer: {
-      product: 'Lipitor 20mg',
-      source: 'MedSupply Co',
-      quantity: '150 units',
-      price: '120 EGP',
-      expiry: '08/2025',
-    },
-    request: {
-      product: 'Lipitor 20mg',
-      source: 'Regional Hospital',
-      quantity: '200 units',
-      maxPrice: '110 EGP',
-      urgency: 'Medium',
-    },
-    issues: ['Quantity shortage: 25%', 'Price exceeds max by 9%'],
-  },
-  {
-    id: 5,
-    confidence: 55,
-    offer: {
-      product: 'Ventolin Inhaler',
-      source: 'PharmaDist',
-      quantity: '80 units',
-      price: '95 EGP',
-      expiry: '12/2025',
-    },
-    request: {
-      product: 'Ventolin Inhaler',
-      source: 'City Clinic',
-      quantity: '100 units',
-      maxPrice: '90 EGP',
-      urgency: 'High',
-    },
-    issues: ['Quantity shortage: 20%', 'Price exceeds max by 5.5%'],
-  },
-]
 
 export const Route = createFileRoute('/review-queue')({
   component: ReviewQueue,
 })
 
+type ReviewWithUuid = Review & { uuid: string }
+
 export default function ReviewQueue() {
-  const [pendingReviews, setPendingReviews] = useState<Review[]>(
-    initialPendingReviews,
-  )
+  const {
+    data: reviewData,
+    isLoading,
+    error,
+    refetch,
+  } = useMatchReviews({ limit: 50 })
+  const { data: apiStats } = useMatchReviewStats()
+  const updateMutation = useUpdateMatchReviewStatus()
+  const bulkMutation = useBulkUpdateMatchReviews()
+
   const [currentIndex, setCurrentIndex] = useState(0)
   const [bulkMode, setBulkMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -150,14 +65,21 @@ export default function ReviewQueue() {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [adjustments, setAdjustments] =
     useState<AdjustmentSettings>(defaultAdjustments)
+  const [optimisticallyRemoved, setOptimisticallyRemoved] = useState<
+    Set<string>
+  >(new Set())
 
   const { notifyHighPriorityReview, notifyLowApprovalRate, settings } =
     useNotifications()
   const notifiedReviewsRef = useRef<Set<number>>(new Set())
   const lastApprovalRateRef = useRef<number | null>(null)
 
-  const current = pendingReviews[currentIndex]
-  const totalReviews = initialPendingReviews.length
+  const pendingReviews = (reviewData?.items ?? []).filter(
+    (item) => !optimisticallyRemoved.has(item.uuid),
+  ) as ReviewWithUuid[]
+
+  const current = pendingReviews[currentIndex] as ReviewWithUuid | undefined
+  const totalReviews = reviewData?.total ?? 0
 
   const approvalRate =
     history.length > 0
@@ -166,7 +88,12 @@ export default function ReviewQueue() {
         100
       : 100
 
-  // Notification effects
+  useEffect(() => {
+    if (currentIndex >= pendingReviews.length && pendingReviews.length > 0) {
+      setCurrentIndex(Math.max(0, pendingReviews.length - 1))
+    }
+  }, [pendingReviews.length, currentIndex])
+
   useEffect(() => {
     pendingReviews.forEach((review) => {
       if (
@@ -197,7 +124,6 @@ export default function ReviewQueue() {
     notifyLowApprovalRate,
   ])
 
-  // Navigation
   const nextReview = useCallback(() => {
     if (pendingReviews.length > 0) {
       setCurrentIndex((i) => (i + 1) % pendingReviews.length)
@@ -212,10 +138,62 @@ export default function ReviewQueue() {
     }
   }, [pendingReviews.length])
 
-  // Keyboard shortcuts
+  const handleSingleAction = useCallback(
+    (id: number, action: 'approved' | 'rejected') => {
+      const review = pendingReviews.find((r) => r.id === id) as
+        | ReviewWithUuid
+        | undefined
+      if (!review) return
+
+      const entry: HistoryEntry = {
+        id: `${id}-${Date.now()}`,
+        reviewId: id,
+        product: review.offer.product,
+        action,
+        timestamp: new Date(),
+        confidence: review.confidence,
+        adjustments: { ...adjustments },
+        originalReview: review,
+      }
+
+      setHistory((prev) => [entry, ...prev])
+      setOptimisticallyRemoved((prev) => new Set(prev).add(review.uuid))
+
+      updateMutation.mutate(
+        { id: review.uuid, action },
+        {
+          onError: () => {
+            setOptimisticallyRemoved((prev) => {
+              const next = new Set(prev)
+              next.delete(review.uuid)
+              return next
+            })
+            setHistory((prev) => prev.slice(1))
+            toast.error('Failed to update match status')
+          },
+        },
+      )
+
+      if (currentIndex >= pendingReviews.length - 1) {
+        setCurrentIndex(Math.max(0, pendingReviews.length - 2))
+      }
+
+      toast.success(`Match ${action}`, {
+        description: review.offer.product,
+        action: { label: 'Undo', onClick: () => restoreFromHistory(entry.id) },
+      })
+    },
+    [pendingReviews, adjustments, currentIndex, updateMutation],
+  )
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (showHistory) return
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return
 
       switch (e.key) {
         case 'ArrowLeft':
@@ -257,64 +235,36 @@ export default function ReviewQueue() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [nextReview, prevReview, bulkMode, current, showHistory, history])
+  }, [
+    nextReview,
+    prevReview,
+    bulkMode,
+    current,
+    showHistory,
+    history,
+    handleSingleAction,
+  ])
 
-  // Selection handlers
   const toggleSelection = (id: number) => {
     const newSelected = new Set(selectedIds)
-    if (newSelected.has(id)) {
-      newSelected.delete(id)
-    } else {
-      newSelected.add(id)
-    }
+    if (newSelected.has(id)) newSelected.delete(id)
+    else newSelected.add(id)
     setSelectedIds(newSelected)
   }
 
   const selectAll = () => {
-    if (selectedIds.size === pendingReviews.length) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(pendingReviews.map((r) => r.id)))
-    }
-  }
-
-  // Action handlers
-  const handleSingleAction = (id: number, action: 'approved' | 'rejected') => {
-    const review = pendingReviews.find((r) => r.id === id)
-    if (!review) return
-
-    const entry: HistoryEntry = {
-      id: `${id}-${Date.now()}`,
-      reviewId: id,
-      product: review.offer.product,
-      action,
-      timestamp: new Date(),
-      confidence: review.confidence,
-      adjustments: { ...adjustments },
-      originalReview: review,
-    }
-
-    setHistory((prev) => [entry, ...prev])
-    setPendingReviews((prev) => prev.filter((r) => r.id !== id))
-
-    if (currentIndex >= pendingReviews.length - 1) {
-      setCurrentIndex(Math.max(0, pendingReviews.length - 2))
-    }
-
-    toast.success(`Match ${action}`, {
-      description: review.offer.product,
-      action: {
-        label: 'Undo',
-        onClick: () => restoreFromHistory(entry.id),
-      },
-    })
+    if (selectedIds.size === pendingReviews.length) setSelectedIds(new Set())
+    else setSelectedIds(new Set(pendingReviews.map((r) => r.id)))
   }
 
   const handleBulkAction = (action: 'approved' | 'rejected') => {
     const entries: HistoryEntry[] = []
+    const uuids: string[] = []
 
     selectedIds.forEach((id) => {
-      const review = pendingReviews.find((r) => r.id === id)
+      const review = pendingReviews.find((r) => r.id === id) as
+        | ReviewWithUuid
+        | undefined
       if (review) {
         entries.push({
           id: `${id}-${Date.now()}`,
@@ -326,23 +276,36 @@ export default function ReviewQueue() {
           adjustments: { ...adjustments },
           originalReview: review,
         })
+        uuids.push(review.uuid)
       }
     })
 
     setHistory((prev) => [...entries, ...prev])
-    setPendingReviews((prev) => prev.filter((r) => !selectedIds.has(r.id)))
+    setOptimisticallyRemoved((prev) => {
+      const next = new Set(prev)
+      uuids.forEach((uuid) => next.add(uuid))
+      return next
+    })
+
+    bulkMutation.mutate(
+      { ids: uuids, action, reviewed_by: 'current-user' },
+      {
+        onError: () => {
+          setOptimisticallyRemoved((prev) => {
+            const next = new Set(prev)
+            uuids.forEach((uuid) => next.delete(uuid))
+            return next
+          })
+          setHistory((prev) => prev.slice(entries.length))
+          toast.error('Failed to bulk update matches')
+        },
+      },
+    )
+
     setSelectedIds(new Set())
     setCurrentIndex(0)
     setBulkMode(false)
-
-    toast.success(`${entries.length} matches ${action}`, {
-      action: {
-        label: 'Undo All',
-        onClick: () => {
-          entries.forEach((e) => restoreFromHistory(e.id))
-        },
-      },
-    })
+    toast.success(`${entries.length} matches ${action}`)
   }
 
   const undoLastAction = () => {
@@ -354,20 +317,22 @@ export default function ReviewQueue() {
     const entry = history.find((h) => h.id === historyId)
     if (!entry) return
 
+    const originalReview = entry.originalReview as ReviewWithUuid
     if (pendingReviews.some((r) => r.id === entry.reviewId)) {
       toast.error('Already restored', { description: entry.product })
       return
     }
 
-    setPendingReviews((prev) =>
-      [...prev, entry.originalReview].sort((a, b) => a.id - b.id),
-    )
-    setHistory((prev) => prev.filter((h) => h.id !== historyId))
+    setOptimisticallyRemoved((prev) => {
+      const next = new Set(prev)
+      next.delete(originalReview.uuid)
+      return next
+    })
 
+    setHistory((prev) => prev.filter((h) => h.id !== historyId))
     toast.success('Match restored to queue', { description: entry.product })
   }
 
-  // Export functions
   const formatDateTime = (date: Date) =>
     date.toISOString().replace('T', ' ').substring(0, 19)
 
@@ -376,7 +341,6 @@ export default function ReviewQueue() {
       toast.error('No history to export')
       return
     }
-
     const headers = [
       'Timestamp',
       'Product',
@@ -385,21 +349,18 @@ export default function ReviewQueue() {
       'Offer Source',
       'Request Source',
     ]
-
-    const rows = history.map((entry) => [
-      formatDateTime(entry.timestamp),
-      entry.product,
-      entry.action.toUpperCase(),
-      entry.confidence,
-      entry.originalReview.offer.source,
-      entry.originalReview.request.source,
+    const rows = history.map((e) => [
+      formatDateTime(e.timestamp),
+      e.product,
+      e.action.toUpperCase(),
+      e.confidence,
+      e.originalReview.offer.source,
+      e.originalReview.request.source,
     ])
-
     const csvContent = [
       headers.join(','),
       ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
     ].join('\n')
-
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -409,7 +370,6 @@ export default function ReviewQueue() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-
     toast.success('CSV exported successfully')
     setShowExportMenu(false)
   }
@@ -419,48 +379,59 @@ export default function ReviewQueue() {
       toast.error('No history to export')
       return
     }
-
-    const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <title>PharmaBroker Review History</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 40px; }
-    h1 { border-bottom: 2px solid #00F2FF; padding-bottom: 10px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th { background: #0B0E14; color: #fff; padding: 12px; text-align: left; }
-    td { padding: 10px; border-bottom: 1px solid #ddd; }
-    .approved { color: #00E676; font-weight: bold; }
-    .rejected { color: #ef4444; font-weight: bold; }
-  </style>
-</head>
-<body>
-  <h1>PharmaBroker Review History</h1>
-  <p>Generated: ${new Date().toLocaleString()}</p>
-  <table>
-    <thead>
-      <tr><th>Timestamp</th><th>Product</th><th>Action</th><th>Confidence</th></tr>
-    </thead>
-    <tbody>
-      ${history.map((e) => `<tr><td>${formatDateTime(e.timestamp)}</td><td>${e.product}</td><td class="${e.action}">${e.action.toUpperCase()}</td><td>${e.confidence}%</td></tr>`).join('')}
-    </tbody>
-  </table>
-</body>
-</html>`
-
+    const htmlContent = `<!DOCTYPE html><html><head><title>PharmaBroker Review History</title><style>body{font-family:Arial,sans-serif;padding:40px}h1{border-bottom:2px solid #00F2FF;padding-bottom:10px}table{width:100%;border-collapse:collapse;margin-top:20px}th{background:#0B0E14;color:#fff;padding:12px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.approved{color:#00E676;font-weight:bold}.rejected{color:#ef4444;font-weight:bold}</style></head><body><h1>PharmaBroker Review History</h1><p>Generated: ${new Date().toLocaleString()}</p><table><thead><tr><th>Timestamp</th><th>Product</th><th>Action</th><th>Confidence</th></tr></thead><tbody>${history.map((e) => `<tr><td>${formatDateTime(e.timestamp)}</td><td>${e.product}</td><td class="${e.action}">${e.action.toUpperCase()}</td><td>${e.confidence}%</td></tr>`).join('')}</tbody></table></body></html>`
     const printWindow = window.open('', '_blank')
     if (printWindow) {
       printWindow.document.write(htmlContent)
       printWindow.document.close()
       printWindow.print()
     }
-
     toast.success('PDF report opened for printing')
     setShowExportMenu(false)
   }
 
-  // Empty queue state
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-8 h-8 text-teal animate-spin" />
+            <p className="text-muted-foreground">Loading review queue...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="p-4 rounded-full bg-red-500/10">
+              <AlertTriangle className="w-8 h-8 text-red-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-foreground mb-1">
+                Failed to load review queue
+              </h2>
+              <p className="text-muted-foreground text-sm mb-4">
+                {error.message}
+              </p>
+              <button
+                onClick={() => refetch()}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal hover:bg-teal/80 text-white transition-colors mx-auto"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
   if (pendingReviews.length === 0) {
     return (
       <DashboardLayout>
@@ -485,11 +456,9 @@ export default function ReviewQueue() {
               onExportPDF={exportToPDF}
             />
           </div>
-
           {showHistory && (
             <HistoryLog history={history} onRestore={restoreFromHistory} />
           )}
-
           <div className="glass-card-enhanced p-12 rounded-2xl text-center">
             <CheckCircle className="w-16 h-16 text-emerald mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-foreground mb-2">
@@ -498,6 +467,13 @@ export default function ReviewQueue() {
             <p className="text-muted-foreground">
               No pending matches require review at this time.
             </p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground transition-colors mx-auto"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
           </div>
         </div>
       </DashboardLayout>
@@ -507,7 +483,6 @@ export default function ReviewQueue() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Review Queue</h1>
@@ -522,7 +497,6 @@ export default function ReviewQueue() {
               <span className="mx-1">|</span>
               <span>⌘Z Undo</span>
             </div>
-
             <HeaderActions
               historyCount={history.length}
               showHistory={showHistory}
@@ -533,7 +507,6 @@ export default function ReviewQueue() {
               onExportCSV={exportToCSV}
               onExportPDF={exportToPDF}
             />
-
             <button
               onClick={() => {
                 setBulkMode(!bulkMode)
@@ -552,7 +525,6 @@ export default function ReviewQueue() {
           </div>
         </div>
 
-        {/* Stats Dashboard */}
         <ReviewStatsCards
           pending={pendingReviews.length}
           approved={history.filter((h) => h.action === 'approved').length}
@@ -563,16 +535,13 @@ export default function ReviewQueue() {
                   pendingReviews.reduce((acc, r) => acc + r.confidence, 0) /
                     pendingReviews.length,
                 )
-              : 0
+              : (apiStats?.avgConfidence ?? 0)
           }
         />
-
         <QueueProgress pending={pendingReviews.length} total={totalReviews} />
-
         {showHistory && (
           <HistoryLog history={history} onRestore={restoreFromHistory} />
         )}
-
         {bulkMode && (
           <BulkModeGrid
             reviews={pendingReviews}
@@ -592,17 +561,13 @@ export default function ReviewQueue() {
               onNext={nextReview}
               onSelect={setCurrentIndex}
             />
-
             <div className="glass-card-enhanced p-8 rounded-2xl animate-scale-in">
               <div className="grid grid-cols-1 lg:grid-cols-7 gap-6 items-stretch">
                 <div className="lg:col-span-2">
                   <ReviewCard type="offer" offer={current.offer} />
                 </div>
-
                 <div className="lg:col-span-3 flex flex-col items-center justify-center py-6">
                   <MatchConfidenceMeter confidence={current.confidence} />
-
-                  {/* Issues List */}
                   <div className="w-full max-w-sm space-y-2 mt-6">
                     {current.issues.map((issue, idx) => (
                       <div
@@ -616,18 +581,15 @@ export default function ReviewQueue() {
                     ))}
                   </div>
                 </div>
-
                 <div className="lg:col-span-2">
                   <ReviewCard type="request" request={current.request} />
                 </div>
               </div>
-
               <ReviewActions
                 onApprove={() => handleSingleAction(current.id, 'approved')}
                 onReject={() => handleSingleAction(current.id, 'rejected')}
               />
             </div>
-
             <AdjustmentControls
               adjustments={adjustments}
               onAdjustmentsChange={setAdjustments}
@@ -639,7 +601,6 @@ export default function ReviewQueue() {
   )
 }
 
-// Header Actions Component (inline for simplicity)
 function HeaderActions({
   historyCount,
   showHistory,
@@ -670,7 +631,6 @@ function HeaderActions({
           Undo
         </button>
       )}
-
       <div className="relative">
         <button
           onClick={onToggleExport}
@@ -698,7 +658,6 @@ function HeaderActions({
           </div>
         )}
       </div>
-
       <button
         onClick={onToggleHistory}
         className={cn(
