@@ -10,6 +10,7 @@ import {
   Keyboard,
   Layers,
   Undo2,
+  AlertTriangle,
 } from 'lucide-react'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -19,13 +20,14 @@ import {
   type AdjustmentSettings,
   defaultAdjustments,
   ReviewCard,
-  ConfidenceIndicator,
+  MatchConfidenceMeter,
   ReviewActions,
   AdjustmentControls,
   QueueProgress,
   ReviewNavigation,
   BulkModeGrid,
   HistoryLog,
+  ReviewStatsCards,
 } from '@/components/review-queue'
 import { useNotifications } from '@/hooks/use-notifications'
 import { cn } from '@/lib/utils'
@@ -550,6 +552,21 @@ export default function ReviewQueue() {
           </div>
         </div>
 
+        {/* Stats Dashboard */}
+        <ReviewStatsCards
+          pending={pendingReviews.length}
+          approved={history.filter((h) => h.action === 'approved').length}
+          rejected={history.filter((h) => h.action === 'rejected').length}
+          avgConfidence={
+            pendingReviews.length > 0
+              ? Math.round(
+                  pendingReviews.reduce((acc, r) => acc + r.confidence, 0) /
+                    pendingReviews.length,
+                )
+              : 0
+          }
+        />
+
         <QueueProgress pending={pendingReviews.length} total={totalReviews} />
 
         {showHistory && (
@@ -582,11 +599,22 @@ export default function ReviewQueue() {
                   <ReviewCard type="offer" offer={current.offer} />
                 </div>
 
-                <div className="lg:col-span-3">
-                  <ConfidenceIndicator
-                    confidence={current.confidence}
-                    issues={current.issues}
-                  />
+                <div className="lg:col-span-3 flex flex-col items-center justify-center py-6">
+                  <MatchConfidenceMeter confidence={current.confidence} />
+
+                  {/* Issues List */}
+                  <div className="w-full max-w-sm space-y-2 mt-6">
+                    {current.issues.map((issue, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-start gap-2 p-2 rounded-lg bg-amber/10 border border-amber/20 animate-fade-in"
+                        style={{ animationDelay: `${idx * 100}ms` }}
+                      >
+                        <AlertTriangle className="w-4 h-4 text-amber shrink-0 mt-0.5" />
+                        <span className="text-xs text-amber">{issue}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="lg:col-span-2">

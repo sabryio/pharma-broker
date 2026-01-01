@@ -3,6 +3,7 @@ import { Link, useLocation } from '@tanstack/react-router'
 import {
   ArrowRightLeft,
   BarChart3,
+  Brain,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
@@ -19,6 +20,7 @@ const navItems = [
   { title: 'Dashboard', icon: LayoutDashboard, path: '/' },
   { title: 'Offers', icon: FileText, path: '/offers' },
   { title: 'Requests', icon: ArrowRightLeft, path: '/requests' },
+  { title: 'AI Parsing', icon: Brain, path: '/parsing-review' },
   { title: 'Review Queue', icon: ClipboardCheck, path: '/review-queue' },
   { title: 'Matches', icon: Sparkles, path: '/matches' },
   { title: 'Groups', icon: Users, path: '/groups' },
