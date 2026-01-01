@@ -15,7 +15,7 @@ services:
       # For pg18+, mount at /var/lib/postgresql (not /data subdirectory)
       - ./data/postgres:/var/lib/postgresql
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d pharmabroker" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pharmabroker"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -130,8 +130,8 @@ services:
     image: prom/prometheus:latest
     container_name: pharma-prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -195,7 +195,6 @@ volumes:
   bridge_data:
   prometheus_data:
   grafana_data:
-
 
 networks:
   pharmabroker-network:

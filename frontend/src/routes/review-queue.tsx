@@ -21,15 +21,16 @@ import {
   type HistoryEntry,
   type AdjustmentSettings,
   defaultAdjustments,
-  ReviewCard,
-  MatchConfidenceMeter,
-  ReviewActions,
   AdjustmentControls,
   QueueProgress,
-  ReviewNavigation,
   BulkModeGrid,
   HistoryLog,
   ReviewStatsCards,
+  RelatedMatchCarousel,
+  groupByOffer,
+  groupByRequest,
+  type OfferWithMatches,
+  type RequestWithMatches,
 } from '@/components/review-queue'
 import { useNotifications } from '@/hooks/use-notifications'
 import {
@@ -69,6 +70,11 @@ export default function ReviewQueue() {
     Set<string>
   >(new Set())
 
+  // New carousel state
+  const [anchorMode, setAnchorMode] = useState<'offer' | 'request'>('offer')
+  const [anchorIndex, setAnchorIndex] = useState(0)
+  const [relatedIndex, setRelatedIndex] = useState(0)
+
   const { notifyHighPriorityReview, notifyLowApprovalRate, settings } =
     useNotifications()
   const notifiedReviewsRef = useRef<Set<number>>(new Set())
@@ -78,6 +84,15 @@ export default function ReviewQueue() {
     (item) => !optimisticallyRemoved.has(item.uuid),
   ) as ReviewWithUuid[]
 
+  // Grouped reviews
+  const groupedOffers = groupByOffer(pendingReviews)
+  const groupedRequests = groupByRequest(pendingReviews)
+
+  const groups = anchorMode === 'offer' ? groupedOffers : groupedRequests
+  const currentGroup = groups[anchorIndex]
+  const currentMatch = currentGroup?.matches[relatedIndex]
+
+  // Compatibility with old "current" for footer actions
   const current = pendingReviews[currentIndex] as ReviewWithUuid | undefined
   const totalReviews = reviewData?.total ?? 0
 
@@ -89,10 +104,17 @@ export default function ReviewQueue() {
       : 100
 
   useEffect(() => {
-    if (currentIndex >= pendingReviews.length && pendingReviews.length > 0) {
-      setCurrentIndex(Math.max(0, pendingReviews.length - 1))
+    if (anchorIndex >= groups.length && groups.length > 0) {
+      setAnchorIndex(Math.max(0, groups.length - 1))
+      setRelatedIndex(0)
     }
-  }, [pendingReviews.length, currentIndex])
+  }, [groups.length, anchorIndex])
+
+  // Reset indices when mode changes
+  useEffect(() => {
+    setAnchorIndex(0)
+    setRelatedIndex(0)
+  }, [anchorMode])
 
   useEffect(() => {
     pendingReviews.forEach((review) => {
@@ -186,6 +208,70 @@ export default function ReviewQueue() {
     [pendingReviews, adjustments, currentIndex, updateMutation],
   )
 
+  const handleAnchorModeChange = useCallback(
+    (newMode: 'offer' | 'request') => {
+      if (newMode === anchorMode) return
+
+      // Smart transition: make the currently visible carousel item the new anchor
+      if (currentMatch && currentGroup) {
+        if (newMode === 'request') {
+          // Narrowing: currentMatch must have 'request' property in offer mode
+          const matchWithReq = currentMatch as any
+          if (matchWithReq.request) {
+            const reqIndex = groupedRequests.findIndex(
+              (g) =>
+                g.requestKey ===
+                (matchWithReq.request.id || matchWithReq.request.source),
+            )
+            if (reqIndex !== -1) {
+              setAnchorIndex(reqIndex)
+              // Find the original offer in the new request's matches to keep it visible
+              const offIndex = groupedRequests[reqIndex].matches.findIndex(
+                (m) =>
+                  m.offer.id === (currentGroup as OfferWithMatches).offer.id ||
+                  m.offer.source ===
+                    (currentGroup as OfferWithMatches).offer.source,
+              )
+              setRelatedIndex(Math.max(0, offIndex))
+            }
+          }
+        } else {
+          // Narrowing: currentMatch must have 'offer' property in request mode
+          const matchWithOff = currentMatch as any
+          if (matchWithOff.offer) {
+            const offIndex = groupedOffers.findIndex(
+              (g) =>
+                g.offerKey ===
+                (matchWithOff.offer.id || matchWithOff.offer.source),
+            )
+            if (offIndex !== -1) {
+              setAnchorIndex(offIndex)
+              // Find the original request in the new offer's matches to keep it visible
+              const reqIndex = groupedOffers[offIndex].matches.findIndex(
+                (m) =>
+                  m.request.id ===
+                    (currentGroup as RequestWithMatches).request.id ||
+                  m.request.source ===
+                    (currentGroup as RequestWithMatches).request.source,
+              )
+              setRelatedIndex(Math.max(0, reqIndex))
+            }
+          }
+        }
+      }
+      setAnchorMode(newMode)
+    },
+    [
+      anchorMode,
+      currentMatch,
+      currentGroup,
+      groupedOffers,
+      groupedRequests,
+      groupedRequests.length,
+      groupedOffers.length,
+    ],
+  )
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (showHistory) return
@@ -198,16 +284,45 @@ export default function ReviewQueue() {
       switch (e.key) {
         case 'ArrowLeft':
           e.preventDefault()
-          prevReview()
+          if (relatedIndex > 0) {
+            setRelatedIndex((i) => i - 1)
+          } else if (anchorIndex > 0) {
+            setAnchorIndex((i) => i - 1)
+            const prevGroup = groups[anchorIndex - 1]
+            setRelatedIndex(prevGroup.matches.length - 1)
+          }
           break
         case 'ArrowRight':
           e.preventDefault()
-          nextReview()
+          if (currentGroup && relatedIndex < currentGroup.matches.length - 1) {
+            setRelatedIndex((i) => i + 1)
+          } else if (anchorIndex < groups.length - 1) {
+            setAnchorIndex((i) => i + 1)
+            setRelatedIndex(0)
+          }
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          if (anchorIndex > 0) {
+            setAnchorIndex((i) => i - 1)
+            setRelatedIndex(0)
+          }
+          break
+        case 'ArrowDown':
+          e.preventDefault()
+          if (anchorIndex < groups.length - 1) {
+            setAnchorIndex((i) => i + 1)
+            setRelatedIndex(0)
+          }
+          break
+        case 'Tab':
+          e.preventDefault()
+          handleAnchorModeChange(anchorMode === 'offer' ? 'request' : 'offer')
           break
         case 'Enter':
-          if (!bulkMode && current) {
+          if (!bulkMode && currentMatch) {
             e.preventDefault()
-            handleSingleAction(current.id, 'approved')
+            handleSingleAction(currentMatch.matchId, 'approved')
           }
           break
         case 'Escape':
@@ -219,9 +334,9 @@ export default function ReviewQueue() {
           break
         case 'Backspace':
         case 'Delete':
-          if (!bulkMode && current) {
+          if (!bulkMode && currentMatch) {
             e.preventDefault()
-            handleSingleAction(current.id, 'rejected')
+            handleSingleAction(currentMatch.matchId, 'rejected')
           }
           break
         case 'z':
@@ -552,44 +667,21 @@ export default function ReviewQueue() {
           />
         )}
 
-        {!bulkMode && current && (
+        {!bulkMode && currentMatch && (
           <>
-            <ReviewNavigation
-              currentIndex={currentIndex}
-              total={pendingReviews.length}
-              onPrev={prevReview}
-              onNext={nextReview}
-              onSelect={setCurrentIndex}
+            <RelatedMatchCarousel
+              groupedByOffer={groupedOffers}
+              groupedByRequest={groupedRequests}
+              anchorMode={anchorMode}
+              onAnchorModeChange={handleAnchorModeChange}
+              anchorIndex={anchorIndex}
+              onAnchorIndexChange={setAnchorIndex}
+              relatedIndex={relatedIndex}
+              onRelatedIndexChange={setRelatedIndex}
+              issues={currentMatch.issues}
+              onApprove={(id) => handleSingleAction(id, 'approved')}
+              onReject={(id) => handleSingleAction(id, 'rejected')}
             />
-            <div className="glass-card-enhanced p-8 rounded-2xl animate-scale-in">
-              <div className="grid grid-cols-1 lg:grid-cols-7 gap-6 items-stretch">
-                <div className="lg:col-span-2">
-                  <ReviewCard type="offer" offer={current.offer} />
-                </div>
-                <div className="lg:col-span-3 flex flex-col items-center justify-center py-6">
-                  <MatchConfidenceMeter confidence={current.confidence} />
-                  <div className="w-full max-w-sm space-y-2 mt-6">
-                    {current.issues.map((issue, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-start gap-2 p-2 rounded-lg bg-amber/10 border border-amber/20 animate-fade-in"
-                        style={{ animationDelay: `${idx * 100}ms` }}
-                      >
-                        <AlertTriangle className="w-4 h-4 text-amber shrink-0 mt-0.5" />
-                        <span className="text-xs text-amber">{issue}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="lg:col-span-2">
-                  <ReviewCard type="request" request={current.request} />
-                </div>
-              </div>
-              <ReviewActions
-                onApprove={() => handleSingleAction(current.id, 'approved')}
-                onReject={() => handleSingleAction(current.id, 'rejected')}
-              />
-            </div>
             <AdjustmentControls
               adjustments={adjustments}
               onAdjustmentsChange={setAdjustments}
