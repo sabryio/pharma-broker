@@ -13,6 +13,9 @@ export interface ReviewOffer {
   quantity: string
   price: string
   expiry: string
+  masterId?: string | null
+  medicationAliasId?: string | null
+  curationStatus?: string | null
 }
 
 export interface ReviewRequest {
@@ -27,6 +30,9 @@ export interface ReviewRequest {
   quantity: string
   maxPrice: string
   urgency: 'Low' | 'Medium' | 'High'
+  masterId?: string | null
+  medicationAliasId?: string | null
+  curationStatus?: string | null
 }
 
 export interface Review {

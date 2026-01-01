@@ -23,6 +23,9 @@ export const OfferSummarySchema = z.object({
   quantity: z.string().nullable(),
   price: z.string().nullable(),
   expiry: z.string().nullable(),
+  masterId: z.string().uuid().nullable().optional(),
+  medicationAliasId: z.string().uuid().nullable().optional(),
+  curationStatus: z.string().nullable().optional(),
 })
 
 export const RequestSummarySchema = z.object({
@@ -37,6 +40,9 @@ export const RequestSummarySchema = z.object({
   quantity: z.string().nullable(),
   maxPrice: z.string().nullable(),
   urgency: z.string(),
+  masterId: z.string().uuid().nullable().optional(),
+  medicationAliasId: z.string().uuid().nullable().optional(),
+  curationStatus: z.string().nullable().optional(),
 })
 
 export const MatchReviewItemSchema = z.object({

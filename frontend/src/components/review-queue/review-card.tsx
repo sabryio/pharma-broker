@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import type { ReviewOffer, ReviewRequest } from './types'
+import { MedicationCurationBadge } from './medication-curation-badge'
 
 import {
   Package,
@@ -39,6 +40,7 @@ interface ReviewCardProps {
   type: 'offer' | 'request'
   offer?: ReviewOffer
   request?: ReviewRequest
+  onCurate?: (name: string, aliasId?: string | null) => void
 }
 
 /**
@@ -269,7 +271,7 @@ function SenderBadge({
                 <Send className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 <span className="font-medium">Send Message</span>
                 {/* Shimmer effect */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
               </Button>
             </div>
           )}
@@ -466,7 +468,12 @@ function RawMessageSection({
   )
 }
 
-export function ReviewCard({ type, offer, request }: ReviewCardProps) {
+export function ReviewCard({
+  type,
+  offer,
+  request,
+  onCurate,
+}: ReviewCardProps) {
   const isOffer = type === 'offer'
 
   if (isOffer && offer) {
@@ -531,9 +538,22 @@ export function ReviewCard({ type, offer, request }: ReviewCardProps) {
               Medication
             </span>
           </div>
-          <span className="text-lg font-bold text-foreground">
-            {offer.product}
-          </span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-lg font-bold text-foreground">
+              {offer.product}
+            </span>
+            <MedicationCurationBadge
+              status={offer.curationStatus}
+              masterId={offer.masterId}
+              onClick={(e) => {
+                e.stopPropagation()
+                onCurate?.(
+                  offer.medicationRaw || offer.product,
+                  offer.medicationAliasId,
+                )
+              }}
+            />
+          </div>
           {offer.medicationRaw && offer.medicationRaw !== offer.product && (
             <div className="text-xs text-muted-foreground mt-1 opacity-70">
               Raw: {offer.medicationRaw}
@@ -649,9 +669,22 @@ export function ReviewCard({ type, offer, request }: ReviewCardProps) {
               Medication Needed
             </span>
           </div>
-          <span className="text-lg font-bold text-foreground">
-            {request.product}
-          </span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-lg font-bold text-foreground">
+              {request.product}
+            </span>
+            <MedicationCurationBadge
+              status={request.curationStatus}
+              masterId={request.masterId}
+              onClick={(e) => {
+                e.stopPropagation()
+                onCurate?.(
+                  request.medicationRaw || request.product,
+                  request.medicationAliasId,
+                )
+              }}
+            />
+          </div>
           {request.medicationRaw &&
             request.medicationRaw !== request.product && (
               <div className="text-xs text-muted-foreground mt-1 opacity-70">

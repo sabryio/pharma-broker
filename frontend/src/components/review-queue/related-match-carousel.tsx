@@ -1,12 +1,13 @@
 // Related Match Carousel Component
 // Beautiful carousel for navigating through related matches
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, Layers, ArrowLeftRight } from 'lucide-react'
 import type { OfferWithMatches, RequestWithMatches } from './types'
 import { ReviewCard } from './review-card'
 import { MatchConfidenceMeter } from './match-confidence-meter'
+import { CurationDialog } from './curation-dialog'
 
 interface RelatedMatchCarouselProps {
   /** Grouped data - either offers with their requests or requests with their offers */
@@ -41,6 +42,11 @@ export function RelatedMatchCarousel({
   onApprove,
   onReject,
 }: RelatedMatchCarouselProps) {
+  const [curationMedication, setCurationMedication] = useState<string | null>(
+    null,
+  )
+  const [curationAliasId, setCurationAliasId] = useState<string | null>(null)
+
   const isOfferMode = anchorMode === 'offer'
   const groups = isOfferMode ? groupedByOffer : groupedByRequest
   const currentGroup = groups[anchorIndex]
@@ -170,11 +176,16 @@ export function RelatedMatchCarousel({
               <ReviewCard
                 type="offer"
                 offer={(currentGroup as OfferWithMatches).offer}
+                onCurate={setCurationMedication}
               />
             ) : (
               <ReviewCard
                 type="request"
                 request={(currentGroup as RequestWithMatches).request}
+                onCurate={(name, aliasId) => {
+                  setCurationMedication(name)
+                  setCurationAliasId(aliasId || null)
+                }}
               />
             )}
             {/* Fixed indicator badge */}
@@ -263,11 +274,16 @@ export function RelatedMatchCarousel({
               <ReviewCard
                 type="request"
                 request={(currentMatch as { request: any }).request}
+                onCurate={setCurationMedication}
               />
             ) : (
               <ReviewCard
                 type="offer"
                 offer={(currentMatch as { offer: any }).offer}
+                onCurate={(name, aliasId) => {
+                  setCurationMedication(name)
+                  setCurationAliasId(aliasId || null)
+                }}
               />
             )}
             {/* Carousel indicator badge */}
@@ -307,6 +323,20 @@ export function RelatedMatchCarousel({
           </button>
         </div>
       </div>
+
+      <CurationDialog
+        isOpen={!!curationMedication}
+        onClose={() => {
+          setCurationMedication(null)
+          setCurationAliasId(null)
+        }}
+        medicationRaw={curationMedication || ''}
+        aliasId={curationAliasId}
+        onSuccess={() => {
+          // Success handled via toast and optimistic UI if we had it
+          // For now, it stays matched but shows as "Verified" if refreshed
+        }}
+      />
     </div>
   )
 }

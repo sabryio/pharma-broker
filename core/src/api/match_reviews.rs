@@ -171,6 +171,14 @@ where
             .ok()
             .flatten();
 
+        // Fetch curation metadata
+        let offer_curation = state
+            .medication_alias_repo
+            .get_by_name(&offer.medication_raw)
+            .await
+            .ok()
+            .flatten();
+
         let offer_summary = OfferSummary {
             id: offer.id,
             product: offer.medication.clone(),
@@ -192,7 +200,17 @@ where
             expiry: offer
                 .expiry_date
                 .map(|d| format!("{:02}/{}", d.month(), d.year())),
+            master_id: offer_curation.as_ref().and_then(|a| a.master_medication_id),
+            medication_alias_id: offer_curation.as_ref().map(|a| a.id),
+            curation_status: offer_curation.map(|a| format!("{:?}", a.curation_status)),
         };
+
+        let request_curation = state
+            .medication_alias_repo
+            .get_by_name(&request.medication_raw)
+            .await
+            .ok()
+            .flatten();
 
         let request_summary = RequestSummary {
             id: request.id,
@@ -213,6 +231,11 @@ where
                 .and_then(|p| p.to_f64())
                 .map(|p| format!("{:.0} {}", p, request.currency.as_deref().unwrap_or("EGP"))),
             urgency: format!("{:?}", request.urgency_level),
+            master_id: request_curation
+                .as_ref()
+                .and_then(|a| a.master_medication_id),
+            medication_alias_id: request_curation.as_ref().map(|a| a.id),
+            curation_status: request_curation.map(|a| format!("{:?}", a.curation_status)),
         };
 
         items.push(MatchReviewItem {
@@ -313,6 +336,14 @@ where
         .ok()
         .flatten();
 
+    // Fetch curation metadata
+    let offer_curation = state
+        .medication_alias_repo
+        .get_by_name(&offer.medication_raw)
+        .await
+        .ok()
+        .flatten();
+
     let offer_summary = OfferSummary {
         id: offer.id,
         product: offer.medication.clone(),
@@ -334,7 +365,17 @@ where
         expiry: offer
             .expiry_date
             .map(|d| format!("{:02}/{}", d.month(), d.year())),
+        master_id: offer_curation.as_ref().and_then(|a| a.master_medication_id),
+        medication_alias_id: offer_curation.as_ref().map(|a| a.id),
+        curation_status: offer_curation.map(|a| format!("{:?}", a.curation_status)),
     };
+
+    let request_curation = state
+        .medication_alias_repo
+        .get_by_name(&request.medication_raw)
+        .await
+        .ok()
+        .flatten();
 
     let request_summary = RequestSummary {
         id: request.id,
@@ -355,6 +396,11 @@ where
             .and_then(|p| p.to_f64())
             .map(|p| format!("{:.0} {}", p, request.currency.as_deref().unwrap_or("EGP"))),
         urgency: format!("{:?}", request.urgency_level),
+        master_id: request_curation
+            .as_ref()
+            .and_then(|a| a.master_medication_id),
+        medication_alias_id: request_curation.as_ref().map(|a| a.id),
+        curation_status: request_curation.map(|a| format!("{:?}", a.curation_status)),
     };
 
     Ok(Json(MatchReviewItem {

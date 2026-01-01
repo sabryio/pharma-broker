@@ -379,6 +379,9 @@ pub struct OfferSummary {
     pub quantity: Option<String>,
     pub price: Option<String>,
     pub expiry: Option<String>,
+    pub master_id: Option<Uuid>,
+    pub medication_alias_id: Option<Uuid>,
+    pub curation_status: Option<String>,
 }
 
 /// Summary of a request for match review display
@@ -401,6 +404,9 @@ pub struct RequestSummary {
     pub quantity: Option<String>,
     pub max_price: Option<String>,
     pub urgency: String,
+    pub master_id: Option<Uuid>,
+    pub medication_alias_id: Option<Uuid>,
+    pub curation_status: Option<String>,
 }
 
 /// Enriched match review item with joined offer and request data
