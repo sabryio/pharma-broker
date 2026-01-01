@@ -13,7 +13,7 @@ function ScrollArea({
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      className={cn('relative', className)}
+      className={cn('relative overflow-hidden', className)}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
@@ -38,18 +38,22 @@ function ScrollBar({
       data-slot="scroll-area-scrollbar"
       orientation={orientation}
       className={cn(
-        'flex touch-none p-px transition-colors select-none',
+        'flex touch-none select-none transition-colors duration-200',
         orientation === 'vertical' &&
-          'h-full w-2.5 border-l border-l-transparent',
+          'h-full w-2 border-l border-l-transparent p-px',
         orientation === 'horizontal' &&
-          'h-2.5 flex-col border-t border-t-transparent',
+          'h-2 flex-col border-t border-t-transparent p-px',
         className,
       )}
       {...props}
     >
       <ScrollAreaPrimitive.ScrollAreaThumb
         data-slot="scroll-area-thumb"
-        className="bg-border relative flex-1 rounded-full"
+        className={cn(
+          'relative flex-1 rounded-full',
+          'bg-muted-foreground/30 hover:bg-muted-foreground/50',
+          'transition-colors duration-200',
+        )}
       />
     </ScrollAreaPrimitive.ScrollAreaScrollbar>
   )
