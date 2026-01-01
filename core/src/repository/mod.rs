@@ -28,8 +28,8 @@ pub use pharma_db::repo::{
 
 // Re-export pharma_db traits
 pub use pharma_db::traits::{
-    AuditLogRepository, FeedbackRepository, FeedbackStats, GroupRepository, MatchQueueRepository,
-    MatchRepository, MedicationAliasRepository, MedicationMappingRepository,
+    AuditLogRepository, EnrichedReviewItem, FeedbackRepository, FeedbackStats, GroupRepository,
+    MatchQueueRepository, MatchRepository, MedicationAliasRepository, MedicationMappingRepository,
     MedicationMasterRepository, OfferRepository, ParticipantRepository, RawMessageRepository,
     RequestRepository, ReviewQueueRepository, ReviewQueueStats, WeightHistoryRepository,
 };

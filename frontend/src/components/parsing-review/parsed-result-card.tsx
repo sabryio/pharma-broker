@@ -21,7 +21,6 @@ export function ParsedResultCard({
   confidence,
 }: ParsedResultCardProps) {
   const isOffer = result.type === 'offer'
-  const accentColor = isOffer ? 'purple' : 'amber'
 
   return (
     <div

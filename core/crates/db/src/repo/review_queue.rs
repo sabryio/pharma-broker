@@ -7,8 +7,11 @@ use chrono::Utc;
 use sea_orm::*;
 use uuid::Uuid;
 
+use crate::entity::group::Entity as Group;
+use crate::entity::participant::Entity as Participant;
+use crate::entity::raw_message::Entity as RawMessage;
 use crate::entity::review_queue::{self, Entity as ReviewQueue, ReviewStatus};
-use crate::traits::{ReviewQueueRepository, ReviewQueueStats};
+use crate::traits::{EnrichedReviewItem, ReviewQueueRepository, ReviewQueueStats};
 use crate::{Error, Result};
 
 /// SeaORM-based review queue repository
@@ -124,6 +127,150 @@ impl ReviewQueueRepository for SeaOrmReviewQueueRepo {
             .count(&*self.db)
             .await?;
         Ok(count > 0)
+    }
+
+    async fn get_pending_enriched(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<EnrichedReviewItem>> {
+        // Get pending review items ordered by confidence (lowest first)
+        let items = ReviewQueue::find()
+            .filter(review_queue::Column::Status.eq(ReviewStatus::Pending))
+            .order_by_asc(review_queue::Column::Confidence)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&*self.db)
+            .await?;
+
+        let mut enriched = Vec::with_capacity(items.len());
+
+        for item in items {
+            // Fetch the raw message
+            let raw_msg = RawMessage::find_by_id(item.raw_message_id)
+                .one(&*self.db)
+                .await?;
+
+            let (original_text, message_timestamp, participant_id, group_id) = match raw_msg {
+                Some(msg) => (
+                    msg.content,
+                    msg.timestamp,
+                    Some(msg.participant_id),
+                    Some(msg.group_id),
+                ),
+                None => (
+                    String::from("[Message not found]"),
+                    item.created_at,
+                    None,
+                    None,
+                ),
+            };
+
+            // Fetch participant info
+            let (sender_name, sender_phone) = if let Some(pid) = participant_id {
+                let participant = Participant::find_by_id(pid).one(&*self.db).await?;
+                match participant {
+                    Some(p) => (p.display_name.or(p.push_name), Some(p.phone)),
+                    None => (None, None),
+                }
+            } else {
+                (None, None)
+            };
+
+            // Fetch group info
+            let group_name = if let Some(gid) = group_id {
+                let group = Group::find_by_id(gid).one(&*self.db).await?;
+                group.map(|g| g.name)
+            } else {
+                None
+            };
+
+            enriched.push(EnrichedReviewItem {
+                id: item.id,
+                raw_message_id: item.raw_message_id,
+                ai_result: item.ai_result,
+                confidence: item.confidence,
+                reason: item.reason,
+                status: item.status,
+                reviewed_by: item.reviewed_by,
+                review_notes: item.review_notes,
+                created_at: item.created_at,
+                reviewed_at: item.reviewed_at,
+                original_text,
+                message_timestamp,
+                sender_name,
+                sender_phone,
+                group_name,
+            });
+        }
+
+        Ok(enriched)
+    }
+
+    async fn get_by_id_enriched(&self, id: Uuid) -> Result<Option<EnrichedReviewItem>> {
+        let item = ReviewQueue::find_by_id(id).one(&*self.db).await?;
+
+        let item = match item {
+            Some(i) => i,
+            None => return Ok(None),
+        };
+
+        // Fetch the raw message
+        let raw_msg = RawMessage::find_by_id(item.raw_message_id)
+            .one(&*self.db)
+            .await?;
+
+        let (original_text, message_timestamp, participant_id, group_id) = match raw_msg {
+            Some(msg) => (
+                msg.content,
+                msg.timestamp,
+                Some(msg.participant_id),
+                Some(msg.group_id),
+            ),
+            None => (
+                String::from("[Message not found]"),
+                item.created_at,
+                None,
+                None,
+            ),
+        };
+
+        // Fetch participant info
+        let (sender_name, sender_phone) = if let Some(pid) = participant_id {
+            let participant = Participant::find_by_id(pid).one(&*self.db).await?;
+            match participant {
+                Some(p) => (p.display_name.or(p.push_name), Some(p.phone)),
+                None => (None, None),
+            }
+        } else {
+            (None, None)
+        };
+
+        // Fetch group info
+        let group_name = if let Some(gid) = group_id {
+            let group = Group::find_by_id(gid).one(&*self.db).await?;
+            group.map(|g| g.name)
+        } else {
+            None
+        };
+
+        Ok(Some(EnrichedReviewItem {
+            id: item.id,
+            raw_message_id: item.raw_message_id,
+            ai_result: item.ai_result,
+            confidence: item.confidence,
+            reason: item.reason,
+            status: item.status,
+            reviewed_by: item.reviewed_by,
+            review_notes: item.review_notes,
+            created_at: item.created_at,
+            reviewed_at: item.reviewed_at,
+            original_text,
+            message_timestamp,
+            sender_name,
+            sender_phone,
+            group_name,
+        }))
     }
 }
 

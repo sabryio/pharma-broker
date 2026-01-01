@@ -6,6 +6,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Keyboard,
+  Loader2,
+  RefreshCw,
   Sparkles,
   Undo2,
   Zap,
@@ -14,7 +16,6 @@ import {
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import {
   type ParsingReviewItem,
-  type ParsingStats,
   MessageBubble,
   ParsedResultCard,
   AIConfidenceMeter,
@@ -22,103 +23,48 @@ import {
   ParsingStatsCards,
 } from '@/components/parsing-review'
 import { cn } from '@/lib/utils'
-
-// Sample data - will be replaced with API data
-const mockReviewItems: ParsingReviewItem[] = [
-  {
-    id: '1',
-    rawMessageId: 'msg-001',
-    originalText:
-      'عندي امبسيللين 500 مغ 200 علبة بسعر 45 جنيه للعلبة تاريخ الصلاحية 6/2025',
-    senderName: 'Ahmed Pharma',
-    groupName: 'Egyptian Pharma Trading',
-    timestamp: new Date('2026-01-01T10:30:00'),
-    aiResult: {
-      type: 'offer',
-      medication: 'Ampicillin 500mg',
-      quantity: '200 boxes',
-      price: '45 EGP',
-      expiry: '06/2025',
-    },
-    confidence: 0.72,
-    reason: 'Arabic text with medication name transliteration',
-    status: 'pending',
-  },
-  {
-    id: '2',
-    rawMessageId: 'msg-002',
-    originalText: 'محتاج ميتفورمين 850 عاجل - أي كمية متاحة؟',
-    senderName: 'Dr. Mohamed Clinic',
-    groupName: 'Cairo Medical Supplies',
-    timestamp: new Date('2026-01-01T11:15:00'),
-    aiResult: {
-      type: 'request',
-      medication: 'Metformin 850mg',
-      urgency: 'high',
-      notes: 'Any quantity available',
-    },
-    confidence: 0.58,
-    reason: 'Urgency detected but quantity unclear',
-    status: 'pending',
-  },
-  {
-    id: '3',
-    rawMessageId: 'msg-003',
-    originalText: 'متوفر omeprazole 20mg 500 units @ 55 EGP exp 09/25',
-    senderName: 'Nile Distributors',
-    groupName: 'Egyptian Pharma Trading',
-    timestamp: new Date('2026-01-01T12:00:00'),
-    aiResult: {
-      type: 'offer',
-      medication: 'Omeprazole 20mg',
-      quantity: '500 units',
-      price: '55 EGP',
-      expiry: '09/2025',
-    },
-    confidence: 0.91,
-    reason: 'Clear structured message with all fields',
-    status: 'pending',
-  },
-  {
-    id: '4',
-    rawMessageId: 'msg-004',
-    originalText: 'لو حد عنده فينتولين سبراي ابعتلي الكمية والسعر',
-    senderName: 'Delta Pharmacy',
-    groupName: 'Alexandria Pharma Network',
-    timestamp: new Date('2026-01-01T14:30:00'),
-    aiResult: {
-      type: 'request',
-      medication: 'Ventolin Inhaler',
-      urgency: 'medium',
-    },
-    confidence: 0.65,
-    reason: 'Request detected, medication identified from Arabic',
-    status: 'pending',
-  },
-]
-
-const mockStats: ParsingStats = {
-  pending: 23,
-  approved: 156,
-  rejected: 12,
-  skipped: 8,
-  avgConfidence: 0.68,
-  todayReviewed: 34,
-}
+import {
+  useReviewQueueItems,
+  useReviewQueueStats,
+  useUpdateReviewStatus,
+} from '@/hooks/use-review-queue'
 
 export const Route = createFileRoute('/parsing-review')({
   component: ParsingReview,
 })
 
 export default function ParsingReview() {
-  const [reviewItems, setReviewItems] = useState(mockReviewItems)
+  // API hooks
+  const {
+    data: reviewData,
+    isLoading,
+    error,
+    refetch,
+  } = useReviewQueueItems({ limit: 50 })
+  const { data: stats, isLoading: statsLoading } = useReviewQueueStats()
+  const updateMutation = useUpdateReviewStatus()
+
+  // Local state for navigation and undo
   const [currentIndex, setCurrentIndex] = useState(0)
   const [history, setHistory] = useState<
     Array<{ item: ParsingReviewItem; action: string }>
   >([])
-  const [stats, setStats] = useState(mockStats)
+  const [optimisticallyRemoved, setOptimisticallyRemoved] = useState<
+    Set<string>
+  >(new Set())
 
+  // Filter out optimistically removed items
+  const reviewItems =
+    reviewData?.items.filter((item) => !optimisticallyRemoved.has(item.id)) ??
+    []
   const current = reviewItems[currentIndex]
+
+  // Reset index when items change
+  useEffect(() => {
+    if (currentIndex >= reviewItems.length && reviewItems.length > 0) {
+      setCurrentIndex(Math.max(0, reviewItems.length - 1))
+    }
+  }, [reviewItems.length, currentIndex])
 
   // Navigation
   const nextItem = useCallback(() => {
@@ -133,9 +79,83 @@ export default function ParsingReview() {
     }
   }, [reviewItems.length])
 
+  // Handle action (approve/reject/skip)
+  const handleAction = useCallback(
+    (action: 'approved' | 'rejected' | 'skipped') => {
+      if (!current) return
+
+      // Add to history for undo
+      setHistory((prev) => [{ item: current, action }, ...prev])
+
+      // Optimistically remove from local view
+      setOptimisticallyRemoved((prev) => new Set(prev).add(current.id))
+
+      // Call API
+      updateMutation.mutate(
+        { id: current.id, status: action },
+        {
+          onError: () => {
+            // Restore on error
+            setOptimisticallyRemoved((prev) => {
+              const next = new Set(prev)
+              next.delete(current.id)
+              return next
+            })
+            setHistory((prev) => prev.slice(1))
+            toast.error('Failed to update status')
+          },
+        },
+      )
+
+      // Adjust index if needed
+      if (currentIndex >= reviewItems.length - 1) {
+        setCurrentIndex(Math.max(0, reviewItems.length - 2))
+      }
+
+      const messages = {
+        approved: '✓ Approved - Will create offer/request',
+        rejected: '✗ Rejected - Discarded',
+        skipped: '→ Skipped for later',
+      }
+
+      toast.success(messages[action], {
+        description: current.aiResult.medication,
+        action: {
+          label: 'Undo',
+          onClick: undoLast,
+        },
+      })
+    },
+    [current, currentIndex, reviewItems.length, updateMutation],
+  )
+
+  // Undo last action (frontend only - restores to view)
+  const undoLast = useCallback(() => {
+    if (history.length === 0) return
+    const last = history[0]
+
+    // Remove from optimistically removed set
+    setOptimisticallyRemoved((prev) => {
+      const next = new Set(prev)
+      next.delete(last.item.id)
+      return next
+    })
+
+    setHistory((prev) => prev.slice(1))
+    toast.success('Restored to queue')
+  }, [history])
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+
       switch (e.key) {
         case 'ArrowLeft':
           e.preventDefault()
@@ -169,51 +189,50 @@ export default function ParsingReview() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [nextItem, prevItem, current, history])
+  }, [nextItem, prevItem, current, history, handleAction, undoLast])
 
-  const handleAction = (action: 'approved' | 'rejected' | 'skipped') => {
-    if (!current) return
-
-    setHistory((prev) => [{ item: current, action }, ...prev])
-    setReviewItems((prev) => prev.filter((item) => item.id !== current.id))
-
-    if (currentIndex >= reviewItems.length - 1) {
-      setCurrentIndex(Math.max(0, reviewItems.length - 2))
-    }
-
-    setStats((prev) => ({
-      ...prev,
-      pending: prev.pending - 1,
-      [action === 'approved' ? 'todayReviewed' : action]:
-        prev[action === 'approved' ? 'todayReviewed' : action] + 1,
-    }))
-
-    const messages = {
-      approved: '✓ Approved - Will create offer/request',
-      rejected: '✗ Rejected - Discarded',
-      skipped: '→ Skipped for later',
-    }
-
-    toast.success(messages[action], {
-      description: current.aiResult.medication,
-      action: {
-        label: 'Undo',
-        onClick: undoLast,
-      },
-    })
+  // Loading state
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+            <p className="text-muted-foreground">Loading review queue...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
   }
 
-  const undoLast = () => {
-    if (history.length === 0) return
-    const last = history[0]
-    setReviewItems((prev) =>
-      [...prev, last.item].sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-      ),
+  // Error state
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="p-4 rounded-full bg-red-500/10">
+              <Brain className="w-8 h-8 text-red-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-foreground mb-1">
+                Failed to load review queue
+              </h2>
+              <p className="text-muted-foreground text-sm mb-4">
+                {error.message}
+              </p>
+              <button
+                onClick={() => refetch()}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white transition-colors mx-auto"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
     )
-    setHistory((prev) => prev.slice(1))
-    toast.success('Restored to queue')
   }
 
   // Empty state
@@ -233,7 +252,7 @@ export default function ParsingReview() {
             </div>
           </div>
 
-          <ParsingStatsCards stats={stats} />
+          {stats && <ParsingStatsCards stats={stats} />}
 
           <div className="glass-card-enhanced p-12 rounded-2xl text-center">
             <Sparkles className="w-16 h-16 text-purple-400 mx-auto mb-4" />
@@ -243,6 +262,13 @@ export default function ParsingReview() {
             <p className="text-muted-foreground">
               No pending AI parsing results require review at this time.
             </p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground transition-colors mx-auto"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
           </div>
         </div>
       </DashboardLayout>
@@ -285,7 +311,7 @@ export default function ParsingReview() {
         </div>
 
         {/* Stats */}
-        <ParsingStatsCards stats={stats} />
+        {stats && !statsLoading && <ParsingStatsCards stats={stats} />}
 
         {/* Navigation */}
         <div className="flex items-center justify-between">
@@ -296,7 +322,7 @@ export default function ParsingReview() {
             <ChevronLeft className="w-4 h-4" /> Previous
           </button>
           <div className="flex items-center gap-2">
-            {reviewItems.map((_, idx) => (
+            {reviewItems.slice(0, 10).map((_, idx) => (
               <button
                 key={idx}
                 onClick={() => setCurrentIndex(idx)}
@@ -308,6 +334,11 @@ export default function ParsingReview() {
                 )}
               />
             ))}
+            {reviewItems.length > 10 && (
+              <span className="text-xs text-muted-foreground ml-2">
+                +{reviewItems.length - 10} more
+              </span>
+            )}
           </div>
           <button
             onClick={nextItem}
@@ -318,49 +349,52 @@ export default function ParsingReview() {
         </div>
 
         {/* Main Comparison View */}
-        <div className="glass-card-enhanced p-8 rounded-2xl animate-scale-in">
-          <div className="grid grid-cols-1 lg:grid-cols-7 gap-8 items-start">
-            {/* Original Message */}
-            <div className="lg:col-span-2">
-              <MessageBubble
-                text={current.originalText}
-                senderName={current.senderName}
-                groupName={current.groupName}
-                timestamp={current.timestamp}
-              />
-            </div>
-
-            {/* Center - Confidence + Actions */}
-            <div className="lg:col-span-3 flex flex-col items-center gap-6">
-              <AIConfidenceMeter confidence={current.confidence} />
-
-              {/* Reason tag */}
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/10 border border-purple-500/30">
-                <Zap className="w-4 h-4 text-purple-400" />
-                <span className="text-sm text-purple-300">
-                  {current.reason}
-                </span>
+        {current && (
+          <div className="glass-card-enhanced p-8 rounded-2xl animate-scale-in">
+            <div className="grid grid-cols-1 lg:grid-cols-7 gap-8 items-start">
+              {/* Original Message */}
+              <div className="lg:col-span-2">
+                <MessageBubble
+                  text={current.originalText}
+                  senderName={current.senderName}
+                  groupName={current.groupName}
+                  timestamp={current.timestamp}
+                />
               </div>
 
-              {/* Actions */}
-              <div className="w-full max-w-sm">
-                <ParsingReviewActions
-                  onApprove={() => handleAction('approved')}
-                  onReject={() => handleAction('rejected')}
-                  onSkip={() => handleAction('skipped')}
+              {/* Center - Confidence + Actions */}
+              <div className="lg:col-span-3 flex flex-col items-center gap-6">
+                <AIConfidenceMeter confidence={current.confidence} />
+
+                {/* Reason tag */}
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/10 border border-purple-500/30">
+                  <Zap className="w-4 h-4 text-purple-400" />
+                  <span className="text-sm text-purple-300">
+                    {current.reason}
+                  </span>
+                </div>
+
+                {/* Actions */}
+                <div className="w-full max-w-sm">
+                  <ParsingReviewActions
+                    onApprove={() => handleAction('approved')}
+                    onReject={() => handleAction('rejected')}
+                    onSkip={() => handleAction('skipped')}
+                    loading={updateMutation.isPending}
+                  />
+                </div>
+              </div>
+
+              {/* Parsed Result */}
+              <div className="lg:col-span-2">
+                <ParsedResultCard
+                  result={current.aiResult}
+                  confidence={current.confidence}
                 />
               </div>
             </div>
-
-            {/* Parsed Result */}
-            <div className="lg:col-span-2">
-              <ParsedResultCard
-                result={current.aiResult}
-                confidence={current.confidence}
-              />
-            </div>
           </div>
-        </div>
+        )}
 
         {/* Queue Progress */}
         <div className="flex items-center gap-4">
@@ -375,12 +409,12 @@ export default function ParsingReview() {
             <div
               className="h-full bg-linear-to-r from-purple-500 to-purple-400 transition-all duration-500"
               style={{
-                width: `${((mockReviewItems.length - reviewItems.length) / mockReviewItems.length) * 100}%`,
+                width: `${(((reviewData?.total ?? 0) - reviewItems.length) / Math.max(1, reviewData?.total ?? 1)) * 100}%`,
               }}
             />
           </div>
           <span className="text-sm text-muted-foreground">
-            {mockReviewItems.length - reviewItems.length} reviewed
+            {(reviewData?.total ?? 0) - reviewItems.length} reviewed
           </span>
         </div>
       </div>

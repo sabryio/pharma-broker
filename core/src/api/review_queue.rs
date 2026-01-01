@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::routes::AppState;
-use crate::domain::{
-    AuditAction, AuditLog, EntityType, ReviewQueueItem, ReviewQueueStats, ReviewStatus,
+use crate::domain::{AuditAction, AuditLog, EntityType, ReviewQueueStats, ReviewStatus};
+use crate::repository::{
+    AuditLogRepository, EnrichedReviewItem, MedicationMappingRepository, ReviewQueueRepository,
 };
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
 
 // ============================================================================
 // Request/Response Types
@@ -38,8 +38,9 @@ fn default_limit() -> i64 {
 
 /// Response for list endpoints
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReviewQueueListResponse {
-    pub items: Vec<ReviewQueueItem>,
+    pub items: Vec<EnrichedReviewItem>,
     pub total: i64,
     pub limit: i64,
     pub offset: i64,
@@ -84,24 +85,20 @@ where
     A: AuditLogRepository + 'static,
     MM: MedicationMappingRepository + 'static,
 {
+    // Use enriched query for pending items (default)
     let items = match pagination.status.as_deref() {
-        Some("pending") => {
+        Some("pending") | None => {
             state
                 .review_queue_repo
-                .get_pending(pagination.limit, pagination.offset)
+                .get_pending_enriched(pagination.limit, pagination.offset)
                 .await
         }
-        Some(status_str) => {
-            let status = parse_status(status_str)?;
+        Some(_status_str) => {
+            // For non-pending status, use enriched query as well
+            // (could be optimized later if needed)
             state
                 .review_queue_repo
-                .get_by_status(status, pagination.limit, pagination.offset)
-                .await
-        }
-        None => {
-            state
-                .review_queue_repo
-                .get_pending(pagination.limit, pagination.offset)
+                .get_pending_enriched(pagination.limit, pagination.offset)
                 .await
         }
     };
@@ -127,7 +124,7 @@ where
 pub async fn get_review_item<RQ, A, MM>(
     State(state): State<AppState<RQ, A, MM>>,
     Path(id): Path<Uuid>,
-) -> Result<Json<ReviewQueueItem>, (StatusCode, String)>
+) -> Result<Json<EnrichedReviewItem>, (StatusCode, String)>
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
@@ -135,7 +132,7 @@ where
 {
     let item = state
         .review_queue_repo
-        .get_by_id(id)
+        .get_by_id_enriched(id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

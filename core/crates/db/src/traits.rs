@@ -207,6 +207,30 @@ pub trait WeightHistoryRepository: Send + Sync {
     async fn count(&self) -> Result<i64>;
 }
 
+/// Enriched review queue item with joined message data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnrichedReviewItem {
+    pub id: Uuid,
+    pub raw_message_id: Uuid,
+    pub ai_result: serde_json::Value,
+    pub confidence: f64,
+    pub reason: String,
+    pub status: ReviewStatus,
+    pub reviewed_by: Option<String>,
+    pub review_notes: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub reviewed_at: Option<DateTime<Utc>>,
+    // Joined from raw_messages
+    pub original_text: String,
+    pub message_timestamp: DateTime<Utc>,
+    // Joined from participants
+    pub sender_name: Option<String>,
+    pub sender_phone: Option<String>,
+    // Joined from groups
+    pub group_name: Option<String>,
+}
+
 /// Review queue repository trait
 #[async_trait]
 pub trait ReviewQueueRepository: Send + Sync {
@@ -225,6 +249,14 @@ pub trait ReviewQueueRepository: Send + Sync {
     async fn count_pending(&self) -> Result<i64>;
     /// Check if a review queue item exists for a message
     async fn exists_for_message(&self, raw_message_id: Uuid) -> Result<bool>;
+    /// Get pending items with joined message, participant, and group data
+    async fn get_pending_enriched(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<EnrichedReviewItem>>;
+    /// Get a single enriched review item by ID
+    async fn get_by_id_enriched(&self, id: Uuid) -> Result<Option<EnrichedReviewItem>>;
 }
 
 /// Review queue statistics
