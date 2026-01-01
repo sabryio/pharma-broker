@@ -13,11 +13,11 @@ import {
   RefreshCw,
   Undo2,
   AlertTriangle,
+  Stethoscope,
 } from 'lucide-react'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import {
-  type Review,
   type HistoryEntry,
   type AdjustmentSettings,
   defaultAdjustments,
@@ -32,6 +32,7 @@ import {
   type OfferWithMatches,
   type RequestWithMatches,
 } from '@/components/review-queue'
+import { CurationMode } from '@/components/medication-curation'
 import { useNotifications } from '@/hooks/use-notifications'
 import {
   useMatchReviews,
@@ -44,8 +45,6 @@ import { cn } from '@/lib/utils'
 export const Route = createFileRoute('/review-queue')({
   component: ReviewQueue,
 })
-
-type ReviewWithUuid = Review & { uuid: string }
 
 export default function ReviewQueue() {
   const {
@@ -60,7 +59,7 @@ export default function ReviewQueue() {
 
   const [currentIndex, setCurrentIndex] = useState(0)
   const [bulkMode, setBulkMode] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showHistory, setShowHistory] = useState(false)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [showExportMenu, setShowExportMenu] = useState(false)
@@ -74,15 +73,16 @@ export default function ReviewQueue() {
   const [anchorMode, setAnchorMode] = useState<'offer' | 'request'>('offer')
   const [anchorIndex, setAnchorIndex] = useState(0)
   const [relatedIndex, setRelatedIndex] = useState(0)
+  const [reviewMode, setReviewMode] = useState<'match' | 'curation'>('match')
 
   const { notifyHighPriorityReview, notifyLowApprovalRate, settings } =
     useNotifications()
-  const notifiedReviewsRef = useRef<Set<number>>(new Set())
+  const notifiedReviewsRef = useRef<Set<string>>(new Set())
   const lastApprovalRateRef = useRef<number | null>(null)
 
   const pendingReviews = (reviewData?.items ?? []).filter(
-    (item) => !optimisticallyRemoved.has(item.uuid),
-  ) as ReviewWithUuid[]
+    (item) => !optimisticallyRemoved.has(item.id),
+  )
 
   // Grouped reviews
   const groupedOffers = groupByOffer(pendingReviews)
@@ -93,7 +93,7 @@ export default function ReviewQueue() {
   const currentMatch = currentGroup?.matches[relatedIndex]
 
   // Compatibility with old "current" for footer actions
-  const current = pendingReviews[currentIndex] as ReviewWithUuid | undefined
+  const current = pendingReviews[currentIndex]
   const totalReviews = reviewData?.total ?? 0
 
   const approvalRate =
@@ -161,10 +161,8 @@ export default function ReviewQueue() {
   }, [pendingReviews.length])
 
   const handleSingleAction = useCallback(
-    (id: number, action: 'approved' | 'rejected') => {
-      const review = pendingReviews.find((r) => r.id === id) as
-        | ReviewWithUuid
-        | undefined
+    (id: string, action: 'approved' | 'rejected') => {
+      const review = pendingReviews.find((r) => r.id === id)
       if (!review) return
 
       const entry: HistoryEntry = {
@@ -179,15 +177,15 @@ export default function ReviewQueue() {
       }
 
       setHistory((prev) => [entry, ...prev])
-      setOptimisticallyRemoved((prev) => new Set(prev).add(review.uuid))
+      setOptimisticallyRemoved((prev) => new Set(prev).add(review.id))
 
       updateMutation.mutate(
-        { id: review.uuid, action },
+        { id: review.id, action },
         {
           onError: () => {
             setOptimisticallyRemoved((prev) => {
               const next = new Set(prev)
-              next.delete(review.uuid)
+              next.delete(review.id)
               return next
             })
             setHistory((prev) => prev.slice(1))
@@ -219,18 +217,14 @@ export default function ReviewQueue() {
           const matchWithReq = currentMatch as any
           if (matchWithReq.request) {
             const reqIndex = groupedRequests.findIndex(
-              (g) =>
-                g.requestKey ===
-                (matchWithReq.request.id || matchWithReq.request.source),
+              (g) => g.request.id === matchWithReq.request.id,
             )
             if (reqIndex !== -1) {
               setAnchorIndex(reqIndex)
               // Find the original offer in the new request's matches to keep it visible
               const offIndex = groupedRequests[reqIndex].matches.findIndex(
                 (m) =>
-                  m.offer.id === (currentGroup as OfferWithMatches).offer.id ||
-                  m.offer.source ===
-                    (currentGroup as OfferWithMatches).offer.source,
+                  m.offer.id === (currentGroup as OfferWithMatches).offer.id,
               )
               setRelatedIndex(Math.max(0, offIndex))
             }
@@ -240,9 +234,7 @@ export default function ReviewQueue() {
           const matchWithOff = currentMatch as any
           if (matchWithOff.offer) {
             const offIndex = groupedOffers.findIndex(
-              (g) =>
-                g.offerKey ===
-                (matchWithOff.offer.id || matchWithOff.offer.source),
+              (g) => g.offer.id === matchWithOff.offer.id,
             )
             if (offIndex !== -1) {
               setAnchorIndex(offIndex)
@@ -250,9 +242,7 @@ export default function ReviewQueue() {
               const reqIndex = groupedOffers[offIndex].matches.findIndex(
                 (m) =>
                   m.request.id ===
-                    (currentGroup as RequestWithMatches).request.id ||
-                  m.request.source ===
-                    (currentGroup as RequestWithMatches).request.source,
+                  (currentGroup as RequestWithMatches).request.id,
               )
               setRelatedIndex(Math.max(0, reqIndex))
             }
@@ -332,6 +322,10 @@ export default function ReviewQueue() {
             setSelectedIds(new Set())
           }
           break
+        case '`':
+          e.preventDefault()
+          setReviewMode((m) => (m === 'match' ? 'curation' : 'match'))
+          break
         case 'Backspace':
         case 'Delete':
           if (!bulkMode && currentMatch) {
@@ -360,7 +354,7 @@ export default function ReviewQueue() {
     handleSingleAction,
   ])
 
-  const toggleSelection = (id: number) => {
+  const toggleSelection = (id: string) => {
     const newSelected = new Set(selectedIds)
     if (newSelected.has(id)) newSelected.delete(id)
     else newSelected.add(id)
@@ -374,12 +368,10 @@ export default function ReviewQueue() {
 
   const handleBulkAction = (action: 'approved' | 'rejected') => {
     const entries: HistoryEntry[] = []
-    const uuids: string[] = []
+    const ids: string[] = []
 
     selectedIds.forEach((id) => {
-      const review = pendingReviews.find((r) => r.id === id) as
-        | ReviewWithUuid
-        | undefined
+      const review = pendingReviews.find((r) => r.id === id)
       if (review) {
         entries.push({
           id: `${id}-${Date.now()}`,
@@ -391,24 +383,24 @@ export default function ReviewQueue() {
           adjustments: { ...adjustments },
           originalReview: review,
         })
-        uuids.push(review.uuid)
+        ids.push(review.id)
       }
     })
 
     setHistory((prev) => [...entries, ...prev])
     setOptimisticallyRemoved((prev) => {
       const next = new Set(prev)
-      uuids.forEach((uuid) => next.add(uuid))
+      ids.forEach((id) => next.add(id))
       return next
     })
 
     bulkMutation.mutate(
-      { ids: uuids, action, reviewed_by: 'current-user' },
+      { ids, action, reviewed_by: 'current-user' },
       {
         onError: () => {
           setOptimisticallyRemoved((prev) => {
             const next = new Set(prev)
-            uuids.forEach((uuid) => next.delete(uuid))
+            ids.forEach((id) => next.delete(id))
             return next
           })
           setHistory((prev) => prev.slice(entries.length))
@@ -432,7 +424,7 @@ export default function ReviewQueue() {
     const entry = history.find((h) => h.id === historyId)
     if (!entry) return
 
-    const originalReview = entry.originalReview as ReviewWithUuid
+    const originalReview = entry.originalReview
     if (pendingReviews.some((r) => r.id === entry.reviewId)) {
       toast.error('Already restored', { description: entry.product })
       return
@@ -440,7 +432,7 @@ export default function ReviewQueue() {
 
     setOptimisticallyRemoved((prev) => {
       const next = new Set(prev)
-      next.delete(originalReview.uuid)
+      next.delete(originalReview.id)
       return next
     })
 
@@ -605,6 +597,32 @@ export default function ReviewQueue() {
               Verify low-confidence AI matches
             </p>
           </div>
+          <div className="flex items-center gap-4 bg-secondary/50 p-1 rounded-xl border border-white/5">
+            <button
+              onClick={() => setReviewMode('match')}
+              className={cn(
+                'px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2',
+                reviewMode === 'match'
+                  ? 'bg-teal text-white shadow-lg shadow-teal/20'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <CheckCircle className="w-4 h-4" />
+              Match Review
+            </button>
+            <button
+              onClick={() => setReviewMode('curation')}
+              className={cn(
+                'px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2',
+                reviewMode === 'curation'
+                  ? 'bg-teal text-white shadow-lg shadow-teal/20'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Stethoscope className="w-4 h-4" />
+              Medication Curation
+            </button>
+          </div>
           <div className="flex items-center gap-3">
             <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 text-xs text-muted-foreground">
               <Keyboard className="w-3.5 h-3.5" />
@@ -653,40 +671,50 @@ export default function ReviewQueue() {
               : (apiStats?.avgConfidence ?? 0)
           }
         />
-        <QueueProgress pending={pendingReviews.length} total={totalReviews} />
-        {showHistory && (
-          <HistoryLog history={history} onRestore={restoreFromHistory} />
-        )}
-        {bulkMode && (
-          <BulkModeGrid
-            reviews={pendingReviews}
-            selectedIds={selectedIds}
-            onToggle={toggleSelection}
-            onSelectAll={selectAll}
-            onBulkAction={handleBulkAction}
-          />
-        )}
 
-        {!bulkMode && currentMatch && (
+        {reviewMode === 'match' ? (
           <>
-            <RelatedMatchCarousel
-              groupedByOffer={groupedOffers}
-              groupedByRequest={groupedRequests}
-              anchorMode={anchorMode}
-              onAnchorModeChange={handleAnchorModeChange}
-              anchorIndex={anchorIndex}
-              onAnchorIndexChange={setAnchorIndex}
-              relatedIndex={relatedIndex}
-              onRelatedIndexChange={setRelatedIndex}
-              issues={currentMatch.issues}
-              onApprove={(id) => handleSingleAction(id, 'approved')}
-              onReject={(id) => handleSingleAction(id, 'rejected')}
+            <QueueProgress
+              pending={pendingReviews.length}
+              total={totalReviews}
             />
-            <AdjustmentControls
-              adjustments={adjustments}
-              onAdjustmentsChange={setAdjustments}
-            />
+            {showHistory && (
+              <HistoryLog history={history} onRestore={restoreFromHistory} />
+            )}
+            {bulkMode && (
+              <BulkModeGrid
+                reviews={pendingReviews}
+                selectedIds={selectedIds}
+                onToggle={toggleSelection}
+                onSelectAll={selectAll}
+                onBulkAction={handleBulkAction}
+              />
+            )}
+
+            {!bulkMode && currentMatch && (
+              <>
+                <RelatedMatchCarousel
+                  groupedByOffer={groupedOffers}
+                  groupedByRequest={groupedRequests}
+                  anchorMode={anchorMode}
+                  onAnchorModeChange={handleAnchorModeChange}
+                  anchorIndex={anchorIndex}
+                  onAnchorIndexChange={setAnchorIndex}
+                  relatedIndex={relatedIndex}
+                  onRelatedIndexChange={setRelatedIndex}
+                  issues={currentMatch.issues}
+                  onApprove={(id) => handleSingleAction(id, 'approved')}
+                  onReject={(id) => handleSingleAction(id, 'rejected')}
+                />
+                <AdjustmentControls
+                  adjustments={adjustments}
+                  onAdjustmentsChange={setAdjustments}
+                />
+              </>
+            )}
           </>
+        ) : (
+          <CurationMode />
         )}
       </div>
     </DashboardLayout>

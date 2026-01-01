@@ -18,9 +18,12 @@ interface MedicationCurationBadgeProps {
 export const MedicationCurationBadge: React.FC<
   MedicationCurationBadgeProps
 > = ({ status, masterId, className, onClick }) => {
-  const isApproved = status === 'Approved' || status === '"Approved"'
-  const isRejected = status === 'Rejected' || status === '"Rejected"'
-  const isPending = status === 'Pending' || status === '"Pending"'
+  // Normalize status - handle various formats from API
+  const normalizedStatus = status?.replace(/"/g, '').trim()
+
+  const isApproved = normalizedStatus?.toLowerCase() === 'approved'
+  const isRejected = normalizedStatus?.toLowerCase() === 'rejected'
+  const isPending = normalizedStatus?.toLowerCase() === 'pending' || !status
 
   let Icon = HelpCircle
   let colorClass = 'text-muted-foreground bg-secondary/50'

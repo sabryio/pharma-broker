@@ -25,8 +25,8 @@ interface RelatedMatchCarouselProps {
   /** Issues for current match */
   issues: string[]
   /** Action handlers */
-  onApprove: (matchId: number, uuid: string) => void
-  onReject: (matchId: number, uuid: string) => void
+  onApprove: (matchId: string) => void
+  onReject: (matchId: string) => void
 }
 
 export function RelatedMatchCarousel({
@@ -90,7 +90,7 @@ export function RelatedMatchCarousel({
 
   const handleAction = (action: 'approved' | 'rejected') => {
     const handler = action === 'approved' ? onApprove : onReject
-    handler(currentMatch.matchId, currentMatch.matchUuid)
+    handler(currentMatch.matchId)
 
     // Auto-advance to next match
     if (relatedIndex < totalMatches - 1) {
@@ -176,15 +176,18 @@ export function RelatedMatchCarousel({
               <ReviewCard
                 type="offer"
                 offer={(currentGroup as OfferWithMatches).offer}
-                onCurate={setCurationMedication}
+                onCurate={(name, id) => {
+                  setCurationMedication(name)
+                  setCurationAliasId(id ?? null)
+                }}
               />
             ) : (
               <ReviewCard
                 type="request"
                 request={(currentGroup as RequestWithMatches).request}
-                onCurate={(name, aliasId) => {
+                onCurate={(name, id) => {
                   setCurationMedication(name)
-                  setCurationAliasId(aliasId || null)
+                  setCurationAliasId(id ?? null)
                 }}
               />
             )}
@@ -274,8 +277,18 @@ export function RelatedMatchCarousel({
               <ReviewCard
                 type="request"
                 request={(currentMatch as { request: any }).request}
-                onCurate={setCurationMedication}
-                aiStatus={currentMatch.aiStatus}
+                onCurate={(name, id) => {
+                  setCurationMedication(name)
+                  setCurationAliasId(id ?? null)
+                }}
+                aiStatus={
+                  currentMatch.aiStatus as
+                    | 'Approved'
+                    | 'Flagged'
+                    | 'Rejected'
+                    | null
+                    | undefined
+                }
                 aiConfidence={currentMatch.aiConfidence}
                 aiExplanation={currentMatch.aiExplanation}
               />
@@ -283,11 +296,18 @@ export function RelatedMatchCarousel({
               <ReviewCard
                 type="offer"
                 offer={(currentMatch as { offer: any }).offer}
-                onCurate={(name, aliasId) => {
+                onCurate={(name, id) => {
                   setCurationMedication(name)
-                  setCurationAliasId(aliasId || null)
+                  setCurationAliasId(id ?? null)
                 }}
-                aiStatus={currentMatch.aiStatus}
+                aiStatus={
+                  currentMatch.aiStatus as
+                    | 'Approved'
+                    | 'Flagged'
+                    | 'Rejected'
+                    | null
+                    | undefined
+                }
                 aiConfidence={currentMatch.aiConfidence}
                 aiExplanation={currentMatch.aiExplanation}
               />

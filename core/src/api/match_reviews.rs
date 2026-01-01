@@ -172,12 +172,20 @@ where
             .flatten();
 
         // Fetch curation metadata
+        tracing::debug!(
+            ">>> match_reviews: looking up offer alias for medication_raw: '{}'",
+            &offer.medication_raw
+        );
         let offer_curation = state
             .medication_alias_repo
             .get_by_name(&offer.medication_raw)
             .await
             .ok()
             .flatten();
+        tracing::debug!(
+            ">>> match_reviews: offer_curation found: {}",
+            offer_curation.is_some()
+        );
 
         let offer_summary = OfferSummary {
             id: offer.id,

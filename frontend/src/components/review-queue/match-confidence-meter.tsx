@@ -118,7 +118,7 @@ export function MatchConfidenceMeter({
         {/* Center content */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-4xl font-bold text-foreground">
-            {confidence}%
+            {confidence.toFixed(2)}%
           </span>
           <span className="text-xs text-muted-foreground mt-1">Match</span>
           <span className="text-xs text-muted-foreground">Confidence</span>

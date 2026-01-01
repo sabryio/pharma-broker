@@ -10,11 +10,11 @@ import {
   updateMatchReviewStatus,
   bulkUpdateMatchReviews,
   getMatchReviewStats,
-  transformToReviewWithMapping,
 } from '@/api/match-reviews'
 import type {
   MatchReviewParams,
   BulkUpdateRequest,
+  MatchReviewItem,
 } from '@/schema/match-review'
 
 /**
@@ -28,10 +28,6 @@ export function useMatchReviews(params: MatchReviewParams = {}) {
     queryFn: () => getMatchReviews({ limit, offset }),
     placeholderData: keepPreviousData,
     staleTime: 10 * 1000,
-    select: (data) => ({
-      ...data,
-      items: data.items.map(transformToReviewWithMapping),
-    }),
   })
 }
 
@@ -44,7 +40,6 @@ export function useMatchReview(id: string | undefined) {
     queryFn: () => getMatchReview(id!),
     enabled: !!id,
     staleTime: 10 * 1000,
-    select: transformToReviewWithMapping,
   })
 }
 
@@ -92,13 +87,11 @@ export function useUpdateMatchReviewStatus() {
       // Optimistically remove item from list
       queryClient.setQueriesData(
         { queryKey: ['match-reviews', 'items'] },
-        (
-          old: { items: Array<{ uuid: string }>; total: number } | undefined,
-        ) => {
+        (old: { items: MatchReviewItem[]; total: number } | undefined) => {
           if (!old) return old
           return {
             ...old,
-            items: old.items.filter((item) => item.uuid !== variables.id),
+            items: old.items.filter((item) => item.id !== variables.id),
             total: Math.max(0, old.total - 1),
           }
         },
@@ -158,14 +151,12 @@ export function useBulkUpdateMatchReviews() {
       // Optimistically remove items from list
       queryClient.setQueriesData(
         { queryKey: ['match-reviews', 'items'] },
-        (
-          old: { items: Array<{ uuid: string }>; total: number } | undefined,
-        ) => {
+        (old: { items: MatchReviewItem[]; total: number } | undefined) => {
           if (!old) return old
           const idsSet = new Set(variables.ids)
           return {
             ...old,
-            items: old.items.filter((item) => !idsSet.has(item.uuid)),
+            items: old.items.filter((item) => !idsSet.has(item.id)),
             total: Math.max(0, old.total - variables.ids.length),
           }
         },

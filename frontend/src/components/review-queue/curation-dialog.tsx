@@ -25,6 +25,7 @@ import {
 } from '@/api/curation'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { CreateMasterDialog } from '../medication-curation/create-master-dialog'
 
 interface CurationDialogProps {
   isOpen: boolean
@@ -46,6 +47,7 @@ export const CurationDialog: React.FC<CurationDialogProps> = ({
   const [isLinking, setIsLinking] = useState(false)
   const [searchQuery, setSearchQuery] = useState(medicationRaw)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
   useEffect(() => {
     if (isOpen && medicationRaw) {
@@ -174,7 +176,7 @@ export const CurationDialog: React.FC<CurationDialogProps> = ({
           <Button
             variant="ghost"
             className="text-xs"
-            onClick={() => toast.info('New master request sent')}
+            onClick={() => setIsCreateDialogOpen(true)}
           >
             <Plus className="w-3 h-3 mr-1" /> Create New Master
           </Button>
@@ -199,6 +201,17 @@ export const CurationDialog: React.FC<CurationDialogProps> = ({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      <CreateMasterDialog
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        aliasId={aliasId ?? null}
+        aliasName={medicationRaw}
+        onSuccess={(master) => {
+          handleLink(master.id)
+          setIsCreateDialogOpen(false)
+        }}
+      />
     </Dialog>
   )
 }

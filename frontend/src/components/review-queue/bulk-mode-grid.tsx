@@ -6,8 +6,8 @@ import { getConfidenceColor } from './types'
 
 interface BulkModeGridProps {
   reviews: Review[]
-  selectedIds: Set<number>
-  onToggle: (id: number) => void
+  selectedIds: Set<string>
+  onToggle: (id: string) => void
   onSelectAll: () => void
   onBulkAction: (action: 'approved' | 'rejected') => void
 }

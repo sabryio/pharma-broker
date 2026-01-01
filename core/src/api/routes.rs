@@ -129,8 +129,8 @@ where
             post(curation::create_master::<RQ, A, MM>),
         )
         .route(
-            "/api/curation/approve",
-            post(curation::approve_alias::<RQ, A, MM>),
+            "/api/curation/aliases/{alias_id}/approve",
+            put(curation::approve_alias::<RQ, A, MM>),
         )
         .route(
             "/api/curation/suggestions",

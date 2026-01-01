@@ -43,8 +43,22 @@ impl MedicationAliasRepository for SeaOrmMedicationAliasRepo {
     }
 
     async fn get_by_name(&self, name: &str) -> Result<Option<medication_alias::Model>> {
-        MedicationAlias::find()
+        // First try exact match
+        let exact = MedicationAlias::find()
             .filter(medication_alias::Column::AliasName.eq(name))
+            .one(&*self.db)
+            .await?;
+
+        if exact.is_some() {
+            return Ok(exact);
+        }
+
+        // Normalize: lowercase and convert Arabic-Indic numerals to Western
+        let normalized = normalize_arabic_text(name);
+
+        // Try normalized match
+        MedicationAlias::find()
+            .filter(medication_alias::Column::AliasNameNormalized.eq(&normalized))
             .one(&*self.db)
             .await
             .map_err(Error::from)
@@ -119,4 +133,25 @@ impl MedicationAliasRepository for SeaOrmMedicationAliasRepo {
             pending_aliases,
         })
     }
+}
+
+/// Normalize Arabic text: lowercase and convert Arabic-Indic numerals to Western
+pub fn normalize_arabic_text(text: &str) -> String {
+    text.trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+            '٠' => '0',
+            '١' => '1',
+            '٢' => '2',
+            '٣' => '3',
+            '٤' => '4',
+            '٥' => '5',
+            '٦' => '6',
+            '٧' => '7',
+            '٨' => '8',
+            '٩' => '9',
+            _ => c,
+        })
+        .collect()
 }

@@ -1,51 +1,16 @@
 // Review Queue Types
-// Shared interfaces for review queue components
+// Re-export Zod types and add helper functions
 
-export interface ReviewOffer {
-  id?: string
-  product: string
-  medicationRaw: string | null
-  source: string
-  sourceGroup: string | null
-  senderName: string | null
-  senderJid: string | null
-  rawMessage: string | null
-  quantity: string
-  price: string
-  expiry: string
-  masterId?: string | null
-  medicationAliasId?: string | null
-  curationStatus?: string | null
-}
+import type {
+  MatchReviewItem,
+  OfferSummary,
+  RequestSummary,
+} from '@/schema/match-review'
 
-export interface ReviewRequest {
-  id?: string
-  product: string
-  medicationRaw: string | null
-  source: string
-  sourceGroup: string | null
-  senderName: string | null
-  senderJid: string | null
-  rawMessage: string | null
-  quantity: string
-  maxPrice: string
-  urgency: 'Low' | 'Medium' | 'High'
-  masterId?: string | null
-  medicationAliasId?: string | null
-  curationStatus?: string | null
-}
-
-export interface Review {
-  id: number
-  uuid?: string
-  confidence: number
-  offer: ReviewOffer
-  request: ReviewRequest
-  issues: string[]
-  aiStatus?: 'Approved' | 'Flagged' | 'Rejected' | null
-  aiConfidence?: number | null
-  aiExplanation?: string | null
-}
+// Re-export types from schema
+export type ReviewOffer = OfferSummary
+export type ReviewRequest = RequestSummary
+export type Review = MatchReviewItem
 
 export interface AdjustmentSettings {
   priceFlexibility: number
@@ -55,7 +20,7 @@ export interface AdjustmentSettings {
 
 export interface HistoryEntry {
   id: string
-  reviewId: number
+  reviewId: string
   product: string
   action: 'approved' | 'rejected'
   timestamp: Date
@@ -70,11 +35,10 @@ export interface HistoryEntry {
 
 /** A match entry for carousel navigation */
 export interface MatchEntry {
-  matchId: number
-  matchUuid: string
+  matchId: string
   confidence: number
   issues: string[]
-  aiStatus?: 'Approved' | 'Flagged' | 'Rejected' | null
+  aiStatus?: string | null
   aiConfidence?: number | null
   aiExplanation?: string | null
 }
@@ -82,14 +46,12 @@ export interface MatchEntry {
 /** An offer with all its related request matches */
 export interface OfferWithMatches {
   offer: ReviewOffer
-  offerKey: string
   matches: Array<MatchEntry & { request: ReviewRequest }>
 }
 
 /** A request with all its related offer matches */
 export interface RequestWithMatches {
   request: ReviewRequest
-  requestKey: string
   matches: Array<MatchEntry & { offer: ReviewOffer }>
 }
 
@@ -98,20 +60,17 @@ export function groupByOffer(reviews: Review[]): OfferWithMatches[] {
   const map = new Map<string, OfferWithMatches>()
 
   for (const review of reviews) {
-    // Use offer source as key (could be improved with actual offer ID)
-    const key = review.offer.id || review.offer.source
+    const key = review.offer.id
 
     if (!map.has(key)) {
       map.set(key, {
         offer: review.offer,
-        offerKey: key,
         matches: [],
       })
     }
 
     map.get(key)!.matches.push({
       matchId: review.id,
-      matchUuid: review.uuid || String(review.id),
       confidence: review.confidence,
       issues: review.issues,
       request: review.request,
@@ -134,20 +93,17 @@ export function groupByRequest(reviews: Review[]): RequestWithMatches[] {
   const map = new Map<string, RequestWithMatches>()
 
   for (const review of reviews) {
-    // Use request source as key
-    const key = review.request.id || review.request.source
+    const key = review.request.id
 
     if (!map.has(key)) {
       map.set(key, {
         request: review.request,
-        requestKey: key,
         matches: [],
       })
     }
 
     map.get(key)!.matches.push({
       matchId: review.id,
-      matchUuid: review.uuid || String(review.id),
       confidence: review.confidence,
       issues: review.issues,
       offer: review.offer,

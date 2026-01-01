@@ -350,6 +350,7 @@ pub trait MedicationAliasRepository: Send + Sync {
 
 /// Curation statistics
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CurationStats {
     pub total_offers: i64,
     pub curated_offers: i64,

@@ -22,6 +22,7 @@ pub enum CurationStatus {
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "medication_aliases")]
+#[serde(rename_all = "camelCase")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
@@ -86,8 +87,25 @@ impl Model {
     }
 
     /// Normalize an alias name for comparison
+    /// Converts to lowercase and normalizes Arabic-Indic numerals to Western
     pub fn normalize(name: &str) -> String {
-        name.trim().to_lowercase()
+        name.trim()
+            .to_lowercase()
+            .chars()
+            .map(|c| match c {
+                '٠' => '0',
+                '١' => '1',
+                '٢' => '2',
+                '٣' => '3',
+                '٤' => '4',
+                '٥' => '5',
+                '٦' => '6',
+                '٧' => '7',
+                '٨' => '8',
+                '٩' => '9',
+                _ => c,
+            })
+            .collect()
     }
 
     /// Check if this alias has been curated

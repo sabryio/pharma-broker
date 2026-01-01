@@ -22,7 +22,7 @@ pub use feedback::SeaOrmFeedbackRepo;
 pub use group::SeaOrmGroupRepo;
 pub use match_queue::SeaOrmMatchQueueRepo;
 pub use match_repo::SeaOrmMatchRepo;
-pub use medication_alias::SeaOrmMedicationAliasRepo;
+pub use medication_alias::{SeaOrmMedicationAliasRepo, normalize_arabic_text};
 pub use medication_mapping::SeaOrmMedicationMappingRepo;
 pub use medication_master::SeaOrmMedicationMasterRepo;
 pub use offer::SeaOrmOfferRepo;

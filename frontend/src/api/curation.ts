@@ -1,33 +1,42 @@
 import apiClient from './client'
+import {
+  CurationStatsSchema,
+  MedicationAliasSchema,
+  MasterSuggestionSchema,
+  MedicationMasterSchema,
+  type CurationStats,
+  type MedicationAlias,
+  type Suggestion,
+  type MedicationMaster,
+} from '@/schema/curation'
+
+export type { Suggestion, MedicationAlias, MedicationMaster, CurationStats }
 import { z } from 'zod'
 
-export const CurationStatusSchema = z.enum(['Pending', 'Approved', 'Rejected'])
+/**
+ * Fetch overall curation statistics
+ */
+export async function getCurationStats(): Promise<CurationStats> {
+  const response = await apiClient.get('/api/curation/stats')
+  return CurationStatsSchema.parse(response.data)
+}
 
-export const MedicationMasterSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string(),
-  canonicalNameAr: z.string().nullable(),
-  activeIngredient: z.string().nullable(),
-  strength: z.string().nullable(),
-  manufacturer: z.string().nullable(),
-})
-
-export const MedicationAliasSchema = z.object({
-  id: z.string().uuid(),
-  aliasName: z.string(),
-  masterMedicationId: z.string().uuid().nullable(),
-  curationStatus: CurationStatusSchema,
-})
-
-export const SuggestionSchema = z.object({
-  master: MedicationMasterSchema,
-  score: z.number(),
-  method: z.string(),
-})
-
-export type MedicationMaster = z.infer<typeof MedicationMasterSchema>
-export type MedicationAlias = z.infer<typeof MedicationAliasSchema>
-export type Suggestion = z.infer<typeof SuggestionSchema>
+/**
+ * Fetch medication aliases with pagination and filtering
+ */
+export async function getAliases(params: {
+  limit?: number
+  offset?: number
+  status?: string
+}): Promise<{ aliases: MedicationAlias[]; total: number }> {
+  const response = await apiClient.get('/api/curation/aliases', { params })
+  return z
+    .object({
+      aliases: z.array(MedicationAliasSchema),
+      total: z.number(),
+    })
+    .parse(response.data)
+}
 
 /**
  * Fetch AI suggestions for a medication name
@@ -41,7 +50,7 @@ export async function getCurationSuggestions(
       params: { name },
     },
   )
-  return z.array(SuggestionSchema).parse(response.data)
+  return z.array(MasterSuggestionSchema).parse(response.data)
 }
 
 /**
@@ -54,7 +63,7 @@ export async function approveMedicationAlias(
   const response = await apiClient.put(
     `/api/curation/aliases/${aliasId}/approve`,
     {
-      master_id: masterId,
+      masterId: masterId,
     },
   )
   return { success: !!response.data }
@@ -64,15 +73,18 @@ export async function approveMedicationAlias(
  * Create a new master record and link the alias to it
  */
 export async function createMasterAndLink(
-  aliasId: string,
+  aliasId: string | null,
   masterData: Partial<MedicationMaster>,
+  aliasName?: string,
 ): Promise<{ success: boolean; master: MedicationMaster }> {
-  const response = await apiClient.post<MedicationMaster>(
-    '/api/curation/master',
-    {
-      ...masterData,
-      alias_id: aliasId,
-    },
-  )
-  return { success: true, master: MedicationMasterSchema.parse(response.data) }
+  const response = await apiClient.post('/api/curation/master', {
+    ...masterData,
+    aliasId: aliasId || undefined,
+    aliasName: aliasId ? undefined : aliasName, // Only send aliasName if no aliasId
+  })
+  const data = response.data as { success: boolean; master: MedicationMaster }
+  return {
+    success: data.success,
+    master: MedicationMasterSchema.parse(data.master),
+  }
 }
