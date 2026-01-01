@@ -129,10 +129,59 @@ where
 
         let issues = parse_issues(m.reasoning.as_deref());
 
+        // Fetch group names for source_group field
+        let offer_group = state
+            .group_repo
+            .get_by_id(offer.group_id)
+            .await
+            .ok()
+            .flatten();
+        let request_group = state
+            .group_repo
+            .get_by_id(request.group_id)
+            .await
+            .ok()
+            .flatten();
+
+        // Fetch participant info for sender details
+        let offer_participant = state
+            .participant_repo
+            .get_by_id(offer.participant_id)
+            .await
+            .ok()
+            .flatten();
+        let request_participant = state
+            .participant_repo
+            .get_by_id(request.participant_id)
+            .await
+            .ok()
+            .flatten();
+
+        // Fetch raw message content
+        let offer_raw_message = state
+            .raw_message_repo
+            .get_by_id(offer.raw_message_id)
+            .await
+            .ok()
+            .flatten();
+        let request_raw_message = state
+            .raw_message_repo
+            .get_by_id(request.raw_message_id)
+            .await
+            .ok()
+            .flatten();
+
         let offer_summary = OfferSummary {
             id: offer.id,
             product: offer.medication.clone(),
+            medication_raw: Some(offer.medication_raw.clone()),
             source: format!("Offer #{}", &offer.id.to_string()[..8]),
+            source_group: offer_group.map(|g| g.name),
+            sender_name: offer_participant
+                .as_ref()
+                .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
+            sender_jid: offer_participant.map(|p| p.jid),
+            raw_message: offer_raw_message.map(|m| m.content),
             quantity: offer
                 .quantity
                 .map(|q| format!("{} {}", q, offer.unit.as_deref().unwrap_or("units"))),
@@ -148,7 +197,14 @@ where
         let request_summary = RequestSummary {
             id: request.id,
             product: request.medication.clone(),
+            medication_raw: Some(request.medication_raw.clone()),
             source: format!("Request #{}", &request.id.to_string()[..8]),
+            source_group: request_group.map(|g| g.name),
+            sender_name: request_participant
+                .as_ref()
+                .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
+            sender_jid: request_participant.map(|p| p.jid),
+            raw_message: request_raw_message.map(|m| m.content),
             quantity: request
                 .quantity
                 .map(|q| format!("{} {}", q, request.unit.as_deref().unwrap_or("units"))),
@@ -215,10 +271,59 @@ where
 
     let issues = parse_issues(m.reasoning.as_deref());
 
+    // Fetch group names for source_group field
+    let offer_group = state
+        .group_repo
+        .get_by_id(offer.group_id)
+        .await
+        .ok()
+        .flatten();
+    let request_group = state
+        .group_repo
+        .get_by_id(request.group_id)
+        .await
+        .ok()
+        .flatten();
+
+    // Fetch participant info for sender details
+    let offer_participant = state
+        .participant_repo
+        .get_by_id(offer.participant_id)
+        .await
+        .ok()
+        .flatten();
+    let request_participant = state
+        .participant_repo
+        .get_by_id(request.participant_id)
+        .await
+        .ok()
+        .flatten();
+
+    // Fetch raw message content
+    let offer_raw_message = state
+        .raw_message_repo
+        .get_by_id(offer.raw_message_id)
+        .await
+        .ok()
+        .flatten();
+    let request_raw_message = state
+        .raw_message_repo
+        .get_by_id(request.raw_message_id)
+        .await
+        .ok()
+        .flatten();
+
     let offer_summary = OfferSummary {
         id: offer.id,
         product: offer.medication.clone(),
+        medication_raw: Some(offer.medication_raw.clone()),
         source: format!("Offer #{}", &offer.id.to_string()[..8]),
+        source_group: offer_group.map(|g| g.name),
+        sender_name: offer_participant
+            .as_ref()
+            .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
+        sender_jid: offer_participant.map(|p| p.jid),
+        raw_message: offer_raw_message.map(|m| m.content),
         quantity: offer
             .quantity
             .map(|q| format!("{} {}", q, offer.unit.as_deref().unwrap_or("units"))),
@@ -234,7 +339,14 @@ where
     let request_summary = RequestSummary {
         id: request.id,
         product: request.medication.clone(),
+        medication_raw: Some(request.medication_raw.clone()),
         source: format!("Request #{}", &request.id.to_string()[..8]),
+        source_group: request_group.map(|g| g.name),
+        sender_name: request_participant
+            .as_ref()
+            .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
+        sender_jid: request_participant.map(|p| p.jid),
+        raw_message: request_raw_message.map(|m| m.content),
         quantity: request
             .quantity
             .map(|q| format!("{} {}", q, request.unit.as_deref().unwrap_or("units"))),

@@ -365,7 +365,17 @@ pub struct CurationStats {
 pub struct OfferSummary {
     pub id: Uuid,
     pub product: String,
+    /// Original medication text for highlighting
+    pub medication_raw: Option<String>,
     pub source: String,
+    /// WhatsApp group name where the offer came from
+    pub source_group: Option<String>,
+    /// Sender's display name
+    pub sender_name: Option<String>,
+    /// Sender's WhatsApp JID
+    pub sender_jid: Option<String>,
+    /// Original raw message content
+    pub raw_message: Option<String>,
     pub quantity: Option<String>,
     pub price: Option<String>,
     pub expiry: Option<String>,
@@ -377,7 +387,17 @@ pub struct OfferSummary {
 pub struct RequestSummary {
     pub id: Uuid,
     pub product: String,
+    /// Original medication text for highlighting
+    pub medication_raw: Option<String>,
     pub source: String,
+    /// WhatsApp group name where the request came from
+    pub source_group: Option<String>,
+    /// Sender's display name
+    pub sender_name: Option<String>,
+    /// Sender's WhatsApp JID
+    pub sender_jid: Option<String>,
+    /// Original raw message content
+    pub raw_message: Option<String>,
     pub quantity: Option<String>,
     pub max_price: Option<String>,
     pub urgency: String,

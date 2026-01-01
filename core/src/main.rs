@@ -178,6 +178,8 @@ async fn main() -> anyhow::Result<()> {
         request_repo: request_repo.clone(),
         match_repo: match_repo.clone(),
         group_repo: group_repo.clone(),
+        participant_repo: participant_repo.clone(),
+        raw_message_repo: raw_message_repo.clone(),
         audit_log_repo: audit_log_repo.clone(),
         medication_mapping_repo: medication_mapping_repo.clone(),
         medication_master_repo: medication_master_repo.clone(),

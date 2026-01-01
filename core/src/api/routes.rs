@@ -23,7 +23,8 @@ use crate::matching::MatchingEngine;
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchRepository,
     MedicationAliasRepository, MedicationMappingRepository, MedicationMasterRepository,
-    OfferRepository, RequestRepository, ReviewQueueRepository,
+    OfferRepository, ParticipantRepository, RawMessageRepository, RequestRepository,
+    ReviewQueueRepository,
 };
 use crate::ws::{self, WsEvent};
 
@@ -39,6 +40,8 @@ where
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
     pub group_repo: Arc<dyn GroupRepository + Send + Sync>,
     pub feedback_repo: Arc<dyn FeedbackRepository + Send + Sync>,
+    pub participant_repo: Arc<dyn ParticipantRepository + Send + Sync>,
+    pub raw_message_repo: Arc<dyn RawMessageRepository + Send + Sync>,
     pub review_queue_repo: Arc<RQ>,
     pub audit_log_repo: Arc<A>,
     pub medication_mapping_repo: Arc<MM>,
@@ -64,6 +67,8 @@ where
             match_repo: self.match_repo.clone(),
             group_repo: self.group_repo.clone(),
             feedback_repo: self.feedback_repo.clone(),
+            participant_repo: self.participant_repo.clone(),
+            raw_message_repo: self.raw_message_repo.clone(),
             review_queue_repo: self.review_queue_repo.clone(),
             audit_log_repo: self.audit_log_repo.clone(),
             medication_mapping_repo: self.medication_mapping_repo.clone(),

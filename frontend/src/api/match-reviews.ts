@@ -99,7 +99,12 @@ export async function getMatchReviewStats(): Promise<MatchReviewStats> {
 export function transformToReview(item: MatchReviewItem): Review {
   const offer: ReviewOffer = {
     product: item.offer.product,
+    medicationRaw: item.offer.medicationRaw,
     source: item.offer.source,
+    sourceGroup: item.offer.sourceGroup,
+    senderName: item.offer.senderName,
+    senderJid: item.offer.senderJid,
+    rawMessage: item.offer.rawMessage,
     quantity: item.offer.quantity ?? 'N/A',
     price: item.offer.price ?? 'N/A',
     expiry: item.offer.expiry ?? 'N/A',
@@ -107,7 +112,12 @@ export function transformToReview(item: MatchReviewItem): Review {
 
   const request: ReviewRequest = {
     product: item.request.product,
+    medicationRaw: item.request.medicationRaw,
     source: item.request.source,
+    sourceGroup: item.request.sourceGroup,
+    senderName: item.request.senderName,
+    senderJid: item.request.senderJid,
+    rawMessage: item.request.rawMessage,
     quantity: item.request.quantity ?? 'N/A',
     maxPrice: item.request.maxPrice ?? 'N/A',
     urgency: mapUrgency(item.request.urgency),

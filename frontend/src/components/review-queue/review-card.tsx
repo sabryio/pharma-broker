@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import type { ReviewOffer, ReviewRequest } from './types'
@@ -9,6 +10,11 @@ import {
   TrendingUp,
   AlertCircle,
   Building2,
+  User,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
 } from 'lucide-react'
 
 interface ReviewCardProps {
@@ -17,83 +23,271 @@ interface ReviewCardProps {
   request?: ReviewRequest
 }
 
+/**
+ * Highlights the medication name in raw text
+ * Supports both Arabic and English text
+ */
+function HighlightedMessage({
+  text,
+  highlight,
+  accentColor,
+}: {
+  text: string
+  highlight: string | null
+  accentColor: 'teal' | 'amber'
+}) {
+  if (!highlight || !text) {
+    return <span className="text-muted-foreground">{text}</span>
+  }
+
+  // Escape special regex characters
+  const escapedHighlight = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escapedHighlight})`, 'gi')
+  const parts = text.split(regex)
+
+  return (
+    <span className="text-muted-foreground leading-relaxed">
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark
+            key={i}
+            className={cn(
+              'font-bold px-1 py-0.5 rounded-sm',
+              accentColor === 'teal'
+                ? 'bg-teal/30 text-teal'
+                : 'bg-amber/30 text-amber',
+            )}
+          >
+            {part}
+          </mark>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </span>
+  )
+}
+
+/**
+ * Sender info badge component
+ */
+function SenderBadge({
+  name,
+  jid,
+  accentColor,
+}: {
+  name: string | null
+  jid: string | null
+  accentColor: 'teal' | 'amber'
+}) {
+  const displayName = name || (jid ? jid.split('@')[0] : 'Unknown Sender')
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs',
+        'bg-linear-to-r border backdrop-blur-sm',
+        accentColor === 'teal'
+          ? 'from-teal/10 to-teal/5 border-teal/20'
+          : 'from-amber/10 to-amber/5 border-amber/20',
+      )}
+    >
+      <div
+        className={cn(
+          'w-5 h-5 rounded-full flex items-center justify-center',
+          accentColor === 'teal' ? 'bg-teal/20' : 'bg-amber/20',
+        )}
+      >
+        <User
+          className={cn(
+            'w-3 h-3',
+            accentColor === 'teal' ? 'text-teal' : 'text-amber',
+          )}
+        />
+      </div>
+      <span className="font-medium text-foreground truncate max-w-[150px]">
+        {displayName}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Collapsible raw message section
+ */
+function RawMessageSection({
+  rawMessage,
+  medicationRaw,
+  accentColor,
+}: {
+  rawMessage: string | null
+  medicationRaw: string | null
+  accentColor: 'teal' | 'amber'
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  if (!rawMessage) return null
+
+  return (
+    <div
+      className={cn(
+        'mt-3 rounded-lg border overflow-hidden transition-all duration-300',
+        accentColor === 'teal'
+          ? 'border-teal/20 bg-linear-to-br from-teal/5 to-transparent'
+          : 'border-amber/20 bg-linear-to-br from-amber/5 to-transparent',
+      )}
+    >
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          'w-full flex items-center justify-between px-3 py-2 text-xs',
+          'hover:bg-white/5 transition-colors',
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <MessageSquare
+            className={cn(
+              'w-3.5 h-3.5',
+              accentColor === 'teal' ? 'text-teal' : 'text-amber',
+            )}
+          />
+          <span className="text-muted-foreground">Original Message</span>
+        </div>
+        {isExpanded ? (
+          <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+        )}
+      </button>
+      {isExpanded && (
+        <div className="px-3 pb-3 text-xs leading-relaxed" dir="auto">
+          <HighlightedMessage
+            text={rawMessage}
+            highlight={medicationRaw}
+            accentColor={accentColor}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ReviewCard({ type, offer, request }: ReviewCardProps) {
   const isOffer = type === 'offer'
 
   if (isOffer && offer) {
     return (
-      <div className="glass-card p-6 rounded-xl border border-teal/30 hover:border-teal/50 transition-all duration-500 shadow-lg shadow-teal/5">
+      <div
+        className={cn(
+          'relative overflow-hidden',
+          'p-6 rounded-2xl',
+          'bg-linear-to-br from-card/80 via-card/60 to-card/40',
+          'border border-teal/30 hover:border-teal/50',
+          'shadow-xl shadow-teal/10 hover:shadow-teal/20',
+          'backdrop-blur-xl',
+          'transition-all duration-500 ease-out',
+          'hover:translate-y-[-2px]',
+        )}
+      >
+        {/* Animated gradient border effect */}
+        <div className="absolute inset-0 -z-10 bg-linear-to-br from-teal/20 via-transparent to-teal/10 opacity-50" />
+        <div className="absolute top-0 right-0 w-32 h-32 -z-10 bg-teal/10 rounded-full blur-3xl" />
+
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-teal animate-pulse" />
-            <span className="text-sm font-semibold text-teal uppercase tracking-wider">
-              Supply Offer
-            </span>
-          </div>
-          <div className="w-8 h-8 rounded-lg bg-teal/20 flex items-center justify-center">
-            <Package className="w-4 h-4 text-teal" />
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-teal to-teal/60 flex items-center justify-center shadow-lg shadow-teal/30">
+                <Package className="w-5 h-5 text-white" />
+              </div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald animate-pulse shadow-lg shadow-emerald/50" />
+            </div>
+            <div>
+              <span className="text-sm font-bold text-teal uppercase tracking-wider">
+                Supply Offer
+              </span>
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Sparkles className="w-3 h-3" />
+                <span>Available</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Source */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4 p-2 rounded-lg bg-teal/5 border border-teal/10">
-          <Building2 className="w-3.5 h-3.5 text-teal" />
-          <span>{offer.source}</span>
-        </div>
-
-        {/* Content */}
-        <div className="space-y-3">
-          {/* Product */}
-          <div className="p-3 rounded-lg bg-teal/10 border border-teal/20 backdrop-blur-sm">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Package className="w-3.5 h-3.5" />
-              <span>Product</span>
-            </div>
-            <span className="text-sm font-medium text-foreground">
-              {offer.product}
+        {/* Source Group & Sender */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-teal/10 border border-teal/20">
+            <Building2 className="w-3.5 h-3.5 text-teal" />
+            <span className="text-xs font-medium text-foreground">
+              {offer.sourceGroup ?? 'Unknown Group'}
             </span>
           </div>
+          <SenderBadge
+            name={offer.senderName}
+            jid={offer.senderJid}
+            accentColor="teal"
+          />
+        </div>
 
-          {/* Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-lg bg-secondary/30 border border-border/50">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                <Hash className="w-3.5 h-3.5" />
-                <span>Quantity</span>
-              </div>
-              <span className="text-sm font-medium text-teal">
-                {offer.quantity}
-              </span>
-            </div>
-            <div className="p-3 rounded-lg bg-secondary/30 border border-border/50">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                <DollarSign className="w-3.5 h-3.5" />
-                <span>Price</span>
-              </div>
-              <span className="text-sm font-medium text-teal">
-                {offer.price}
-              </span>
-            </div>
+        {/* Product - Hero Section */}
+        <div className="p-4 rounded-xl bg-linear-to-br from-teal/15 to-teal/5 border border-teal/20 mb-4">
+          <div className="flex items-center gap-2 text-xs text-teal/80 mb-1">
+            <Package className="w-3.5 h-3.5" />
+            <span className="uppercase tracking-wider font-medium">
+              Medication
+            </span>
           </div>
-
-          {/* Expiry */}
-          <div className="p-3 rounded-lg bg-secondary/30 border border-border/50">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Expiry Date</span>
+          <span className="text-lg font-bold text-foreground">
+            {offer.product}
+          </span>
+          {offer.medicationRaw && offer.medicationRaw !== offer.product && (
+            <div className="text-xs text-muted-foreground mt-1 opacity-70">
+              Raw: {offer.medicationRaw}
             </div>
-            <span className="text-sm font-medium text-foreground">
+          )}
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-teal/30 transition-colors">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+              <Hash className="w-3 h-3" />
+              <span>Qty</span>
+            </div>
+            <span className="text-sm font-bold text-teal">
+              {offer.quantity}
+            </span>
+          </div>
+          <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-teal/30 transition-colors">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+              <DollarSign className="w-3 h-3" />
+              <span>Price</span>
+            </div>
+            <span className="text-sm font-bold text-teal">{offer.price}</span>
+          </div>
+          <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-teal/30 transition-colors">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+              <Calendar className="w-3 h-3" />
+              <span>Expiry</span>
+            </div>
+            <span className="text-sm font-bold text-foreground">
               {offer.expiry}
             </span>
           </div>
         </div>
 
-        {/* Footer decoration */}
+        {/* Raw Message Section */}
+        <RawMessageSection
+          rawMessage={offer.rawMessage}
+          medicationRaw={offer.medicationRaw}
+          accentColor="teal"
+        />
+
+        {/* Footer */}
         <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
-          <div className="flex-1 h-px bg-linear-to-r from-teal/30 to-transparent" />
-          <span>Supply Side</span>
-          <div className="flex-1 h-px bg-linear-to-l from-teal/30 to-transparent" />
+          <div className="flex-1 h-px bg-linear-to-r from-teal/40 to-transparent" />
+          <span className="px-2">Supply Side</span>
+          <div className="flex-1 h-px bg-linear-to-l from-teal/40 to-transparent" />
         </div>
       </div>
     )
@@ -101,71 +295,106 @@ export function ReviewCard({ type, offer, request }: ReviewCardProps) {
 
   if (!isOffer && request) {
     return (
-      <div className="glass-card p-6 rounded-xl border border-amber/30 hover:border-amber/50 transition-all duration-500 shadow-lg shadow-amber/5">
+      <div
+        className={cn(
+          'relative overflow-hidden',
+          'p-6 rounded-2xl',
+          'bg-linear-to-br from-card/80 via-card/60 to-card/40',
+          'border border-amber/30 hover:border-amber/50',
+          'shadow-xl shadow-amber/10 hover:shadow-amber/20',
+          'backdrop-blur-xl',
+          'transition-all duration-500 ease-out',
+          'hover:translate-y-[-2px]',
+        )}
+      >
+        {/* Animated gradient border effect */}
+        <div className="absolute inset-0 -z-10 bg-linear-to-br from-amber/20 via-transparent to-amber/10 opacity-50" />
+        <div className="absolute top-0 right-0 w-32 h-32 -z-10 bg-amber/10 rounded-full blur-3xl" />
+
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-amber animate-pulse" />
-            <span className="text-sm font-semibold text-amber uppercase tracking-wider">
-              Demand Request
-            </span>
-          </div>
-          <div className="w-8 h-8 rounded-lg bg-amber/20 flex items-center justify-center">
-            <TrendingUp className="w-4 h-4 text-amber" />
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-amber to-amber/60 flex items-center justify-center shadow-lg shadow-amber/30">
+                <TrendingUp className="w-5 h-5 text-white" />
+              </div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber animate-pulse shadow-lg shadow-amber/50" />
+            </div>
+            <div>
+              <span className="text-sm font-bold text-amber uppercase tracking-wider">
+                Demand Request
+              </span>
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Sparkles className="w-3 h-3" />
+                <span>Needed</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Source */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4 p-2 rounded-lg bg-amber/5 border border-amber/10">
-          <Building2 className="w-3.5 h-3.5 text-amber" />
-          <span>{request.source}</span>
-        </div>
-
-        {/* Content */}
-        <div className="space-y-3">
-          {/* Product */}
-          <div className="p-3 rounded-lg bg-amber/10 border border-amber/20 backdrop-blur-sm">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Package className="w-3.5 h-3.5" />
-              <span>Product Needed</span>
-            </div>
-            <span className="text-sm font-medium text-foreground">
-              {request.product}
+        {/* Source Group & Sender */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber/10 border border-amber/20">
+            <Building2 className="w-3.5 h-3.5 text-amber" />
+            <span className="text-xs font-medium text-foreground">
+              {request.sourceGroup ?? 'Unknown Group'}
             </span>
           </div>
+          <SenderBadge
+            name={request.senderName}
+            jid={request.senderJid}
+            accentColor="amber"
+          />
+        </div>
 
-          {/* Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-lg bg-secondary/30 border border-border/50">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                <Hash className="w-3.5 h-3.5" />
-                <span>Quantity</span>
-              </div>
-              <span className="text-sm font-medium text-amber">
-                {request.quantity}
-              </span>
-            </div>
-            <div className="p-3 rounded-lg bg-secondary/30 border border-border/50">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                <DollarSign className="w-3.5 h-3.5" />
-                <span>Max Price</span>
-              </div>
-              <span className="text-sm font-medium text-amber">
-                {request.maxPrice}
-              </span>
-            </div>
+        {/* Product - Hero Section */}
+        <div className="p-4 rounded-xl bg-linear-to-br from-amber/15 to-amber/5 border border-amber/20 mb-4">
+          <div className="flex items-center gap-2 text-xs text-amber/80 mb-1">
+            <Package className="w-3.5 h-3.5" />
+            <span className="uppercase tracking-wider font-medium">
+              Medication Needed
+            </span>
           </div>
+          <span className="text-lg font-bold text-foreground">
+            {request.product}
+          </span>
+          {request.medicationRaw &&
+            request.medicationRaw !== request.product && (
+              <div className="text-xs text-muted-foreground mt-1 opacity-70">
+                Raw: {request.medicationRaw}
+              </div>
+            )}
+        </div>
 
-          {/* Urgency */}
-          <div className="p-3 rounded-lg bg-secondary/30 border border-border/50">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <AlertCircle className="w-3.5 h-3.5" />
+        {/* Stats Grid */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-amber/30 transition-colors">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+              <Hash className="w-3 h-3" />
+              <span>Qty</span>
+            </div>
+            <span className="text-sm font-bold text-amber">
+              {request.quantity}
+            </span>
+          </div>
+          <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-amber/30 transition-colors">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+              <DollarSign className="w-3 h-3" />
+              <span>Max</span>
+            </div>
+            <span className="text-sm font-bold text-amber">
+              {request.maxPrice}
+            </span>
+          </div>
+          <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-amber/30 transition-colors">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+              <AlertCircle className="w-3 h-3" />
               <span>Urgency</span>
             </div>
             <Badge
               variant="outline"
               className={cn(
-                'font-medium',
+                'text-[10px] font-bold px-2 py-0.5',
                 request.urgency === 'High' &&
                   'border-destructive/50 text-destructive bg-destructive/10',
                 request.urgency === 'Medium' &&
@@ -179,11 +408,18 @@ export function ReviewCard({ type, offer, request }: ReviewCardProps) {
           </div>
         </div>
 
-        {/* Footer decoration */}
+        {/* Raw Message Section */}
+        <RawMessageSection
+          rawMessage={request.rawMessage}
+          medicationRaw={request.medicationRaw}
+          accentColor="amber"
+        />
+
+        {/* Footer */}
         <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
-          <div className="flex-1 h-px bg-linear-to-r from-amber/30 to-transparent" />
-          <span>Demand Side</span>
-          <div className="flex-1 h-px bg-linear-to-l from-amber/30 to-transparent" />
+          <div className="flex-1 h-px bg-linear-to-r from-amber/40 to-transparent" />
+          <span className="px-2">Demand Side</span>
+          <div className="flex-1 h-px bg-linear-to-l from-amber/40 to-transparent" />
         </div>
       </div>
     )

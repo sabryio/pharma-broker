@@ -9,7 +9,8 @@
     "test": "vitest run",
     "lint": "eslint",
     "format": "prettier",
-    "check": "prettier --write . && eslint --fix"
+    "check": "prettier --write . && eslint --fix",
+    "typecheck": "bunx --bun tsc --noEmit"
   },
   "dependencies": {
     "@faker-js/faker": "^10.0.0",

@@ -3,7 +3,12 @@
 
 export interface ReviewOffer {
   product: string
+  medicationRaw: string | null
   source: string
+  sourceGroup: string | null
+  senderName: string | null
+  senderJid: string | null
+  rawMessage: string | null
   quantity: string
   price: string
   expiry: string
@@ -11,7 +16,12 @@ export interface ReviewOffer {
 
 export interface ReviewRequest {
   product: string
+  medicationRaw: string | null
   source: string
+  sourceGroup: string | null
+  senderName: string | null
+  senderJid: string | null
+  rawMessage: string | null
   quantity: string
   maxPrice: string
   urgency: 'Low' | 'Medium' | 'High'
