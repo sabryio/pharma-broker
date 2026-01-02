@@ -1,6 +1,12 @@
 //! A/B testing module for weight optimization
 //!
 //! Ported from legacy/matching/abtest.go
+//!
+//! Features:
+//! - Deterministic user assignment
+//! - Statistical significance testing
+//! - Auto-rollback on degraded performance
+//! - Auto-promote on success
 
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -8,8 +14,85 @@ use std::sync::RwLock;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 use super::Weights;
+
+// =============================================================================
+// Auto-Rollback Configuration
+// =============================================================================
+
+/// Configuration for automatic rollback/promotion
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoRollbackConfig {
+    /// Whether auto-rollback is enabled
+    pub enabled: bool,
+    /// Minimum samples before auto-rollback can trigger
+    pub min_samples: usize,
+    /// Maximum allowed increase in rejection rate (e.g., 1.2 = 20% increase)
+    pub max_rejection_rate_increase: f64,
+    /// Significance threshold for decisions (default 0.05)
+    pub significance_threshold: f64,
+    /// Minimum uplift percentage to auto-promote (e.g., 5.0 = 5% improvement)
+    pub min_uplift_for_promotion: f64,
+    /// How often to check for auto-rollback (in samples)
+    pub check_interval: usize,
+}
+
+impl Default for AutoRollbackConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            min_samples: 50,
+            max_rejection_rate_increase: 1.2, // 20% increase triggers rollback
+            significance_threshold: 0.05,
+            min_uplift_for_promotion: 5.0, // 5% improvement to auto-promote
+            check_interval: 25,
+        }
+    }
+}
+
+impl AutoRollbackConfig {
+    /// Load from environment variables
+    pub fn from_env() -> Self {
+        Self {
+            enabled: std::env::var("ABTEST_AUTO_ROLLBACK_ENABLED")
+                .map(|v| v != "false")
+                .unwrap_or(true),
+            min_samples: std::env::var("ABTEST_MIN_SAMPLES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(50),
+            max_rejection_rate_increase: std::env::var("ABTEST_MAX_REJECTION_INCREASE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1.2),
+            significance_threshold: std::env::var("ABTEST_SIGNIFICANCE_THRESHOLD")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.05),
+            min_uplift_for_promotion: std::env::var("ABTEST_MIN_UPLIFT_PROMOTION")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(5.0),
+            check_interval: std::env::var("ABTEST_CHECK_INTERVAL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(25),
+        }
+    }
+}
+
+/// Result of auto-rollback/promotion check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AutoDecision {
+    /// Continue the test
+    Continue,
+    /// Rollback to control (test is worse)
+    Rollback { reason: String },
+    /// Promote test weights (test is better)
+    Promote { reason: String, uplift: f64 },
+}
 
 // =============================================================================
 // A/B Test Configuration
@@ -17,7 +100,7 @@ use super::Weights;
 
 /// A/B test experiment configuration
 /// Ported from Go: ABTestConfig (abtest.go:17-28)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ABTestConfig {
     /// Unique identifier for the test
     pub test_id: String,
@@ -37,11 +120,14 @@ pub struct ABTestConfig {
     pub min_samples: usize,
     /// Whether the test is currently active
     pub active: bool,
+    /// Auto-rollback configuration for this test
+    #[serde(default)]
+    pub auto_rollback: Option<AutoRollbackConfig>,
 }
 
 /// A/B test result with statistical analysis
 /// Ported from Go: ABTestResult (abtest.go:30-46)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ABTestResult {
     pub test_id: String,
     pub control_samples: i64,
@@ -58,6 +144,8 @@ pub struct ABTestResult {
     pub p_value: f64,
     /// Percentage improvement of test over control
     pub uplift: f64,
+    /// Auto-decision if auto-rollback is enabled
+    pub auto_decision: Option<AutoDecision>,
 }
 
 /// Atomic statistics for an A/B test
@@ -259,6 +347,7 @@ impl ABTestManager {
             uplift: 0.0,
             control_avg_score: 0.0,
             test_avg_score: 0.0,
+            auto_decision: None,
         };
 
         // Calculate average scores
@@ -285,7 +374,162 @@ impl ABTestManager {
         result.statistically_significant = significant;
         result.p_value = p_value;
 
+        // Calculate auto-decision if enabled
+        if let Some(ref auto_config) = test.auto_rollback
+            && auto_config.enabled
+        {
+            result.auto_decision = Some(self.calculate_auto_decision(&result, auto_config));
+        }
+
         Some(result)
+    }
+
+    /// Calculate auto-rollback/promote decision
+    fn calculate_auto_decision(
+        &self,
+        result: &ABTestResult,
+        config: &AutoRollbackConfig,
+    ) -> AutoDecision {
+        let total_samples = result.control_samples + result.test_samples;
+
+        // Not enough samples yet
+        if total_samples < config.min_samples as i64 {
+            return AutoDecision::Continue;
+        }
+
+        // Calculate rejection rates
+        let control_rejection_rate = if result.control_samples > 0 {
+            result.control_rejected as f64 / result.control_samples as f64
+        } else {
+            0.0
+        };
+
+        let test_rejection_rate = if result.test_samples > 0 {
+            result.test_rejected as f64 / result.test_samples as f64
+        } else {
+            0.0
+        };
+
+        // Check for rollback condition: test rejection rate significantly higher
+        if control_rejection_rate > 0.0 {
+            let rejection_increase = test_rejection_rate / control_rejection_rate;
+            if rejection_increase > config.max_rejection_rate_increase
+                && result.p_value < config.significance_threshold
+            {
+                return AutoDecision::Rollback {
+                    reason: format!(
+                        "Test rejection rate {:.1}% is {:.1}x higher than control {:.1}% (threshold: {:.1}x)",
+                        test_rejection_rate * 100.0,
+                        rejection_increase,
+                        control_rejection_rate * 100.0,
+                        config.max_rejection_rate_increase
+                    ),
+                };
+            }
+        }
+
+        // Check for promotion condition: significant positive uplift
+        if result.statistically_significant
+            && result.uplift >= config.min_uplift_for_promotion
+            && result.p_value < config.significance_threshold
+        {
+            return AutoDecision::Promote {
+                reason: format!(
+                    "Test shows {:.1}% uplift with p-value {:.4} (threshold: {:.1}%)",
+                    result.uplift, result.p_value, config.min_uplift_for_promotion
+                ),
+                uplift: result.uplift,
+            };
+        }
+
+        AutoDecision::Continue
+    }
+
+    /// Check and apply auto-rollback/promote for a test
+    /// Returns the decision made (if any)
+    pub fn check_auto_rollback(&self, test_id: &str) -> Option<AutoDecision> {
+        let result = self.get_test_result(test_id)?;
+        let decision = result.auto_decision.clone()?;
+
+        match &decision {
+            AutoDecision::Rollback { reason } => {
+                tracing::warn!(
+                    test_id = test_id,
+                    reason = reason.as_str(),
+                    "🔙 Auto-rolling back A/B test"
+                );
+                self.end_test(test_id);
+            }
+            AutoDecision::Promote { reason, uplift } => {
+                tracing::info!(
+                    test_id = test_id,
+                    reason = reason.as_str(),
+                    uplift = *uplift,
+                    "🎉 Auto-promoting A/B test weights"
+                );
+                // Promote test weights to base weights
+                if let Some(test) = self.tests.read().unwrap().get(test_id) {
+                    self.set_base_weights(test.test_weights.clone());
+                }
+                self.end_test(test_id);
+            }
+            AutoDecision::Continue => {}
+        }
+
+        Some(decision)
+    }
+
+    /// Record feedback and check for auto-rollback
+    /// Returns auto-decision if one was made
+    pub fn record_feedback_with_auto_check(
+        &self,
+        user_id: &str,
+        confirmed: bool,
+        score: f64,
+    ) -> Option<(String, AutoDecision)> {
+        self.record_feedback(user_id, confirmed, score);
+
+        // Collect test IDs to check (to avoid holding locks during check)
+        let tests_to_check: Vec<(String, usize)> = {
+            let tests = self.tests.read().unwrap();
+            let stats = self.stats.read().unwrap();
+
+            tests
+                .iter()
+                .filter_map(|(test_id, test)| {
+                    if !test.active {
+                        return None;
+                    }
+
+                    let auto_config = test.auto_rollback.as_ref()?;
+                    if !auto_config.enabled {
+                        return None;
+                    }
+
+                    let test_stats = stats.get(test_id)?;
+                    let total = test_stats.control_samples.load(Ordering::Relaxed)
+                        + test_stats.test_samples.load(Ordering::Relaxed);
+
+                    // Only check at intervals
+                    if (total as usize).is_multiple_of(auto_config.check_interval) {
+                        Some((test_id.clone(), auto_config.check_interval))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
+
+        // Check each test (locks released)
+        for (test_id, _) in tests_to_check {
+            if let Some(decision) = self.check_auto_rollback(&test_id)
+                && !matches!(decision, AutoDecision::Continue)
+            {
+                return Some((test_id, decision));
+            }
+        }
+
+        None
     }
 
     /// Calculate statistical significance (simplified chi-square test)
@@ -429,6 +673,7 @@ mod tests {
             end_time: Utc::now() + Duration::hours(1),
             min_samples: 10,
             active: true,
+            auto_rollback: None,
         }
     }
 

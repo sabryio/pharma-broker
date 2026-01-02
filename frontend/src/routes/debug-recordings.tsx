@@ -44,6 +44,7 @@ import {
   generateMockHeatmapData,
   ProgressBar,
   Sparkline,
+  AuditRecordsViewer,
   type MatchRecording,
   type PipelineRecording,
 } from '@/components/debug-recordings'
@@ -62,7 +63,7 @@ export const Route = createFileRoute('/debug-recordings')({
   component: DebugRecordings,
 })
 
-type ViewMode = 'overview' | 'recordings' | 'pipeline' | 'analytics'
+type ViewMode = 'overview' | 'recordings' | 'pipeline' | 'analytics' | 'audit'
 type SortBy = 'date' | 'duration' | 'snapshots' | 'confidence'
 type FilterOutcome = 'all' | 'approved' | 'rejected' | 'pending'
 
@@ -93,6 +94,7 @@ function ViewModeTabs({
     { id: 'recordings', label: 'Recordings', icon: Video },
     { id: 'pipeline', label: 'Pipeline', icon: GitBranch },
     { id: 'analytics', label: 'Analytics', icon: Activity },
+    { id: 'audit', label: 'Audit Records', icon: Database },
   ]
 
   return (
@@ -732,6 +734,11 @@ function DebugRecordings() {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Audit Records Mode */}
+          {viewMode === 'audit' && (
+            <AuditRecordsViewer />
           )}
         </div>
 

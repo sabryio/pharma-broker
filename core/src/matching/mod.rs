@@ -7,6 +7,7 @@ mod actions;
 mod alias_learner;
 pub mod arabic;
 mod audit;
+mod audit_recorder;
 mod auditor_factory;
 mod calibration;
 mod confidence;
@@ -31,6 +32,7 @@ mod score_types;
 mod scorer;
 mod service;
 mod thresholds;
+mod uncertainty_estimator;
 mod warm_start;
 mod weights;
 
@@ -51,7 +53,9 @@ pub use scorer::{MatchScore, Scorer};
 pub use actions::{AutoActionConfig, AutoActionHandler, MatchAction, ParseAction};
 
 // --- abtest ---
-pub use abtest::{ABTestConfig, ABTestManager, ABTestResult, ABTestStats};
+pub use abtest::{
+    ABTestConfig, ABTestManager, ABTestResult, ABTestStats, AutoDecision, AutoRollbackConfig,
+};
 
 // --- audit ---
 pub use audit::{
@@ -167,6 +171,20 @@ pub use auditor_factory::{
 pub use contrastive_validator::{
     ContrastiveConfig, ContrastiveResult, ContrastiveStats, ContrastiveStatsSnapshot,
     ContrastiveValidator,
+};
+
+// --- audit_recorder ---
+pub use audit_recorder::{
+    AIInvolvementRecord, AuditRecordBuilder, AuditRecorder, AuditRecorderConfig,
+    AuditRecorderStats, AuditRecorderStatsSnapshot, ClientMetadata, FrontendAuditRecord,
+    MatchAuditRecord, PipelineStageRecord, PipelineStageSummary, ReplayContext, ResolutionDetails,
+    StageTimer,
+};
+
+// --- uncertainty_estimator ---
+pub use uncertainty_estimator::{
+    EnsembleUncertainty, EnsembleUncertaintyResult, UncertaintyConfig, UncertaintyEstimator,
+    UncertaintyResult,
 };
 
 // =============================================================================

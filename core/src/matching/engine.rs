@@ -19,14 +19,15 @@ use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use super::{
-    ABTestConfig, ABTestManager, ABTestResult, AIClient, AIReviewer, AuditTrail, AuditTrailConfig,
-    AutoActionHandler, CalibrationConfig, CalibrationReport, ConfidenceCalibrator,
-    ConfidenceConfig, ConfidenceManager, ConfidenceManagerStats, EmbeddingCache,
-    EmbeddingCacheStatsSnapshot, HistoricalLearner, HistoricalLearnerStats,
+    ABTestConfig, ABTestManager, ABTestResult, AIClient, AIReviewer, AuditRecorder, AuditTrail,
+    AuditTrailConfig, AutoActionHandler, CalibrationConfig, CalibrationReport,
+    ConfidenceCalibrator, ConfidenceConfig, ConfidenceManager, ConfidenceManagerStats,
+    EmbeddingCache, EmbeddingCacheStatsSnapshot, HistoricalLearner, HistoricalLearnerStats,
     HistoricalLearningConfig, JobStatus, LearnerError, MatchAction, MatchFilter, MatchFilterConfig,
     MatchFilterStatsSnapshot, MatchScore, MedicationAffinity, OutlierDetector,
     OutlierDetectorConfig, PerformanceMetrics, ReviewResult, ReviewStatus, SchedulerConfig,
-    SchedulerStatus, Scorer, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
+    SchedulerStatus, Scorer, UncertaintyConfig, UncertaintyEstimator, WarmStartConfig,
+    WarmStartManager, WeightLearner, Weights,
 };
 
 /// Runtime state for the learning scheduler job
@@ -101,6 +102,10 @@ pub struct MatchingEngine {
     audit_trail: AuditTrail,
     /// Historical pattern learner
     historical_learner: HistoricalLearner,
+    /// Audit recorder for debugging/replay
+    audit_recorder: AuditRecorder,
+    /// Uncertainty estimator
+    uncertainty_estimator: UncertaintyEstimator,
     /// Configuration
     config: RwLock<MatchingEngineConfig>,
     /// Current sample count for warm start
@@ -143,6 +148,9 @@ impl MatchingEngine {
         let embedding_cache = EmbeddingCache::new();
         let audit_trail = AuditTrail::new(config.audit_trail.clone());
         let historical_learner = HistoricalLearner::new(config.historical.clone());
+        let audit_recorder = AuditRecorder::from_env();
+        let uncertainty_estimator =
+            UncertaintyEstimator::new(UncertaintyConfig::from_env(), config.weights.clone());
 
         let ai_client = Arc::new(AIClient::from_env());
         let ai_reviewer = Arc::new(AIReviewer::new(ai_client.clone()));
@@ -159,6 +167,8 @@ impl MatchingEngine {
             embedding_cache,
             audit_trail,
             historical_learner,
+            audit_recorder,
+            uncertainty_estimator,
             config: RwLock::new(config),
             sample_count: RwLock::new(0),
             scheduler_handle: RwLock::new(None),
@@ -863,6 +873,16 @@ impl MatchingEngine {
         self.scorer.get_weights()
     }
 
+    /// Get audit recorder reference
+    pub fn get_audit_recorder(&self) -> &AuditRecorder {
+        &self.audit_recorder
+    }
+
+    /// Get uncertainty estimator reference
+    pub fn get_uncertainty_estimator(&self) -> &UncertaintyEstimator {
+        &self.uncertainty_estimator
+    }
+
     /// Update configuration
     pub async fn update_config(&self, config: MatchingEngineConfig) {
         // Update scorer
@@ -1270,6 +1290,7 @@ mod tests {
             end_time: Utc::now() + Duration::hours(1),
             min_samples: 10,
             active: true,
+            auto_rollback: None,
         };
 
         let result = engine.create_ab_test(test_config);

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   CheckCircle,
@@ -32,6 +32,9 @@ import {
   groupByRequest,
   type OfferWithMatches,
   type RequestWithMatches,
+  FilterBar,
+  defaultFilterState,
+  type FilterState,
 } from '@/components/review-queue'
 import { CurationMode } from '@/components/medication-curation'
 import { useNotifications } from '@/hooks/use-notifications'
@@ -71,6 +74,7 @@ export default function ReviewQueue() {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [adjustments] = useState<AdjustmentSettings>(defaultAdjustments)
   const [optimisticallyRemoved, setOptimisticallyRemoved] = useState<Set<string>>(new Set())
+  const [filters, setFilters] = useState<FilterState>(defaultFilterState)
 
   // Carousel state
   const [anchorMode, setAnchorMode] = useState<'offer' | 'request'>('offer')
@@ -86,9 +90,68 @@ export default function ReviewQueue() {
     (item) => !optimisticallyRemoved.has(item.id),
   )
 
-  // Grouped reviews
-  const groupedOffers = groupByOffer(pendingReviews)
-  const groupedRequests = groupByRequest(pendingReviews)
+  // Apply filters
+  const filteredReviews = useMemo(() => {
+    let result = pendingReviews
+
+    // Confidence band filter
+    if (filters.confidenceBand !== 'all') {
+      result = result.filter((item) => {
+        if (filters.confidenceBand === 'high') return item.confidence >= 80
+        if (filters.confidenceBand === 'medium')
+          return item.confidence >= 50 && item.confidence < 80
+        if (filters.confidenceBand === 'low') return item.confidence < 50
+        return true
+      })
+    }
+
+    // Confidence range filter
+    result = result.filter(
+      (item) =>
+        item.confidence >= filters.minConfidence &&
+        item.confidence <= filters.maxConfidence,
+    )
+
+    // Medication search filter
+    if (filters.medicationSearch) {
+      const search = filters.medicationSearch.toLowerCase()
+      result = result.filter(
+        (item) =>
+          item.offer.product.toLowerCase().includes(search) ||
+          item.request.product.toLowerCase().includes(search) ||
+          item.offer.medicationRaw?.toLowerCase().includes(search) ||
+          item.request.medicationRaw?.toLowerCase().includes(search),
+      )
+    }
+
+    // AI status filter
+    if (filters.aiStatusFilter !== 'all') {
+      result = result.filter((item) => {
+        if (filters.aiStatusFilter === 'pending') return !item.aiStatus
+        return item.aiStatus?.toLowerCase() === filters.aiStatusFilter
+      })
+    }
+
+    // Sorting
+    result = [...result].sort((a, b) => {
+      let comparison = 0
+      if (filters.sortBy === 'confidence') {
+        comparison = a.confidence - b.confidence
+      } else if (filters.sortBy === 'age') {
+        comparison =
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      } else if (filters.sortBy === 'medication') {
+        comparison = a.offer.product.localeCompare(b.offer.product)
+      }
+      return filters.sortOrder === 'desc' ? -comparison : comparison
+    })
+
+    return result
+  }, [pendingReviews, filters])
+
+  // Grouped reviews (use filtered)
+  const groupedOffers = groupByOffer(filteredReviews)
+  const groupedRequests = groupByRequest(filteredReviews)
 
   const groups = anchorMode === 'offer' ? groupedOffers : groupedRequests
   const currentGroup = groups[anchorIndex]
@@ -619,7 +682,15 @@ export default function ReviewQueue() {
 
         {reviewMode === 'match' ? (
           <>
-            <QueueProgress pending={pendingReviews.length} total={totalReviews} />
+            {/* Filter Bar */}
+            <FilterBar
+              filters={filters}
+              onFiltersChange={setFilters}
+              totalCount={pendingReviews.length}
+              filteredCount={filteredReviews.length}
+            />
+
+            <QueueProgress pending={filteredReviews.length} total={totalReviews} />
             {showHistory && <HistoryLog history={history} onRestore={restoreFromHistory} />}
             {bulkMode && (
               <BulkModeGrid

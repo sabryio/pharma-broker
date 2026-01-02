@@ -5,13 +5,16 @@ import { useCallback, useState } from 'react'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { ChevronLeft, ChevronRight, Layers, ArrowLeftRight, Sparkles, Calculator } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Layers, ArrowLeftRight, Sparkles, Calculator, GitCompare, Activity } from 'lucide-react'
 import type { OfferWithMatches, RequestWithMatches } from './types'
 import { ReviewCard } from './review-card'
 import { MatchConfidenceMeter } from './match-confidence-meter'
+import { MatchComparison } from './match-comparison'
+import { ReasoningPanel } from './reasoning-panel'
 import { CurationDialog } from './curation-dialog'
 import { ReclassifyDialog } from '@/components/ui/reclassify-dialog'
 import { ReparseDialog } from '@/components/ui/reparse-dialog'
+import { UncertaintyIndicator } from '@/components/debug-recordings'
 import type { ItemType } from '@/api/offers'
 import { rematchItem } from '@/api/matching'
 import { reAuditMatch, recalculateConfidence } from '@/api/match-reviews'
@@ -54,6 +57,7 @@ export function RelatedMatchCarousel({
     null,
   )
   const [curationAliasId, setCurationAliasId] = useState<string | null>(null)
+  const [showComparison, setShowComparison] = useState(false)
 
   // Reclassify dialog state
   const [reclassifyItem, setReclassifyItem] = useState<{
@@ -297,15 +301,31 @@ export function RelatedMatchCarousel({
         </button>
 
         {/* Right: Match Count */}
-        <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary/30 border border-border/30">
-          <Layers className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm">
-            <span className="text-amber font-bold">{totalMatches}</span>
-            <span className="text-muted-foreground">
-              {' '}
-              match{totalMatches !== 1 ? 'es' : ''}
+        <div className="flex items-center gap-2">
+          {/* Comparison Toggle */}
+          <button
+            onClick={() => setShowComparison(!showComparison)}
+            className={cn(
+              'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium',
+              'transition-all duration-200',
+              showComparison
+                ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30'
+                : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:border-border',
+            )}
+          >
+            <GitCompare className="w-3.5 h-3.5" />
+            Compare
+          </button>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary/30 border border-border/30">
+            <Layers className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm">
+              <span className="text-amber font-bold">{totalMatches}</span>
+              <span className="text-muted-foreground">
+                {' '}
+                match{totalMatches !== 1 ? 'es' : ''}
+              </span>
             </span>
-          </span>
+          </div>
         </div>
       </div>
 
@@ -355,6 +375,13 @@ export function RelatedMatchCarousel({
               onClick={handleRematch}
               isPending={rematchMutation.isPending}
             />
+
+            {/* Uncertainty Indicator */}
+            <div className="mt-3 flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/30">
+              <Activity className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-xs text-muted-foreground">Uncertainty:</span>
+              <UncertaintyIndicator matchId={currentMatch.matchId} />
+            </div>
 
             {/* AI Tools Panel */}
             <div className="mt-6 w-full max-w-xs">
@@ -609,6 +636,37 @@ export function RelatedMatchCarousel({
           >
             ✓ Approve
           </button>
+        </div>
+
+        {/* Comparison Panel */}
+        {showComparison && (
+          <div className="mt-6 animate-fade-in">
+            <MatchComparison
+              offer={
+                isOfferMode
+                  ? (currentGroup as OfferWithMatches).offer
+                  : (currentMatch as { offer: any }).offer
+              }
+              request={
+                isOfferMode
+                  ? (currentMatch as { request: any }).request
+                  : (currentGroup as RequestWithMatches).request
+              }
+              className="p-4 rounded-xl bg-secondary/20 border border-border/30"
+            />
+          </div>
+        )}
+
+        {/* Reasoning Panel */}
+        <div className="mt-6">
+          <ReasoningPanel
+            confidence={currentMatch.confidence}
+            reasoning={null}
+            aiStatus={currentMatch.aiStatus}
+            aiConfidence={currentMatch.aiConfidence}
+            aiExplanation={currentMatch.aiExplanation}
+            issues={issues}
+          />
         </div>
       </div>
 

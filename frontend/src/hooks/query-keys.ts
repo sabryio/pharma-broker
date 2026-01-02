@@ -82,6 +82,32 @@ export const queryKeys = {
     aliases: (masterId: string) =>
       [...queryKeys.medications.all, 'aliases', masterId] as const,
   },
+
+  // Audit Records
+  auditRecords: {
+    all: ['audit-records'] as const,
+    lists: () => [...queryKeys.auditRecords.all, 'list'] as const,
+    list: (params: {
+      limit?: number
+      sessionId?: string
+      minScore?: number
+      aiInvolved?: boolean
+    }) => [...queryKeys.auditRecords.lists(), params] as const,
+    details: () => [...queryKeys.auditRecords.all, 'detail'] as const,
+    detail: (matchId: string) =>
+      [...queryKeys.auditRecords.details(), matchId] as const,
+    session: (sessionId: string) =>
+      [...queryKeys.auditRecords.all, 'session', sessionId] as const,
+    status: () => [...queryKeys.auditRecords.all, 'status'] as const,
+  },
+
+  // Uncertainty Estimation
+  uncertainty: {
+    all: ['uncertainty'] as const,
+    status: () => [...queryKeys.uncertainty.all, 'status'] as const,
+    match: (matchId: string) =>
+      [...queryKeys.uncertainty.all, 'match', matchId] as const,
+  },
 } as const
 
 // Type helper for query keys

@@ -25,3 +25,9 @@ export {
   PipelineViewer,
   generateMockPipelineRecording,
 } from './pipeline-viewer'
+
+// Audit Records Components
+export { AuditRecordsViewer } from './audit-records-viewer'
+
+// Uncertainty Components
+export { UncertaintyPanel, UncertaintyIndicator } from './uncertainty-panel'

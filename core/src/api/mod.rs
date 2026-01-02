@@ -2,6 +2,7 @@
 //!
 //! Ported from legacy/api/handlers/*.go
 
+pub mod audit_records;
 pub mod audit_trail;
 pub mod calibration;
 pub mod confidence;
@@ -19,6 +20,7 @@ pub mod reclassify;
 pub mod reparse;
 pub mod review_queue;
 pub mod routes;
+pub mod uncertainty;
 pub mod weights;
 
 pub use rate_limit::{RateLimitConfig, RateLimiter};

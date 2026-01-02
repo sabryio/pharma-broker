@@ -353,6 +353,7 @@ where
         end_time: Utc::now() + Duration::hours(req.duration_hours),
         min_samples: req.min_samples,
         active: true,
+        auto_rollback: None, // Can be configured via separate endpoint
     };
 
     engine

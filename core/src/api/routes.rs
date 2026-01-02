@@ -15,8 +15,9 @@ use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
 
 use super::{
-    audit_trail, calibration, confidence, curation, diagnostics, embedding_cache, groups, handlers,
-    match_filter, match_reviews, matching, reclassify, reparse, review_queue, weights,
+    audit_records, audit_trail, calibration, confidence, curation, diagnostics, embedding_cache,
+    groups, handlers, match_filter, match_reviews, matching, reclassify, reparse, review_queue,
+    uncertainty, weights,
 };
 use crate::ai::PharmaParser;
 use crate::matching::{AliasLearner, MatchingEngine};
@@ -368,6 +369,44 @@ where
         .route(
             "/api/diagnostics/queries",
             get(diagnostics::analyze_queries::<RQ, A, MM>),
+        )
+        // Audit Records (Match Debug/Replay)
+        .route(
+            "/api/audit-records",
+            get(audit_records::list_audit_records::<RQ, A, MM>),
+        )
+        .route(
+            "/api/audit-records/status",
+            get(audit_records::get_audit_recorder_status::<RQ, A, MM>),
+        )
+        .route(
+            "/api/audit-records/session/{session_id}",
+            get(audit_records::get_session_records::<RQ, A, MM>),
+        )
+        .route(
+            "/api/audit-records/{match_id}",
+            get(audit_records::get_audit_record::<RQ, A, MM>),
+        )
+        .route(
+            "/api/audit-records/{match_id}/review",
+            put(audit_records::update_audit_review::<RQ, A, MM>),
+        )
+        // Uncertainty Estimation
+        .route(
+            "/api/uncertainty/status",
+            get(uncertainty::get_uncertainty_status::<RQ, A, MM>),
+        )
+        .route(
+            "/api/uncertainty/estimate",
+            post(uncertainty::estimate_uncertainty::<RQ, A, MM>),
+        )
+        .route(
+            "/api/uncertainty/batch",
+            post(uncertainty::batch_estimate_uncertainty::<RQ, A, MM>),
+        )
+        .route(
+            "/api/uncertainty/match/{match_id}",
+            get(uncertainty::estimate_match_uncertainty::<RQ, A, MM>),
         )
         // WebSocket
         .route("/ws", get(ws::ws_handler::<RQ, A, MM>))

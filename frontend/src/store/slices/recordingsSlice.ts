@@ -7,7 +7,7 @@ import type {
   MatchRecordingSnapshot,
 } from '@/components/debug-recordings/types'
 
-type ViewMode = 'overview' | 'recordings' | 'pipeline' | 'analytics'
+type ViewMode = 'overview' | 'recordings' | 'pipeline' | 'analytics' | 'audit'
 
 interface PlaybackState {
   recordingId: string | null
