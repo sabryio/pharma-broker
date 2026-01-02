@@ -194,10 +194,12 @@ where
                     jid: proto_msg.group_jid.clone(),
                     name: proto_msg.group_name.clone(),
                     description: None,
-                    monitored: true, // Default to monitored for new groups discovered via bridge
+                    monitoring: true, // Default to monitored for new groups discovered via bridge
+                    parsing: true,
                     added_at: Utc::now(),
                     last_message: Some(Utc::now()),
                     message_count: 0,
+                    member_count: 0,
                 };
                 if let Err(e) = self.group_repo.save(&new_group).await {
                     tracing::error!(error = %e, group = %proto_msg.group_jid, "Failed to auto-create group");
@@ -219,7 +221,7 @@ where
             }
         };
 
-        if !group.monitored {
+        if !group.monitoring {
             tracing::info!(
                 group = %proto_msg.group_jid,
                 "⏭️ Group not monitored, skipping message"
@@ -797,6 +799,7 @@ where
                 jid,
                 name,
                 description,
+                member_count,
             } = proto_group;
 
             // Check if group exists
@@ -812,13 +815,15 @@ where
                     Some(description.clone())
                 },
                 // Preserve monitoring status for existing groups, default to false for new
-                monitored: existing.as_ref().map(|e| e.monitored).unwrap_or(false),
+                monitoring: existing.as_ref().map(|e| e.monitoring).unwrap_or(false),
+                parsing: true,
                 added_at: existing
                     .as_ref()
                     .map(|e| e.added_at)
                     .unwrap_or_else(Utc::now),
                 last_message: existing.as_ref().and_then(|e| e.last_message),
                 message_count: existing.as_ref().map(|e| e.message_count).unwrap_or(0),
+                member_count,
             };
 
             if existing.is_some() {

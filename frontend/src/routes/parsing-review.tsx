@@ -81,7 +81,7 @@ export default function ParsingReview() {
 
   // Handle action (approve/reject/skip)
   const handleAction = useCallback(
-    (action: 'approved' | 'rejected' | 'skipped') => {
+    (action: 'Approved' | 'Rejected' | 'Skipped') => {
       if (!current) return
 
       // Add to history for undo
@@ -113,9 +113,9 @@ export default function ParsingReview() {
       }
 
       const messages = {
-        approved: '✓ Approved - Will create offer/request',
-        rejected: '✗ Rejected - Discarded',
-        skipped: '→ Skipped for later',
+        Approved: '✓ Approved - Will create offer/request',
+        Rejected: '✗ Rejected - Discarded',
+        Skipped: '→ Skipped for later',
       }
 
       toast.success(messages[action], {
@@ -168,14 +168,14 @@ export default function ParsingReview() {
         case 'Enter':
           if (current) {
             e.preventDefault()
-            handleAction('approved')
+            handleAction('Approved')
           }
           break
         case 'Backspace':
         case 'Delete':
           if (current) {
             e.preventDefault()
-            handleAction('rejected')
+            handleAction('Rejected')
           }
           break
         case 'z':
@@ -377,9 +377,9 @@ export default function ParsingReview() {
                 {/* Actions */}
                 <div className="w-full max-w-sm">
                   <ParsingReviewActions
-                    onApprove={() => handleAction('approved')}
-                    onReject={() => handleAction('rejected')}
-                    onSkip={() => handleAction('skipped')}
+                    onApprove={() => handleAction('Approved')}
+                    onReject={() => handleAction('Rejected')}
+                    onSkip={() => handleAction('Skipped')}
                     loading={updateMutation.isPending}
                   />
                 </div>

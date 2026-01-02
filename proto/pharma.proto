@@ -89,6 +89,7 @@ message GroupInfo {
     string jid = 1;
     string name = 2;
     string description = 3;
+    int32 member_count = 4;
 }
 
 // SyncGroupsRequest for syncing groups from Bridge to Core

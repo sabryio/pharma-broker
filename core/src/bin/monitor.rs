@@ -227,7 +227,7 @@ impl App {
             .map(|g| GroupItem {
                 jid: g.jid,
                 name: g.name,
-                monitored: g.monitored,
+                monitored: g.monitoring,
             })
             .collect();
 

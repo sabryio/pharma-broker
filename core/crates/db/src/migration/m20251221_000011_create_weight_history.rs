@@ -45,6 +45,8 @@ impl MigrationTrait for Migration {
                             .double()
                             .not_null(),
                     )
+                    // AI Logic weight
+                    .col(ColumnDef::new(WeightHistory::AiLogicWeight).double())
                     .col(ColumnDef::new(WeightHistory::Source).text().not_null())
                     .col(
                         ColumnDef::new(WeightHistory::SampleCount)
@@ -79,8 +81,8 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute_unprepared(
                 r#"
-                INSERT INTO weight_history (medication_weight, dosage_weight, quantity_weight, price_weight, recency_weight, source, sample_count)
-                SELECT 0.35, 0.20, 0.15, 0.15, 0.15, 'initial', 0
+                INSERT INTO weight_history (medication_weight, dosage_weight, quantity_weight, price_weight, recency_weight, ai_logic_weight, source, sample_count)
+                SELECT 0.55, 0.05, 0.05, 0.05, 0.30, NULL, 'initial', 0
                 WHERE NOT EXISTS (SELECT 1 FROM weight_history)
                 "#,
             )
@@ -105,6 +107,8 @@ pub enum WeightHistory {
     QuantityWeight,
     PriceWeight,
     RecencyWeight,
+    // AI Logic weight
+    AiLogicWeight,
     Source,
     SampleCount,
     CreatedAt,

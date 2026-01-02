@@ -59,6 +59,8 @@ impl MigrationTrait for Migration {
                             .double()
                             .not_null(),
                     )
+                    // AI Logic score
+                    .col(ColumnDef::new(FeedbackRecords::AiLogicScore).double())
                     .col(
                         ColumnDef::new(FeedbackRecords::CreatedAt)
                             .timestamp_with_time_zone()
@@ -143,5 +145,7 @@ pub enum FeedbackRecords {
     PriceScore,
     RecencyScore,
     TotalScore,
+    // AI Logic score
+    AiLogicScore,
     CreatedAt,
 }

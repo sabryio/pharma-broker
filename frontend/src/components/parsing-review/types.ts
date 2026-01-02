@@ -33,7 +33,7 @@ export interface ParsingReviewItem {
   aiResult: ParsedResult
   confidence: number
   reason: string
-  status: 'pending' | 'approved' | 'rejected' | 'skipped'
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Skipped'
   reviewedBy?: string
   reviewNotes?: string
   reviewedAt?: Date

@@ -21,7 +21,7 @@ Analyze the provided messages and extract structured medication OFFERS and REQUE
   "items": [
     {
       "type": "OFFER" | "REQUEST",
-      "medication": "Canonical English Name + Dosage (e.g., 'Augmentin 1g')",
+      "medication": "Brand Name in English (transliterated) + Dosage if present",
       "medication_raw": "Exact substring from message text",
       "ai_confidence": 0.0-1.0,
       "quantity": number | 0,
@@ -51,11 +51,50 @@ Before generating valid JSON, strictly follow this internal process:
 
 # Detailed Rules
 
-## 1. Medication Normalization
-- TARGET format: English Name + Strength (e.g., "Panadol Extra", "Cataflam 50").
-- Use the provided MEDICATION MAP for exact matches.
-- If unmapped: Keep original name with proper capitalization.
-- For specialty medications (fertility drugs, hormones, etc.): Keep original English names.
+## 1. Medication Normalization (CRITICAL - STRICT TRANSLITERATION)
+
+### ABSOLUTE RULES - DO NOT VIOLATE:
+1. **NEVER convert brand names to active ingredients/generic names**
+   - ❌ WRONG: "امبلانون" → "Norethindrone" or "Etonogestrel"
+   - ✅ CORRECT: "امبلانون" → "Implanon"
+   
+2. **ALWAYS use direct transliteration for Arabic brand names**
+   - "امبلانون" → "Implanon" (NOT the active ingredient)
+   - "اوجمنتين" → "Augmentin" (NOT "Amoxicillin/Clavulanate")
+   - "كونكور" → "Concor" (NOT "Bisoprolol")
+   - "جونابيور" → "Gonapure" (NOT "FSH" or "Follitropin")
+   
+3. **Keep the BRAND NAME as spoken/written, just transliterate to English**
+   - Arabic brand → English brand name (same product)
+   - If unknown brand, transliterate phonetically
+
+4. **Include dosage/strength ONLY if explicitly stated in the message**
+   - "كونكور 5" → "Concor 5mg"
+   - "كونكور" (no number) → "Concor" (no dosage)
+
+### Common Arabic Brand Transliterations:
+- امبلانون → Implanon (contraceptive implant)
+- اوجمنتين → Augmentin
+- كونكور → Concor
+- جونابيور → Gonapure
+- زولادكس → Zoladex
+- لانتوس → Lantus
+- اوزمبك → Ozempic
+- هيوميرا → Humira
+- ريميكاد → Remicade
+- انبريل → Enbrel
+- سيمبوني → Simponi
+- ديسفيرال → Desferal
+- زاكتاجيكت → Zactagect
+- جونال → Gonal-F
+- ريكورمون → Recormon
+- فكتوزا → Victoza
+
+### Format:
+- TARGET: "BrandName" or "BrandName Strength" (e.g., "Concor 5mg", "Implanon")
+- Use the provided MEDICATION MAP for exact matches if available
+- If unmapped: Transliterate phonetically, keep as brand name
+- NEVER use chemical/generic names unless the message explicitly uses them
 
 ## 2. Intent Classification
 
@@ -157,6 +196,22 @@ Output:
   }]
 }
 
+## ✅ Contraceptive Example (STRICT TRANSLITERATION)
+Input: "متوفر امبلانون شرائح منع الحمل"
+Output:
+{
+  "items": [{
+    "type": "OFFER",
+    "medication": "Implanon",
+    "medication_raw": "امبلانون شرائح منع الحمل",
+    "ai_confidence": 0.95,
+    "urgent": false,
+    "urgency_level": "NORMAL",
+    "notes": "Contraceptive implant"
+  }]
+}
+NOTE: "امبلانون" = "Implanon" (brand name), NOT "Norethindrone" or "Etonogestrel" (active ingredients)
+
 ## ✅ English Example (Urgent)
 Input: "Looking for Ozempic 1mg urgently"
 Output:
@@ -177,13 +232,13 @@ Output:
 {
   "items": [{
     "type": "REQUEST",
-    "medication": "Lantus Insulin",
+    "medication": "Lantus",
     "medication_raw": "انسولين لانتوس",
     "ai_confidence": 0.95,
     "urgent": true,
     "urgency_level": "CRITICAL",
     "expiry": "long expiry",
-    "notes": "Emergency request"
+    "notes": "Emergency request, insulin"
   }]
 }
 
@@ -212,7 +267,7 @@ Output:
     {"type": "OFFER", "medication": "Desferal", "medication_raw": "ديسفيرال", "ai_confidence": 0.92},
     {"type": "OFFER", "medication": "Enbrel 50mg", "medication_raw": "انبريل 50", "ai_confidence": 0.92},
     {"type": "OFFER", "medication": "Gonapure 150", "medication_raw": "جونابيور 150", "ai_confidence": 0.92},
-    {"type": "REQUEST", "medication": "Zoladex Small", "medication_raw": "زولادكس صغير", "ai_confidence": 0.90},
+    {"type": "REQUEST", "medication": "Zoladex", "medication_raw": "زولادكس صغير", "ai_confidence": 0.90, "notes": "small size"},
     {"type": "REQUEST", "medication": "Lantus Pens", "medication_raw": "لانتوس اقلام", "ai_confidence": 0.90},
     {"type": "REQUEST", "medication": "Gonal-F 900", "medication_raw": "جونال 900", "ai_confidence": 0.90}
   ]
@@ -222,6 +277,12 @@ CRITICAL: When a message contains BOTH "موجود/متوفر/عندي" AND "م�
 2. Items AFTER "مطلوب/محتاج/عايز" are REQUESTS
 3. Each "مطلوب" resets context to REQUEST mode
 4. Parse ALL items - do not skip any medication
+
+## ❌ Bad Example - WRONG (Converting to Active Ingredient)
+Input: "متوفر امبلانون"
+WRONG Output: {"items": [{"medication": "Norethindrone 50mg", ...}]}
+CORRECT Output: {"items": [{"medication": "Implanon", ...}]}
+REASON: "امبلانون" is the brand name "Implanon", NOT the active ingredient
 
 ## ❌ Bad Example (Avoid)
 Input: "للتواصل 01012345678"

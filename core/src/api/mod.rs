@@ -15,6 +15,7 @@ pub mod match_reviews;
 pub mod middleware;
 pub mod rate_limit;
 pub mod reclassify;
+pub mod reparse;
 pub mod review_queue;
 pub mod routes;
 pub mod weights;

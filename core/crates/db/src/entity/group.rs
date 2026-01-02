@@ -12,10 +12,12 @@ pub struct Model {
     pub jid: String,
     pub name: String,
     pub description: Option<String>,
-    pub monitored: bool,
+    pub monitoring: bool,
+    pub parsing: bool,
     pub added_at: DateTimeUtc,
     pub last_message: Option<DateTimeUtc>,
     pub message_count: i64,
+    pub member_count: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -67,10 +69,12 @@ impl Default for Model {
             jid: String::new(),
             name: String::new(),
             description: None,
-            monitored: false,
+            monitoring: false,
+            parsing: false,
             added_at: chrono::Utc::now(),
             last_message: None,
             message_count: 0,
+            member_count: 0,
         }
     }
 }
@@ -83,10 +87,12 @@ impl Model {
             jid: jid.into(),
             name: name.into(),
             description: None,
-            monitored: false,
+            monitoring: false,
+            parsing: false,
             added_at: chrono::Utc::now(),
             last_message: None,
             message_count: 0,
+            member_count: 0,
         }
     }
 
@@ -97,10 +103,12 @@ impl Model {
             jid: jid.into(),
             name: name.into(),
             description: None,
-            monitored: true,
+            monitoring: true,
+            parsing: true,
             added_at: chrono::Utc::now(),
             last_message: None,
             message_count: 0,
+            member_count: 0,
         }
     }
 }

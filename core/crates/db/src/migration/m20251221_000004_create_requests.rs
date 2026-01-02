@@ -53,6 +53,13 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0.0),
                     )
+                    // Many-to-many matching support
+                    .col(
+                        ColumnDef::new(Requests::ConfirmedMatchCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
                     .col(ColumnDef::new(Requests::Notes).text())
                     .col(
                         ColumnDef::new(Requests::Status)
@@ -222,6 +229,8 @@ pub enum Requests {
     UrgencyLevel,
     ExpiryRequirement,
     AiConfidence,
+    // Many-to-many matching support
+    ConfirmedMatchCount,
     Notes,
     Status,
     // ContentEmbedding is added via raw SQL for vector type support

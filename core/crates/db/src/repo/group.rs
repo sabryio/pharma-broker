@@ -48,12 +48,12 @@ impl GroupRepository for SeaOrmGroupRepo {
 
     async fn is_monitored(&self, jid: &str) -> Result<bool> {
         let group = self.get_by_jid(jid).await?;
-        Ok(group.map(|g| g.monitored).unwrap_or(false))
+        Ok(group.map(|g| g.monitoring).unwrap_or(false))
     }
 
     async fn get_monitored(&self) -> Result<Vec<group::Model>> {
         Group::find()
-            .filter(group::Column::Monitored.eq(true))
+            .filter(group::Column::Monitoring.eq(true))
             .order_by_asc(group::Column::Name)
             .all(&*self.db)
             .await
@@ -62,23 +62,36 @@ impl GroupRepository for SeaOrmGroupRepo {
 
     async fn save(&self, model: &group::Model) -> Result<group::Model> {
         let existing = self.get_by_id(model.id).await?;
-        let active: group::ActiveModel = model.clone().into();
 
         if existing.is_some() {
+            // For updates, we need to use ActiveModel with id as Unchanged
+            let active = group::ActiveModel {
+                id: sea_orm::ActiveValue::Unchanged(model.id),
+                jid: sea_orm::ActiveValue::Set(model.jid.clone()),
+                name: sea_orm::ActiveValue::Set(model.name.clone()),
+                description: sea_orm::ActiveValue::Set(model.description.clone()),
+                monitoring: sea_orm::ActiveValue::Set(model.monitoring),
+                parsing: sea_orm::ActiveValue::Set(model.parsing),
+                added_at: sea_orm::ActiveValue::Set(model.added_at),
+                last_message: sea_orm::ActiveValue::Set(model.last_message),
+                message_count: sea_orm::ActiveValue::Set(model.message_count),
+                member_count: sea_orm::ActiveValue::Set(model.member_count),
+            };
             active.update(&*self.db).await.map_err(Error::from)
         } else {
+            let active: group::ActiveModel = model.clone().into();
             active.insert(&*self.db).await.map_err(Error::from)
         }
     }
 
-    async fn update_monitored(&self, jid: &str, monitored: bool) -> Result<()> {
+    async fn update_monitored(&self, jid: &str, monitoring: bool) -> Result<()> {
         let group = self
             .get_by_jid(jid)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Group not found: {}", jid)))?;
 
         let mut active: group::ActiveModel = group.into();
-        active.monitored = Set(monitored);
+        active.monitoring = Set(monitoring);
         active.update(&*self.db).await?;
         Ok(())
     }

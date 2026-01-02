@@ -32,6 +32,7 @@ import {
   type OfferWithMatches,
   type RequestWithMatches,
 } from '@/components/review-queue'
+// Note: AdjustmentControls is now self-contained and fetches weights from API
 import { CurationMode } from '@/components/medication-curation'
 import { useNotifications } from '@/hooks/use-notifications'
 import {
@@ -63,8 +64,7 @@ export default function ReviewQueue() {
   const [showHistory, setShowHistory] = useState(false)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [showExportMenu, setShowExportMenu] = useState(false)
-  const [adjustments, setAdjustments] =
-    useState<AdjustmentSettings>(defaultAdjustments)
+  const [adjustments] = useState<AdjustmentSettings>(defaultAdjustments)
   const [optimisticallyRemoved, setOptimisticallyRemoved] = useState<
     Set<string>
   >(new Set())
@@ -706,10 +706,7 @@ export default function ReviewQueue() {
                   onApprove={(id) => handleSingleAction(id, 'approved')}
                   onReject={(id) => handleSingleAction(id, 'rejected')}
                 />
-                <AdjustmentControls
-                  adjustments={adjustments}
-                  onAdjustmentsChange={setAdjustments}
-                />
+                <AdjustmentControls />
               </>
             )}
           </>

@@ -382,6 +382,15 @@ mod tests {
         async fn increment_match_count(&self, _id: Uuid) -> DbResult<OfferModel> {
             unimplemented!()
         }
+        async fn update_medication(
+            &self,
+            _id: Uuid,
+            _medication: &str,
+            _medication_raw: &str,
+            _ai_confidence: Option<f64>,
+        ) -> DbResult<OfferModel> {
+            unimplemented!()
+        }
     }
 
     #[async_trait]
@@ -421,6 +430,15 @@ mod tests {
             Ok(self.deleted_count)
         }
         async fn increment_match_count(&self, _id: Uuid) -> DbResult<RequestModel> {
+            unimplemented!()
+        }
+        async fn update_medication(
+            &self,
+            _id: Uuid,
+            _medication: &str,
+            _medication_raw: &str,
+            _ai_confidence: Option<f64>,
+        ) -> DbResult<RequestModel> {
             unimplemented!()
         }
     }

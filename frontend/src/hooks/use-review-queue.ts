@@ -74,7 +74,7 @@ export function useUpdateReviewStatus() {
       notes,
     }: {
       id: string
-      status: 'approved' | 'rejected' | 'skipped'
+      status: 'Approved' | 'Rejected' | 'Skipped'
       notes?: string
     }) => {
       const request: UpdateReviewStatusRequest = {
@@ -121,10 +121,15 @@ export function useUpdateReviewStatus() {
             | undefined,
         ) => {
           if (!old) return old
+          // Map capitalized status to lowercase key
+          const statusKey = variables.status.toLowerCase() as
+            | 'approved'
+            | 'rejected'
+            | 'skipped'
           return {
             ...old,
             pending: Math.max(0, old.pending - 1),
-            [variables.status]: old[variables.status] + 1,
+            [statusKey]: old[statusKey] + 1,
           }
         },
       )

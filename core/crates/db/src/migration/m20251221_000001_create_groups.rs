@@ -23,7 +23,13 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Groups::Name).string_len(100).not_null())
                     .col(ColumnDef::new(Groups::Description).text())
                     .col(
-                        ColumnDef::new(Groups::Monitored)
+                        ColumnDef::new(Groups::Monitoring)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(Groups::Parsing)
                             .boolean()
                             .not_null()
                             .default(false),
@@ -41,6 +47,12 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
+                    .col(
+                        ColumnDef::new(Groups::MemberCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -52,7 +64,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .name("idx_groups_monitored")
                     .table(Groups::Table)
-                    .col(Groups::Monitored)
+                    .col(Groups::Monitoring)
                     .to_owned(),
             )
             .await?;
@@ -74,8 +86,10 @@ pub enum Groups {
     Jid,
     Name,
     Description,
-    Monitored,
+    Monitoring,
+    Parsing,
     AddedAt,
     LastMessage,
     MessageCount,
+    MemberCount,
 }

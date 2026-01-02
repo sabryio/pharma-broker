@@ -107,6 +107,28 @@ impl OfferRepository for SeaOrmOfferRepo {
         active.update(&*self.db).await.map_err(Error::from)
     }
 
+    async fn update_medication(
+        &self,
+        id: Uuid,
+        medication: &str,
+        medication_raw: &str,
+        ai_confidence: Option<f64>,
+    ) -> Result<offer::Model> {
+        let offer = Offer::find_by_id(id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("Offer not found: {}", id)))?;
+
+        let mut active: offer::ActiveModel = offer.into();
+        active.medication = Set(medication.to_string());
+        active.medication_raw = Set(medication_raw.to_string());
+        if let Some(conf) = ai_confidence {
+            active.ai_confidence = Set(conf);
+        }
+        active.updated_at = Set(Utc::now());
+        active.update(&*self.db).await.map_err(Error::from)
+    }
+
     async fn find_semantic_duplicates(
         &self,
         params: crate::params::SemanticDuplicateParams<'_>,

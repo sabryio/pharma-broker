@@ -524,6 +524,7 @@ type GroupInfo struct {
 	Jid           string                 `protobuf:"bytes,1,opt,name=jid,proto3" json:"jid,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	MemberCount   int32                  `protobuf:"varint,4,opt,name=member_count,json=memberCount,proto3" json:"member_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -577,6 +578,13 @@ func (x *GroupInfo) GetDescription() string {
 		return x.Description
 	}
 	return ""
+}
+
+func (x *GroupInfo) GetMemberCount() int32 {
+	if x != nil {
+		return x.MemberCount
+	}
+	return 0
 }
 
 // SyncGroupsRequest for syncing groups from Bridge to Core
@@ -895,11 +903,12 @@ const file_proto_pharma_proto_rawDesc = "" +
 	"\x0euptime_seconds\x18\x03 \x01(\x03R\ruptimeSeconds\"\x18\n" +
 	"\x16MonitoredGroupsRequest\"-\n" +
 	"\x17MonitoredGroupsResponse\x12\x12\n" +
-	"\x04jids\x18\x01 \x03(\tR\x04jids\"S\n" +
+	"\x04jids\x18\x01 \x03(\tR\x04jids\"v\n" +
 	"\tGroupInfo\x12\x10\n" +
 	"\x03jid\x18\x01 \x01(\tR\x03jid\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\">\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12!\n" +
+	"\fmember_count\x18\x04 \x01(\x05R\vmemberCount\">\n" +
 	"\x11SyncGroupsRequest\x12)\n" +
 	"\x06groups\x18\x01 \x03(\v2\x11.pharma.GroupInfoR\x06groups\"t\n" +
 	"\x12SyncGroupsResponse\x12\x18\n" +

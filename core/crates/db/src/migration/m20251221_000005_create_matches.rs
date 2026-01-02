@@ -42,6 +42,10 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Matches::ConfirmedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(Matches::Notes).text())
+                    // AI Matching fields
+                    .col(ColumnDef::new(Matches::AiStatus).string_len(20))
+                    .col(ColumnDef::new(Matches::AiConfidence).double())
+                    .col(ColumnDef::new(Matches::AiExplanation).text())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_matches_offer")
@@ -131,4 +135,8 @@ pub enum Matches {
     CreatedAt,
     ConfirmedAt,
     Notes,
+    // AI Matching fields
+    AiStatus,
+    AiConfidence,
+    AiExplanation,
 }

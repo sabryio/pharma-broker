@@ -353,6 +353,7 @@ func (c *Client) GetJoinedGroups(ctx context.Context) ([]domain.GroupInfo, error
 			JID:         domain.JID(g.JID.String()),
 			Name:        g.Name,
 			Description: g.Topic,
+			MemberCount: int32(len(g.Participants)),
 		})
 	}
 

@@ -68,6 +68,13 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0.0),
                     )
+                    // Many-to-many matching support
+                    .col(
+                        ColumnDef::new(Offers::ConfirmedMatchCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
                     .col(
                         ColumnDef::new(Offers::CreatedAt)
                             .timestamp_with_time_zone()
@@ -234,6 +241,8 @@ pub enum Offers {
     UrgencyLevel,
     ExpiryInfo,
     AiConfidence,
+    // Many-to-many matching support
+    ConfirmedMatchCount,
     // ContentEmbedding is added via raw SQL for vector type support
     CreatedAt,
     UpdatedAt,

@@ -35,6 +35,7 @@ import {
   Send,
   Loader2,
   ArrowRightLeft,
+  RefreshCw,
 } from 'lucide-react'
 
 interface ReviewCardProps {
@@ -43,6 +44,7 @@ interface ReviewCardProps {
   request?: ReviewRequest
   onCurate?: (name: string, aliasId?: string | null) => void
   onReclassify?: (id: string, type: 'offer' | 'request', medication: string, medicationRaw?: string) => void
+  onReparse?: (id: string, type: 'offer' | 'request', medication: string, medicationRaw?: string) => void
   aiStatus?: 'Approved' | 'Flagged' | 'Rejected' | null
   aiConfidence?: number | null
   aiExplanation?: string | null
@@ -479,6 +481,7 @@ export function ReviewCard({
   request,
   onCurate,
   onReclassify,
+  onReparse,
   aiStatus,
   aiConfidence,
   aiExplanation,
@@ -689,6 +692,24 @@ export function ReviewCard({
           >
             <ArrowRightLeft className="w-4 h-4" />
             <span>Reclassify as Request</span>
+          </button>
+        )}
+
+        {/* Reparse Button */}
+        {onReparse && (
+          <button
+            onClick={() => onReparse(offer.id, 'offer', offer.product, offer.medicationRaw ?? undefined)}
+            className={cn(
+              'mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl',
+              'bg-linear-to-r from-cyan-500/10 to-blue-500/10',
+              'border border-cyan-500/30 hover:border-cyan-500/50',
+              'text-cyan-400 hover:text-cyan-300',
+              'transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]',
+              'text-xs font-medium',
+            )}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Re-parse with AI</span>
           </button>
         )}
       </div>
@@ -913,6 +934,24 @@ export function ReviewCard({
           >
             <ArrowRightLeft className="w-4 h-4" />
             <span>Reclassify as Offer</span>
+          </button>
+        )}
+
+        {/* Reparse Button */}
+        {onReparse && (
+          <button
+            onClick={() => onReparse(request.id, 'request', request.product, request.medicationRaw ?? undefined)}
+            className={cn(
+              'mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl',
+              'bg-linear-to-r from-cyan-500/10 to-blue-500/10',
+              'border border-cyan-500/30 hover:border-cyan-500/50',
+              'text-cyan-400 hover:text-cyan-300',
+              'transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]',
+              'text-xs font-medium',
+            )}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Re-parse with AI</span>
           </button>
         )}
       </div>

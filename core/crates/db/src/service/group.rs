@@ -30,7 +30,7 @@ impl GroupService {
     /// Get all monitored groups
     pub async fn get_monitored(db: &DatabaseConnection) -> Result<Vec<group::Model>> {
         Group::find()
-            .filter(group::Column::Monitored.eq(true))
+            .filter(group::Column::Monitoring.eq(true))
             .order_by_asc(group::Column::Name)
             .all(db)
             .await
@@ -40,7 +40,7 @@ impl GroupService {
     /// Check if a group is monitored
     pub async fn is_monitored(db: &DatabaseConnection, jid: &str) -> Result<bool> {
         let group = Self::get_by_jid(db, jid).await?;
-        Ok(group.map(|g| g.monitored).unwrap_or(false))
+        Ok(group.map(|g| g.monitoring).unwrap_or(false))
     }
 
     /// Save or update a group (upsert)
@@ -61,14 +61,14 @@ impl GroupService {
     pub async fn update_monitored(
         db: &DatabaseConnection,
         jid: &str,
-        monitored: bool,
+        monitoring: bool,
     ) -> Result<()> {
         let group = Self::get_by_jid(db, jid)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Group not found: {}", jid)))?;
 
         let mut active: group::ActiveModel = group.into();
-        active.monitored = Set(monitored);
+        active.monitoring = Set(monitoring);
         active.update(db).await?;
 
         Ok(())
@@ -118,16 +118,23 @@ mod tests {
     use uuid::Uuid;
 
     // Helper to create test group
-    fn new_test_group(jid: &str, name: &str, monitored: bool) -> group::ActiveModel {
+    fn new_test_group(
+        jid: &str,
+        name: &str,
+        monitoring: bool,
+        parsing: bool,
+    ) -> group::ActiveModel {
         group::ActiveModel {
             id: Set(Uuid::new_v4()),
             jid: Set(jid.to_string()),
             name: Set(name.to_string()),
             description: Set(None),
-            monitored: Set(monitored),
+            monitoring: Set(monitoring),
+            parsing: Set(parsing),
             added_at: Set(chrono::Utc::now()),
             last_message: Set(None),
             message_count: Set(0),
+            member_count: Set(0),
         }
     }
 
@@ -140,9 +147,9 @@ mod tests {
 
     #[test]
     fn test_new_group_defaults() {
-        let group = new_test_group("test@g.us", "Test Group", false);
+        let group = new_test_group("test@g.us", "Test Group", false, false);
         assert_eq!(group.jid.unwrap(), "test@g.us");
         assert_eq!(group.name.unwrap(), "Test Group");
-        assert!(!group.monitored.unwrap());
+        assert!(!group.monitoring.unwrap());
     }
 }

@@ -72,6 +72,14 @@ pub enum WsEvent {
         new_type: String,
         user_id: Uuid,
     },
+    /// Item re-parsed with AI
+    ItemReparsed {
+        item_id: Uuid,
+        item_type: String,
+        previous_medication: String,
+        new_medication: String,
+        user_id: Uuid,
+    },
     /// Ping message (keep-alive)
     Ping,
 }

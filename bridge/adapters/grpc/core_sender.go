@@ -146,6 +146,7 @@ func (s *CoreSender) SyncGroups(ctx context.Context, groups []domain.GroupInfo) 
 			Jid:         g.JID.String(),
 			Name:        g.Name,
 			Description: g.Description,
+			MemberCount: g.MemberCount,
 		}
 	}
 

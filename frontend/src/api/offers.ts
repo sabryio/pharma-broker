@@ -101,3 +101,37 @@ export async function getItem(
   )
   return response.data
 }
+
+// ============================================================================
+// Re-parse API
+// ============================================================================
+
+export interface ReparseRequest {
+  itemId: string
+  itemType: ItemType
+  reparsedBy: string
+  hint?: string
+}
+
+export interface ReparseResponse {
+  success: boolean
+  itemId: string
+  itemType: ItemType
+  previousMedication: string
+  newMedication: string
+  aiConfidence: number
+  message: string
+}
+
+/**
+ * Re-parse an item with AI to correct medication identification
+ */
+export async function reparseItem(
+  request: ReparseRequest,
+): Promise<ReparseResponse> {
+  const response = await apiClient.post<ReparseResponse>(
+    '/api/reparse',
+    request,
+  )
+  return response.data
+}

@@ -68,6 +68,7 @@ type GroupInfo struct {
 	JID         JID
 	Name        string
 	Description string
+	MemberCount int32 // Number of members in the group
 }
 
 // Version represents a semantic version string.

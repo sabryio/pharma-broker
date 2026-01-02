@@ -57,11 +57,14 @@ impl Default for EnsembleConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            embedding_weight: 0.40,
-            fuzzy_weight: 0.25,
-            dosage_weight: 0.15,
-            historical_weight: 0.15,
-            recency_weight: 0.05,
+            // Medication name matching (embedding + fuzzy) = 0.55 + 0.30 = 0.85
+            // This ensures medication name is the PRIMARY factor
+            embedding_weight: 0.55, // Semantic similarity for medication names
+            fuzzy_weight: 0.30,     // Fuzzy string matching for brand names
+            // Secondary factors = 0.15 total
+            dosage_weight: 0.05, // Reduced: dosage should NOT cause wrong matches
+            historical_weight: 0.05, // Learning from past matches
+            recency_weight: 0.05, // Prefer recent items
             ai_logic_weight: 0.0, // Disabled by default
             min_score_threshold: 0.5,
             enable_explanations: true,

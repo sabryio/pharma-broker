@@ -5,10 +5,10 @@ import { z } from 'zod'
 // ============================================================================
 
 export const ReviewStatusSchema = z.enum([
-  'pending',
-  'approved',
-  'rejected',
-  'skipped',
+  'Pending',
+  'Approved',
+  'Rejected',
+  'Skipped',
 ])
 
 export const ApiReviewItemSchema = z.object({
@@ -44,7 +44,7 @@ export const ReviewQueueStatsSchema = z.object({
 })
 
 export const UpdateReviewStatusRequestSchema = z.object({
-  status: ReviewStatusSchema.exclude(['pending']),
+  status: ReviewStatusSchema.exclude(['Pending']),
   reviewed_by: z.string(),
   notes: z.string().optional(),
 })

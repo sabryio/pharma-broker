@@ -21,7 +21,9 @@ pub struct CreateGroupRequest {
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
-    pub monitored: bool,
+    pub monitoring: bool,
+    #[serde(default)]
+    pub parsing: bool,
 }
 
 /// Request body for updating group monitoring status
@@ -32,7 +34,9 @@ pub struct UpdateGroupRequest {
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
-    pub monitored: Option<bool>,
+    pub monitoring: Option<bool>,
+    #[serde(default)]
+    pub parsing: Option<bool>,
 }
 
 /// Response for group operations
@@ -118,7 +122,8 @@ where
 
     let mut group = Group::new(req.jid, req.name);
     group.description = req.description;
-    group.monitored = req.monitored;
+    group.monitoring = req.monitoring;
+    group.parsing = req.parsing;
 
     state
         .group_repo
@@ -162,8 +167,11 @@ where
     if let Some(desc) = req.description {
         updated.description = Some(desc);
     }
-    if let Some(monitored) = req.monitored {
-        updated.monitored = monitored;
+    if let Some(monitoring) = req.monitoring {
+        updated.monitoring = monitoring;
+    }
+    if let Some(parsing) = req.parsing {
+        updated.parsing = parsing;
     }
 
     state
@@ -215,20 +223,20 @@ mod tests {
 
     #[test]
     fn test_create_group_request_deserialize() {
-        let json = r#"{"jid": "123@g.us", "name": "Test Group", "monitored": true}"#;
+        let json = r#"{"jid": "123@g.us", "name": "Test Group", "monitoring": true}"#;
         let req: CreateGroupRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.jid, "123@g.us");
         assert_eq!(req.name, "Test Group");
-        assert!(req.monitored);
+        assert!(req.monitoring);
     }
 
     #[test]
     fn test_update_group_request_optional_fields() {
-        let json = r#"{"monitored": false}"#;
+        let json = r#"{"monitoring": false}"#;
         let req: UpdateGroupRequest = serde_json::from_str(json).unwrap();
         assert!(req.name.is_none());
         assert!(req.description.is_none());
-        assert_eq!(req.monitored, Some(false));
+        assert_eq!(req.monitoring, Some(false));
     }
 
     #[test]
