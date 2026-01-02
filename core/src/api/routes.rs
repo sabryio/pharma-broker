@@ -222,6 +222,14 @@ where
             put(match_reviews::update_match_review_status::<RQ, A, MM>),
         )
         .route(
+            "/api/match-reviews/{id}/re-audit",
+            post(match_reviews::re_audit_match::<RQ, A, MM>),
+        )
+        .route(
+            "/api/match-reviews/{id}/recalculate",
+            post(match_reviews::recalculate_confidence::<RQ, A, MM>),
+        )
+        .route(
             "/api/match-reviews/bulk",
             post(match_reviews::bulk_update_match_reviews::<RQ, A, MM>),
         )

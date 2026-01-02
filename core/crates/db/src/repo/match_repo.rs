@@ -70,10 +70,23 @@ impl MatchRepository for SeaOrmMatchRepo {
         &self,
         params: crate::params::UpdateMatchStatusParams,
     ) -> Result<match_::Model> {
+        tracing::info!(
+            match_id = %params.id,
+            new_status = ?params.status,
+            matched_by = %params.matched_by,
+            ">>> [DEBUG] match_repo.update_status called"
+        );
+
         let m = Match::find_by_id(params.id)
             .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Match not found: {}", params.id)))?;
+
+        tracing::info!(
+            match_id = %m.id,
+            current_status = ?m.status,
+            ">>> [DEBUG] Found match, current status"
+        );
 
         let mut active: match_::ActiveModel = m.into();
         active.status = Set(params.status);
@@ -86,6 +99,47 @@ impl MatchRepository for SeaOrmMatchRepo {
         if params.status == MatchStatus::Confirmed || params.status == MatchStatus::Rejected {
             active.confirmed_at = Set(Some(Utc::now()));
         }
+
+        let result = active.update(&*self.db).await.map_err(Error::from)?;
+        tracing::info!(
+            match_id = %result.id,
+            new_status = ?result.status,
+            confirmed_at = ?result.confirmed_at,
+            ">>> [DEBUG] Successfully updated match in database"
+        );
+        Ok(result)
+    }
+
+    async fn update_ai_review(
+        &self,
+        id: Uuid,
+        ai_status: &str,
+        ai_confidence: f64,
+        ai_explanation: &str,
+    ) -> Result<match_::Model> {
+        let m = Match::find_by_id(id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("Match not found: {}", id)))?;
+
+        let mut active: match_::ActiveModel = m.into();
+        active.ai_status = Set(Some(ai_status.to_string()));
+        active.ai_confidence = Set(Some(ai_confidence));
+        active.ai_explanation = Set(Some(ai_explanation.to_string()));
+
+        active.update(&*self.db).await.map_err(Error::from)
+    }
+
+    async fn update_score(&self, id: Uuid, score: f64, reasoning: &str) -> Result<match_::Model> {
+        let m = Match::find_by_id(id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("Match not found: {}", id)))?;
+
+        let mut active: match_::ActiveModel = m.into();
+        active.score = Set(score);
+        active.reasoning = Set(Some(reasoning.to_string()));
+
         active.update(&*self.db).await.map_err(Error::from)
     }
 
@@ -159,6 +213,22 @@ impl MatchRepository for SeaOrmMatchRepo {
             .await
             .map(|c| c as i64)
             .map_err(Error::from)
+    }
+
+    async fn avg_pending_score(&self) -> Result<f64> {
+        use sea_orm::{ConnectionTrait, Statement};
+
+        let result: Option<f64> = self
+            .db
+            .query_one(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT COALESCE(AVG(score), 0.0) as avg_score FROM matches WHERE status = 'PENDING'"
+                    .to_string(),
+            ))
+            .await?
+            .map(|row| row.try_get_by_index::<f64>(0).unwrap_or(0.0));
+
+        Ok(result.unwrap_or(0.0))
     }
 }
 

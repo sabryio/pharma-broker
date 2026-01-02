@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::Result;
 use crate::domain::{
     AuditAction, AuditLog, ConfidenceBand, EntityType, Match as MatchEntity, MatchQueueItem,
-    MatchStatus, Offer, Request,
+    MatchStatus,
 };
 use crate::matching::{MatchAction, MatchingEngine};
 use crate::repository::FeedbackModel;
@@ -179,13 +179,50 @@ impl MatchProcessor {
                     }
                 }
                 // Fallback to embedding similarity when master IDs not available
-                _ => match (&offer.content_embedding, &request.content_embedding) {
-                    (Some(o), Some(r)) => {
-                        crate::matching::cosine_similarity(o.as_slice(), r.as_slice())
-                            .unwrap_or(0.0)
+                _ => {
+                    // First try embedding similarity
+                    let embedding_sim = match (&offer.content_embedding, &request.content_embedding)
+                    {
+                        (Some(o), Some(r)) => {
+                            crate::matching::cosine_similarity(o.as_slice(), r.as_slice())
+                                .unwrap_or(0.0)
+                        }
+                        _ => 0.0,
+                    };
+
+                    // Calculate fuzzy similarity with raw text validation
+                    // This prevents false positives from AI hallucination/mistransliteration
+                    let fuzzy_sim = crate::matching::medication_similarity_with_raw(
+                        &offer.medication,
+                        &request.medication,
+                        Some(&offer.medication_raw),
+                        Some(&request.medication_raw),
+                    );
+
+                    // If embedding similarity is high but fuzzy/raw similarity is low,
+                    // trust the fuzzy/raw similarity (prevents AI hallucination matches)
+                    if embedding_sim > 0.8 && fuzzy_sim < 0.5 {
+                        tracing::warn!(
+                            offer_id = %offer.id,
+                            request_id = %request.id,
+                            offer_med = %offer.medication,
+                            request_med = %request.medication,
+                            offer_raw = %offer.medication_raw,
+                            request_raw = %request.medication_raw,
+                            embedding_sim = %embedding_sim,
+                            fuzzy_sim = %fuzzy_sim,
+                            "High embedding similarity but low fuzzy/raw similarity - using fuzzy score"
+                        );
+                        fuzzy_sim
+                    } else if embedding_sim > 0.0 {
+                        // Use weighted combination: embedding (40%) + fuzzy with raw (60%)
+                        // This gives more weight to raw text validation
+                        embedding_sim * 0.4 + fuzzy_sim * 0.6
+                    } else {
+                        // No embedding, use fuzzy with raw validation
+                        fuzzy_sim
                     }
-                    _ => self.fallback_similarity(offer, &request),
-                },
+                }
             };
 
             // Score match
@@ -276,16 +313,11 @@ impl MatchProcessor {
             );
         }
     }
-
-    fn fallback_similarity(&self, offer: &Offer, request: &Request) -> f64 {
-        crate::matching::medication_similarity(&offer.medication, &request.medication)
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::domain::ItemStatus;
+    use crate::domain::{ItemStatus, Request};
     use chrono::Utc;
     use uuid::Uuid;
 

@@ -9,6 +9,8 @@ export interface RematchRequest {
 export interface RematchResponse {
   success: boolean
   message: string
+  matches_cleared: number
+  items_queued: number
 }
 
 export async function rematchItem(

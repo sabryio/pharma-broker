@@ -75,6 +75,30 @@ pub struct BulkUpdateResponse {
     pub updated_count: usize,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReAuditResponse {
+    pub success: bool,
+    pub match_id: Uuid,
+    pub ai_status: Option<String>,
+    pub ai_confidence: Option<f64>,
+    pub ai_explanation: Option<String>,
+    pub suggested_action: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecalculateConfidenceResponse {
+    pub success: bool,
+    pub match_id: Uuid,
+    pub old_score: f64,
+    pub new_score: f64,
+    pub medication_similarity: f64,
+    pub raw_similarity: f64,
+    pub embedding_similarity: Option<f64>,
+    pub reasoning: String,
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -444,15 +468,37 @@ where
     A: AuditLogRepository + 'static,
     MM: MedicationMappingRepository + 'static,
 {
+    tracing::info!(
+        match_id = %id,
+        action = %req.action,
+        reviewed_by = %req.reviewed_by,
+        ">>> [DEBUG] update_match_review_status called"
+    );
+
     let status = parse_action(&req.action)?;
+    tracing::info!(status = ?status, ">>> [DEBUG] Parsed status");
 
     // Get the match first to access offer_id and request_id
     let match_entity = state
         .match_repo
         .get_by_id(id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Match not found".to_string()))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, ">>> [DEBUG] Failed to get match by id");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
+        .ok_or_else(|| {
+            tracing::error!(match_id = %id, ">>> [DEBUG] Match not found");
+            (StatusCode::NOT_FOUND, "Match not found".to_string())
+        })?;
+
+    tracing::info!(
+        match_id = %match_entity.id,
+        current_status = ?match_entity.status,
+        offer_id = %match_entity.offer_id,
+        request_id = %match_entity.request_id,
+        ">>> [DEBUG] Found match entity"
+    );
 
     let params = crate::repository::UpdateMatchStatusParams::new(
         id,
@@ -461,17 +507,19 @@ where
         req.notes.as_deref().unwrap_or(""),
     );
 
-    state
-        .match_repo
-        .update_status(params)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    tracing::info!(">>> [DEBUG] Calling match_repo.update_status");
+    state.match_repo.update_status(params).await.map_err(|e| {
+        tracing::error!(error = %e, ">>> [DEBUG] Failed to update match status");
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+    tracing::info!(">>> [DEBUG] Successfully updated match status in database");
 
     // If confirmed, increment match counts, record feedback and broadcast event
     // NOTE: We do NOT update offer/request status to MATCHED because:
     // - One offer can be matched with multiple requests
     // - One request can be matched with multiple offers
     if status == MatchStatus::Confirmed {
+        tracing::info!(">>> [DEBUG] Processing confirmation - incrementing match counts");
         // Increment confirmed match count for both offer and request
         if let Err(e) = state
             .offer_repo
@@ -517,6 +565,7 @@ where
             tracing::warn!(error = %e, "Failed to broadcast match confirmation event");
         }
     } else if status == MatchStatus::Rejected {
+        tracing::info!(">>> [DEBUG] Processing rejection");
         // Record negative feedback for learning system
         let feedback = FeedbackRecord::new(
             id,
@@ -737,12 +786,263 @@ where
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    tracing::debug!(
+        pending = pending,
+        confirmed_today = confirmed_today,
+        rejected_today = rejected_today,
+        avg_confidence = avg_confidence,
+        ">>> [DEBUG] get_match_review_stats returning"
+    );
+
     Ok(Json(MatchReviewStats {
         pending,
         confirmed_today,
         rejected_today,
         total_pending: pending,
         avg_confidence,
+    }))
+}
+
+/// Re-trigger AI audit for a match
+/// POST /api/match-reviews/:id/re-audit
+pub async fn re_audit_match<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ReAuditResponse>, (StatusCode, String)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
+{
+    tracing::info!(match_id = %id, "Re-auditing match with AI");
+
+    // Get the match
+    let match_entity = state
+        .match_repo
+        .get_by_id(id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Match not found".to_string()))?;
+
+    // Get the offer and request
+    let offer = state
+        .offer_repo
+        .get_by_id(match_entity.offer_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Offer not found".to_string()))?;
+
+    let request = state
+        .request_repo
+        .get_by_id(match_entity.request_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Request not found".to_string()))?;
+
+    // Get the matching engine
+    let matching_engine = state.matching_engine.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Matching engine not available".to_string(),
+    ))?;
+
+    // Call AI reviewer
+    let review_result = matching_engine
+        .ai_reviewer
+        .audit_match(
+            &offer,
+            &request,
+            match_entity.score,
+            match_entity
+                .reasoning
+                .as_deref()
+                .unwrap_or("Re-audit requested"),
+        )
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("AI audit failed: {}", e),
+            )
+        })?;
+
+    tracing::info!(
+        match_id = %id,
+        status = ?review_result.status,
+        confidence = %review_result.confidence,
+        explanation = %review_result.explanation,
+        "AI re-audit completed"
+    );
+
+    // Update the match with new AI results
+    // We need to update the match entity with the new AI results
+    let ai_status = format!("{:?}", review_result.status);
+    let ai_confidence = review_result.confidence as f64;
+    let ai_explanation = review_result.explanation.clone();
+
+    // Update match in database with new AI results
+    if let Err(e) = state
+        .match_repo
+        .update_ai_review(id, &ai_status, ai_confidence, &ai_explanation)
+        .await
+    {
+        tracing::warn!(error = %e, match_id = %id, "Failed to update match with AI review results");
+    }
+
+    // Create audit log
+    let audit_log = AuditLog::system(AuditAction::MatchReAudited, EntityType::Match, id)
+        .with_details(serde_json::json!({
+            "ai_status": ai_status,
+            "ai_confidence": ai_confidence,
+            "ai_explanation": ai_explanation
+        }));
+
+    if let Err(e) = state.audit_log_repo.save(&audit_log).await {
+        tracing::warn!(error = %e, "Failed to save re-audit audit log");
+    }
+
+    Ok(Json(ReAuditResponse {
+        success: true,
+        match_id: id,
+        ai_status: Some(ai_status),
+        ai_confidence: Some(ai_confidence),
+        ai_explanation: Some(ai_explanation),
+        suggested_action: review_result.suggested_action,
+    }))
+}
+
+/// Recalculate match confidence score
+/// POST /api/match-reviews/:id/recalculate
+pub async fn recalculate_confidence<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<RecalculateConfidenceResponse>, (StatusCode, String)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
+{
+    tracing::info!(match_id = %id, "Recalculating match confidence");
+
+    // Get the match
+    let match_entity = state
+        .match_repo
+        .get_by_id(id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Match not found".to_string()))?;
+
+    let old_score = match_entity.score;
+
+    // Get the offer and request
+    let offer = state
+        .offer_repo
+        .get_by_id(match_entity.offer_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Offer not found".to_string()))?;
+
+    let request = state
+        .request_repo
+        .get_by_id(match_entity.request_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Request not found".to_string()))?;
+
+    // Calculate medication similarity with raw text validation
+    let medication_sim =
+        crate::matching::medication_similarity(&offer.medication, &request.medication);
+    let raw_sim =
+        crate::matching::medication_similarity(&offer.medication_raw, &request.medication_raw);
+
+    // Calculate combined similarity using raw text validation
+    let combined_sim = crate::matching::medication_similarity_with_raw(
+        &offer.medication,
+        &request.medication,
+        Some(&offer.medication_raw),
+        Some(&request.medication_raw),
+    );
+
+    // Calculate embedding similarity if available
+    let embedding_sim = match (&offer.content_embedding, &request.content_embedding) {
+        (Some(o), Some(r)) => crate::matching::cosine_similarity(o.as_slice(), r.as_slice()).ok(),
+        _ => None,
+    };
+
+    // Calculate new score
+    // Use combined similarity (which includes raw text validation) as the primary factor
+    let new_score = if let Some(emb_sim) = embedding_sim {
+        // If embedding similarity is high but combined is low, trust combined
+        if emb_sim > 0.8 && combined_sim < 0.5 {
+            tracing::warn!(
+                match_id = %id,
+                embedding_sim = %emb_sim,
+                combined_sim = %combined_sim,
+                "High embedding but low combined similarity - using combined"
+            );
+            combined_sim
+        } else {
+            // Weighted: 40% embedding, 60% combined (with raw validation)
+            emb_sim * 0.4 + combined_sim * 0.6
+        }
+    } else {
+        combined_sim
+    };
+
+    // Build reasoning
+    let reasoning = format!(
+        "Medication: {:.1}%; Raw: {:.1}%; Combined: {:.1}%{}",
+        medication_sim * 100.0,
+        raw_sim * 100.0,
+        combined_sim * 100.0,
+        embedding_sim
+            .map(|e| format!("; Embedding: {:.1}%", e * 100.0))
+            .unwrap_or_default()
+    );
+
+    tracing::info!(
+        match_id = %id,
+        old_score = %old_score,
+        new_score = %new_score,
+        medication_sim = %medication_sim,
+        raw_sim = %raw_sim,
+        combined_sim = %combined_sim,
+        embedding_sim = ?embedding_sim,
+        "Recalculated match confidence"
+    );
+
+    // Update the match score in database
+    if let Err(e) = state
+        .match_repo
+        .update_score(id, new_score, &reasoning)
+        .await
+    {
+        tracing::warn!(error = %e, match_id = %id, "Failed to update match score");
+    }
+
+    // Create audit log for recalculation
+    let audit_log = AuditLog::system(AuditAction::MatchRecalculated, EntityType::Match, id)
+        .with_details(serde_json::json!({
+            "old_score": old_score,
+            "new_score": new_score,
+            "medication_similarity": medication_sim,
+            "raw_similarity": raw_sim,
+            "embedding_similarity": embedding_sim,
+            "reasoning": reasoning
+        }));
+
+    if let Err(e) = state.audit_log_repo.save(&audit_log).await {
+        tracing::warn!(error = %e, "Failed to save recalculate audit log");
+    }
+
+    Ok(Json(RecalculateConfidenceResponse {
+        success: true,
+        match_id: id,
+        old_score,
+        new_score,
+        medication_similarity: medication_sim,
+        raw_similarity: raw_sim,
+        embedding_similarity: embedding_sim,
+        reasoning,
     }))
 }
 

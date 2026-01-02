@@ -188,8 +188,10 @@ where
     engine.apply_weights(new_weights.clone(), &reason).await;
 
     // Task 5.3: Audit Logging
+    // Using placeholder user ID until auth is implemented
+    let placeholder_user_id = "00000000-0000-0000-0000-000000000001";
     let audit_log = AuditLog::weights_updated(
-        "admin", // TODO: replace with actual user ID when auth is added
+        placeholder_user_id,
         "api",
         Some(serde_json::to_value(&previous_weights).unwrap_or(serde_json::Value::Null)),
     )

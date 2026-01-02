@@ -119,6 +119,16 @@ pub trait MatchRepository: Send + Sync {
     async fn exists(&self, offer_id: Uuid, request_id: Uuid) -> Result<bool>;
     async fn save(&self, m: &MatchModel) -> Result<MatchModel>;
     async fn update_status(&self, params: UpdateMatchStatusParams) -> Result<MatchModel>;
+    /// Update AI review results for a match
+    async fn update_ai_review(
+        &self,
+        id: Uuid,
+        ai_status: &str,
+        ai_confidence: f64,
+        ai_explanation: &str,
+    ) -> Result<MatchModel>;
+    /// Update match score and reasoning
+    async fn update_score(&self, id: Uuid, score: f64, reasoning: &str) -> Result<MatchModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
     /// Cancel all pending matches that reference a specific offer (used when reclassifying)
     async fn cancel_matches_for_offer(&self, offer_id: Uuid) -> Result<u64>;
@@ -132,6 +142,8 @@ pub trait MatchRepository: Send + Sync {
     async fn count_confirmed_today(&self) -> Result<i64>;
     /// Count matches rejected today
     async fn count_rejected_today(&self) -> Result<i64>;
+    /// Get average score of pending matches
+    async fn avg_pending_score(&self) -> Result<f64>;
 }
 
 /// Raw message repository trait

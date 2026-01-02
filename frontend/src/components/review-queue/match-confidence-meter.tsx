@@ -48,7 +48,7 @@ export function MatchConfidenceMeter({
             'cursor-pointer hover:scale-105 active:scale-95',
           isPending && 'opacity-70 cursor-wait',
         )}
-        title={onClick ? 'Click to trigger manual re-match' : undefined}
+        title={onClick ? 'Click to find new matches for the anchored item (left card)' : undefined}
       >
         {/* Glow effect */}
         <div
@@ -154,7 +154,7 @@ export function MatchConfidenceMeter({
           {onClick && !isPending && (
             <div className="absolute -bottom-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full border border-white/10">
               <RefreshCw className="w-2 h-2 text-teal" />
-              <span className="text-[8px] font-bold text-teal">REMATCH</span>
+              <span className="text-[8px] font-bold text-teal">FIND NEW MATCHES</span>
             </div>
           )}
         </div>

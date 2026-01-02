@@ -467,22 +467,37 @@ mod tests {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             Ok(self.deleted_count)
         }
-        async fn cancel_matches_for_offer(&self, _offer_id: Uuid) -> DbResult<u64> {
+        async fn cancel_matches_for_offer(&self, _: Uuid) -> DbResult<u64> {
             unimplemented!()
         }
-        async fn cancel_matches_for_request(&self, _request_id: Uuid) -> DbResult<u64> {
+        async fn cancel_matches_for_request(&self, _: Uuid) -> DbResult<u64> {
             unimplemented!()
         }
-        async fn delete_pending_matches_for_offer(&self, _offer_id: Uuid) -> DbResult<u64> {
+        async fn delete_pending_matches_for_offer(&self, _: Uuid) -> DbResult<u64> {
             unimplemented!()
         }
-        async fn delete_pending_matches_for_request(&self, _request_id: Uuid) -> DbResult<u64> {
+        async fn delete_pending_matches_for_request(&self, _: Uuid) -> DbResult<u64> {
             unimplemented!()
         }
         async fn count_confirmed_today(&self) -> DbResult<i64> {
             unimplemented!()
         }
         async fn count_rejected_today(&self) -> DbResult<i64> {
+            unimplemented!()
+        }
+        async fn avg_pending_score(&self) -> DbResult<f64> {
+            unimplemented!()
+        }
+        async fn update_ai_review(
+            &self,
+            _: Uuid,
+            _: &str,
+            _: f64,
+            _: &str,
+        ) -> DbResult<MatchModel> {
+            unimplemented!()
+        }
+        async fn update_score(&self, _: Uuid, _: f64, _: &str) -> DbResult<MatchModel> {
             unimplemented!()
         }
     }

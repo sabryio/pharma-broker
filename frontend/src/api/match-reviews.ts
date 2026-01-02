@@ -53,12 +53,21 @@ export async function updateMatchReviewStatus(
   id: string,
   data: UpdateMatchReviewRequest,
 ): Promise<UpdateMatchReviewResponse> {
+  console.log('[DEBUG] updateMatchReviewStatus called:', { id, data })
   const validated = UpdateMatchReviewRequestSchema.parse(data)
-  const response = await apiClient.put<UpdateMatchReviewResponse>(
-    `/api/match-reviews/${id}/status`,
-    validated,
-  )
-  return UpdateMatchReviewResponseSchema.parse(response.data)
+  console.log('[DEBUG] Validated request:', validated)
+
+  try {
+    const response = await apiClient.put<UpdateMatchReviewResponse>(
+      `/api/match-reviews/${id}/status`,
+      validated,
+    )
+    console.log('[DEBUG] API response:', response.data)
+    return UpdateMatchReviewResponseSchema.parse(response.data)
+  } catch (error) {
+    console.error('[DEBUG] API error:', error)
+    throw error
+  }
 }
 
 /**
@@ -82,4 +91,52 @@ export async function getMatchReviewStats(): Promise<MatchReviewStats> {
     '/api/match-reviews/stats',
   )
   return MatchReviewStatsSchema.parse(response.data)
+}
+
+/**
+ * Re-audit response type
+ */
+export interface ReAuditResponse {
+  success: boolean
+  matchId: string
+  aiStatus: string | null
+  aiConfidence: number | null
+  aiExplanation: string | null
+  suggestedAction: string | null
+}
+
+/**
+ * Re-trigger AI audit for a match
+ */
+export async function reAuditMatch(id: string): Promise<ReAuditResponse> {
+  const response = await apiClient.post<ReAuditResponse>(
+    `/api/match-reviews/${id}/re-audit`,
+  )
+  return response.data
+}
+
+/**
+ * Recalculate confidence response type
+ */
+export interface RecalculateConfidenceResponse {
+  success: boolean
+  matchId: string
+  oldScore: number
+  newScore: number
+  medicationSimilarity: number
+  rawSimilarity: number
+  embeddingSimilarity: number | null
+  reasoning: string
+}
+
+/**
+ * Recalculate match confidence score
+ */
+export async function recalculateConfidence(
+  id: string,
+): Promise<RecalculateConfidenceResponse> {
+  const response = await apiClient.post<RecalculateConfidenceResponse>(
+    `/api/match-reviews/${id}/recalculate`,
+  )
+  return response.data
 }

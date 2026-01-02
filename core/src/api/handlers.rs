@@ -462,15 +462,24 @@ where
     let active_offers = state.offer_repo.count_active().await.unwrap_or(0);
     let active_requests = state.request_repo.count_active().await.unwrap_or(0);
     let pending_matches = state.match_repo.count_pending().await.unwrap_or(0);
+    let confirmed_today = state.match_repo.count_confirmed_today().await.unwrap_or(0);
+    let rejected_today = state.match_repo.count_rejected_today().await.unwrap_or(0);
+    let avg_match_score = state.match_repo.avg_pending_score().await.unwrap_or(0.0);
+    let monitored_groups = state
+        .group_repo
+        .get_monitored()
+        .await
+        .map(|g| g.len() as i32)
+        .unwrap_or(0);
 
     Ok(Json(crate::domain::Stats {
         active_offers,
         active_requests,
         pending_matches,
-        confirmed_today: 0,   // TODO: Implement
-        processed_today: 0,   // TODO: Implement
-        avg_match_score: 0.0, // TODO: Implement
-        monitored_groups: 0,
-        connected_clients: 0,
+        confirmed_today,
+        processed_today: confirmed_today + rejected_today,
+        avg_match_score,
+        monitored_groups,
+        connected_clients: 0, // WebSocket connections tracked separately
     }))
 }

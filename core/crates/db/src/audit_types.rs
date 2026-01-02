@@ -11,6 +11,8 @@ pub enum AuditAction {
     MatchConfirmed,
     MatchRejected,
     MatchAutoConfirmed,
+    MatchReAudited,
+    MatchRecalculated,
 
     // Offer/Request actions
     OfferCreated,
@@ -47,6 +49,8 @@ impl std::fmt::Display for AuditAction {
             Self::MatchConfirmed => write!(f, "match_confirmed"),
             Self::MatchRejected => write!(f, "match_rejected"),
             Self::MatchAutoConfirmed => write!(f, "match_auto_confirmed"),
+            Self::MatchReAudited => write!(f, "match_re_audited"),
+            Self::MatchRecalculated => write!(f, "match_recalculated"),
             Self::OfferCreated => write!(f, "offer_created"),
             Self::RequestCreated => write!(f, "request_created"),
             Self::OfferExpired => write!(f, "offer_expired"),

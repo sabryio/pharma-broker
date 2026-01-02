@@ -4,7 +4,7 @@
 
 mod abtest;
 mod actions;
-mod arabic;
+pub mod arabic;
 mod audit;
 mod calibration;
 mod confidence;
@@ -69,7 +69,7 @@ pub use dosage::{Dosage, compare_dosages, is_same_dosage, parse_dosage};
 pub use arabic::normalize_arabic;
 
 // --- fuzzy ---
-pub use fuzzy::medication_similarity;
+pub use fuzzy::{medication_similarity, medication_similarity_with_raw};
 
 // --- embedding_cache ---
 pub use embedding_cache::{EmbeddingCache, EmbeddingCacheStatsSnapshot, SynonymIndex};

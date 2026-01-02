@@ -172,6 +172,77 @@ pub fn _medication_similarity_weighted(
     (jw * jw_weight + ngram * ngram_weight + phonetic * phonetic_weight) / total_weight
 }
 
+/// Calculate medication similarity using both parsed and raw text
+///
+/// This function addresses the issue where AI-parsed medication names may be
+/// incorrectly transliterated, leading to false positive matches.
+///
+/// Strategy:
+/// 1. Calculate similarity on parsed names (AI output)
+/// 2. Calculate similarity on raw names (original Arabic/user input)
+/// 3. If raw names are very different (< 0.5), penalize the score heavily
+/// 4. Use the minimum of parsed and raw similarity as a gate
+///
+/// This prevents matches like "Kozentex 150" ↔ "Gonapure 150" when the
+/// raw Arabic texts "كوزنتكس" and "جونابيور" are completely different.
+pub fn medication_similarity_with_raw(
+    parsed_a: &str,
+    parsed_b: &str,
+    raw_a: Option<&str>,
+    raw_b: Option<&str>,
+) -> f64 {
+    // Calculate parsed name similarity
+    let parsed_sim = medication_similarity(parsed_a, parsed_b);
+
+    // If no raw text available, return parsed similarity
+    let (raw_a, raw_b) = match (raw_a, raw_b) {
+        (Some(a), Some(b)) if !a.is_empty() && !b.is_empty() => (a, b),
+        _ => return parsed_sim,
+    };
+
+    // Calculate raw text similarity
+    let raw_sim = medication_similarity(raw_a, raw_b);
+
+    // Log for debugging
+    tracing::debug!(
+        parsed_a = %parsed_a,
+        parsed_b = %parsed_b,
+        raw_a = %raw_a,
+        raw_b = %raw_b,
+        parsed_sim = %parsed_sim,
+        raw_sim = %raw_sim,
+        "Medication similarity with raw text"
+    );
+
+    // If raw texts are very different, this is likely a false positive
+    // from AI hallucination/mistransliteration
+    if raw_sim < 0.3 {
+        // Raw texts are completely different - this is NOT a match
+        // Return a very low score regardless of parsed similarity
+        tracing::warn!(
+            parsed_a = %parsed_a,
+            parsed_b = %parsed_b,
+            raw_a = %raw_a,
+            raw_b = %raw_b,
+            parsed_sim = %parsed_sim,
+            raw_sim = %raw_sim,
+            "Rejecting match due to raw text mismatch (likely AI hallucination)"
+        );
+        return raw_sim * 0.5; // Heavily penalized
+    }
+
+    if raw_sim < 0.5 {
+        // Raw texts are quite different - penalize but don't reject
+        // Use geometric mean to balance both scores
+        let combined = (parsed_sim * raw_sim).sqrt();
+        return combined.min(raw_sim + 0.1); // Cap at raw_sim + small bonus
+    }
+
+    // Raw texts are similar enough - use weighted average
+    // Give more weight to raw similarity to prevent AI hallucination issues
+    parsed_sim * 0.4 + raw_sim * 0.6
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,5 +313,67 @@ mod tests {
 
         let sim = medication_similarity("Omeprazole", "Omeprazol");
         assert!(sim > 0.9, "Omeprazole variant: {}", sim);
+    }
+
+    #[test]
+    fn test_medication_similarity_with_raw_different_meds() {
+        // Kozentex vs Gonapure - completely different medications
+        // AI might parse them similarly due to "150" but raw Arabic is different
+        let sim = medication_similarity_with_raw(
+            "Kozentex 150",
+            "Gonapure 150",
+            Some("كوزنتكس 150"),
+            Some("جونابيور ١٥٠"),
+        );
+        // Should be penalized due to raw text mismatch
+        // The score is reduced but not to zero because of the "150" in both
+        assert!(
+            sim < 0.6,
+            "Different medications should have reduced similarity: {}",
+            sim
+        );
+    }
+
+    #[test]
+    fn test_medication_similarity_with_raw_same_med() {
+        // Same medication with slight variations
+        let sim = medication_similarity_with_raw(
+            "Augmentin 1g",
+            "Augmentin 1000mg",
+            Some("اوجمنتين 1 جرام"),
+            Some("أوجمنتين ١٠٠٠"),
+        );
+        // Should be high because both parsed and raw are similar
+        assert!(
+            sim > 0.7,
+            "Same medication should have high similarity: {}",
+            sim
+        );
+    }
+
+    #[test]
+    fn test_medication_similarity_with_raw_no_raw() {
+        // When raw text is not available, fall back to parsed similarity
+        let sim = medication_similarity_with_raw("Panadol 500mg", "Panadol 500", None, None);
+        // Should use parsed similarity
+        assert!(
+            sim > 0.9,
+            "Same parsed name should have high similarity: {}",
+            sim
+        );
+    }
+
+    #[test]
+    fn test_medication_similarity_with_raw_ai_hallucination() {
+        // Simulating AI hallucination: parsed names look similar but raw is different
+        let sim = medication_similarity_with_raw(
+            "Metformin 500",
+            "Metformine 500", // Slight variation in parsed
+            Some("ميتفورمين"),
+            Some("جلوكوفاج"), // Completely different raw (Glucophage)
+        );
+        // Should be penalized because raw texts are different
+        // But not zero because parsed names are very similar
+        assert!(sim < 0.6, "AI hallucination should be caught: {}", sim);
     }
 }

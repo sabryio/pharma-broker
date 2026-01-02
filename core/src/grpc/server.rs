@@ -427,15 +427,21 @@ where
                 .collect();
 
             // Batch generate embeddings for accepted items
-            let medications: Vec<String> = accepted_items
+            // IMPORTANT: Strip dosage from medication names before embedding to prevent false positives
+            // e.g., "Kozentex 150" and "Gonapure 150" would have similar embeddings due to "150"
+            let medications_normalized: Vec<String> = accepted_items
+                .iter()
+                .map(|item| crate::matching::arabic::normalize_for_matching(&item.medication))
+                .collect();
+            let medications_original: Vec<String> = accepted_items
                 .iter()
                 .map(|item| item.medication.clone())
                 .collect();
 
             let embeddings_map: std::collections::HashMap<String, Vec<f32>> =
-                if !medications.is_empty() {
-                    match ai_client.embed_batch(&medications).await {
-                        Ok(embs) => medications.into_iter().zip(embs).collect(),
+                if !medications_normalized.is_empty() {
+                    match ai_client.embed_batch(&medications_normalized).await {
+                        Ok(embs) => medications_original.into_iter().zip(embs).collect(),
                         Err(e) => {
                             tracing::warn!(error = %e, "Failed to batch generate embeddings");
                             std::collections::HashMap::new()

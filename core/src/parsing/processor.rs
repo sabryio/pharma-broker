@@ -291,24 +291,64 @@ impl BatchProcessor {
         let avg_confidence = self.calculate_avg_confidence(&result.items);
 
         // Check if needs Pass 2 retry
-        if result.pass == ParsePass::Strict && self.multi_pass_config.needs_pass2(avg_confidence) {
+        let final_result = if result.pass == ParsePass::Strict
+            && self.multi_pass_config.needs_pass2(avg_confidence)
+        {
             info!(
                 msg_id = %msg.id,
                 avg_confidence,
                 threshold = self.multi_pass_config.strict_min_confidence,
-                "Low confidence, would retry with Pass 2 (not implemented)"
+                "Low confidence, retrying with Pass 2 (relaxed prompts)"
             );
-            // TODO: Implement pass 2 with relaxed prompts
-            let mut stats = self.stats.write().await;
-            stats.pass2_retries += 1;
-        }
+
+            // Retry with relaxed prompts
+            let pass2_results = self
+                .parse_batch_with_ai(&[msg], &[], ParsePass::Relaxed)
+                .await;
+
+            if let Some(pass2_result) = pass2_results.into_iter().next() {
+                let pass2_confidence = self.calculate_avg_confidence(&pass2_result.items);
+
+                // Use Pass 2 result if it has better confidence or more items
+                if pass2_confidence > avg_confidence
+                    || (pass2_result.items.len() > result.items.len()
+                        && pass2_confidence >= self.multi_pass_config.relaxed_min_confidence)
+                {
+                    info!(
+                        msg_id = %msg.id,
+                        pass1_confidence = avg_confidence,
+                        pass2_confidence,
+                        pass1_items = result.items.len(),
+                        pass2_items = pass2_result.items.len(),
+                        "Using Pass 2 results (better confidence or more items)"
+                    );
+                    let mut stats = self.stats.write().await;
+                    stats.pass2_retries += 1;
+                    pass2_result
+                } else {
+                    info!(
+                        msg_id = %msg.id,
+                        pass1_confidence = avg_confidence,
+                        pass2_confidence,
+                        "Keeping Pass 1 results (Pass 2 not better)"
+                    );
+                    result
+                }
+            } else {
+                result
+            }
+        } else {
+            result
+        };
+
+        let final_confidence = self.calculate_avg_confidence(&final_result.items);
 
         // Check if needs review queue
-        if self.multi_pass_config.needs_review(avg_confidence) {
+        if self.multi_pass_config.needs_review(final_confidence) {
             let review_item = ReviewQueueItem::for_low_confidence(
                 msg.id,
-                serde_json::to_value(&result.items).unwrap_or_default(),
-                avg_confidence,
+                serde_json::to_value(&final_result.items).unwrap_or_default(),
+                final_confidence,
                 "low_confidence",
             );
             if let Err(e) = self.review_queue_repo.save(&review_item).await {
@@ -317,13 +357,20 @@ impl BatchProcessor {
         }
 
         // Batch generate embeddings for all items
-        let medications: Vec<String> = result.items.iter().map(|i| i.medication.clone()).collect();
-        let embeddings = if !medications.is_empty() {
-            match self.ai_client.embed_batch(&medications).await {
+        // IMPORTANT: Strip dosage from medication names before embedding to prevent false positives
+        // e.g., "Kozentex 150" and "Gonapure 150" would have similar embeddings due to "150"
+        // but they are completely different medications
+        let medications_for_embedding: Vec<String> = final_result
+            .items
+            .iter()
+            .map(|i| crate::matching::arabic::normalize_for_matching(&i.medication))
+            .collect();
+        let embeddings = if !medications_for_embedding.is_empty() {
+            match self.ai_client.embed_batch(&medications_for_embedding).await {
                 Ok(embs) => embs,
                 Err(e) => {
                     warn!(error = %e, "Failed to batch generate embeddings, falling back to None");
-                    vec![vec![]; medications.len()]
+                    vec![vec![]; medications_for_embedding.len()]
                 }
             }
         } else {
@@ -331,7 +378,7 @@ impl BatchProcessor {
         };
 
         // Create offers and requests with pre-generated embeddings
-        for (item, embedding) in result.items.into_iter().zip(embeddings.into_iter()) {
+        for (item, embedding) in final_result.items.into_iter().zip(embeddings.into_iter()) {
             let emb = if embedding.is_empty() {
                 None
             } else {
