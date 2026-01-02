@@ -16,12 +16,12 @@ use tower_http::cors::{Any, CorsLayer};
 
 use super::{
     audit_trail, calibration, confidence, curation, diagnostics, embedding_cache, groups, handlers,
-    match_filter, match_reviews, reclassify, reparse, review_queue, weights,
+    match_filter, match_reviews, matching, reclassify, reparse, review_queue, weights,
 };
 use crate::ai::PharmaParser;
 use crate::matching::MatchingEngine;
 use crate::repository::{
-    AuditLogRepository, FeedbackRepository, GroupRepository, MatchRepository,
+    AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
     MedicationAliasRepository, MedicationMappingRepository, MedicationMasterRepository,
     OfferRepository, ParticipantRepository, RawMessageRepository, RequestRepository,
     ReviewQueueRepository,
@@ -47,6 +47,7 @@ where
     pub medication_mapping_repo: Arc<MM>,
     pub medication_master_repo: Arc<dyn MedicationMasterRepository + Send + Sync>,
     pub medication_alias_repo: Arc<dyn MedicationAliasRepository + Send + Sync>,
+    pub match_queue_repo: Arc<dyn MatchQueueRepository + Send + Sync>,
     pub matching_engine: Option<Arc<MatchingEngine>>,
     pub ai_client: Arc<PharmaParser>,
     pub ws_tx: broadcast::Sender<WsEvent>,
@@ -74,6 +75,7 @@ where
             medication_mapping_repo: self.medication_mapping_repo.clone(),
             medication_master_repo: self.medication_master_repo.clone(),
             medication_alias_repo: self.medication_alias_repo.clone(),
+            match_queue_repo: self.match_queue_repo.clone(),
             matching_engine: self.matching_engine.clone(),
             ai_client: self.ai_client.clone(),
             ws_tx: self.ws_tx.clone(),
@@ -152,6 +154,10 @@ where
         .route(
             "/api/reclassify",
             post(reclassify::reclassify_item::<RQ, A, MM>),
+        )
+        .route(
+            "/api/match/rematch",
+            post(matching::rematch_item::<RQ, A, MM>),
         )
         .route(
             "/api/items/{item_type}/{id}",

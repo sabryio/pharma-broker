@@ -395,7 +395,7 @@ export default function ReviewQueue() {
     })
 
     bulkMutation.mutate(
-      { ids, action, reviewed_by: '00000000-0000-0000-0000-000000000001' },
+      { ids, action, reviewed_by: '00000000-0000-4000-8000-000000000001' },
       {
         onError: () => {
           setOptimisticallyRemoved((prev) => {
@@ -660,8 +660,8 @@ export default function ReviewQueue() {
 
         <ReviewStatsCards
           pending={pendingReviews.length}
-          approved={history.filter((h) => h.action === 'approved').length}
-          rejected={history.filter((h) => h.action === 'rejected').length}
+          approved={apiStats?.confirmedToday ?? 0}
+          rejected={apiStats?.rejectedToday ?? 0}
           avgConfidence={
             pendingReviews.length > 0
               ? Math.round(

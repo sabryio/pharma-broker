@@ -386,8 +386,13 @@ impl BatchProcessor {
                     info!(offer_id = %offer.id, medication = %offer.medication, "✅ Offer created");
                     let _ = self.ws_tx.send(WsEvent::NewOffer(offer.clone()));
 
-                    // Enqueue for matching
-                    let _ = self.match_queue_repo.enqueue(offer.id, 0).await;
+                    // Trigger re-matching: Since workers are request-centric,
+                    // we enqueue active requests to match against this new offer.
+                    if let Ok(active_requests) = self.request_repo.get_active(100, 0).await {
+                        for r in active_requests {
+                            let _ = self.match_queue_repo.enqueue(r.id, 0).await;
+                        }
+                    }
 
                     // Audit log
                     let audit =

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::routes::AppState;
-use crate::ai::Intent;
+use crate::ai::{Intent, ParsedItem};
 use crate::domain::{AuditAction, AuditLog, EntityType};
 use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
 use crate::ws::WsEvent;
@@ -163,16 +163,75 @@ where
         })?;
 
     // Find the matching item in the parse result
-    let parsed_item = parse_result
-        .into_iter()
-        .find(|item| match req.item_type {
-            ItemType::Offer => item.item_type == Intent::Offer,
-            ItemType::Request => item.item_type == Intent::Request,
-        })
-        .ok_or((
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "AI did not identify any matching item type in the message".to_string(),
-        ))?;
+    // Heuristic-based matching to find the specific item the user is trying to re-parse
+    let target_intent = match req.item_type {
+        ItemType::Offer => Intent::Offer,
+        ItemType::Request => Intent::Request,
+    };
+
+    let parsed_item = if parse_result.len() == 1 {
+        // Only one item returned, assume it's the one
+        parse_result.into_iter().next().unwrap()
+    } else {
+        // Multiple items returned, find the best match
+        let items: Vec<ParsedItem> = parse_result
+            .into_iter()
+            .filter(|item| item.item_type == target_intent)
+            .collect();
+
+        if items.is_empty() {
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "AI did not identify any matching item type in the message".to_string(),
+            ));
+        }
+
+        if items.len() == 1 {
+            items.into_iter().next().unwrap()
+        } else {
+            // Multiple items of the same type. Use heuristics.
+            let hint_lower = req.hint.as_ref().map(|h| h.to_lowercase());
+            let correction_lower = req.correction.as_ref().map(|c| c.to_lowercase());
+            let prev_lower = previous_medication.to_lowercase();
+
+            items
+                .into_iter()
+                .max_by_key(|item| {
+                    let med = item.medication.to_lowercase();
+                    let raw = item.medication_raw.to_lowercase();
+
+                    let mut score = 0;
+
+                    // Priority 1: Exact match with hint
+                    if let Some(hint) = &hint_lower
+                        && (med.contains(hint) || hint.contains(&med))
+                    {
+                        score += 100;
+                    }
+
+                    // Priority 2: Contains correction keywords
+                    if let Some(correction) = &correction_lower
+                        && (med.contains(correction) || correction.contains(&med))
+                    {
+                        score += 50;
+                    }
+
+                    // Priority 3: Similarity to previous medication
+                    // (useful if correction didn't change the name but something else like expiry)
+                    if med.contains(&prev_lower) || prev_lower.contains(&med) {
+                        score += 20;
+                    }
+
+                    // Priority 4: raw text match
+                    if raw.contains(&prev_lower) || prev_lower.contains(&raw) {
+                        score += 10;
+                    }
+
+                    score
+                })
+                .unwrap()
+        }
+    };
 
     // Update the item with new medication info
     let new_medication = parsed_item.medication.clone();
@@ -190,6 +249,15 @@ where
                 )
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+            // Trigger re-matching: Since workers are request-centric,
+            // we enqueue all active requests that might match this new offer.
+            // For now, we enqueue up to 100 active requests to avoid overwhelming the queue.
+            if let Ok(active_requests) = state.request_repo.get_active(100, 0).await {
+                for r in active_requests {
+                    let _ = state.match_queue_repo.enqueue(r.id, 0).await;
+                }
+            }
         }
         ItemType::Request => {
             state
@@ -202,6 +270,9 @@ where
                 )
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+            // Trigger re-matching for this request
+            let _ = state.match_queue_repo.enqueue(req.item_id, 0).await;
         }
     }
 

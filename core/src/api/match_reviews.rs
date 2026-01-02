@@ -725,10 +725,22 @@ where
         (sum / matches.len() as f64) * 100.0
     };
 
+    let confirmed_today = state
+        .match_repo
+        .count_confirmed_today()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let rejected_today = state
+        .match_repo
+        .count_rejected_today()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     Ok(Json(MatchReviewStats {
         pending,
-        confirmed_today: 0,
-        rejected_today: 0,
+        confirmed_today,
+        rejected_today,
         total_pending: pending,
         avg_confidence,
     }))

@@ -184,6 +184,7 @@ async fn main() -> anyhow::Result<()> {
         medication_mapping_repo: medication_mapping_repo.clone(),
         medication_master_repo: medication_master_repo.clone(),
         medication_alias_repo: medication_alias_repo.clone(),
+        match_queue_repo: match_queue_repo.clone(),
         matching_engine: Some(matching_engine.clone()),
         ai_client: ai_client.clone(),
         ws_tx: ws_tx.clone(),

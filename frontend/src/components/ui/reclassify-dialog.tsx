@@ -35,7 +35,7 @@ interface ReclassifyDialogProps {
 }
 
 // Placeholder user ID until auth is implemented
-const PLACEHOLDER_USER_ID = '00000000-0000-0000-0000-000000000001'
+const PLACEHOLDER_USER_ID = '00000000-0000-4000-8000-000000000001'
 
 export function ReclassifyDialog({
   open,
@@ -209,7 +209,7 @@ export function ReclassifyDialog({
               {/* Error Message */}
               {mutation.isError && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <AlertCircle className="w-4 h-4 shrink-0" />
                   <p>
                     {mutation.error instanceof Error
                       ? mutation.error.message

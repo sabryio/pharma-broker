@@ -124,6 +124,14 @@ pub trait MatchRepository: Send + Sync {
     async fn cancel_matches_for_offer(&self, offer_id: Uuid) -> Result<u64>;
     /// Cancel all pending matches that reference a specific request (used when reclassifying)
     async fn cancel_matches_for_request(&self, request_id: Uuid) -> Result<u64>;
+    /// Delete all pending matches for an offer
+    async fn delete_pending_matches_for_offer(&self, offer_id: Uuid) -> Result<u64>;
+    /// Delete all pending matches for a request
+    async fn delete_pending_matches_for_request(&self, request_id: Uuid) -> Result<u64>;
+    /// Count matches confirmed today
+    async fn count_confirmed_today(&self) -> Result<i64>;
+    /// Count matches rejected today
+    async fn count_rejected_today(&self) -> Result<i64>;
 }
 
 /// Raw message repository trait

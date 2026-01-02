@@ -2,7 +2,8 @@
 // Beautiful carousel for navigating through related matches
 
 import { useCallback, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, Layers, ArrowLeftRight } from 'lucide-react'
 import type { OfferWithMatches, RequestWithMatches } from './types'
@@ -12,6 +13,7 @@ import { CurationDialog } from './curation-dialog'
 import { ReclassifyDialog } from '@/components/ui/reclassify-dialog'
 import { ReparseDialog } from '@/components/ui/reparse-dialog'
 import type { ItemType } from '@/api/offers'
+import { rematchItem } from '@/api/matching'
 
 interface RelatedMatchCarouselProps {
   /** Grouped data - either offers with their requests or requests with their offers */
@@ -92,9 +94,39 @@ export function RelatedMatchCarousel({
     [],
   )
 
+  const rematchMutation = useMutation({
+    mutationFn: rematchItem,
+    onSuccess: () => {
+      toast.success('Rematch triggered', {
+        description: 'The matching engine is re-calculating results.',
+      })
+      // Invalidate queries to refresh the match reviews
+      queryClient.invalidateQueries({ queryKey: ['match-reviews'] })
+      queryClient.invalidateQueries({ queryKey: ['match-review-stats'] })
+    },
+    onError: (error) => {
+      toast.error('Failed to trigger rematch', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+    },
+  })
+
   const isOfferMode = anchorMode === 'offer'
   const groups = isOfferMode ? groupedByOffer : groupedByRequest
   const currentGroup = groups[anchorIndex]
+
+  const handleRematch = useCallback(() => {
+    if (!currentGroup) return
+
+    const itemId = isOfferMode
+      ? (currentGroup as OfferWithMatches).offer.id
+      : (currentGroup as RequestWithMatches).request.id
+
+    rematchMutation.mutate({
+      item_id: itemId,
+      item_type: anchorMode as ItemType,
+    })
+  }, [currentGroup, isOfferMode, anchorMode, rematchMutation])
 
   if (!currentGroup) return null
 
@@ -248,7 +280,11 @@ export function RelatedMatchCarousel({
 
           {/* Center: Match Confidence + Mini Navigation */}
           <div className="lg:col-span-3 flex flex-col items-center justify-center py-6">
-            <MatchConfidenceMeter confidence={currentMatch.confidence} />
+            <MatchConfidenceMeter
+              confidence={currentMatch.confidence}
+              onClick={handleRematch}
+              isPending={rematchMutation.isPending}
+            />
 
             {/* Issues */}
             {issues.length > 0 && (

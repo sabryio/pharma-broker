@@ -36,7 +36,7 @@ interface ReparseDialogProps {
 }
 
 // Placeholder user ID until auth is implemented
-const PLACEHOLDER_USER_ID = '00000000-0000-0000-0000-000000000001'
+const PLACEHOLDER_USER_ID = '00000000-0000-4000-8000-000000000001'
 
 export function ReparseDialog({
   open,
@@ -206,7 +206,7 @@ export function ReparseDialog({
 
               {/* Info Box */}
               <div className="flex items-start gap-2 p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 text-sm">
-                <Sparkles className="w-4 h-4 text-violet-500 flex-shrink-0 mt-0.5" />
+                <Sparkles className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
                 <p className="text-violet-300">
                   The AI will re-analyze the original message and update the
                   medication identification.
@@ -218,7 +218,7 @@ export function ReparseDialog({
               {/* Error Message */}
               {mutation.isError && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <AlertCircle className="w-4 h-4 shrink-0" />
                   <p>
                     {mutation.error instanceof Error
                       ? mutation.error.message

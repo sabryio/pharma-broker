@@ -473,6 +473,18 @@ mod tests {
         async fn cancel_matches_for_request(&self, _request_id: Uuid) -> DbResult<u64> {
             unimplemented!()
         }
+        async fn delete_pending_matches_for_offer(&self, _offer_id: Uuid) -> DbResult<u64> {
+            unimplemented!()
+        }
+        async fn delete_pending_matches_for_request(&self, _request_id: Uuid) -> DbResult<u64> {
+            unimplemented!()
+        }
+        async fn count_confirmed_today(&self) -> DbResult<i64> {
+            unimplemented!()
+        }
+        async fn count_rejected_today(&self) -> DbResult<i64> {
+            unimplemented!()
+        }
     }
 
     #[async_trait]

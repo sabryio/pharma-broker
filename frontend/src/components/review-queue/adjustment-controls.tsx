@@ -45,10 +45,16 @@ const defaultSliders: SliderValues = {
 export function AdjustmentControls() {
   const queryClient = useQueryClient()
   const [sliders, setSliders] = useState<SliderValues>(defaultSliders)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveStatus, setSaveStatus] = useState<
+    'idle' | 'saving' | 'saved' | 'error'
+  >('idle')
 
   // Fetch current weights
-  const { data: weightsData, isLoading, error } = useQuery({
+  const {
+    data: weightsData,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['weights'],
     queryFn: getWeights,
     staleTime: 30000,
@@ -89,10 +95,10 @@ export function AdjustmentControls() {
     if (isLoading || !weightsData) return
 
     const weights = slidersToWeights(debouncedSliders)
-    
+
     // Check if weights actually changed
     const currentWeights = weightsData.weights
-    const hasChanged = 
+    const hasChanged =
       Math.abs(weights.medication - currentWeights.medication) > 0.001 ||
       Math.abs(weights.dosage - currentWeights.dosage) > 0.001 ||
       Math.abs(weights.quantity - currentWeights.quantity) > 0.001 ||
@@ -106,9 +112,12 @@ export function AdjustmentControls() {
     }
   }, [debouncedSliders])
 
-  const handleSliderChange = useCallback((key: keyof SliderValues, value: number) => {
-    setSliders(prev => ({ ...prev, [key]: value }))
-  }, [])
+  const handleSliderChange = useCallback(
+    (key: keyof SliderValues, value: number) => {
+      setSliders((prev) => ({ ...prev, [key]: value }))
+    },
+    [],
+  )
 
   // Calculate current weights for display
   const currentWeights = slidersToWeights(sliders)
@@ -242,10 +251,16 @@ export function AdjustmentControls() {
       <div className="mt-6 pt-4 border-t border-border/50">
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
           <span>Current weights:</span>
-          <Badge variant="outline" className="text-emerald-400 border-emerald-400/30">
+          <Badge
+            variant="outline"
+            className="text-emerald-400 border-emerald-400/30"
+          >
             Med: {Math.round(currentWeights.medication * 100)}%
           </Badge>
-          <Badge variant="outline" className="text-purple-400 border-purple-400/30">
+          <Badge
+            variant="outline"
+            className="text-purple-400 border-purple-400/30"
+          >
             Dose: {Math.round(currentWeights.dosage * 100)}%
           </Badge>
           <Badge variant="outline" className="text-amber border-amber/30">
@@ -254,7 +269,10 @@ export function AdjustmentControls() {
           <Badge variant="outline" className="text-teal border-teal/30">
             Price: {Math.round(currentWeights.price * 100)}%
           </Badge>
-          <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30">
+          <Badge
+            variant="outline"
+            className="text-muted-foreground border-muted-foreground/30"
+          >
             Recency: {Math.round(currentWeights.recency * 100)}%
           </Badge>
         </div>
@@ -263,7 +281,11 @@ export function AdjustmentControls() {
   )
 }
 
-function SaveStatusBadge({ status }: { status: 'idle' | 'saving' | 'saved' | 'error' }) {
+function SaveStatusBadge({
+  status,
+}: {
+  status: 'idle' | 'saving' | 'saved' | 'error'
+}) {
   if (status === 'idle') return null
 
   return (
@@ -272,8 +294,10 @@ function SaveStatusBadge({ status }: { status: 'idle' | 'saving' | 'saved' | 'er
       className={cn(
         'transition-all duration-200',
         status === 'saving' && 'text-amber border-amber/30 bg-amber/10',
-        status === 'saved' && 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10',
-        status === 'error' && 'text-destructive border-destructive/30 bg-destructive/10',
+        status === 'saved' &&
+          'text-emerald-400 border-emerald-400/30 bg-emerald-400/10',
+        status === 'error' &&
+          'text-destructive border-destructive/30 bg-destructive/10',
       )}
     >
       {status === 'saving' && (

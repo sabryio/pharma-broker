@@ -1,13 +1,18 @@
 import { cn } from '@/lib/utils'
+import { RefreshCw } from 'lucide-react'
 
 interface MatchConfidenceMeterProps {
   confidence: number
   size?: number
+  onClick?: () => void
+  isPending?: boolean
 }
 
 export function MatchConfidenceMeter({
   confidence,
   size = 180,
+  onClick,
+  isPending = false,
 }: MatchConfidenceMeterProps) {
   const strokeWidth = 12
   const radius = (size - strokeWidth) / 2
@@ -33,10 +38,26 @@ export function MatchConfidenceMeter({
 
   return (
     <div className="flex flex-col items-center">
-      <div className="relative">
+      <button
+        onClick={onClick}
+        disabled={!onClick || isPending}
+        className={cn(
+          'relative group transition-all duration-500',
+          onClick &&
+            !isPending &&
+            'cursor-pointer hover:scale-105 active:scale-95',
+          isPending && 'opacity-70 cursor-wait',
+        )}
+        title={onClick ? 'Click to trigger manual re-match' : undefined}
+      >
         {/* Glow effect */}
         <div
-          className="absolute inset-0 rounded-full blur-2xl animate-pulse-slow"
+          className={cn(
+            'absolute inset-0 rounded-full blur-2xl transition-all duration-500',
+            isPending
+              ? 'animate-pulse scale-110'
+              : 'animate-pulse-slow group-hover:blur-3xl group-hover:scale-110',
+          )}
           style={{
             background: `radial-gradient(circle, ${colors.glow} 0%, transparent 70%)`,
           }}
@@ -46,7 +67,10 @@ export function MatchConfidenceMeter({
         <svg
           width={size}
           height={size}
-          className="transform -rotate-90"
+          className={cn(
+            'transform -rotate-90 transition-all duration-700',
+            isPending && 'animate-spin-slow',
+          )}
           style={{ overflow: 'visible' }}
         >
           {/* Background circle */}
@@ -104,7 +128,7 @@ export function MatchConfidenceMeter({
                 fill={isActive ? colors.stroke : 'hsl(var(--muted))'}
                 className={cn(
                   'transition-all duration-500',
-                  isActive && 'animate-pulse',
+                  isActive && (isPending ? 'animate-bounce' : 'animate-pulse'),
                 )}
                 style={{
                   animationDelay: `${i * 80}ms`,
@@ -118,28 +142,40 @@ export function MatchConfidenceMeter({
         {/* Center content */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-4xl font-bold text-foreground">
-            {confidence.toFixed(2)}%
+            {isPending ? (
+              <RefreshCw className="w-8 h-8 animate-spin text-teal" />
+            ) : (
+              `${confidence.toFixed(2)}%`
+            )}
           </span>
-          <span className="text-xs text-muted-foreground mt-1">Match</span>
-          <span className="text-xs text-muted-foreground">Confidence</span>
+          <span className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter">
+            {isPending ? 'Rematching...' : 'Match Confidence'}
+          </span>
+          {onClick && !isPending && (
+            <div className="absolute -bottom-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full border border-white/10">
+              <RefreshCw className="w-2 h-2 text-teal" />
+              <span className="text-[8px] font-bold text-teal">REMATCH</span>
+            </div>
+          )}
         </div>
-      </div>
+      </button>
 
       {/* Label */}
       <div className="mt-4">
         <span
           className={cn(
-            'text-sm font-medium px-4 py-1.5 rounded-full',
+            'text-sm font-medium px-4 py-1.5 rounded-full transition-all duration-300',
             confidence >= 80 &&
-              'bg-emerald/20 text-emerald border border-emerald/30',
+              'bg-emerald/20 text-emerald border border-emerald/30 shadow-lg shadow-emerald/10',
             confidence >= 60 &&
               confidence < 80 &&
-              'bg-amber/20 text-amber border border-amber/30',
+              'bg-amber/20 text-amber border border-amber/30 shadow-lg shadow-amber/10',
             confidence < 60 &&
-              'bg-destructive/20 text-destructive border border-destructive/30',
+              'bg-destructive/20 text-destructive border border-destructive/30 shadow-lg shadow-destructive/10',
+            isPending && 'animate-pulse',
           )}
         >
-          {getLabel()}
+          {isPending ? 'Refreshing Results' : getLabel()}
         </span>
       </div>
     </div>

@@ -123,6 +123,7 @@ impl RequestRepository for SeaOrmRequestRepo {
         let mut active: request::ActiveModel = request.into();
         active.medication = Set(medication.to_string());
         active.medication_raw = Set(medication_raw.to_string());
+        active.medication_curated = Set(true);
         if let Some(conf) = ai_confidence {
             active.ai_confidence = Set(conf);
         }

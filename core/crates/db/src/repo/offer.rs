@@ -122,6 +122,7 @@ impl OfferRepository for SeaOrmOfferRepo {
         let mut active: offer::ActiveModel = offer.into();
         active.medication = Set(medication.to_string());
         active.medication_raw = Set(medication_raw.to_string());
+        active.medication_curated = Set(true);
         if let Some(conf) = ai_confidence {
             active.ai_confidence = Set(conf);
         }

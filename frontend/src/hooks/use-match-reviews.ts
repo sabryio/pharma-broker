@@ -15,6 +15,7 @@ import type {
   MatchReviewParams,
   BulkUpdateRequest,
   MatchReviewItem,
+  MatchReviewStats,
 } from '@/schema/match-review'
 
 /**
@@ -62,7 +63,7 @@ export function useUpdateMatchReviewStatus() {
   const queryClient = useQueryClient()
 
   // TODO: Get from auth context when implemented
-  const CURRENT_USER_ID = '00000000-0000-0000-0000-000000000001'
+  const CURRENT_USER_ID = '00000000-0000-4000-8000-000000000001'
 
   return useMutation({
     mutationFn: ({
@@ -103,12 +104,20 @@ export function useUpdateMatchReviewStatus() {
       // Optimistically update stats
       queryClient.setQueryData(
         ['match-reviews', 'stats'],
-        (old: { pending: number; totalPending: number } | undefined) => {
+        (old: MatchReviewStats | undefined) => {
           if (!old) return old
           return {
             ...old,
             pending: Math.max(0, old.pending - 1),
             totalPending: Math.max(0, old.totalPending - 1),
+            confirmedToday:
+              variables.action === 'approved'
+                ? old.confirmedToday + 1
+                : old.confirmedToday,
+            rejectedToday:
+              variables.action === 'rejected'
+                ? old.rejectedToday + 1
+                : old.rejectedToday,
           }
         },
       )
@@ -161,6 +170,27 @@ export function useBulkUpdateMatchReviews() {
             ...old,
             items: old.items.filter((item) => !idsSet.has(item.id)),
             total: Math.max(0, old.total - variables.ids.length),
+          }
+        },
+      )
+
+      // Optimistically update stats
+      queryClient.setQueryData(
+        ['match-reviews', 'stats'],
+        (old: MatchReviewStats | undefined) => {
+          if (!old) return old
+          return {
+            ...old,
+            pending: Math.max(0, old.pending - variables.ids.length),
+            totalPending: Math.max(0, old.totalPending - variables.ids.length),
+            confirmedToday:
+              variables.action === 'approved'
+                ? old.confirmedToday + variables.ids.length
+                : old.confirmedToday,
+            rejectedToday:
+              variables.action === 'rejected'
+                ? old.rejectedToday + variables.ids.length
+                : old.rejectedToday,
           }
         },
       )

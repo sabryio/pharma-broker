@@ -83,7 +83,7 @@ impl MatchRepository for SeaOrmMatchRepo {
         if !params.notes.is_empty() {
             active.notes = Set(Some(params.notes.to_string()));
         }
-        if params.status == MatchStatus::Confirmed {
+        if params.status == MatchStatus::Confirmed || params.status == MatchStatus::Rejected {
             active.confirmed_at = Set(Some(Utc::now()));
         }
         active.update(&*self.db).await.map_err(Error::from)
@@ -115,6 +115,50 @@ impl MatchRepository for SeaOrmMatchRepo {
             .exec(&*self.db)
             .await?;
         Ok(result.rows_affected)
+    }
+
+    async fn delete_pending_matches_for_offer(&self, offer_id: Uuid) -> Result<u64> {
+        let result = Match::delete_many()
+            .filter(match_::Column::OfferId.eq(offer_id))
+            .filter(match_::Column::Status.eq(MatchStatus::Pending))
+            .exec(&*self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    async fn delete_pending_matches_for_request(&self, request_id: Uuid) -> Result<u64> {
+        let result = Match::delete_many()
+            .filter(match_::Column::RequestId.eq(request_id))
+            .filter(match_::Column::Status.eq(MatchStatus::Pending))
+            .exec(&*self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    async fn count_confirmed_today(&self) -> Result<i64> {
+        let today = Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap();
+        let today: DateTime<Utc> = DateTime::from_naive_utc_and_offset(today, Utc);
+
+        Match::find()
+            .filter(match_::Column::Status.eq(MatchStatus::Confirmed))
+            .filter(match_::Column::ConfirmedAt.gte(today))
+            .count(&*self.db)
+            .await
+            .map(|c| c as i64)
+            .map_err(Error::from)
+    }
+
+    async fn count_rejected_today(&self) -> Result<i64> {
+        let today = Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap();
+        let today: DateTime<Utc> = DateTime::from_naive_utc_and_offset(today, Utc);
+
+        Match::find()
+            .filter(match_::Column::Status.eq(MatchStatus::Rejected))
+            .filter(match_::Column::ConfirmedAt.gte(today))
+            .count(&*self.db)
+            .await
+            .map(|c| c as i64)
+            .map_err(Error::from)
     }
 }
 
