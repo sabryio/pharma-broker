@@ -14,6 +14,7 @@ import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ParsingReviewRouteImport } from './routes/parsing-review'
 import { Route as OffersRouteImport } from './routes/offers'
 import { Route as GroupsRouteImport } from './routes/groups'
+import { Route as DebugRecordingsRouteImport } from './routes/debug-recordings'
 import { Route as IndexRouteImport } from './routes/index'
 
 const ReviewQueueRoute = ReviewQueueRouteImport.update({
@@ -41,6 +42,11 @@ const GroupsRoute = GroupsRouteImport.update({
   path: '/groups',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DebugRecordingsRoute = DebugRecordingsRouteImport.update({
+  id: '/debug-recordings',
+  path: '/debug-recordings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -49,6 +55,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/debug-recordings': typeof DebugRecordingsRoute
   '/groups': typeof GroupsRoute
   '/offers': typeof OffersRoute
   '/parsing-review': typeof ParsingReviewRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/debug-recordings': typeof DebugRecordingsRoute
   '/groups': typeof GroupsRoute
   '/offers': typeof OffersRoute
   '/parsing-review': typeof ParsingReviewRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/debug-recordings': typeof DebugRecordingsRoute
   '/groups': typeof GroupsRoute
   '/offers': typeof OffersRoute
   '/parsing-review': typeof ParsingReviewRoute
@@ -76,6 +85,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/debug-recordings'
     | '/groups'
     | '/offers'
     | '/parsing-review'
@@ -84,6 +94,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/debug-recordings'
     | '/groups'
     | '/offers'
     | '/parsing-review'
@@ -92,6 +103,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/debug-recordings'
     | '/groups'
     | '/offers'
     | '/parsing-review'
@@ -101,6 +113,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DebugRecordingsRoute: typeof DebugRecordingsRoute
   GroupsRoute: typeof GroupsRoute
   OffersRoute: typeof OffersRoute
   ParsingReviewRoute: typeof ParsingReviewRoute
@@ -145,6 +158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GroupsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/debug-recordings': {
+      id: '/debug-recordings'
+      path: '/debug-recordings'
+      fullPath: '/debug-recordings'
+      preLoaderRoute: typeof DebugRecordingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -157,6 +177,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DebugRecordingsRoute: DebugRecordingsRoute,
   GroupsRoute: GroupsRoute,
   OffersRoute: OffersRoute,
   ParsingReviewRoute: ParsingReviewRoute,

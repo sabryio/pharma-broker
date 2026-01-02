@@ -4,6 +4,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   Brain,
+  Bug,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
@@ -25,6 +26,7 @@ const navItems = [
   { title: 'Matches', icon: Sparkles, path: '/matches' },
   { title: 'Groups', icon: Users, path: '/groups' },
   { title: 'Analytics', icon: BarChart3, path: '/analytics' },
+  { title: 'Debug', icon: Bug, path: '/debug-recordings' },
   { title: 'Settings', icon: Settings, path: '/settings' },
 ]
 

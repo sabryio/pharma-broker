@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -14,6 +14,7 @@ import {
   Undo2,
   AlertTriangle,
   Stethoscope,
+  Bug,
 } from 'lucide-react'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -32,7 +33,6 @@ import {
   type OfferWithMatches,
   type RequestWithMatches,
 } from '@/components/review-queue'
-// Note: AdjustmentControls is now self-contained and fetches weights from API
 import { CurationMode } from '@/components/medication-curation'
 import { useNotifications } from '@/hooks/use-notifications'
 import {
@@ -65,18 +65,15 @@ export default function ReviewQueue() {
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [adjustments] = useState<AdjustmentSettings>(defaultAdjustments)
-  const [optimisticallyRemoved, setOptimisticallyRemoved] = useState<
-    Set<string>
-  >(new Set())
+  const [optimisticallyRemoved, setOptimisticallyRemoved] = useState<Set<string>>(new Set())
 
-  // New carousel state
+  // Carousel state
   const [anchorMode, setAnchorMode] = useState<'offer' | 'request'>('offer')
   const [anchorIndex, setAnchorIndex] = useState(0)
   const [relatedIndex, setRelatedIndex] = useState(0)
   const [reviewMode, setReviewMode] = useState<'match' | 'curation'>('match')
 
-  const { notifyHighPriorityReview, notifyLowApprovalRate, settings } =
-    useNotifications()
+  const { notifyHighPriorityReview, notifyLowApprovalRate, settings } = useNotifications()
   const notifiedReviewsRef = useRef<Set<string>>(new Set())
   const lastApprovalRateRef = useRef<number | null>(null)
 
@@ -92,15 +89,12 @@ export default function ReviewQueue() {
   const currentGroup = groups[anchorIndex]
   const currentMatch = currentGroup?.matches[relatedIndex]
 
-  // Compatibility with old "current" for footer actions
   const current = pendingReviews[currentIndex]
   const totalReviews = reviewData?.total ?? 0
 
   const approvalRate =
     history.length > 0
-      ? (history.filter((h) => h.action === 'approved').length /
-          history.length) *
-        100
+      ? (history.filter((h) => h.action === 'approved').length / history.length) * 100
       : 100
 
   useEffect(() => {
@@ -110,7 +104,6 @@ export default function ReviewQueue() {
     }
   }, [groups.length, anchorIndex])
 
-  // Reset indices when mode changes
   useEffect(() => {
     setAnchorIndex(0)
     setRelatedIndex(0)
@@ -139,12 +132,7 @@ export default function ReviewQueue() {
       }
       lastApprovalRateRef.current = approvalRate
     }
-  }, [
-    approvalRate,
-    history.length,
-    settings.approvalRateThreshold,
-    notifyLowApprovalRate,
-  ])
+  }, [approvalRate, history.length, settings.approvalRateThreshold, notifyLowApprovalRate])
 
   const nextReview = useCallback(() => {
     if (pendingReviews.length > 0) {
@@ -154,9 +142,7 @@ export default function ReviewQueue() {
 
   const prevReview = useCallback(() => {
     if (pendingReviews.length > 0) {
-      setCurrentIndex(
-        (i) => (i - 1 + pendingReviews.length) % pendingReviews.length,
-      )
+      setCurrentIndex((i) => (i - 1 + pendingReviews.length) % pendingReviews.length)
     }
   }, [pendingReviews.length])
 
@@ -210,10 +196,8 @@ export default function ReviewQueue() {
     (newMode: 'offer' | 'request') => {
       if (newMode === anchorMode) return
 
-      // Smart transition: make the currently visible carousel item the new anchor
       if (currentMatch && currentGroup) {
         if (newMode === 'request') {
-          // Narrowing: currentMatch must have 'request' property in offer mode
           const matchWithReq = currentMatch as any
           if (matchWithReq.request) {
             const reqIndex = groupedRequests.findIndex(
@@ -221,16 +205,13 @@ export default function ReviewQueue() {
             )
             if (reqIndex !== -1) {
               setAnchorIndex(reqIndex)
-              // Find the original offer in the new request's matches to keep it visible
               const offIndex = groupedRequests[reqIndex].matches.findIndex(
-                (m) =>
-                  m.offer.id === (currentGroup as OfferWithMatches).offer.id,
+                (m) => m.offer.id === (currentGroup as OfferWithMatches).offer.id,
               )
               setRelatedIndex(Math.max(0, offIndex))
             }
           }
         } else {
-          // Narrowing: currentMatch must have 'offer' property in request mode
           const matchWithOff = currentMatch as any
           if (matchWithOff.offer) {
             const offIndex = groupedOffers.findIndex(
@@ -238,11 +219,8 @@ export default function ReviewQueue() {
             )
             if (offIndex !== -1) {
               setAnchorIndex(offIndex)
-              // Find the original request in the new offer's matches to keep it visible
               const reqIndex = groupedOffers[offIndex].matches.findIndex(
-                (m) =>
-                  m.request.id ===
-                  (currentGroup as RequestWithMatches).request.id,
+                (m) => m.request.id === (currentGroup as RequestWithMatches).request.id,
               )
               setRelatedIndex(Math.max(0, reqIndex))
             }
@@ -251,25 +229,13 @@ export default function ReviewQueue() {
       }
       setAnchorMode(newMode)
     },
-    [
-      anchorMode,
-      currentMatch,
-      currentGroup,
-      groupedOffers,
-      groupedRequests,
-      groupedRequests.length,
-      groupedOffers.length,
-    ],
+    [anchorMode, currentMatch, currentGroup, groupedOffers, groupedRequests],
   )
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (showHistory) return
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      )
-        return
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
       switch (e.key) {
         case 'ArrowLeft':
@@ -344,15 +310,7 @@ export default function ReviewQueue() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [
-    nextReview,
-    prevReview,
-    bulkMode,
-    current,
-    showHistory,
-    history,
-    handleSingleAction,
-  ])
+  }, [nextReview, prevReview, bulkMode, current, showHistory, history, handleSingleAction])
 
   const toggleSelection = (id: string) => {
     const newSelected = new Set(selectedIds)
@@ -440,22 +398,14 @@ export default function ReviewQueue() {
     toast.success('Match restored to queue', { description: entry.product })
   }
 
-  const formatDateTime = (date: Date) =>
-    date.toISOString().replace('T', ' ').substring(0, 19)
+  const formatDateTime = (date: Date) => date.toISOString().replace('T', ' ').substring(0, 19)
 
   const exportToCSV = () => {
     if (history.length === 0) {
       toast.error('No history to export')
       return
     }
-    const headers = [
-      'Timestamp',
-      'Product',
-      'Action',
-      'Confidence (%)',
-      'Offer Source',
-      'Request Source',
-    ]
+    const headers = ['Timestamp', 'Product', 'Action', 'Confidence (%)', 'Offer Source', 'Request Source']
     const rows = history.map((e) => [
       formatDateTime(e.timestamp),
       e.product,
@@ -464,10 +414,7 @@ export default function ReviewQueue() {
       e.originalReview.offer.source,
       e.originalReview.request.source,
     ])
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
-    ].join('\n')
+    const csvContent = [headers.join(','), ...rows.map((row) => row.map((cell) => `"${cell}"`).join(','))].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -519,12 +466,8 @@ export default function ReviewQueue() {
               <AlertTriangle className="w-8 h-8 text-red-400" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-foreground mb-1">
-                Failed to load review queue
-              </h2>
-              <p className="text-muted-foreground text-sm mb-4">
-                {error.message}
-              </p>
+              <h2 className="text-lg font-semibold text-foreground mb-1">Failed to load review queue</h2>
+              <p className="text-muted-foreground text-sm mb-4">{error.message}</p>
               <button
                 onClick={() => refetch()}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal hover:bg-teal/80 text-white transition-colors mx-auto"
@@ -545,12 +488,8 @@ export default function ReviewQueue() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-foreground">
-                Review Queue
-              </h1>
-              <p className="text-muted-foreground">
-                All matches have been reviewed
-              </p>
+              <h1 className="text-2xl font-bold text-foreground">Review Queue</h1>
+              <p className="text-muted-foreground">All matches have been reviewed</p>
             </div>
             <HeaderActions
               historyCount={history.length}
@@ -563,17 +502,11 @@ export default function ReviewQueue() {
               onExportPDF={exportToPDF}
             />
           </div>
-          {showHistory && (
-            <HistoryLog history={history} onRestore={restoreFromHistory} />
-          )}
+          {showHistory && <HistoryLog history={history} onRestore={restoreFromHistory} />}
           <div className="glass-card-enhanced p-12 rounded-2xl text-center">
             <CheckCircle className="w-16 h-16 text-emerald mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-foreground mb-2">
-              Queue Empty
-            </h2>
-            <p className="text-muted-foreground">
-              No pending matches require review at this time.
-            </p>
+            <h2 className="text-xl font-semibold text-foreground mb-2">Queue Empty</h2>
+            <p className="text-muted-foreground">No pending matches require review at this time.</p>
             <button
               onClick={() => refetch()}
               className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground transition-colors mx-auto"
@@ -593,9 +526,7 @@ export default function ReviewQueue() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Review Queue</h1>
-            <p className="text-muted-foreground">
-              Verify low-confidence AI matches
-            </p>
+            <p className="text-muted-foreground">Verify low-confidence AI matches</p>
           </div>
           <div className="flex items-center gap-4 bg-secondary/50 p-1 rounded-xl border border-white/5">
             <button
@@ -630,6 +561,15 @@ export default function ReviewQueue() {
               <span className="mx-1">|</span>
               <span>⌘Z Undo</span>
             </div>
+            {/* Debug recordings link */}
+            <Link
+              to="/debug-recordings"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30 transition-colors"
+              title="View debug recordings & pipeline data"
+            >
+              <Bug className="w-4 h-4" />
+              Debug
+            </Link>
             <HeaderActions
               historyCount={history.length}
               showHistory={showHistory}
@@ -664,23 +604,15 @@ export default function ReviewQueue() {
           rejected={apiStats?.rejectedToday ?? 0}
           avgConfidence={
             pendingReviews.length > 0
-              ? Math.round(
-                  pendingReviews.reduce((acc, r) => acc + r.confidence, 0) /
-                    pendingReviews.length,
-                )
+              ? Math.round(pendingReviews.reduce((acc, r) => acc + r.confidence, 0) / pendingReviews.length)
               : (apiStats?.avgConfidence ?? 0)
           }
         />
 
         {reviewMode === 'match' ? (
           <>
-            <QueueProgress
-              pending={pendingReviews.length}
-              total={totalReviews}
-            />
-            {showHistory && (
-              <HistoryLog history={history} onRestore={restoreFromHistory} />
-            )}
+            <QueueProgress pending={pendingReviews.length} total={totalReviews} />
+            {showHistory && <HistoryLog history={history} onRestore={restoreFromHistory} />}
             {bulkMode && (
               <BulkModeGrid
                 reviews={pendingReviews}
