@@ -14,7 +14,9 @@ use uuid::Uuid;
 
 use super::routes::AppState;
 use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackRecord, MatchStatus};
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{
+    AuditLogRepository, MedicationAliasModel, MedicationMappingRepository, ReviewQueueRepository,
+};
 use crate::ws::{MatchStatusEvent, WsEvent};
 use pharma_db::traits::{MatchReviewItem, MatchReviewStats, OfferSummary, RequestSummary};
 
@@ -514,6 +516,40 @@ where
     })?;
     tracing::info!(">>> [DEBUG] Successfully updated match status in database");
 
+    // Fetch offer and request for alias learning
+    let offer = state
+        .offer_repo
+        .get_by_id(match_entity.offer_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let request = state
+        .request_repo
+        .get_by_id(match_entity.request_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Get curation info for master_id lookup
+    let offer_curation = if let Some(ref o) = offer {
+        state
+            .medication_alias_repo
+            .get_by_name(&o.medication_raw)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+    let request_curation = if let Some(ref r) = request {
+        state
+            .medication_alias_repo
+            .get_by_name(&r.medication_raw)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
     // If confirmed, increment match counts, record feedback and broadcast event
     // NOTE: We do NOT update offer/request status to MATCHED because:
     // - One offer can be matched with multiple requests
@@ -534,6 +570,56 @@ where
             .await
         {
             tracing::warn!(error = %e, request_id = %match_entity.request_id, "Failed to increment request match count");
+        }
+
+        // Learn aliases from confirmed match
+        if let (Some(o), Some(r)) = (&offer, &request) {
+            let offer_master_id = offer_curation.as_ref().and_then(|a| a.master_medication_id);
+            let request_master_id = request_curation
+                .as_ref()
+                .and_then(|a| a.master_medication_id);
+
+            if let Some(learn_result) = state.alias_learner.learn_from_confirmation(
+                id,
+                match_entity.score,
+                &o.medication_raw,
+                &r.medication_raw,
+                offer_master_id,
+                request_master_id,
+            ) {
+                tracing::info!(
+                    match_id = %id,
+                    alias_name = %learn_result.alias_name,
+                    alias_created = %learn_result.alias_created,
+                    confirmations = %learn_result.confirmations,
+                    required = %learn_result.required,
+                    "Alias learning result"
+                );
+
+                // If alias was created, persist to database
+                if learn_result.alias_created
+                    && let Some(master_id) = learn_result.master_id
+                {
+                    let mut new_alias = MedicationAliasModel::new(learn_result.alias_name.clone());
+                    new_alias.approve(master_id, "alias_learner".to_string());
+                    new_alias.ai_suggestion_confidence =
+                        Some(state.alias_learner.config().learned_alias_confidence);
+
+                    if let Err(e) = state.medication_alias_repo.save(&new_alias).await {
+                        tracing::warn!(
+                            error = %e,
+                            alias = %learn_result.alias_name,
+                            "Failed to persist learned alias"
+                        );
+                    } else {
+                        tracing::info!(
+                            alias = %learn_result.alias_name,
+                            master_id = %master_id,
+                            "Persisted learned alias to database"
+                        );
+                    }
+                }
+            }
         }
 
         // Record feedback for learning system
@@ -566,6 +652,20 @@ where
         }
     } else if status == MatchStatus::Rejected {
         tracing::info!(">>> [DEBUG] Processing rejection");
+
+        // Learn from rejection (clears pending aliases)
+        if let (Some(o), Some(r)) = (&offer, &request) {
+            state
+                .alias_learner
+                .learn_from_rejection(&o.medication_raw, &r.medication_raw);
+            tracing::debug!(
+                match_id = %id,
+                offer_medication = %o.medication_raw,
+                request_medication = %r.medication_raw,
+                "Alias learner notified of rejection"
+            );
+        }
+
         // Record negative feedback for learning system
         let feedback = FeedbackRecord::new(
             id,
@@ -654,6 +754,20 @@ where
         if state.match_repo.update_status(params).await.is_ok() {
             updated_count += 1;
 
+            // Fetch offer and request for alias learning
+            let offer = state
+                .offer_repo
+                .get_by_id(match_entity.offer_id)
+                .await
+                .ok()
+                .flatten();
+            let request = state
+                .request_repo
+                .get_by_id(match_entity.request_id)
+                .await
+                .ok()
+                .flatten();
+
             // Record feedback and increment match counts (no offer/request status update for many-to-many matching)
             if status == MatchStatus::Confirmed {
                 // Increment confirmed match count for both offer and request
@@ -672,6 +786,46 @@ where
                     tracing::warn!(error = %e, request_id = %match_entity.request_id, "Failed to increment request match count (bulk)");
                 }
 
+                // Learn aliases from confirmed match
+                if let (Some(o), Some(r)) = (&offer, &request) {
+                    let offer_curation = state
+                        .medication_alias_repo
+                        .get_by_name(&o.medication_raw)
+                        .await
+                        .ok()
+                        .flatten();
+                    let request_curation = state
+                        .medication_alias_repo
+                        .get_by_name(&r.medication_raw)
+                        .await
+                        .ok()
+                        .flatten();
+
+                    let offer_master_id =
+                        offer_curation.as_ref().and_then(|a| a.master_medication_id);
+                    let request_master_id = request_curation
+                        .as_ref()
+                        .and_then(|a| a.master_medication_id);
+
+                    if let Some(learn_result) = state.alias_learner.learn_from_confirmation(
+                        *id,
+                        match_entity.score,
+                        &o.medication_raw,
+                        &r.medication_raw,
+                        offer_master_id,
+                        request_master_id,
+                    ) && learn_result.alias_created
+                        && let Some(master_id) = learn_result.master_id
+                    {
+                        let mut new_alias =
+                            MedicationAliasModel::new(learn_result.alias_name.clone());
+                        new_alias.approve(master_id, "alias_learner".to_string());
+                        new_alias.ai_suggestion_confidence =
+                            Some(state.alias_learner.config().learned_alias_confidence);
+                        let _ = state.medication_alias_repo.save(&new_alias).await;
+                    }
+                }
+
                 let feedback = FeedbackRecord::new(
                     *id,
                     req.reviewed_by,
@@ -686,6 +840,13 @@ where
                 );
                 let _ = state.feedback_repo.save(&feedback).await;
             } else if status == MatchStatus::Rejected {
+                // Learn from rejection (clears pending aliases)
+                if let (Some(o), Some(r)) = (&offer, &request) {
+                    state
+                        .alias_learner
+                        .learn_from_rejection(&o.medication_raw, &r.medication_raw);
+                }
+
                 let feedback = FeedbackRecord::new(
                     *id,
                     req.reviewed_by,

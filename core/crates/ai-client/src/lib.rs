@@ -30,7 +30,7 @@ mod retry;
 mod schema;
 mod types;
 
-pub use client::{Client, ClientConfig};
+pub use client::{AIContext, Client, ClientConfig};
 pub use error::Error;
 pub use prompts::PromptBuilder;
 pub use retry::RetryConfig;

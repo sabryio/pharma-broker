@@ -13,7 +13,9 @@ mod preprocessor;
 mod token_batcher;
 
 // Circuit breaker for resilient network calls
-pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitOpenError, CircuitState};
+pub use circuit_breaker::{
+    CircuitBreaker, CircuitBreakerConfig, CircuitOpenError, CircuitState, FallbackStrategy,
+};
 
 // LLM Feedback Loop for continuous improvement
 pub use feedback_loop::{

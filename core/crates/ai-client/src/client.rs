@@ -28,6 +28,8 @@ pub struct ClientConfig {
     pub temperature: f32,
     /// Default max tokens (None = unlimited/model default)
     pub max_tokens: Option<u32>,
+    /// Top-p nucleus sampling (0.0-1.0)
+    pub top_p: Option<f32>,
 }
 
 impl Default for ClientConfig {
@@ -40,6 +42,47 @@ impl Default for ClientConfig {
             retry: RetryConfig::default(),
             temperature: 0.1,
             max_tokens: None, // Unlimited by default - let the model decide
+            top_p: Some(0.9),
+        }
+    }
+}
+
+/// Context-specific AI configuration presets
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AIContext {
+    /// Parsing medication text (low temperature, deterministic)
+    Parsing,
+    /// Comparing medication names (zero temperature, exact)
+    Comparison,
+    /// General purpose (default settings)
+    General,
+}
+
+impl AIContext {
+    /// Get temperature for this context
+    pub fn temperature(&self) -> f32 {
+        match self {
+            AIContext::Parsing => 0.2,
+            AIContext::Comparison => 0.0,
+            AIContext::General => 0.1,
+        }
+    }
+
+    /// Get top_p for this context
+    pub fn top_p(&self) -> f32 {
+        match self {
+            AIContext::Parsing => 0.9,
+            AIContext::Comparison => 1.0, // No sampling for exact matching
+            AIContext::General => 0.9,
+        }
+    }
+
+    /// Get max tokens for this context
+    pub fn max_tokens(&self) -> Option<u32> {
+        match self {
+            AIContext::Parsing => Some(2000),
+            AIContext::Comparison => Some(500),
+            AIContext::General => None,
         }
     }
 }
@@ -114,6 +157,25 @@ impl Client {
     where
         T: JsonSchema + DeserializeOwned,
     {
+        self.generate_object_with_context::<T>(system, prompt, AIContext::General)
+            .await
+    }
+
+    /// Generate a structured object with context-specific configuration
+    ///
+    /// Uses temperature and sampling parameters optimized for the given context:
+    /// - `Parsing`: Low temperature (0.2) for deterministic parsing
+    /// - `Comparison`: Zero temperature (0.0) for exact name matching
+    /// - `General`: Default settings (0.1)
+    pub async fn generate_object_with_context<T>(
+        &self,
+        system: &str,
+        prompt: &str,
+        context: AIContext,
+    ) -> Result<T>
+    where
+        T: JsonSchema + DeserializeOwned,
+    {
         let schema = generate_schema::<T>();
         let schema_name = std::any::type_name::<T>()
             .split("::")
@@ -129,8 +191,9 @@ impl Client {
         let request = ChatCompletionRequest {
             model: self.config.model.clone(),
             messages,
-            temperature: Some(self.config.temperature),
-            max_tokens: self.config.max_tokens,
+            temperature: Some(context.temperature()),
+            max_tokens: context.max_tokens().or(self.config.max_tokens),
+            top_p: Some(context.top_p()),
             response_format: Some(ResponseFormat::JsonSchema {
                 json_schema: JsonSchemaSpec {
                     name: schema_name.to_string(),
@@ -162,6 +225,7 @@ impl Client {
             messages,
             temperature: Some(self.config.temperature),
             max_tokens: self.config.max_tokens,
+            top_p: self.config.top_p,
             response_format: None,
         };
 

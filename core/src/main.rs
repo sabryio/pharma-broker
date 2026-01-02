@@ -14,7 +14,8 @@ use pharma_core::api::handlers::init_start_time;
 use pharma_core::api::{create_router, routes::AppState};
 use pharma_core::grpc::{GrpcDependencies, GrpcRepositories, PharmaCoreService, start_grpc_server};
 use pharma_core::matching::{
-    MatchingEngine, MatchingEngineConfig, MedicationResolver, MedicationResolverConfig,
+    AliasLearner, MatchingEngine, MatchingEngineConfig, MedicationResolver,
+    MedicationResolverConfig,
 };
 use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
@@ -172,6 +173,14 @@ async fn main() -> anyhow::Result<()> {
         janitor.run(rx_janitor).await;
     });
 
+    // Create alias learner for automated alias learning from confirmations
+    let alias_learner = Arc::new(AliasLearner::from_env());
+    tracing::info!(
+        enabled = %alias_learner.is_enabled(),
+        min_confirmations = %alias_learner.config().min_confirmations,
+        "Alias learner initialized"
+    );
+
     // Create application state for HTTP (with matching engine)
     let state = AppState {
         offer_repo: offer_repo.clone(),
@@ -187,6 +196,7 @@ async fn main() -> anyhow::Result<()> {
         match_queue_repo: match_queue_repo.clone(),
         matching_engine: Some(matching_engine.clone()),
         ai_client: ai_client.clone(),
+        alias_learner,
         ws_tx: ws_tx.clone(),
         metrics_handle: Some(metrics_handle),
         feedback_repo: feedback_repo.clone(),

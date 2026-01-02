@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::domain::{Offer, Request};
-use ai_client::Client as AIClient;
+use ai_client::{AIContext, Client as AIClient};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -41,6 +41,7 @@ impl AIReviewer {
 
     /// Audit a match between an offer and a request
     /// Focuses ONLY on medication name comparison
+    /// Uses AIContext::Comparison for zero temperature (deterministic output)
     pub async fn audit_match(
         &self,
         offer: &Offer,
@@ -83,8 +84,13 @@ Keep explanations brief and focused ONLY on name comparison."#;
             score * 100.0
         );
 
+        // Use AIContext::Comparison for zero temperature (deterministic, exact matching)
         self.client
-            .generate_object_with_system::<ReviewResult>(system_prompt, &user_prompt)
+            .generate_object_with_context::<ReviewResult>(
+                system_prompt,
+                &user_prompt,
+                AIContext::Comparison,
+            )
             .await
     }
 }

@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use ai_client::{Client, ClientConfig, Error as ClientError};
+use ai_client::{AIContext, Client, ClientConfig, Error as ClientError};
 use futures::future::join_all;
 use tracing::{debug, error, info, warn};
 
@@ -232,7 +232,11 @@ impl PharmaParser {
 
         let result: Result<ParseResult, ClientError> = self
             .client
-            .generate_object_with_system(&enhanced_system_prompt, &final_user_prompt)
+            .generate_object_with_context(
+                &enhanced_system_prompt,
+                &final_user_prompt,
+                AIContext::Parsing,
+            )
             .await;
 
         match result {
@@ -339,7 +343,11 @@ impl PharmaParser {
                     );
 
                     let result: Result<ParseResult, ClientError> = client
-                        .generate_object_with_system(enhanced_system_prompt_ref, &user_prompt)
+                        .generate_object_with_context(
+                            enhanced_system_prompt_ref,
+                            &user_prompt,
+                            AIContext::Parsing,
+                        )
                         .await;
 
                     (idx, chunk_owned, result)

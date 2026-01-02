@@ -12,6 +12,8 @@ pub struct ChatCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<ResponseFormat>,
 }
 

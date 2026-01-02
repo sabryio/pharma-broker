@@ -4,17 +4,23 @@
 
 mod abtest;
 mod actions;
+mod alias_learner;
 pub mod arabic;
 mod audit;
+mod auditor_factory;
 mod calibration;
 mod confidence;
+mod consensus_auditor;
+mod contrastive_validator;
 mod dosage;
 mod embedding_cache;
 mod engine;
 mod ensemble;
+mod fallback_matcher;
 mod filter;
 mod fts_search;
 mod fuzzy;
+mod hierarchical_matcher;
 mod historical;
 mod hybrid_filter;
 mod learner;
@@ -125,6 +131,19 @@ pub use medication_resolver::{
     MedicationResolver, MedicationResolverConfig, ResolutionMethod, ResolutionResult,
 };
 
+// --- hierarchical_matcher ---
+pub use hierarchical_matcher::{
+    HierarchicalConfig, HierarchicalStats, HierarchicalStatsSnapshot, MatchCandidate, MatchStage,
+};
+
+// --- alias_learner ---
+pub use alias_learner::{AliasLearner, AliasLearnerConfig, AliasLearnerStatsSnapshot, LearnResult};
+
+// --- fallback_matcher ---
+pub use fallback_matcher::{
+    FallbackMatchMethod, FallbackMatchResult, FallbackMatcher, FallbackMatcherConfig,
+};
+
 // --- score_types ---
 pub use score_types::{
     ComponentScore, ConfidenceScore, NormalizedWeights, ScoreBreakdown, Weight, WeightError,
@@ -132,6 +151,23 @@ pub use score_types::{
 
 // --- reviewer ---
 pub use reviewer::{AIReviewer, ReviewResult, ReviewStatus};
+
+// --- consensus_auditor ---
+pub use consensus_auditor::{
+    ConsensusAuditor, ConsensusConfig, ConsensusResult, ConsensusStats, ConsensusStatsSnapshot,
+    ModelAuditResult, ModelDetail,
+};
+
+// --- auditor_factory ---
+pub use auditor_factory::{
+    AuditorFactory, AuditorFactoryConfig, AuditorType, HybridAuditor, ModelConfig,
+};
+
+// --- contrastive_validator ---
+pub use contrastive_validator::{
+    ContrastiveConfig, ContrastiveResult, ContrastiveStats, ContrastiveStatsSnapshot,
+    ContrastiveValidator,
+};
 
 // =============================================================================
 // Types defined in this module

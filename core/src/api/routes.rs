@@ -19,7 +19,7 @@ use super::{
     match_filter, match_reviews, matching, reclassify, reparse, review_queue, weights,
 };
 use crate::ai::PharmaParser;
-use crate::matching::MatchingEngine;
+use crate::matching::{AliasLearner, MatchingEngine};
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
     MedicationAliasRepository, MedicationMappingRepository, MedicationMasterRepository,
@@ -50,6 +50,7 @@ where
     pub match_queue_repo: Arc<dyn MatchQueueRepository + Send + Sync>,
     pub matching_engine: Option<Arc<MatchingEngine>>,
     pub ai_client: Arc<PharmaParser>,
+    pub alias_learner: Arc<AliasLearner>,
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub metrics_handle: Option<PrometheusHandle>,
     pub active_connections: Arc<AtomicUsize>,
@@ -78,6 +79,7 @@ where
             match_queue_repo: self.match_queue_repo.clone(),
             matching_engine: self.matching_engine.clone(),
             ai_client: self.ai_client.clone(),
+            alias_learner: self.alias_learner.clone(),
             ws_tx: self.ws_tx.clone(),
             metrics_handle: self.metrics_handle.clone(),
             active_connections: self.active_connections.clone(),
