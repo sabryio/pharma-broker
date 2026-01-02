@@ -129,6 +129,8 @@ pub trait MatchRepository: Send + Sync {
     ) -> Result<MatchModel>;
     /// Update match score and reasoning
     async fn update_score(&self, id: Uuid, score: f64, reasoning: &str) -> Result<MatchModel>;
+    /// Update match notes
+    async fn update_notes(&self, id: Uuid, notes: &str) -> Result<MatchModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
     /// Cancel all pending matches that reference a specific offer (used when reclassifying)
     async fn cancel_matches_for_offer(&self, offer_id: Uuid) -> Result<u64>;
@@ -192,6 +194,23 @@ pub trait ParticipantRepository: Send + Sync {
     ) -> Result<crate::entity::participant::Model>;
     async fn get_groups(&self, participant_id: Uuid) -> Result<Vec<GroupModel>>;
     async fn add_to_group(&self, participant_id: Uuid, group_id: Uuid) -> Result<()>;
+    /// Get participant statistics (offers, requests, match rates)
+    async fn get_stats(&self, participant_id: Uuid) -> Result<ParticipantStats>;
+}
+
+/// Participant statistics for sender profiles
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParticipantStats {
+    pub participant_id: Uuid,
+    pub total_offers: i64,
+    pub total_requests: i64,
+    pub confirmed_matches: i64,
+    pub rejected_matches: i64,
+    pub approval_rate: f64,
+    pub avg_confidence: f64,
+    pub last_activity: Option<DateTime<Utc>>,
+    pub reputation: String, // "new", "regular", "trusted"
 }
 
 /// Feedback record repository trait

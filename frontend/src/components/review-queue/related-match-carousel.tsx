@@ -12,6 +12,8 @@ import { MatchConfidenceMeter } from './match-confidence-meter'
 import { MatchComparison } from './match-comparison'
 import { ReasoningPanel } from './reasoning-panel'
 import { CurationDialog } from './curation-dialog'
+import { SenderProfile } from './sender-profile'
+import { NotesPanel } from './notes-panel'
 import { ReclassifyDialog } from '@/components/ui/reclassify-dialog'
 import { ReparseDialog } from '@/components/ui/reparse-dialog'
 import { UncertaintyIndicator } from '@/components/debug-recordings'
@@ -666,6 +668,53 @@ export function RelatedMatchCarousel({
             aiConfidence={currentMatch.aiConfidence}
             aiExplanation={currentMatch.aiExplanation}
             issues={issues}
+          />
+        </div>
+
+        {/* Sender Profiles & Notes */}
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Offer Sender Profile */}
+          <div className="p-4 rounded-xl bg-teal/5 border border-teal/20">
+            <h4 className="text-xs font-medium text-teal mb-3 uppercase tracking-wider">Offer Sender</h4>
+            <SenderProfile
+              senderName={
+                isOfferMode
+                  ? (currentGroup as OfferWithMatches).offer.senderName
+                  : (currentMatch as { offer: any }).offer.senderName
+              }
+              senderJid={
+                isOfferMode
+                  ? (currentGroup as OfferWithMatches).offer.senderJid
+                  : (currentMatch as { offer: any }).offer.senderJid
+              }
+              showStats={true}
+            />
+          </div>
+
+          {/* Request Sender Profile */}
+          <div className="p-4 rounded-xl bg-amber/5 border border-amber/20">
+            <h4 className="text-xs font-medium text-amber mb-3 uppercase tracking-wider">Request Sender</h4>
+            <SenderProfile
+              senderName={
+                isOfferMode
+                  ? (currentMatch as { request: any }).request.senderName
+                  : (currentGroup as RequestWithMatches).request.senderName
+              }
+              senderJid={
+                isOfferMode
+                  ? (currentMatch as { request: any }).request.senderJid
+                  : (currentGroup as RequestWithMatches).request.senderJid
+              }
+              showStats={true}
+            />
+          </div>
+        </div>
+
+        {/* Notes Panel */}
+        <div className="mt-4">
+          <NotesPanel
+            matchId={currentMatch.matchId}
+            initialNotes={currentMatch.notes}
           />
         </div>
       </div>

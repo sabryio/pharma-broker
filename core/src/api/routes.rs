@@ -16,8 +16,8 @@ use tower_http::cors::{Any, CorsLayer};
 
 use super::{
     audit_records, audit_trail, calibration, confidence, curation, diagnostics, embedding_cache,
-    groups, handlers, match_filter, match_reviews, matching, reclassify, reparse, review_queue,
-    uncertainty, weights,
+    groups, handlers, match_filter, match_reviews, matching, participants, reclassify, reparse,
+    review_queue, uncertainty, weights,
 };
 use crate::ai::PharmaParser;
 use crate::matching::{AliasLearner, MatchingEngine};
@@ -407,6 +407,20 @@ where
         .route(
             "/api/uncertainty/match/{match_id}",
             get(uncertainty::estimate_match_uncertainty::<RQ, A, MM>),
+        )
+        // Participants
+        .route(
+            "/api/participants/{id}/stats",
+            get(participants::get_participant_stats::<RQ, A, MM>),
+        )
+        .route(
+            "/api/participants/by-jid/{jid}",
+            get(participants::get_participant_by_jid::<RQ, A, MM>),
+        )
+        // Match Review Notes
+        .route(
+            "/api/match-reviews/{id}/notes",
+            put(match_reviews::update_match_notes::<RQ, A, MM>),
         )
         // WebSocket
         .route("/ws", get(ws::ws_handler::<RQ, A, MM>))

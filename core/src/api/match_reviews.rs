@@ -101,6 +101,19 @@ pub struct RecalculateConfidenceResponse {
     pub reasoning: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateNotesRequest {
+    pub notes: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateNotesResponse {
+    pub success: bool,
+    pub id: Uuid,
+    pub notes: String,
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -1204,6 +1217,40 @@ where
         raw_similarity: raw_sim,
         embedding_similarity: embedding_sim,
         reasoning,
+    }))
+}
+
+/// Update match review notes
+/// PUT /api/match-reviews/:id/notes
+pub async fn update_match_notes<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateNotesRequest>,
+) -> Result<Json<UpdateNotesResponse>, (StatusCode, String)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
+{
+    tracing::info!(match_id = %id, "Updating match notes");
+
+    // Update notes
+    let updated = state
+        .match_repo
+        .update_notes(id, &req.notes)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    tracing::info!(
+        match_id = %id,
+        notes_length = req.notes.len(),
+        "Match notes updated"
+    );
+
+    Ok(Json(UpdateNotesResponse {
+        success: true,
+        id,
+        notes: updated.notes.unwrap_or_default(),
     }))
 }
 

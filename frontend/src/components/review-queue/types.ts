@@ -38,6 +38,7 @@ export interface MatchEntry {
   matchId: string
   confidence: number
   issues: string[]
+  notes?: string | null
   aiStatus?: string | null
   aiConfidence?: number | null
   aiExplanation?: string | null
@@ -73,6 +74,7 @@ export function groupByOffer(reviews: Review[]): OfferWithMatches[] {
       matchId: review.id,
       confidence: review.confidence,
       issues: review.issues,
+      notes: review.notes,
       request: review.request,
       aiStatus: review.aiStatus,
       aiConfidence: review.aiConfidence,
@@ -106,6 +108,7 @@ export function groupByRequest(reviews: Review[]): RequestWithMatches[] {
       matchId: review.id,
       confidence: review.confidence,
       issues: review.issues,
+      notes: review.notes,
       offer: review.offer,
       aiStatus: review.aiStatus,
       aiConfidence: review.aiConfidence,

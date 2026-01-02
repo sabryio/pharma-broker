@@ -24,7 +24,7 @@ import {
   defaultAdjustments,
   AdjustmentControls,
   QueueProgress,
-  HistoryLog,
+  TimelineHistory,
   RelatedMatchCarousel,
   groupByOffer,
   groupByRequest,
@@ -574,7 +574,7 @@ export default function ReviewQueue() {
               onExportPDF={exportToPDF}
             />
           </div>
-          {showHistory && <HistoryLog history={history} onRestore={restoreFromHistory} />}
+          {showHistory && <TimelineHistory history={history} onRestore={restoreFromHistory} />}
           <div className="glass-card-enhanced p-12 rounded-2xl text-center">
             <CheckCircle className="w-16 h-16 text-emerald mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-foreground mb-2">Queue Empty</h2>
@@ -696,7 +696,7 @@ export default function ReviewQueue() {
             />
 
             <QueueProgress pending={filteredReviews.length} total={totalReviews} />
-            {showHistory && <HistoryLog history={history} onRestore={restoreFromHistory} />}
+            {showHistory && <TimelineHistory history={history} onRestore={restoreFromHistory} />}
             {bulkMode && (
               <EnhancedBulkGrid
                 reviews={filteredReviews}

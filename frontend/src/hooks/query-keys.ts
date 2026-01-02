@@ -108,6 +108,15 @@ export const queryKeys = {
     match: (matchId: string) =>
       [...queryKeys.uncertainty.all, 'match', matchId] as const,
   },
+
+  // Participants
+  participants: {
+    all: ['participants'] as const,
+    stats: (id: string) =>
+      [...queryKeys.participants.all, 'stats', id] as const,
+    byJid: (jid: string) =>
+      [...queryKeys.participants.all, 'by-jid', jid] as const,
+  },
 } as const
 
 // Type helper for query keys

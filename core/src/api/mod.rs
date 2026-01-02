@@ -15,6 +15,7 @@ pub mod match_filter;
 pub mod match_reviews;
 pub mod matching;
 pub mod middleware;
+pub mod participants;
 pub mod rate_limit;
 pub mod reclassify;
 pub mod reparse;

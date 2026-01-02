@@ -143,6 +143,18 @@ impl MatchRepository for SeaOrmMatchRepo {
         active.update(&*self.db).await.map_err(Error::from)
     }
 
+    async fn update_notes(&self, id: Uuid, notes: &str) -> Result<match_::Model> {
+        let m = Match::find_by_id(id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("Match not found: {}", id)))?;
+
+        let mut active: match_::ActiveModel = m.into();
+        active.notes = Set(Some(notes.to_string()));
+
+        active.update(&*self.db).await.map_err(Error::from)
+    }
+
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64> {
         let result = Match::delete_many()
             .filter(match_::Column::CreatedAt.lt(*cutoff))

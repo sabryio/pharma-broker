@@ -500,6 +500,9 @@ mod tests {
         async fn update_score(&self, _: Uuid, _: f64, _: &str) -> DbResult<MatchModel> {
             unimplemented!()
         }
+        async fn update_notes(&self, _: Uuid, _: &str) -> DbResult<MatchModel> {
+            unimplemented!()
+        }
     }
 
     #[async_trait]
