@@ -1,7 +1,7 @@
 // Recording Playback Component
 // Beautiful timeline UI for debugging match reviews
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import {
   Play,

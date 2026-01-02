@@ -90,23 +90,23 @@ export interface MatchRecordingSnapshot {
   offer: {
     id: string
     product: string
-    medicationRaw?: string
-    quantity: number
-    price?: number
+    medicationRaw?: string | null
+    quantity: string | null
+    price?: string | null
   }
   request: {
     id: string
     product: string
-    medicationRaw?: string
-    quantity: number
-    maxPrice?: number
+    medicationRaw?: string | null
+    quantity: string | null
+    maxPrice?: string | null
   }
   confidence: number
   aiStatus: string | null
   aiConfidence: number | null
   aiExplanation: string | null
   issues: string[]
-  reasoning?: string
+  reasoning?: string | null
   adjustments: AdjustmentSettings
   event: RecordingEvent
   metadata: RecordingMetadata

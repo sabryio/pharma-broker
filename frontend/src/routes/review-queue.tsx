@@ -36,24 +36,29 @@ import {
 import { CurationMode } from '@/components/medication-curation'
 import { useNotifications } from '@/hooks/use-notifications'
 import {
-  useMatchReviews,
+  useMatchReviewsManual,
   useMatchReviewStats,
   useUpdateMatchReviewStatus,
   useBulkUpdateMatchReviews,
 } from '@/hooks/use-match-reviews'
 import { cn } from '@/lib/utils'
+import { useAppSelector, useMatchReviewsActions } from '@/store'
+import { selectPageSize } from '@/store/slices/sessionSlice'
 
 export const Route = createFileRoute('/review-queue')({
   component: ReviewQueue,
 })
 
 export default function ReviewQueue() {
+  const matchReviewsActions = useMatchReviewsActions()
+  const pageSize = useAppSelector(selectPageSize)
+
   const {
     data: reviewData,
     isLoading,
     error,
     refetch,
-  } = useMatchReviews({ limit: 50 })
+  } = useMatchReviewsManual({ limit: pageSize })
   const { data: apiStats } = useMatchReviewStats()
   const updateMutation = useUpdateMatchReviewStatus()
   const bulkMutation = useBulkUpdateMatchReviews()
@@ -165,6 +170,9 @@ export default function ReviewQueue() {
       setHistory((prev) => [entry, ...prev])
       setOptimisticallyRemoved((prev) => new Set(prev).add(review.id))
 
+      // Record action in Redux for history tracking
+      matchReviewsActions.recordAction({ type: action, matchId: review.id })
+
       updateMutation.mutate(
         { id: review.id, action },
         {
@@ -189,7 +197,7 @@ export default function ReviewQueue() {
         action: { label: 'Undo', onClick: () => restoreFromHistory(entry.id) },
       })
     },
-    [pendingReviews, adjustments, currentIndex, updateMutation],
+    [pendingReviews, adjustments, currentIndex, updateMutation, matchReviewsActions],
   )
 
   const handleAnchorModeChange = useCallback(

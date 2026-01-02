@@ -189,7 +189,7 @@ where
 
     // Task 5.3: Audit Logging
     // Using placeholder user ID until auth is implemented
-    let placeholder_user_id = "00000000-0000-0000-0000-000000000001";
+    let placeholder_user_id = "00000000-0000-4000-8000-000000000001";
     let audit_log = AuditLog::weights_updated(
         placeholder_user_id,
         "api",

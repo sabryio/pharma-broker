@@ -1,8 +1,9 @@
 // Debug Recordings Route
 // Professional debugging dashboard for match recordings and pipeline analysis
+// Migrated to use Redux for state management
 
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useCallback, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
   Video,
@@ -33,7 +34,6 @@ import {
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import {
-  useRecording,
   RecordingCard,
   RecordingPlayback,
   PipelineViewer,
@@ -49,6 +49,14 @@ import {
 } from '@/components/debug-recordings'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
+import { useAppSelector, useRecordingsActions } from '@/store'
+import {
+  selectRecordingsArray,
+  selectIsRecording,
+  selectSelectedRecordingId,
+} from '@/store/slices'
+
+import { useState } from 'react'
 
 export const Route = createFileRoute('/debug-recordings')({
   component: DebugRecordings,
@@ -116,24 +124,22 @@ function ViewModeTabs({
   )
 }
 
+
 // ============================================================================
 // Main Component
 // ============================================================================
 
 function DebugRecordings() {
-  const { 
-    recordingsArray: recordings, 
-    isRecording, 
-    clearRecordings, 
-    deleteRecording,
-    exportRecording, 
-    exportAllRecordings,
-    importRecording,
-    importRecordings,
-  } = useRecording()
+  const actions = useRecordingsActions()
   
-  const [viewMode, setViewMode] = useState<ViewMode>('overview')
-  const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null)
+  // Redux state
+  const recordings = useAppSelector(selectRecordingsArray)
+  const isRecording = useAppSelector(selectIsRecording)
+  const viewMode = useAppSelector((state) => state.recordings.viewMode)
+  const selectedRecordingId = useAppSelector(selectSelectedRecordingId)
+  const recordingsMap = useAppSelector((state) => state.recordings.recordings)
+  
+  // Local UI state (not persisted)
   const [playbackRecording, setPlaybackRecording] = useState<MatchRecording | null>(null)
   const [pipelineRecording, setPipelineRecording] = useState<PipelineRecording | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -165,7 +171,7 @@ function DebugRecordings() {
     result.sort((a, b) => {
       switch (sortBy) {
         case 'date':
-          return b.startedAt.getTime() - a.startedAt.getTime()
+          return new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
         case 'duration':
           return (b.duration || 0) - (a.duration || 0)
         case 'snapshots':
@@ -216,6 +222,14 @@ function DebugRecordings() {
     ).reverse()
   }, [recordings])
 
+
+  // Export a single recording
+  const exportRecording = useCallback((matchId: string): string | null => {
+    const recording = recordingsMap[matchId]
+    if (!recording) return null
+    return JSON.stringify(recording, null, 2)
+  }, [recordingsMap])
+
   const handleExport = useCallback((recording: MatchRecording) => {
     const json = exportRecording(recording.matchId)
     if (json) {
@@ -231,7 +245,7 @@ function DebugRecordings() {
   }, [exportRecording])
 
   const handleExportAll = useCallback(() => {
-    const json = exportAllRecordings()
+    const json = JSON.stringify(recordingsMap, null, 2)
     const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -240,21 +254,23 @@ function DebugRecordings() {
     a.click()
     URL.revokeObjectURL(url)
     toast.success('All recordings exported', { description: `${recordings.length} recordings` })
-  }, [exportAllRecordings, recordings.length])
+  }, [recordingsMap, recordings.length])
 
   const handleDelete = useCallback((recording: MatchRecording) => {
-    deleteRecording(recording.matchId)
+    actions.deleteRecording(recording.matchId)
     toast.success('Recording deleted', { description: `Match #${recording.matchId.slice(0, 8)}` })
-    if (selectedRecordingId === recording.matchId) {
-      setSelectedRecordingId(null)
-    }
-  }, [deleteRecording, selectedRecordingId])
+  }, [actions])
+
+  const handleClearAll = useCallback(() => {
+    actions.clearAllRecordings()
+    toast.success('All recordings cleared')
+  }, [actions])
 
   const handleViewPipeline = useCallback((recording: MatchRecording) => {
     const mockPipeline = generateMockPipelineRecording(recording.matchId)
     setPipelineRecording(mockPipeline)
-    setViewMode('pipeline')
-  }, [])
+    actions.setViewMode('pipeline')
+  }, [actions])
 
   const handleImport = useCallback(() => {
     const input = document.createElement('input')
@@ -263,29 +279,42 @@ function DebugRecordings() {
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (file) {
-        const text = await file.text()
-        // Try to import as multiple recordings first
-        const count = importRecordings(text)
-        if (count > 0) {
-          toast.success('Recordings imported', { description: `${count} recordings loaded` })
-        } else {
-          // Try single recording
-          const success = importRecording(text)
-          if (success) {
+        try {
+          const text = await file.text()
+          const data = JSON.parse(text)
+          
+          // Check if it's a single recording or multiple
+          if (data.matchId && data.snapshots) {
+            // Single recording - wrap it
+            actions.importRecordings({ [data.matchId]: data })
             toast.success('Recording imported')
           } else {
-            toast.error('Import failed', { description: 'Invalid JSON file' })
+            // Multiple recordings
+            const count = Object.keys(data).length
+            actions.importRecordings(data)
+            toast.success('Recordings imported', { description: `${count} recordings loaded` })
           }
+        } catch {
+          toast.error('Import failed', { description: 'Invalid JSON file' })
         }
       }
     }
     input.click()
-  }, [importRecording, importRecordings])
+  }, [actions])
+
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    actions.setViewMode(mode)
+  }, [actions])
+
+  const handleSelectRecording = useCallback((matchId: string) => {
+    actions.selectRecording(matchId)
+  }, [actions])
 
   const selectedRecording = useMemo(() => 
     recordings.find(r => r.matchId === selectedRecordingId),
     [recordings, selectedRecordingId]
   )
+
 
   return (
     <DashboardLayout>
@@ -332,7 +361,7 @@ function DebugRecordings() {
                   </button>
                 )}
                 <button
-                  onClick={clearRecordings}
+                  onClick={handleClearAll}
                   disabled={recordings.length === 0}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
@@ -344,12 +373,11 @@ function DebugRecordings() {
 
             <ViewModeTabs 
               activeMode={viewMode} 
-              onModeChange={setViewMode}
+              onModeChange={handleViewModeChange}
               recordingCount={recordings.length}
             />
           </div>
         </div>
-
 
         {/* Content */}
         <div className="max-w-[1800px] mx-auto px-6 py-6">
@@ -389,6 +417,7 @@ function DebugRecordings() {
                 />
               </div>
 
+
               {/* Secondary Stats */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-6 rounded-2xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
@@ -415,27 +444,9 @@ function DebugRecordings() {
                     <Target className="w-5 h-5 text-muted-foreground" />
                   </div>
                   <div className="space-y-4">
-                    <ProgressBar
-                      value={stats.approved}
-                      max={stats.total || 1}
-                      label="Approved"
-                      valueLabel={stats.approved}
-                      color="emerald"
-                    />
-                    <ProgressBar
-                      value={stats.rejected}
-                      max={stats.total || 1}
-                      label="Rejected"
-                      valueLabel={stats.rejected}
-                      color="red"
-                    />
-                    <ProgressBar
-                      value={stats.pending}
-                      max={stats.total || 1}
-                      label="Pending"
-                      valueLabel={stats.pending}
-                      color="amber"
-                    />
+                    <ProgressBar value={stats.approved} max={stats.total || 1} label="Approved" valueLabel={stats.approved} color="emerald" />
+                    <ProgressBar value={stats.rejected} max={stats.total || 1} label="Rejected" valueLabel={stats.rejected} color="red" />
+                    <ProgressBar value={stats.pending} max={stats.total || 1} label="Pending" valueLabel={stats.pending} color="amber" />
                   </div>
                 </div>
 
@@ -469,10 +480,7 @@ function DebugRecordings() {
               <div className="p-6 rounded-2xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-foreground">Recent Recordings</h3>
-                  <button
-                    onClick={() => setViewMode('recordings')}
-                    className="text-sm text-teal-400 hover:text-teal-300 transition-colors font-medium"
-                  >
+                  <button onClick={() => handleViewModeChange('recordings')} className="text-sm text-teal-400 hover:text-teal-300 transition-colors font-medium">
                     View All →
                   </button>
                 </div>
@@ -482,7 +490,6 @@ function DebugRecordings() {
                     <h3 className="text-lg font-semibold text-foreground mb-2">No Recordings Yet</h3>
                     <p className="text-sm text-muted-foreground max-w-md mx-auto">
                       Recordings will appear here when you review matches in the Review Queue.
-                      Each review session is automatically captured for debugging.
                     </p>
                   </div>
                 ) : (
@@ -492,7 +499,7 @@ function DebugRecordings() {
                         key={recording.matchId}
                         recording={recording}
                         isSelected={selectedRecordingId === recording.matchId}
-                        onSelect={() => setSelectedRecordingId(recording.matchId)}
+                        onSelect={() => handleSelectRecording(recording.matchId)}
                         onPlay={() => setPlaybackRecording(recording)}
                         onExport={() => handleExport(recording)}
                         onDelete={() => handleDelete(recording)}
@@ -572,9 +579,7 @@ function DebugRecordings() {
                   <Eye className="w-16 h-16 text-muted-foreground/20 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-foreground mb-2">No Recordings Found</h3>
                   <p className="text-sm text-muted-foreground">
-                    {searchQuery || filterOutcome !== 'all'
-                      ? 'Try adjusting your search or filters'
-                      : 'Start reviewing matches to create recordings'}
+                    {searchQuery || filterOutcome !== 'all' ? 'Try adjusting your search or filters' : 'Start reviewing matches to create recordings'}
                   </p>
                 </div>
               ) : (
@@ -584,7 +589,7 @@ function DebugRecordings() {
                       key={recording.matchId}
                       recording={recording}
                       isSelected={selectedRecordingId === recording.matchId}
-                      onSelect={() => setSelectedRecordingId(recording.matchId)}
+                      onSelect={() => handleSelectRecording(recording.matchId)}
                       onPlay={() => setPlaybackRecording(recording)}
                       onExport={() => handleExport(recording)}
                       onDelete={() => handleDelete(recording)}
@@ -595,6 +600,7 @@ function DebugRecordings() {
               )}
             </div>
           )}
+
 
           {/* Pipeline Mode */}
           {viewMode === 'pipeline' && (
@@ -627,7 +633,7 @@ function DebugRecordings() {
                     Select a recording from the Recordings tab and click the pipeline icon to view its execution trace.
                   </p>
                   <button
-                    onClick={() => setViewMode('recordings')}
+                    onClick={() => handleViewModeChange('recordings')}
                     className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium shadow-lg shadow-teal-500/25 hover:shadow-xl hover:scale-105 transition-all"
                   >
                     Browse Recordings
@@ -636,7 +642,6 @@ function DebugRecordings() {
               )}
             </div>
           )}
-
 
           {/* Analytics Mode */}
           {viewMode === 'analytics' && (
@@ -705,6 +710,7 @@ function DebugRecordings() {
                   </div>
                 </div>
               </div>
+
 
               {/* Confidence Trend */}
               <div className="p-6 rounded-2xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
