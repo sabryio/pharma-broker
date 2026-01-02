@@ -540,6 +540,34 @@
       transform: translateY(0);
     }
   }
+
+  /* Pulse animation - circles expanding from center continuously, staggered */
+  .animate-pulse-from-center-1 {
+    animation: pulse-from-center 3.5s ease-out infinite;
+  }
+
+  .animate-pulse-from-center-2 {
+    animation: pulse-from-center 3.5s ease-out infinite;
+    animation-delay: 1.75s;
+  }
+
+  @keyframes pulse-from-center {
+    0% {
+      opacity: 0.5;
+      stroke-width: 4;
+      transform: scale(0);
+    }
+    100% {
+      opacity: 0;
+      stroke-width: 0.5;
+      transform: scale(1.8);
+    }
+  }
+
+  /* Slow spin for loading states */
+  .animate-spin-slow {
+    animation: spin 3s linear infinite;
+  }
 }
 
 @layer base {

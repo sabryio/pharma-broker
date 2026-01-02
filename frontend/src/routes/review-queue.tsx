@@ -24,9 +24,7 @@ import {
   defaultAdjustments,
   AdjustmentControls,
   QueueProgress,
-  BulkModeGrid,
   HistoryLog,
-  ReviewStatsCards,
   RelatedMatchCarousel,
   groupByOffer,
   groupByRequest,
@@ -35,6 +33,9 @@ import {
   FilterBar,
   defaultFilterState,
   type FilterState,
+  QuickActionsBar,
+  EnhancedBulkGrid,
+  StatsDashboard,
 } from '@/components/review-queue'
 import { CurationMode } from '@/components/medication-curation'
 import { useNotifications } from '@/hooks/use-notifications'
@@ -669,7 +670,7 @@ export default function ReviewQueue() {
           </div>
         </div>
 
-        <ReviewStatsCards
+        <StatsDashboard
           pending={pendingReviews.length}
           approved={apiStats?.confirmedToday ?? 0}
           rejected={apiStats?.rejectedToday ?? 0}
@@ -678,6 +679,10 @@ export default function ReviewQueue() {
               ? Math.round(pendingReviews.reduce((acc, r) => acc + r.confidence, 0) / pendingReviews.length)
               : (apiStats?.avgConfidence ?? 0)
           }
+          highConfidenceCount={pendingReviews.filter((r) => r.confidence >= 80).length}
+          mediumConfidenceCount={pendingReviews.filter((r) => r.confidence >= 50 && r.confidence < 80).length}
+          lowConfidenceCount={pendingReviews.filter((r) => r.confidence < 50).length}
+          compact={bulkMode}
         />
 
         {reviewMode === 'match' ? (
@@ -693,12 +698,13 @@ export default function ReviewQueue() {
             <QueueProgress pending={filteredReviews.length} total={totalReviews} />
             {showHistory && <HistoryLog history={history} onRestore={restoreFromHistory} />}
             {bulkMode && (
-              <BulkModeGrid
-                reviews={pendingReviews}
+              <EnhancedBulkGrid
+                reviews={filteredReviews}
                 selectedIds={selectedIds}
                 onToggle={toggleSelection}
                 onSelectAll={selectAll}
                 onBulkAction={handleBulkAction}
+                isProcessing={bulkMutation.isPending}
               />
             )}
 
@@ -718,6 +724,17 @@ export default function ReviewQueue() {
                   onReject={(id) => handleSingleAction(id, 'rejected')}
                 />
                 <AdjustmentControls />
+                <QuickActionsBar
+                  onApprove={() => handleSingleAction(currentMatch.matchId, 'approved')}
+                  onReject={() => handleSingleAction(currentMatch.matchId, 'rejected')}
+                  onUndo={undoLastAction}
+                  canUndo={history.length > 0}
+                  loading={updateMutation.isPending}
+                  matchId={currentMatch.matchId}
+                  confidence={currentMatch.confidence}
+                  position="floating"
+                  showKeyboardHints
+                />
               </>
             )}
           </>

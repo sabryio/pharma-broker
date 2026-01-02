@@ -230,18 +230,34 @@ export function MatchConfidenceMeter({
             )
           })}
 
-          {/* High confidence pulsing glow ring */}
+          {/* High confidence pulsing glow - circles expanding from center continuously */}
           {confidence >= 85 && !isPending && (
-            <circle
-              cx={size / 2}
-              cy={size / 2}
-              r={radius}
-              fill="none"
-              stroke={colors.stroke}
-              strokeWidth={2}
-              className="animate-ping"
-              style={{ opacity: 0.3 }}
-            />
+            <>
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke={colors.stroke}
+                strokeWidth={3}
+                className="animate-pulse-from-center-1"
+                style={{ 
+                  transformOrigin: `${size / 2}px ${size / 2}px`,
+                }}
+              />
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke={colors.stroke}
+                strokeWidth={3}
+                className="animate-pulse-from-center-2"
+                style={{ 
+                  transformOrigin: `${size / 2}px ${size / 2}px`,
+                }}
+              />
+            </>
           )}
         </svg>
 
