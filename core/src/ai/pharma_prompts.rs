@@ -89,6 +89,7 @@ Before generating valid JSON, strictly follow this internal process:
 - جونال → Gonal-F
 - ريكورمون → Recormon
 - فكتوزا → Victoza
+- فورتيو → Forteo (parathyroid hormone injection)
 
 ### Format:
 - TARGET: "BrandName" or "BrandName Strength" (e.g., "Concor 5mg", "Implanon")
@@ -149,12 +150,26 @@ Detect urgency from keywords and context:
 - Set urgency_level based on the HIGHEST urgency detected
 - Multiple urgency words -> use the most urgent level
 
-## 5. Expiry Date Extraction
+## 5. Expiry Date Extraction (CRITICAL - DO NOT CONFUSE WITH DOSAGE)
 Extract expiry/shelf life information when mentioned:
 
 ### Patterns to detect:
-**Arabic:** "صلاحية", "تاريخ الصلاحية", "ينتهي", "حتى", "لغاية"
+**Arabic:** "صلاحية", "تاريخ الصلاحية", "ينتهي", "حتى", "لغاية", "💥" (often used before expiry)
 **English:** "expiry", "expires", "exp", "valid until", "best before", "shelf life"
+
+### CRITICAL: Shorthand Date Pattern Recognition
+Numbers in format X/YY or M/YY after medication name are EXPIRY DATES, NOT dosages:
+- "3/26" or "٣/٢٦" = March 2026 (expiry) → "2026-03"
+- "11/25" = November 2025 (expiry) → "2025-11"  
+- "5/27💥" = May 2027 (expiry) → "2027-05"
+
+**Examples:**
+- "فورتيو 3/26" → medication: "Forteo", expiry: "2026-03" (NOT dosage!)
+- "لانتوس 7/25💥" → medication: "Lantus", expiry: "2025-07"
+- "اوزمبك 12/26" → medication: "Ozempic", expiry: "2026-12"
+
+**RULE:** If a number looks like a date (1-12 followed by /XX where XX is 24-30), treat as expiry NOT dosage.
+Dosages use "mg", "g", "ml", "IU" units or are small numbers like 5, 10, 100, 150 without slashes.
 
 ### Format:
 - If specific date: Use "YYYY-MM" format (e.g., "2025-06")

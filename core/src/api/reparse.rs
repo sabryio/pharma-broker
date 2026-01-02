@@ -46,6 +46,9 @@ pub struct ReparseRequest {
     pub reparsed_by: Uuid,
     /// Optional hint for the AI (e.g., correct medication name)
     pub hint: Option<String>,
+    /// Optional correction feedback explaining what the AI got wrong
+    /// e.g., "3/26 is an expiry date (March 2026), not a dosage"
+    pub correction: Option<String>,
 }
 
 /// Response after successful re-parse
@@ -134,15 +137,18 @@ where
         .flatten();
     let sender_name = participant.and_then(|p| p.display_name.or(p.push_name));
 
-    // Build the message content with optional hint
-    let content = if let Some(hint) = &req.hint {
-        format!(
-            "{}\n\n[CORRECTION HINT: The medication should be identified as: {}]",
-            raw_message.content, hint
-        )
-    } else {
-        raw_message.content.clone()
-    };
+    // Build the message content with optional hint and correction
+    let mut content = raw_message.content.clone();
+
+    // Add correction feedback first (more specific)
+    if let Some(correction) = &req.correction {
+        content = format!("{}\n\n[CORRECTION FROM REVIEWER: {}]", content, correction);
+    }
+
+    // Add hint for correct medication name
+    if let Some(hint) = &req.hint {
+        content = format!("{}\n\n[CORRECT MEDICATION NAME: {}]", content, hint);
+    }
 
     // Re-parse with AI
     let parse_result = state

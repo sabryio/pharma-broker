@@ -111,6 +111,8 @@ export interface ReparseRequest {
   itemType: ItemType
   reparsedBy: string
   hint?: string
+  /** Correction feedback explaining what the AI got wrong */
+  correction?: string
 }
 
 export interface ReparseResponse {

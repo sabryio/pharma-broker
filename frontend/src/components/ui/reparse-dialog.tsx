@@ -48,8 +48,12 @@ export function ReparseDialog({
   onSuccess,
 }: ReparseDialogProps) {
   const [hint, setHint] = useState('')
+  const [correction, setCorrection] = useState('')
   const [showSuccess, setShowSuccess] = useState(false)
-  const [result, setResult] = useState<{ newMedication: string; confidence: number } | null>(null)
+  const [result, setResult] = useState<{
+    newMedication: string
+    confidence: number
+  } | null>(null)
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
@@ -59,10 +63,14 @@ export function ReparseDialog({
         itemType,
         reparsedBy: PLACEHOLDER_USER_ID,
         hint: hint || undefined,
+        correction: correction || undefined,
       }),
     onSuccess: (data) => {
       setShowSuccess(true)
-      setResult({ newMedication: data.newMedication, confidence: data.aiConfidence })
+      setResult({
+        newMedication: data.newMedication,
+        confidence: data.aiConfidence,
+      })
       // Invalidate queries
       queryClient.invalidateQueries({ queryKey: ['offers'] })
       queryClient.invalidateQueries({ queryKey: ['requests'] })
@@ -74,6 +82,7 @@ export function ReparseDialog({
         onOpenChange(false)
         setShowSuccess(false)
         setHint('')
+        setCorrection('')
         setResult(null)
       }, 2000)
     },
@@ -87,6 +96,7 @@ export function ReparseDialog({
     if (!mutation.isPending) {
       onOpenChange(false)
       setHint('')
+      setCorrection('')
       setShowSuccess(false)
       setResult(null)
       mutation.reset()
@@ -102,7 +112,8 @@ export function ReparseDialog({
             Re-parse with AI
           </DialogTitle>
           <DialogDescription>
-            Re-analyze this {itemType} with AI to correct the medication identification
+            Re-analyze this {itemType} with AI to correct the medication
+            identification
           </DialogDescription>
         </DialogHeader>
 
@@ -151,9 +162,7 @@ export function ReparseDialog({
                     <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
                       Current Identification
                     </p>
-                    <p className="font-medium text-foreground">
-                      {medication}
-                    </p>
+                    <p className="font-medium text-foreground">{medication}</p>
                     {medicationRaw && medicationRaw !== medication && (
                       <p className="text-sm text-muted-foreground mt-1">
                         Raw: {medicationRaw}
@@ -167,16 +176,31 @@ export function ReparseDialog({
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <Lightbulb className="w-4 h-4 text-amber" />
-                  Correction Hint (optional)
+                  Correct Medication Name (optional)
                 </label>
                 <Input
-                  placeholder="e.g., Implanon Contraceptive Implant"
+                  placeholder="e.g., Forteo Injection"
                   value={hint}
                   onChange={(e) => setHint(e.target.value)}
                   className="focus:ring-violet-500/30 focus:border-violet-500/50"
                 />
+              </div>
+
+              {/* Correction Feedback */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <AlertCircle className="w-4 h-4 text-orange-500" />
+                  What did the AI get wrong? (optional)
+                </label>
+                <textarea
+                  placeholder="e.g., 3/26 is an expiry date (March 2026), not a dosage"
+                  value={correction}
+                  onChange={(e) => setCorrection(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm rounded-md border border-border bg-background focus:ring-violet-500/30 focus:border-violet-500/50 resize-none"
+                />
                 <p className="text-xs text-muted-foreground">
-                  Provide the correct medication name to help the AI identify it better
+                  Explain the error to help the AI learn and correct its parsing
                 </p>
               </div>
 
@@ -184,8 +208,10 @@ export function ReparseDialog({
               <div className="flex items-start gap-2 p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 text-sm">
                 <Sparkles className="w-4 h-4 text-violet-500 flex-shrink-0 mt-0.5" />
                 <p className="text-violet-300">
-                  The AI will re-analyze the original message and update the medication identification.
-                  {hint && ' Your hint will guide the AI towards the correct identification.'}
+                  The AI will re-analyze the original message and update the
+                  medication identification.
+                  {hint &&
+                    ' Your hint will guide the AI towards the correct identification.'}
                 </p>
               </div>
 
