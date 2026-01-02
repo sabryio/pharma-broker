@@ -2,6 +2,7 @@
 // Beautiful carousel for navigating through related matches
 
 import { useCallback, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, Layers, ArrowLeftRight } from 'lucide-react'
 import type { OfferWithMatches, RequestWithMatches } from './types'
@@ -45,11 +46,12 @@ export function RelatedMatchCarousel({
   onApprove,
   onReject,
 }: RelatedMatchCarouselProps) {
+  const queryClient = useQueryClient()
   const [curationMedication, setCurationMedication] = useState<string | null>(
     null,
   )
   const [curationAliasId, setCurationAliasId] = useState<string | null>(null)
-  
+
   // Reclassify dialog state
   const [reclassifyItem, setReclassifyItem] = useState<{
     id: string
@@ -66,13 +68,29 @@ export function RelatedMatchCarousel({
     medicationRaw?: string
   } | null>(null)
 
-  const handleReclassify = useCallback((id: string, type: 'offer' | 'request', medication: string, medicationRaw?: string) => {
-    setReclassifyItem({ id, type, medication, medicationRaw })
-  }, [])
+  const handleReclassify = useCallback(
+    (
+      id: string,
+      type: 'offer' | 'request',
+      medication: string,
+      medicationRaw?: string,
+    ) => {
+      setReclassifyItem({ id, type, medication, medicationRaw })
+    },
+    [],
+  )
 
-  const handleReparse = useCallback((id: string, type: 'offer' | 'request', medication: string, medicationRaw?: string) => {
-    setReparseItem({ id, type, medication, medicationRaw })
-  }, [])
+  const handleReparse = useCallback(
+    (
+      id: string,
+      type: 'offer' | 'request',
+      medication: string,
+      medicationRaw?: string,
+    ) => {
+      setReparseItem({ id, type, medication, medicationRaw })
+    },
+    [],
+  )
 
   const isOfferMode = anchorMode === 'offer'
   const groups = isOfferMode ? groupedByOffer : groupedByRequest
@@ -394,8 +412,10 @@ export function RelatedMatchCarousel({
         medicationRaw={curationMedication || ''}
         aliasId={curationAliasId}
         onSuccess={() => {
-          // Success handled via toast and optimistic UI if we had it
-          // For now, it stays matched but shows as "Verified" if refreshed
+          // Invalidate match-reviews query to refresh the UI with updated curation status
+          queryClient.invalidateQueries({ queryKey: ['match-reviews'] })
+          setCurationMedication(null)
+          setCurationAliasId(null)
         }}
       />
 

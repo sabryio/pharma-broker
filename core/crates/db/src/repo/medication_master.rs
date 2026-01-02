@@ -69,6 +69,43 @@ impl MedicationMasterRepository for SeaOrmMedicationMasterRepo {
             .map_err(Error::from)
     }
 
+    async fn search_fuzzy(
+        &self,
+        name: &str,
+        limit: i64,
+        min_similarity: f32,
+    ) -> Result<Vec<(medication_master::Model, f32)>> {
+        // Use pg_trgm similarity function for fuzzy matching
+        let raw_results = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                r#"
+                SELECT *, 
+                    GREATEST(
+                        similarity(canonical_name, $1),
+                        COALESCE(similarity(canonical_name_ar, $1), 0)
+                    ) as score
+                FROM medication_master
+                WHERE similarity(canonical_name, $1) > $2
+                   OR (canonical_name_ar IS NOT NULL AND similarity(canonical_name_ar, $1) > $2)
+                ORDER BY score DESC
+                LIMIT $3
+                "#,
+                [name.into(), min_similarity.into(), limit.into()],
+            ))
+            .await?;
+
+        let mut results = Vec::new();
+        for row in raw_results {
+            let model = medication_master::Model::from_query_result(&row, "")?;
+            let score: f64 = row.try_get("", "score")?;
+            results.push((model, score as f32));
+        }
+
+        Ok(results)
+    }
+
     async fn search_semantic(
         &self,
         embedding: &[f32],
@@ -101,8 +138,9 @@ impl MedicationMasterRepository for SeaOrmMedicationMasterRepo {
         let mut results = Vec::new();
         for row in raw_results {
             let model = medication_master::Model::from_query_result(&row, "")?;
-            let score: f32 = row.try_get("", "score")?;
-            results.push((model, score));
+            // PostgreSQL returns FLOAT8 (f64) for the calculated score
+            let score: f64 = row.try_get("", "score")?;
+            results.push((model, score as f32));
         }
 
         Ok(results)

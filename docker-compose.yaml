@@ -15,7 +15,7 @@ services:
       # For pg18+, mount at /var/lib/postgresql (not /data subdirectory)
       - ./data/postgres:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d pharmabroker"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d pharmabroker" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -54,6 +54,11 @@ services:
     ports:
       - "8081:8081" # REST API
       - "50051:50051" # gRPC
+    # volumes:
+    #   # DEV ONLY: Mount local binary for hot reload
+    #   # Note: This only works if building for Linux target on host
+    #   # For cross-platform dev, use: docker compose build core && docker compose up -d core
+    #   - ./core/target/release/pharma-core:/app/pharma-core:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -195,6 +200,7 @@ volumes:
   bridge_data:
   prometheus_data:
   grafana_data:
+
 
 networks:
   pharmabroker-network:

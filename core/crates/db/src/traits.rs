@@ -350,6 +350,13 @@ pub trait MedicationMasterRepository: Send + Sync {
     async fn get_by_id(&self, id: Uuid) -> Result<Option<MedicationMasterModel>>;
     async fn find_by_name(&self, name: &str) -> Result<Option<MedicationMasterModel>>;
     async fn search(&self, name: &str, limit: i64) -> Result<Vec<MedicationMasterModel>>;
+    /// Fuzzy search using trigram similarity (pg_trgm)
+    async fn search_fuzzy(
+        &self,
+        name: &str,
+        limit: i64,
+        min_similarity: f32,
+    ) -> Result<Vec<(MedicationMasterModel, f32)>>;
     async fn search_semantic(
         &self,
         embedding: &[f32],
@@ -367,6 +374,7 @@ pub trait MedicationAliasRepository: Send + Sync {
     async fn get_pending(&self, limit: i64, offset: i64) -> Result<Vec<MedicationAliasModel>>;
     async fn get_all(&self, limit: i64, offset: i64) -> Result<Vec<MedicationAliasModel>>;
     async fn count_pending(&self) -> Result<i64>;
+    async fn count_rejected(&self) -> Result<i64>;
     async fn count_all(&self) -> Result<i64>;
     async fn delete(&self, id: Uuid) -> Result<bool>;
     async fn get_stats(&self) -> Result<CurationStats>;
@@ -381,6 +389,7 @@ pub struct CurationStats {
     pub master_medications: i64,
     pub total_aliases: i64,
     pub pending_aliases: i64,
+    pub rejected_aliases: i64,
 }
 
 // ============================================================================

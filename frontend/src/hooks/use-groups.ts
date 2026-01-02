@@ -58,12 +58,8 @@ export function useUpdateGroup() {
       jid: string
       request: UpdateGroupRequest
     }) => updateGroup(jid, request),
-    onSuccess: (data) => {
-      console.log('updateGroup success', JSON.stringify(data, null, 2))
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['groups'] })
-    },
-    onError: (error) => {
-      console.error('updateGroup error', error)
     },
   })
 }

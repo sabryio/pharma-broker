@@ -10,12 +10,7 @@ import type {
  * Fetch all groups from the API
  */
 export async function getGroups(): Promise<GroupListResponse> {
-  console.log('getGroups called')
   const response = await apiClient.get<GroupListResponse>('/api/groups')
-  console.log(
-    'getGroups response',
-    response.data.groups.map((g) => ({ jid: g.jid, monitoring: g.monitoring })),
-  )
   return response.data
 }
 

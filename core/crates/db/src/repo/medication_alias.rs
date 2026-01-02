@@ -98,6 +98,18 @@ impl MedicationAliasRepository for SeaOrmMedicationAliasRepo {
             .map_err(Error::from)
     }
 
+    async fn count_rejected(&self) -> Result<i64> {
+        MedicationAlias::find()
+            .filter(
+                medication_alias::Column::CurationStatus
+                    .eq(crate::traits::CurationStatus::Rejected),
+            )
+            .count(&*self.db)
+            .await
+            .map(|c| c as i64)
+            .map_err(Error::from)
+    }
+
     async fn count_all(&self) -> Result<i64> {
         MedicationAlias::find()
             .count(&*self.db)
@@ -124,6 +136,7 @@ impl MedicationAliasRepository for SeaOrmMedicationAliasRepo {
             medication_master::Entity::find().count(&*self.db).await? as i64;
         let total_aliases: i64 = MedicationAlias::find().count(&*self.db).await? as i64;
         let pending_aliases: i64 = self.count_pending().await?;
+        let rejected_aliases: i64 = self.count_rejected().await?;
 
         Ok(CurationStats {
             total_offers,
@@ -131,6 +144,7 @@ impl MedicationAliasRepository for SeaOrmMedicationAliasRepo {
             master_medications,
             total_aliases,
             pending_aliases,
+            rejected_aliases,
         })
     }
 }

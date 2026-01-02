@@ -18,7 +18,6 @@ function Groups() {
   const monitoredCount = groups.filter((g) => g.monitoring).length
 
   const toggleMonitoring = (group: Group) => {
-    console.log('toggleMonitoring clicked', group.jid, group.monitoring)
     updateGroup.mutate({
       jid: group.jid,
       request: { monitoring: !group.monitoring },
@@ -26,7 +25,6 @@ function Groups() {
   }
 
   const toggleParsing = (group: Group) => {
-    console.log('toggleParsing clicked', group.jid, group.parsing)
     updateGroup.mutate({
       jid: group.jid,
       request: { parsing: !group.parsing },

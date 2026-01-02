@@ -299,8 +299,9 @@ impl MedicationResolver {
     }
 
     /// Normalize a medication name for comparison
+    /// Uses consistent normalization: trim, lowercase, and Arabic-Indic numeral conversion
     fn normalize(name: &str) -> String {
-        name.trim().to_lowercase()
+        pharma_db::repo::normalize_arabic_text(name)
     }
 
     /// Calculate string similarity (Jaro-Winkler style)

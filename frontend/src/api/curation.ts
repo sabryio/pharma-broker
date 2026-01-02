@@ -54,6 +54,34 @@ export async function getCurationSuggestions(
 }
 
 /**
+ * Link an alias to a master medication.
+ * If aliasId is provided, updates that alias.
+ * If aliasId is null but aliasName is provided, creates a new alias and links it.
+ */
+export async function linkAliasToMaster(
+  masterId: string,
+  aliasId: string | null,
+  aliasName?: string,
+): Promise<{ success: boolean }> {
+  if (aliasId) {
+    // Update existing alias
+    const response = await apiClient.put(
+      `/api/curation/aliases/${aliasId}/approve`,
+      { masterId },
+    )
+    return { success: !!response.data }
+  } else if (aliasName) {
+    // Create new alias and link it
+    const response = await apiClient.post('/api/curation/link', {
+      masterId,
+      aliasName,
+    })
+    return { success: !!response.data?.success }
+  }
+  return { success: false }
+}
+
+/**
  * Approve an alias by linking it to a master medication
  */
 export async function approveMedicationAlias(
@@ -86,5 +114,45 @@ export async function createMasterAndLink(
   return {
     success: data.success,
     master: MedicationMasterSchema.parse(data.master),
+  }
+}
+
+/**
+ * Bulk approve multiple aliases by linking them to a master
+ */
+export async function bulkApproveAliases(
+  aliasIds: string[],
+  masterId: string,
+): Promise<{ success: boolean; approvedCount: number; failedCount: number }> {
+  const response = await apiClient.post('/api/curation/aliases/bulk-approve', {
+    aliasIds,
+    masterId,
+  })
+  return response.data as {
+    success: boolean
+    approvedCount: number
+    failedCount: number
+  }
+}
+
+/**
+ * Update a master medication record
+ * Regenerates embedding if canonical names change
+ */
+export async function updateMaster(
+  masterId: string,
+  data: {
+    name?: string
+    nameAr?: string
+    activeIngredient?: string
+    strength?: string
+    manufacturer?: string
+  },
+): Promise<{ success: boolean; master: MedicationMaster }> {
+  const response = await apiClient.put(`/api/curation/master/${masterId}`, data)
+  const result = response.data as { success: boolean; master: MedicationMaster }
+  return {
+    success: result.success,
+    master: MedicationMasterSchema.parse(result.master),
   }
 }

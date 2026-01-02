@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   getCurationSuggestions,
-  approveMedicationAlias,
+  linkAliasToMaster,
   type Suggestion,
 } from '@/api/curation'
 import { toast } from 'sonner'
@@ -68,18 +68,10 @@ export const CurationDialog: React.FC<CurationDialogProps> = ({
   }
 
   const handleLink = async (masterId: string) => {
-    if (!aliasId) {
-      toast.info('Linking simulated', {
-        description: `Linked "${medicationRaw}" to master. (No alias ID provided)`,
-      })
-      onSuccess?.()
-      onClose()
-      return
-    }
-
     setIsLinking(true)
     try {
-      await approveMedicationAlias(aliasId, masterId)
+      // linkAliasToMaster handles both existing aliases and creating new ones
+      await linkAliasToMaster(masterId, aliasId ?? null, medicationRaw)
       toast.success('Medication successfully curated', {
         description: `Linked "${medicationRaw}" to master record.`,
       })

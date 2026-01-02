@@ -143,7 +143,8 @@ where
 
     let total = stats.total_aliases;
     let pending = stats.pending_aliases;
-    let approved = total - pending; // Simplified - ideally track approved separately
+    let rejected = stats.rejected_aliases;
+    let approved = total - pending - rejected;
 
     let percentage = if total > 0 {
         ((total - pending) as f64 / total as f64) * 100.0
@@ -155,7 +156,7 @@ where
         total_aliases: total,
         pending_count: pending,
         approved_count: approved,
-        rejected_count: 0, // Not tracked separately yet
+        rejected_count: rejected,
         curation_percentage: percentage,
     }))
 }
@@ -366,6 +367,107 @@ where
     }))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateMasterRequest {
+    pub name: Option<String>,
+    pub name_ar: Option<String>,
+    pub active_ingredient: Option<String>,
+    pub strength: Option<String>,
+    pub manufacturer: Option<String>,
+}
+
+/// Update a master medication record
+/// PUT /api/curation/master/{id}
+/// Regenerates embedding if canonical names change
+pub async fn update_master<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Path(master_id): Path<Uuid>,
+    Json(req): Json<UpdateMasterRequest>,
+) -> Result<Json<CreateMasterResponse>, (StatusCode, String)>
+where
+    RQ: crate::repository::ReviewQueueRepository + 'static,
+    A: crate::repository::AuditLogRepository + 'static,
+    MM: crate::repository::MedicationMappingRepository + 'static,
+{
+    tracing::info!(">>> update_master called for id: {}", master_id);
+
+    // Get existing master
+    let mut master = state
+        .medication_master_repo
+        .get_by_id(master_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            "Master medication not found".to_string(),
+        ))?;
+
+    let old_name = master.canonical_name.clone();
+    let old_name_ar = master.canonical_name_ar.clone();
+
+    // Apply updates
+    if let Some(name) = req.name {
+        master.canonical_name = name;
+    }
+    if let Some(name_ar) = req.name_ar {
+        master.canonical_name_ar = Some(name_ar);
+    }
+    if let Some(active_ingredient) = req.active_ingredient {
+        master.active_ingredient = Some(active_ingredient);
+    }
+    if let Some(strength) = req.strength {
+        master.strength = Some(strength);
+    }
+    if let Some(manufacturer) = req.manufacturer {
+        master.manufacturer = Some(manufacturer);
+    }
+
+    // Regenerate embedding if canonical names changed
+    let names_changed =
+        master.canonical_name != old_name || master.canonical_name_ar != old_name_ar;
+
+    if names_changed {
+        tracing::info!(
+            ">>> update_master: names changed, regenerating embedding (old: '{}' -> new: '{}')",
+            old_name,
+            master.canonical_name
+        );
+
+        // Create embedding text from both names
+        let embed_text = if let Some(ref ar_name) = master.canonical_name_ar {
+            format!("{} {}", master.canonical_name, ar_name)
+        } else {
+            master.canonical_name.clone()
+        };
+
+        let embedding = state.ai_client.embed(&embed_text).await.map_err(|e| {
+            tracing::error!(">>> update_master: AI embed error: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("AI error: {}", e),
+            )
+        })?;
+
+        master.embedding = Some(pgvector::Vector::from(embedding));
+        tracing::info!(">>> update_master: new embedding generated");
+    }
+
+    // Save updated master
+    let saved = state
+        .medication_master_repo
+        .save(&master)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    tracing::info!(">>> update_master: saved successfully");
+
+    Ok(Json(CreateMasterResponse {
+        success: true,
+        master: MasterDto::from(&saved),
+    }))
+}
+
 /// Approve an alias and map it to a master medication (path-based)
 pub async fn approve_alias<RQ, A, MM>(
     State(state): State<AppState<RQ, A, MM>>,
@@ -396,6 +498,162 @@ where
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkAliasRequest {
+    pub master_id: Uuid,
+    pub alias_name: String,
+}
+
+/// Create a new alias and link it to an existing master medication
+/// POST /api/curation/link
+pub async fn link_alias_to_master<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Json(req): Json<LinkAliasRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)>
+where
+    RQ: crate::repository::ReviewQueueRepository + 'static,
+    A: crate::repository::AuditLogRepository + 'static,
+    MM: crate::repository::MedicationMappingRepository + 'static,
+{
+    use crate::repository::MedicationAliasModel;
+
+    // Check if master exists
+    let master = state
+        .medication_master_repo
+        .get_by_id(req.master_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            "Master medication not found".to_string(),
+        ))?;
+
+    tracing::info!(
+        ">>> link_alias_to_master: linking '{}' to master '{}'",
+        req.alias_name,
+        master.canonical_name
+    );
+
+    // Check if alias already exists for this name
+    if let Some(mut existing_alias) = state
+        .medication_alias_repo
+        .get_by_name(&req.alias_name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    {
+        // Update existing alias
+        existing_alias.approve(req.master_id, "system".to_string());
+        state
+            .medication_alias_repo
+            .save(&existing_alias)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        tracing::info!(
+            ">>> link_alias_to_master: updated existing alias {}",
+            existing_alias.id
+        );
+    } else {
+        // Create new alias
+        let mut new_alias = MedicationAliasModel::new(req.alias_name.clone());
+        new_alias.approve(req.master_id, "system".to_string());
+        state
+            .medication_alias_repo
+            .save(&new_alias)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        tracing::info!(
+            ">>> link_alias_to_master: created new alias {}",
+            new_alias.id
+        );
+    }
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkApproveRequest {
+    pub alias_ids: Vec<Uuid>,
+    pub master_id: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkApproveResponse {
+    pub success: bool,
+    pub approved_count: usize,
+    pub failed_count: usize,
+}
+
+/// Bulk approve multiple aliases by linking them to a master medication
+/// POST /api/curation/aliases/bulk-approve
+pub async fn bulk_approve_aliases<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Json(req): Json<BulkApproveRequest>,
+) -> Result<Json<BulkApproveResponse>, (StatusCode, String)>
+where
+    RQ: crate::repository::ReviewQueueRepository + 'static,
+    A: crate::repository::AuditLogRepository + 'static,
+    MM: crate::repository::MedicationMappingRepository + 'static,
+{
+    tracing::info!(
+        ">>> bulk_approve_aliases: approving {} aliases to master {}",
+        req.alias_ids.len(),
+        req.master_id
+    );
+
+    // Verify master exists
+    state
+        .medication_master_repo
+        .get_by_id(req.master_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            "Master medication not found".to_string(),
+        ))?;
+
+    let mut approved_count = 0;
+    let mut failed_count = 0;
+
+    for alias_id in req.alias_ids {
+        match state.medication_alias_repo.get_by_id(alias_id).await {
+            Ok(Some(mut alias)) => {
+                alias.approve(req.master_id, "system:bulk".to_string());
+                match state.medication_alias_repo.save(&alias).await {
+                    Ok(_) => {
+                        approved_count += 1;
+                        tracing::info!(">>> bulk_approve: approved alias {}", alias_id);
+                    }
+                    Err(e) => {
+                        failed_count += 1;
+                        tracing::warn!(
+                            ">>> bulk_approve: failed to save alias {}: {}",
+                            alias_id,
+                            e
+                        );
+                    }
+                }
+            }
+            Ok(None) => {
+                failed_count += 1;
+                tracing::warn!(">>> bulk_approve: alias {} not found", alias_id);
+            }
+            Err(e) => {
+                failed_count += 1;
+                tracing::warn!(">>> bulk_approve: failed to get alias {}: {}", alias_id, e);
+            }
+        }
+    }
+
+    Ok(Json(BulkApproveResponse {
+        success: failed_count == 0,
+        approved_count,
+        failed_count,
+    }))
+}
+
 /// Get AI-driven suggestions for a medication name
 pub async fn get_suggestions<RQ, A, MM>(
     State(state): State<AppState<RQ, A, MM>>,
@@ -411,39 +669,107 @@ where
 
     // Normalize the query name (convert Arabic-Indic numerals to Western)
     let normalized_name = normalize_arabic_text(&query.name);
+    tracing::info!(
+        ">>> get_suggestions: query='{}' normalized='{}'",
+        query.name,
+        normalized_name
+    );
 
     // 1. Semantic Search (AI)
-    if let Ok(embedding) = state.ai_client.embed(&normalized_name).await
-        && let Ok(semantic_matches) = state
-            .medication_master_repo
-            .search_semantic(&embedding, limit)
-            .await
-    {
-        for (model, score) in semantic_matches {
-            suggestions.push(MasterSuggestion {
-                master: MasterDto::from(&model),
-                score,
-                method: "semantic".to_string(),
-            });
+    match state.ai_client.embed(&normalized_name).await {
+        Ok(embedding) => {
+            tracing::info!(">>> get_suggestions: embedding generated, searching...");
+            match state
+                .medication_master_repo
+                .search_semantic(&embedding, limit)
+                .await
+            {
+                Ok(semantic_matches) => {
+                    tracing::info!(
+                        ">>> get_suggestions: semantic search found {} matches",
+                        semantic_matches.len()
+                    );
+                    for (model, score) in semantic_matches {
+                        tracing::info!(
+                            ">>> get_suggestions: semantic match: '{}' score={}",
+                            model.canonical_name,
+                            score
+                        );
+                        suggestions.push(MasterSuggestion {
+                            master: MasterDto::from(&model),
+                            score,
+                            method: "semantic".to_string(),
+                        });
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(">>> get_suggestions: semantic search failed: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(">>> get_suggestions: embedding failed: {}", e);
         }
     }
 
-    // 2. Fuzzy/Literal Search (Fallback or Hybrid)
-    if let Ok(fuzzy_matches) = state
+    // 2. Trigram Similarity Search (better fuzzy matching)
+    match state
+        .medication_master_repo
+        .search_fuzzy(&normalized_name, limit, 0.3) // 30% minimum similarity
+        .await
+    {
+        Ok(trigram_matches) => {
+            tracing::info!(
+                ">>> get_suggestions: trigram search found {} matches",
+                trigram_matches.len()
+            );
+            for (model, score) in trigram_matches {
+                // Avoid duplicates from semantic search
+                if suggestions.iter().any(|s| s.master.id == model.id) {
+                    continue;
+                }
+                tracing::info!(
+                    ">>> get_suggestions: trigram match: '{}' score={}",
+                    model.canonical_name,
+                    score
+                );
+                suggestions.push(MasterSuggestion {
+                    master: MasterDto::from(&model),
+                    score,
+                    method: "trigram".to_string(),
+                });
+            }
+        }
+        Err(e) => {
+            tracing::warn!(">>> get_suggestions: trigram search failed: {}", e);
+        }
+    }
+
+    // 3. LIKE Search (Substring fallback)
+    match state
         .medication_master_repo
         .search(&normalized_name, limit)
         .await
     {
-        for model in fuzzy_matches {
-            // Avoid duplicates from semantic search
-            if suggestions.iter().any(|s| s.master.id == model.id) {
-                continue;
+        Ok(fuzzy_matches) => {
+            tracing::info!(
+                ">>> get_suggestions: LIKE search found {} matches",
+                fuzzy_matches.len()
+            );
+            for model in fuzzy_matches {
+                // Avoid duplicates from semantic/trigram search
+                if suggestions.iter().any(|s| s.master.id == model.id) {
+                    continue;
+                }
+                suggestions.push(MasterSuggestion {
+                    master: MasterDto::from(&model),
+                    score: 0.6, // Lower confidence for LIKE matches
+                    method: "substring".to_string(),
+                });
             }
-            suggestions.push(MasterSuggestion {
-                master: MasterDto::from(&model),
-                score: 0.8, // Fixed confidence for fuzzy matches
-                method: "fuzzy".to_string(),
-            });
+        }
+        Err(e) => {
+            tracing::warn!(">>> get_suggestions: LIKE search failed: {}", e);
         }
     }
 
@@ -451,5 +777,9 @@ where
     suggestions.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
     suggestions.truncate(limit as usize);
 
+    tracing::info!(
+        ">>> get_suggestions: returning {} suggestions",
+        suggestions.len()
+    );
     Ok(Json(suggestions))
 }
