@@ -46,11 +46,13 @@ export function MatchDetail({
       <div className="p-4 border-b border-border bg-secondary/30">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h3 className="text-lg font-semibold text-foreground">Match Details</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              Match Details
+            </h3>
             <div
               className={cn(
                 'px-3 py-1 rounded-lg border text-sm font-medium',
-                confidenceColor
+                confidenceColor,
               )}
             >
               {Math.round(match.confidence)}% Confidence
@@ -58,7 +60,7 @@ export function MatchDetail({
             <div
               className={cn(
                 'px-3 py-1 rounded-lg border text-xs font-medium',
-                statusColor
+                statusColor,
               )}
             >
               {match.status}
@@ -86,7 +88,7 @@ export function MatchDetail({
               </div>
               <h4 className="text-sm font-semibold text-teal">Offer Details</h4>
             </div>
-            
+
             <div className="space-y-3 pl-10">
               <DetailRow
                 icon={Package}
@@ -119,11 +121,13 @@ export function MatchDetail({
                 label="Group"
                 value={match.offer.sourceGroup ?? 'N/A'}
               />
-              
+
               {/* Raw Message */}
               {match.offer.rawMessage && (
                 <div className="mt-3">
-                  <p className="text-xs text-muted-foreground mb-1">Raw Message:</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Raw Message:
+                  </p>
                   <div className="p-3 bg-secondary/30 rounded-lg text-xs text-muted-foreground border border-border/50">
                     {match.offer.rawMessage}
                   </div>
@@ -133,13 +137,17 @@ export function MatchDetail({
               {/* Curation Status */}
               {match.offer.curationStatus && (
                 <div className="mt-2 flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Curation:</span>
-                  <span className={cn(
-                    'px-2 py-0.5 rounded text-xs',
-                    match.offer.curationStatus === 'CURATED'
-                      ? 'bg-emerald/10 text-emerald border border-emerald/30'
-                      : 'bg-amber/10 text-amber border border-amber/30'
-                  )}>
+                  <span className="text-xs text-muted-foreground">
+                    Curation:
+                  </span>
+                  <span
+                    className={cn(
+                      'px-2 py-0.5 rounded text-xs',
+                      match.offer.curationStatus === 'CURATED'
+                        ? 'bg-emerald/10 text-emerald border border-emerald/30'
+                        : 'bg-amber/10 text-amber border border-amber/30',
+                    )}
+                  >
                     {match.offer.curationStatus}
                   </span>
                 </div>
@@ -153,9 +161,11 @@ export function MatchDetail({
               <div className="w-8 h-8 rounded-lg bg-amber/20 flex items-center justify-center">
                 <FileText className="w-4 h-4 text-amber" />
               </div>
-              <h4 className="text-sm font-semibold text-amber">Request Details</h4>
+              <h4 className="text-sm font-semibold text-amber">
+                Request Details
+              </h4>
             </div>
-            
+
             <div className="space-y-3 pl-10">
               <DetailRow
                 icon={Package}
@@ -189,11 +199,13 @@ export function MatchDetail({
                 label="Group"
                 value={match.request.sourceGroup ?? 'N/A'}
               />
-              
+
               {/* Raw Message */}
               {match.request.rawMessage && (
                 <div className="mt-3">
-                  <p className="text-xs text-muted-foreground mb-1">Raw Message:</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Raw Message:
+                  </p>
                   <div className="p-3 bg-secondary/30 rounded-lg text-xs text-muted-foreground border border-border/50">
                     {match.request.rawMessage}
                   </div>
@@ -203,13 +215,17 @@ export function MatchDetail({
               {/* Curation Status */}
               {match.request.curationStatus && (
                 <div className="mt-2 flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Curation:</span>
-                  <span className={cn(
-                    'px-2 py-0.5 rounded text-xs',
-                    match.request.curationStatus === 'CURATED'
-                      ? 'bg-emerald/10 text-emerald border border-emerald/30'
-                      : 'bg-amber/10 text-amber border border-amber/30'
-                  )}>
+                  <span className="text-xs text-muted-foreground">
+                    Curation:
+                  </span>
+                  <span
+                    className={cn(
+                      'px-2 py-0.5 rounded text-xs',
+                      match.request.curationStatus === 'CURATED'
+                        ? 'bg-emerald/10 text-emerald border border-emerald/30'
+                        : 'bg-amber/10 text-amber border border-amber/30',
+                    )}
+                  >
                     {match.request.curationStatus}
                   </span>
                 </div>
@@ -219,20 +235,26 @@ export function MatchDetail({
         </div>
 
         {/* AI Analysis Section */}
-        {(match.reasoning || match.issues.length > 0 || match.aiExplanation) && (
+        {(match.reasoning ||
+          match.issues.length > 0 ||
+          match.aiExplanation) && (
           <div className="space-y-4 pt-4 border-t border-border">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
                 <Brain className="w-4 h-4 text-violet-400" />
               </div>
-              <h4 className="text-sm font-semibold text-violet-400">AI Analysis</h4>
+              <h4 className="text-sm font-semibold text-violet-400">
+                AI Analysis
+              </h4>
             </div>
 
             <div className="pl-10 space-y-3">
               {/* AI Reasoning */}
               {match.reasoning && (
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Reasoning:</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Reasoning:
+                  </p>
                   <p className="text-sm text-foreground">{match.reasoning}</p>
                 </div>
               )}
@@ -240,8 +262,12 @@ export function MatchDetail({
               {/* AI Explanation */}
               {match.aiExplanation && (
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">AI Explanation:</p>
-                  <p className="text-sm text-foreground">{match.aiExplanation}</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    AI Explanation:
+                  </p>
+                  <p className="text-sm text-foreground">
+                    {match.aiExplanation}
+                  </p>
                 </div>
               )}
 
@@ -250,34 +276,43 @@ export function MatchDetail({
                 <div className="flex items-center gap-4">
                   {match.aiStatus && (
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">AI Status:</span>
-                      <span className={cn(
-                        'px-2 py-0.5 rounded text-xs',
-                        match.aiStatus === 'approved'
-                          ? 'bg-emerald/10 text-emerald border border-emerald/30'
-                          : match.aiStatus === 'rejected'
-                            ? 'bg-red-400/10 text-red-400 border border-red-400/30'
-                            : 'bg-amber/10 text-amber border border-amber/30'
-                      )}>
+                      <span className="text-xs text-muted-foreground">
+                        AI Status:
+                      </span>
+                      <span
+                        className={cn(
+                          'px-2 py-0.5 rounded text-xs',
+                          match.aiStatus === 'approved'
+                            ? 'bg-emerald/10 text-emerald border border-emerald/30'
+                            : match.aiStatus === 'rejected'
+                              ? 'bg-red-400/10 text-red-400 border border-red-400/30'
+                              : 'bg-amber/10 text-amber border border-amber/30',
+                        )}
+                      >
                         {match.aiStatus}
                       </span>
                     </div>
                   )}
-                  {match.aiConfidence !== null && match.aiConfidence !== undefined && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">AI Confidence:</span>
-                      <span className="text-sm font-medium text-foreground">
-                        {Math.round(match.aiConfidence)}%
-                      </span>
-                    </div>
-                  )}
+                  {match.aiConfidence !== null &&
+                    match.aiConfidence !== undefined && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          AI Confidence:
+                        </span>
+                        <span className="text-sm font-medium text-foreground">
+                          {Math.round(match.aiConfidence)}%
+                        </span>
+                      </div>
+                    )}
                 </div>
               )}
 
               {/* Issues */}
               {match.issues.length > 0 && (
                 <div>
-                  <p className="text-xs text-muted-foreground mb-2">Identified Issues:</p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Identified Issues:
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {match.issues.map((issue, idx) => (
                       <span
@@ -329,7 +364,7 @@ export function MatchDetail({
                 'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors',
                 'bg-red-400/10 text-red-400 border border-red-400/30',
                 'hover:bg-red-400/20',
-                'disabled:opacity-50 disabled:cursor-not-allowed'
+                'disabled:opacity-50 disabled:cursor-not-allowed',
               )}
             >
               <XCircle className="w-4 h-4" />
@@ -342,7 +377,7 @@ export function MatchDetail({
                 'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors',
                 'bg-emerald/10 text-emerald border border-emerald/30',
                 'hover:bg-emerald/20',
-                'disabled:opacity-50 disabled:cursor-not-allowed'
+                'disabled:opacity-50 disabled:cursor-not-allowed',
               )}
             >
               <CheckCircle className="w-4 h-4" />
@@ -386,7 +421,7 @@ function DetailRow({
           className={cn(
             'text-sm',
             highlight ? 'font-medium text-foreground' : 'text-foreground',
-            urgencyColor
+            urgencyColor,
           )}
         >
           {value}

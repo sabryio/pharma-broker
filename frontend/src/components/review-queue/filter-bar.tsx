@@ -52,9 +52,21 @@ interface FilterBarProps {
 
 const confidenceBands = [
   { value: 'all', label: 'All', color: 'bg-secondary' },
-  { value: 'high', label: 'High (80%+)', color: 'bg-emerald/20 text-emerald border-emerald/30' },
-  { value: 'medium', label: 'Medium (50-80%)', color: 'bg-amber/20 text-amber border-amber/30' },
-  { value: 'low', label: 'Low (<50%)', color: 'bg-red-400/20 text-red-400 border-red-400/30' },
+  {
+    value: 'high',
+    label: 'High (80%+)',
+    color: 'bg-emerald/20 text-emerald border-emerald/30',
+  },
+  {
+    value: 'medium',
+    label: 'Medium (50-80%)',
+    color: 'bg-amber/20 text-amber border-amber/30',
+  },
+  {
+    value: 'low',
+    label: 'Low (<50%)',
+    color: 'bg-red-400/20 text-red-400 border-red-400/30',
+  },
 ] as const
 
 const aiStatusOptions = [

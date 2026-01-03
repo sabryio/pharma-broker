@@ -83,7 +83,7 @@ export function NotesPanel({
     setIsEditing(false)
   }, [initialNotes])
 
-  const addTemplate = useCallback((template: typeof noteTemplates[0]) => {
+  const addTemplate = useCallback((template: (typeof noteTemplates)[0]) => {
     setNotes((prev) => {
       const newNote = `${template.icon} ${template.label}`
       return prev ? `${prev}\n${newNote}` : newNote
@@ -123,7 +123,8 @@ export function NotesPanel({
                 key={tag}
                 className={cn(
                   'px-1.5 py-0.5 rounded text-[10px] font-medium border',
-                  tagColors[tag] || 'bg-secondary text-muted-foreground border-border',
+                  tagColors[tag] ||
+                    'bg-secondary text-muted-foreground border-border',
                 )}
               >
                 #{tag}
@@ -149,7 +150,9 @@ export function NotesPanel({
       >
         <div className="flex items-center gap-2">
           <StickyNote className="w-4 h-4 text-amber" />
-          <span className="font-medium text-foreground">Notes & Annotations</span>
+          <span className="font-medium text-foreground">
+            Notes & Annotations
+          </span>
           {notes && (
             <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-xs">
               {notes.split('\n').filter(Boolean).length} notes
@@ -260,14 +263,17 @@ export function NotesPanel({
           {tags.length > 0 && (
             <div className="flex items-center gap-2 pt-2 border-t border-border/30">
               <Sparkles className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Active tags:</span>
+              <span className="text-xs text-muted-foreground">
+                Active tags:
+              </span>
               <div className="flex flex-wrap gap-1">
                 {tags.map((tag) => (
                   <span
                     key={tag}
                     className={cn(
                       'px-2 py-0.5 rounded-full text-[10px] font-medium border',
-                      tagColors[tag] || 'bg-secondary text-muted-foreground border-border',
+                      tagColors[tag] ||
+                        'bg-secondary text-muted-foreground border-border',
                     )}
                   >
                     #{tag}

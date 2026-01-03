@@ -411,8 +411,7 @@ function AuditRecordDetail({ matchId, onClose }: AuditRecordDetailProps) {
             'px-2 py-1 rounded-full text-xs font-medium',
             record.reviewStatus === 'approved' &&
               'bg-emerald-500/20 text-emerald-400',
-            record.reviewStatus === 'rejected' &&
-              'bg-red-500/20 text-red-400',
+            record.reviewStatus === 'rejected' && 'bg-red-500/20 text-red-400',
             record.reviewStatus === 'flagged' &&
               'bg-amber-500/20 text-amber-400',
             !record.reviewStatus && 'bg-secondary text-muted-foreground',

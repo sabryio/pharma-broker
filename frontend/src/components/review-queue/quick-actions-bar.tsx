@@ -53,7 +53,7 @@ export function QuickActionsBar({
   const handleApprove = useCallback(() => {
     if (loading || actionState !== 'idle') return
     setActionState('approving')
-    
+
     // Animate then execute
     setTimeout(() => {
       setActionState('approved')
@@ -66,7 +66,7 @@ export function QuickActionsBar({
   const handleReject = useCallback(() => {
     if (loading || actionState !== 'idle') return
     setActionState('rejecting')
-    
+
     setTimeout(() => {
       setActionState('rejected')
       onReject()
@@ -106,7 +106,8 @@ export function QuickActionsBar({
           'bg-gradient-to-r from-slate-900/95 via-slate-800/95 to-slate-900/95',
           'backdrop-blur-xl border border-white/10',
           'shadow-2xl shadow-black/50',
-          position === 'floating' && 'animate-in slide-in-from-bottom-4 duration-300',
+          position === 'floating' &&
+            'animate-in slide-in-from-bottom-4 duration-300',
         )}
       >
         {/* Minimize button */}
@@ -167,7 +168,12 @@ export function QuickActionsBar({
           {actionState === 'rejecting' && (
             <span className="absolute inset-0 bg-red-500/30 animate-ping rounded-xl" />
           )}
-          <X className={cn('w-5 h-5', actionState === 'rejected' && 'animate-bounce')} />
+          <X
+            className={cn(
+              'w-5 h-5',
+              actionState === 'rejected' && 'animate-bounce',
+            )}
+          />
           <span>Reject</span>
           {showKeyboardHints && (
             <kbd className="hidden sm:inline px-1.5 py-0.5 rounded bg-black/30 text-[10px] font-mono ml-1">
@@ -214,7 +220,8 @@ export function QuickActionsBar({
             'shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/20',
             'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100',
             actionState === 'approving' && 'scale-95 opacity-70',
-            actionState === 'approved' && 'bg-emerald-500/40 border-emerald-500/60',
+            actionState === 'approved' &&
+              'bg-emerald-500/40 border-emerald-500/60',
           )}
           title="Approve match (Enter)"
         >
@@ -222,7 +229,12 @@ export function QuickActionsBar({
           {actionState === 'approving' && (
             <span className="absolute inset-0 bg-emerald-500/30 animate-ping rounded-xl" />
           )}
-          <CheckCircle className={cn('w-5 h-5', actionState === 'approved' && 'animate-bounce')} />
+          <CheckCircle
+            className={cn(
+              'w-5 h-5',
+              actionState === 'approved' && 'animate-bounce',
+            )}
+          />
           <span>Approve</span>
           {showKeyboardHints && (
             <kbd className="hidden sm:inline px-1.5 py-0.5 rounded bg-black/30 text-[10px] font-mono ml-1">
@@ -248,7 +260,9 @@ export function QuickActionsBar({
             className={cn(
               'flex items-center gap-1.5 px-3 py-2 rounded-lg',
               confidence >= 80 && 'bg-emerald-500/10 text-emerald-400',
-              confidence >= 50 && confidence < 80 && 'bg-amber-500/10 text-amber-400',
+              confidence >= 50 &&
+                confidence < 80 &&
+                'bg-amber-500/10 text-amber-400',
               confidence < 50 && 'bg-red-500/10 text-red-400',
             )}
           >

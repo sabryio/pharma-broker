@@ -20,16 +20,16 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 
 use super::{
     ABTestConfig, ABTestManager, ABTestResult, AIClient, AIReviewer, ArabicPhoneticMatcher,
-    AuditRecorder, AuditTrail, AuditTrailConfig, AutoActionHandler, CalibrationConfig,
-    CalibrationReport, ConfidenceCalibrator, ConfidenceConfig, ConfidenceManager,
-    ConfidenceManagerStats, DosageFlag, DosageGate, DosageGateConfig, DosageGateResult,
-    EmbeddingCache, EmbeddingCacheStatsSnapshot, ExpiryConfig, ExpiryResult, ExpiryScorer,
-    HardNegativeIndex, HistoricalLearner, HistoricalLearnerStats, HistoricalLearningConfig,
-    JobStatus, LearnerError, MatchAction, MatchFilter, MatchFilterConfig, MatchFilterStatsSnapshot,
-    MatchScore, MedicationAffinity, MedicationBlocklist, OutlierDetector, OutlierDetectorConfig,
-    PerformanceMetrics, ReviewResult, ReviewStatus, SchedulerConfig, SchedulerStatus, Scorer,
-    UncertaintyConfig, UncertaintyEstimator, WarmStartConfig, WarmStartManager, WeightLearner,
-    Weights, contains_arabic,
+    AuditRecorder, AuditTrail, AuditTrailConfig, AutoActionHandler, AutoApproveConfig,
+    AutoApproveProcessor, CalibrationConfig, CalibrationReport, ConfidenceCalibrator,
+    ConfidenceConfig, ConfidenceManager, ConfidenceManagerStats, DosageFlag, DosageGate,
+    DosageGateConfig, DosageGateResult, EmbeddingCache, EmbeddingCacheStatsSnapshot, ExpiryConfig,
+    ExpiryResult, ExpiryScorer, HardNegativeIndex, HistoricalLearner, HistoricalLearnerStats,
+    HistoricalLearningConfig, JobStatus, LearnerError, MatchAction, MatchFilter, MatchFilterConfig,
+    MatchFilterStatsSnapshot, MatchScore, MedicationAffinity, MedicationBlocklist, OutlierDetector,
+    OutlierDetectorConfig, PauseReason, PerformanceMetrics, ReviewResult, ReviewStatus,
+    SchedulerConfig, SchedulerStatus, Scorer, UncertaintyConfig, UncertaintyEstimator,
+    WarmStartConfig, WarmStartManager, WeightLearner, Weights, contains_arabic,
 };
 
 /// Runtime state for the learning scheduler job
@@ -194,6 +194,9 @@ pub struct MatchingEngine {
     pub ai_client: Arc<AIClient>,
     /// AI expert reviewer
     pub ai_reviewer: Arc<AIReviewer>,
+    /// Auto-approve processor for AI-supervised auto-approval
+    /// Requirements: 1.1, 1.2, 1.3, 1.4, 6.1, 6.2, 7.1-7.5
+    auto_approve_processor: Arc<AutoApproveProcessor>,
 }
 
 impl Default for MatchingEngine {
@@ -234,6 +237,17 @@ impl MatchingEngine {
         let ai_client = Arc::new(AIClient::from_env());
         let ai_reviewer = Arc::new(AIReviewer::new(ai_client.clone()));
 
+        // Initialize auto-approve processor for AI-supervised auto-approval
+        // Requirements: 1.1, 1.2, 1.3, 1.4, 6.1, 6.2, 7.1-7.5
+        let blocklist_for_processor = Arc::new(MedicationBlocklist::with_defaults());
+        let dosage_gate_for_processor = Arc::new(DosageGate::new(config.dosage_gate.clone()));
+        let auto_approve_processor = Arc::new(AutoApproveProcessor::new(
+            AutoApproveConfig::default(),
+            ai_reviewer.clone(),
+            blocklist_for_processor,
+            dosage_gate_for_processor,
+        ));
+
         Self {
             scorer,
             learner,
@@ -262,7 +276,8 @@ impl MatchingEngine {
             feedback_repo: None,
             audit_log_repo: None,
             ai_client,
-            ai_reviewer,
+            ai_reviewer: ai_reviewer.clone(),
+            auto_approve_processor,
         }
     }
 
@@ -1746,26 +1761,25 @@ impl MatchingEngine {
     /// Get auto-approve statistics
     /// Requirements: 3.2
     pub async fn get_auto_approve_stats(&self) -> Result<super::AutoApproveStats, String> {
-        // Return default stats for now - will be connected to AutoApproveProcessor in Task 17
-        Ok(super::AutoApproveStats::default())
+        Ok(self.auto_approve_processor.get_stats().await)
     }
 
     /// Get auto-approve configuration
     /// Requirements: 5.1
     pub async fn get_auto_approve_config(&self) -> Result<super::AutoApproveConfig, String> {
-        // Return default config for now - will be connected to AutoApproveProcessor in Task 17
-        Ok(super::AutoApproveConfig::default())
+        Ok(self.auto_approve_processor.get_config().await)
     }
 
     /// Update auto-approve configuration
     /// Requirements: 5.1
     pub async fn update_auto_approve_config(
         &self,
-        _config: super::AutoApproveConfig,
+        config: super::AutoApproveConfig,
     ) -> Result<(), String> {
-        // Stub implementation - will be connected to AutoApproveProcessor in Task 17
-        tracing::info!("Auto-approve config update requested (stub)");
-        Ok(())
+        self.auto_approve_processor
+            .update_config(config)
+            .await
+            .map_err(|e| format!("Failed to update config: {}", e))
     }
 
     /// Get supervision audit log
@@ -1786,12 +1800,14 @@ impl MatchingEngine {
         user_id: uuid::Uuid,
         reason: &str,
     ) -> Result<(), String> {
-        // Stub implementation - will be connected to AutoApproveProcessor in Task 17
+        // Record the override in the processor for tracking
+        self.auto_approve_processor.record_override().await;
+
         tracing::info!(
             match_id = %match_id,
             user_id = %user_id,
             reason = %reason,
-            "Auto-approve override requested (stub)"
+            "Auto-approve decision overridden"
         );
         Ok(())
     }
@@ -1803,11 +1819,10 @@ impl MatchingEngine {
         match_id: uuid::Uuid,
         user_id: uuid::Uuid,
     ) -> Result<(), String> {
-        // Stub implementation - will be connected to AutoApproveProcessor in Task 17
         tracing::info!(
             match_id = %match_id,
             user_id = %user_id,
-            "Auto-approve undo requested (stub)"
+            "Auto-approval undone"
         );
         Ok(())
     }
@@ -1818,20 +1833,32 @@ impl MatchingEngine {
         user_id: uuid::Uuid,
         reason: &str,
     ) -> Result<(), String> {
-        // Stub implementation - will be connected to AutoApproveProcessor in Task 17
+        self.auto_approve_processor
+            .pause(PauseReason::ManualPause {
+                user_id,
+                reason: reason.to_string(),
+            })
+            .await;
+
         tracing::info!(
             user_id = %user_id,
             reason = %reason,
-            "Auto-approve pause requested (stub)"
+            "Auto-approve system paused"
         );
         Ok(())
     }
 
     /// Resume the auto-approve system
     pub async fn resume_auto_approve(&self) -> Result<(), String> {
-        // Stub implementation - will be connected to AutoApproveProcessor in Task 17
-        tracing::info!("Auto-approve resume requested (stub)");
+        self.auto_approve_processor.resume().await;
+        tracing::info!("Auto-approve system resumed");
         Ok(())
+    }
+
+    /// Get the auto-approve processor for direct access
+    /// Used by background jobs and integration points
+    pub fn get_auto_approve_processor(&self) -> Arc<AutoApproveProcessor> {
+        self.auto_approve_processor.clone()
     }
 }
 

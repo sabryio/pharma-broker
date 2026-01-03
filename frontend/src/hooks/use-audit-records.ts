@@ -4,7 +4,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from './query-keys'
 
-const API_BASE = '/api'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8081'
 
 // =============================================================================
 // Types
@@ -127,7 +127,7 @@ async function fetchAuditRecords(
   if (params.aiInvolved !== undefined)
     searchParams.set('ai_involved', params.aiInvolved.toString())
 
-  const url = `${API_BASE}/audit-records?${searchParams.toString()}`
+  const url = `${API_BASE}/api/audit-records?${searchParams.toString()}`
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(`Failed to fetch audit records: ${response.statusText}`)
@@ -136,7 +136,7 @@ async function fetchAuditRecords(
 }
 
 async function fetchAuditRecord(matchId: string): Promise<AuditRecordDetail> {
-  const response = await fetch(`${API_BASE}/audit-records/${matchId}`)
+  const response = await fetch(`${API_BASE}/api/audit-records/${matchId}`)
   if (!response.ok) {
     throw new Error(`Failed to fetch audit record: ${response.statusText}`)
   }
@@ -146,7 +146,9 @@ async function fetchAuditRecord(matchId: string): Promise<AuditRecordDetail> {
 async function fetchSessionRecords(
   sessionId: string,
 ): Promise<AuditRecordsResponse> {
-  const response = await fetch(`${API_BASE}/audit-records/session/${sessionId}`)
+  const response = await fetch(
+    `${API_BASE}/api/audit-records/session/${sessionId}`,
+  )
   if (!response.ok) {
     throw new Error(`Failed to fetch session records: ${response.statusText}`)
   }
@@ -154,7 +156,7 @@ async function fetchSessionRecords(
 }
 
 async function fetchAuditRecorderStatus(): Promise<AuditRecorderStatus> {
-  const response = await fetch(`${API_BASE}/audit-records/status`)
+  const response = await fetch(`${API_BASE}/api/audit-records/status`)
   if (!response.ok) {
     throw new Error(`Failed to fetch recorder status: ${response.statusText}`)
   }
@@ -165,11 +167,14 @@ async function updateAuditReview(
   matchId: string,
   data: UpdateReviewRequest,
 ): Promise<{ success: boolean; message: string }> {
-  const response = await fetch(`${API_BASE}/audit-records/${matchId}/review`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
+  const response = await fetch(
+    `${API_BASE}/api/audit-records/${matchId}/review`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    },
+  )
   if (!response.ok) {
     throw new Error(`Failed to update review: ${response.statusText}`)
   }

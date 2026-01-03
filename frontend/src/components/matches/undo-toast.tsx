@@ -47,7 +47,7 @@ function UndoToastContent({
           <XCircle className="w-5 h-5 text-red-400" />
         )}
       </div>
-      
+
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground truncate">
           {actionVerb}: {productName}
@@ -57,7 +57,7 @@ function UndoToastContent({
             <div
               className={cn(
                 'h-full transition-all duration-100 ease-linear rounded-full',
-                isApprove ? 'bg-emerald' : 'bg-red-400'
+                isApprove ? 'bg-emerald' : 'bg-red-400',
               )}
               style={{ width: `${progress}%` }}
             />
@@ -120,7 +120,7 @@ export function showUndoToast({
         id: toastId,
         duration: Infinity, // We manage duration ourselves
         className: 'w-full max-w-md',
-      }
+      },
     )
   }
 
@@ -155,7 +155,7 @@ export function showUndoToast({
  */
 export function useUndoToast() {
   const [activeToasts, setActiveToasts] = useState<Map<string, () => void>>(
-    new Map()
+    new Map(),
   )
 
   const showToast = useCallback(
@@ -193,7 +193,7 @@ export function useUndoToast() {
         })
       }, props.duration)
     },
-    [activeToasts]
+    [activeToasts],
   )
 
   const dismissToast = useCallback(
@@ -208,7 +208,7 @@ export function useUndoToast() {
         })
       }
     },
-    [activeToasts]
+    [activeToasts],
   )
 
   const dismissAll = useCallback(() => {

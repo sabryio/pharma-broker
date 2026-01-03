@@ -38,7 +38,7 @@ export default function MatchesPage() {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null)
   const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null)
   const [focusedIndex, setFocusedIndex] = useState(0)
-  
+
   // Confirmation dialog state
   const [dialogState, setDialogState] = useState<{
     isOpen: boolean
@@ -59,37 +59,33 @@ export default function MatchesPage() {
   } = useMatchReviewsManual({ limit: 100 })
 
   const { data: stats } = useMatchReviewStats()
-  
+
   // Use the new match action hook with debouncing and undo support
-  const {
-    executeAction,
-    undoAction,
-    isProcessing,
-    getUndoState,
-  } = useMatchAction({
-    onSuccess: (matchId, action) => {
-      const undoState = getUndoState(matchId)
-      if (undoState) {
-        // Show undo toast
-        showUndoToast({
-          matchId,
-          productName: undoState.productName,
-          action,
-          onUndo: () => undoAction(matchId),
-          duration: 8000,
+  const { executeAction, undoAction, isProcessing, getUndoState } =
+    useMatchAction({
+      onSuccess: (matchId, action) => {
+        const undoState = getUndoState(matchId)
+        if (undoState) {
+          // Show undo toast
+          showUndoToast({
+            matchId,
+            productName: undoState.productName,
+            action,
+            onUndo: () => undoAction(matchId),
+            duration: 8000,
+          })
+        }
+        // Collapse the card after action
+        if (expandedMatchId === matchId) {
+          setExpandedMatchId(null)
+        }
+      },
+      onError: (error) => {
+        toast.error('Action failed', {
+          description: error.message,
         })
-      }
-      // Collapse the card after action
-      if (expandedMatchId === matchId) {
-        setExpandedMatchId(null)
-      }
-    },
-    onError: (error) => {
-      toast.error('Action failed', {
-        description: error.message,
-      })
-    },
-  })
+      },
+    })
 
   // WebSocket for real-time updates from other users
   const { isConnected: wsConnected } = useMatchWebSocket({
@@ -97,13 +93,13 @@ export default function MatchesPage() {
       (matchId: string, newStatus: string, _byUserId: string) => {
         // Refetch data when another user updates a match
         refetch()
-        
+
         // Show notification for remote changes (don't show for own actions)
         toast.info(`Match ${newStatus.toLowerCase()}`, {
           description: `Updated by another user`,
           duration: 3000,
         })
-        
+
         // If the updated match is currently expanded, show inline notification
         if (expandedMatchId === matchId) {
           toast.info('This match was updated', {
@@ -111,7 +107,7 @@ export default function MatchesPage() {
           })
         }
       },
-      [refetch, expandedMatchId]
+      [refetch, expandedMatchId],
     ),
     onConnectionChange: useCallback((connected: boolean) => {
       if (!connected) {
@@ -125,7 +121,7 @@ export default function MatchesPage() {
   // Apply filters and sorting using utility functions
   const filteredMatches = useMemo(
     () => applyFiltersAndSorting(matches, filters),
-    [matches, filters]
+    [matches, filters],
   )
 
   // Keep focused index in bounds when filtered matches change
@@ -164,7 +160,7 @@ export default function MatchesPage() {
         case 'j':
           e.preventDefault()
           setFocusedIndex((prev) =>
-            Math.min(filteredMatches.length - 1, prev + 1)
+            Math.min(filteredMatches.length - 1, prev + 1),
           )
           break
         case 'Enter':
@@ -223,49 +219,41 @@ export default function MatchesPage() {
   }, [filteredMatches, focusedIndex])
 
   // Handle approve action - opens confirmation dialog
-  const handleApprove = useCallback(
-    (match: MatchReviewItem) => {
-      setDialogState({
-        isOpen: true,
-        actionType: 'approve',
-        match,
-      })
-    },
-    []
-  )
+  const handleApprove = useCallback((match: MatchReviewItem) => {
+    setDialogState({
+      isOpen: true,
+      actionType: 'approve',
+      match,
+    })
+  }, [])
 
   // Handle reject action - opens confirmation dialog
-  const handleReject = useCallback(
-    (match: MatchReviewItem) => {
-      setDialogState({
-        isOpen: true,
-        actionType: 'reject',
-        match,
-      })
-    },
-    []
-  )
+  const handleReject = useCallback((match: MatchReviewItem) => {
+    setDialogState({
+      isOpen: true,
+      actionType: 'reject',
+      match,
+    })
+  }, [])
 
   // Handle dialog confirmation
   const handleDialogConfirm = useCallback(
     (reason?: string) => {
       if (!dialogState.match) return
-      
+
       const { match, actionType } = dialogState
       const action = actionType === 'approve' ? 'approved' : 'rejected'
-      
+
       executeAction(match.id, action, reason)
       setDialogState({ isOpen: false, actionType: 'approve', match: null })
     },
-    [dialogState, executeAction]
+    [dialogState, executeAction],
   )
 
   // Handle dialog close
   const handleDialogClose = useCallback(() => {
     setDialogState({ isOpen: false, actionType: 'approve', match: null })
   }, [])
-
-
 
   // Loading state
   if (isLoading) {
@@ -414,7 +402,7 @@ export default function MatchesPage() {
                 onSelect={() => setSelectedMatchId(match.id)}
                 onExpand={() =>
                   setExpandedMatchId(
-                    expandedMatchId === match.id ? null : match.id
+                    expandedMatchId === match.id ? null : match.id,
                   )
                 }
                 onApprove={() => handleApprove(match)}

@@ -34,7 +34,11 @@ interface EnhancedBulkGridProps {
 }
 
 // Quick filter presets
-const quickFilters: { id: QuickFilter; label: string; icon: React.ElementType }[] = [
+const quickFilters: {
+  id: QuickFilter
+  label: string
+  icon: React.ElementType
+}[] = [
   { id: 'all', label: 'All', icon: Grid3X3 },
   { id: 'high', label: 'High (80%+)', icon: CheckCircle },
   { id: 'medium', label: 'Medium', icon: AlertTriangle },
@@ -86,21 +90,25 @@ function GalleryCard({
               className={cn(
                 'px-2 py-0.5 rounded-full text-xs font-bold',
                 review.confidence >= 80 && 'bg-emerald-500/20 text-emerald-400',
-                review.confidence >= 50 && review.confidence < 80 && 'bg-amber-500/20 text-amber-400',
+                review.confidence >= 50 &&
+                  review.confidence < 80 &&
+                  'bg-amber-500/20 text-amber-400',
                 review.confidence < 50 && 'bg-red-500/20 text-red-400',
               )}
             >
               {review.confidence}%
             </div>
           </div>
-          
+
           {/* AI Status */}
           {review.aiStatus && (
             <div
               className={cn(
                 'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
-                review.aiStatus === 'Approved' && 'bg-emerald-500/20 text-emerald-400',
-                review.aiStatus === 'Flagged' && 'bg-amber-500/20 text-amber-400',
+                review.aiStatus === 'Approved' &&
+                  'bg-emerald-500/20 text-emerald-400',
+                review.aiStatus === 'Flagged' &&
+                  'bg-amber-500/20 text-amber-400',
                 review.aiStatus === 'Rejected' && 'bg-red-500/20 text-red-400',
               )}
             >
@@ -170,7 +178,9 @@ function PreviewModal({
         <div className="p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-foreground">Match Preview</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              Match Preview
+            </h3>
             <button
               onClick={onClose}
               className="p-2 rounded-lg hover:bg-secondary transition-colors"
@@ -196,7 +206,9 @@ function PreviewModal({
             {/* Offer */}
             <div className="p-4 rounded-xl bg-teal/10 border border-teal/20">
               <p className="text-xs text-teal mb-1 font-medium">OFFER</p>
-              <p className="text-foreground font-medium">{review.offer.product}</p>
+              <p className="text-foreground font-medium">
+                {review.offer.product}
+              </p>
               <p className="text-sm text-muted-foreground mt-1">
                 {review.offer.quantity} • {review.offer.price}
               </p>
@@ -205,7 +217,9 @@ function PreviewModal({
             {/* Request */}
             <div className="p-4 rounded-xl bg-amber/10 border border-amber/20">
               <p className="text-xs text-amber mb-1 font-medium">REQUEST</p>
-              <p className="text-foreground font-medium">{review.request.product}</p>
+              <p className="text-foreground font-medium">
+                {review.request.product}
+              </p>
               <p className="text-sm text-muted-foreground mt-1">
                 {review.request.quantity} • Max: {review.request.maxPrice}
               </p>
@@ -287,7 +301,9 @@ export function EnhancedBulkGrid({
 
   // Select all high confidence
   const selectAllHighConfidence = useCallback(() => {
-    const highConfIds = reviews.filter((r) => r.confidence >= 80).map((r) => r.id)
+    const highConfIds = reviews
+      .filter((r) => r.confidence >= 80)
+      .map((r) => r.id)
     highConfIds.forEach((id) => {
       if (!selectedIds.has(id)) {
         onToggle(id)
@@ -295,7 +311,8 @@ export function EnhancedBulkGrid({
     })
   }, [reviews, selectedIds, onToggle])
 
-  const allSelected = selectedIds.size === filteredReviews.length && filteredReviews.length > 0
+  const allSelected =
+    selectedIds.size === filteredReviews.length && filteredReviews.length > 0
   const highConfCount = reviews.filter((r) => r.confidence >= 80).length
 
   return (
@@ -355,7 +372,9 @@ export function EnhancedBulkGrid({
               onClick={() => setViewMode('grid')}
               className={cn(
                 'p-1.5 rounded-md transition-colors',
-                viewMode === 'grid' ? 'bg-teal text-white' : 'text-muted-foreground hover:text-foreground',
+                viewMode === 'grid'
+                  ? 'bg-teal text-white'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
               <Grid3X3 className="w-4 h-4" />
@@ -364,7 +383,9 @@ export function EnhancedBulkGrid({
               onClick={() => setViewMode('gallery')}
               className={cn(
                 'p-1.5 rounded-md transition-colors',
-                viewMode === 'gallery' ? 'bg-teal text-white' : 'text-muted-foreground hover:text-foreground',
+                viewMode === 'gallery'
+                  ? 'bg-teal text-white'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
               <LayoutList className="w-4 h-4" />
@@ -379,7 +400,11 @@ export function EnhancedBulkGrid({
                 disabled={isProcessing}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors text-sm font-medium disabled:opacity-50"
               >
-                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                {isProcessing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <X className="w-4 h-4" />
+                )}
                 Reject
               </button>
               <button
@@ -387,7 +412,11 @@ export function EnhancedBulkGrid({
                 disabled={isProcessing}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors text-sm font-medium disabled:opacity-50"
               >
-                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                {isProcessing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="w-4 h-4" />
+                )}
                 Approve ({selectedIds.size})
               </button>
             </div>
@@ -425,14 +454,22 @@ export function EnhancedBulkGrid({
                 <div className="w-full max-w-md">
                   <GalleryCard
                     review={filteredReviews[galleryIndex]}
-                    isSelected={selectedIds.has(filteredReviews[galleryIndex].id)}
+                    isSelected={selectedIds.has(
+                      filteredReviews[galleryIndex].id,
+                    )}
                     onToggle={() => onToggle(filteredReviews[galleryIndex].id)}
-                    onPreview={() => setPreviewReview(filteredReviews[galleryIndex])}
+                    onPreview={() =>
+                      setPreviewReview(filteredReviews[galleryIndex])
+                    }
                   />
                 </div>
 
                 <button
-                  onClick={() => setGalleryIndex(Math.min(filteredReviews.length - 1, galleryIndex + 1))}
+                  onClick={() =>
+                    setGalleryIndex(
+                      Math.min(filteredReviews.length - 1, galleryIndex + 1),
+                    )
+                  }
                   disabled={galleryIndex === filteredReviews.length - 1}
                   className="p-3 rounded-full bg-secondary/50 hover:bg-secondary disabled:opacity-30 transition-all"
                 >
@@ -448,7 +485,9 @@ export function EnhancedBulkGrid({
                     onClick={() => setGalleryIndex(idx)}
                     className={cn(
                       'w-2 h-2 rounded-full transition-all',
-                      idx === galleryIndex ? 'w-6 bg-teal' : 'bg-muted-foreground/30 hover:bg-muted-foreground/50',
+                      idx === galleryIndex
+                        ? 'w-6 bg-teal'
+                        : 'bg-muted-foreground/30 hover:bg-muted-foreground/50',
                     )}
                   />
                 ))}
@@ -467,7 +506,9 @@ export function EnhancedBulkGrid({
       {filteredReviews.length === 0 && (
         <div className="text-center py-12">
           <Filter className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-muted-foreground">No matches found with current filter</p>
+          <p className="text-muted-foreground">
+            No matches found with current filter
+          </p>
         </div>
       )}
 

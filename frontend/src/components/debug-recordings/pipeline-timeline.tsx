@@ -18,7 +18,15 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`
 }
 
-function StepNode({ step, isSelected, onClick }: { step: PipelineStep; isSelected: boolean; onClick?: () => void }) {
+function StepNode({
+  step,
+  isSelected,
+  onClick,
+}: {
+  step: PipelineStep
+  isSelected: boolean
+  onClick?: () => void
+}) {
   const stageColors = STAGE_COLORS[step.stage]
   const statusColors = STATUS_COLORS[step.status]
 
@@ -40,11 +48,13 @@ function StepNode({ step, isSelected, onClick }: { step: PipelineStep; isSelecte
       )}
     >
       {/* Stage icon */}
-      <div className={cn(
-        'w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow-md',
-        'transition-transform group-hover:scale-110',
-        stageColors.bg,
-      )}>
+      <div
+        className={cn(
+          'w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow-md',
+          'transition-transform group-hover:scale-110',
+          stageColors.bg,
+        )}
+      >
         {stageColors.icon}
       </div>
 
@@ -52,13 +62,23 @@ function StepNode({ step, isSelected, onClick }: { step: PipelineStep; isSelecte
       <div className="flex-1 text-left">
         <div className="flex items-center gap-2">
           <span className={cn('text-sm font-medium', stageColors.text)}>
-            {step.stage.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+            {step.stage
+              .replace(/_/g, ' ')
+              .replace(/\b\w/g, (l) => l.toUpperCase())}
           </span>
-          <div className={cn(
-            'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
-            statusColors.bg, statusColors.text,
-          )}>
-            <StatusIcon className={cn('w-3 h-3', step.status === 'running' && 'animate-spin')} />
+          <div
+            className={cn(
+              'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+              statusColors.bg,
+              statusColors.text,
+            )}
+          >
+            <StatusIcon
+              className={cn(
+                'w-3 h-3',
+                step.status === 'running' && 'animate-spin',
+              )}
+            />
             {step.status}
           </div>
         </div>
@@ -78,37 +98,48 @@ function StepNode({ step, isSelected, onClick }: { step: PipelineStep; isSelecte
   )
 }
 
-export function PipelineTimeline({ recording, onStepClick, selectedStepId }: PipelineTimelineProps) {
-  const groupedSteps = recording.steps.reduce((acc, step) => {
-    const category = getStepCategory(step.stage)
-    if (!acc[category]) acc[category] = []
-    acc[category].push(step)
-    return acc
-  }, {} as Record<string, PipelineStep[]>)
+export function PipelineTimeline({
+  recording,
+  onStepClick,
+  selectedStepId,
+}: PipelineTimelineProps) {
+  const groupedSteps = recording.steps.reduce(
+    (acc, step) => {
+      const category = getStepCategory(step.stage)
+      if (!acc[category]) acc[category] = []
+      acc[category].push(step)
+      return acc
+    },
+    {} as Record<string, PipelineStep[]>,
+  )
 
   return (
     <div className="space-y-6">
       {/* Summary stats */}
       <div className="grid grid-cols-4 gap-3">
         <div className="p-3 rounded-xl bg-secondary/30 border border-border/30 text-center">
-          <p className="text-2xl font-bold text-foreground">{recording.steps.length}</p>
+          <p className="text-2xl font-bold text-foreground">
+            {recording.steps.length}
+          </p>
           <p className="text-xs text-muted-foreground">Total Steps</p>
         </div>
         <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
           <p className="text-2xl font-bold text-emerald-400">
-            {recording.steps.filter(s => s.status === 'success').length}
+            {recording.steps.filter((s) => s.status === 'success').length}
           </p>
           <p className="text-xs text-muted-foreground">Successful</p>
         </div>
         <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-center">
           <p className="text-2xl font-bold text-red-400">
-            {recording.steps.filter(s => s.status === 'error').length}
+            {recording.steps.filter((s) => s.status === 'error').length}
           </p>
           <p className="text-xs text-muted-foreground">Errors</p>
         </div>
         <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-center">
           <p className="text-2xl font-bold text-amber-400">
-            {recording.totalDurationMs ? formatDuration(recording.totalDurationMs) : '—'}
+            {recording.totalDurationMs
+              ? formatDuration(recording.totalDurationMs)
+              : '—'}
           </p>
           <p className="text-xs text-muted-foreground">Total Time</p>
         </div>
@@ -137,11 +168,24 @@ export function PipelineTimeline({ recording, onStepClick, selectedStepId }: Pip
 }
 
 function getStepCategory(stage: string): string {
-  if (stage.includes('message') || stage.includes('parsing')) return 'Input Processing'
+  if (stage.includes('message') || stage.includes('parsing'))
+    return 'Input Processing'
   if (stage.includes('resolution')) return 'Medication Resolution'
-  if (stage.includes('offer') || stage.includes('request')) return 'Entity Creation'
-  if (stage.includes('match') || stage.includes('hierarchical') || stage.includes('score')) return 'Matching'
-  if (stage.includes('ai') || stage.includes('consensus') || stage.includes('contrastive') || stage.includes('calibration')) return 'Validation'
+  if (stage.includes('offer') || stage.includes('request'))
+    return 'Entity Creation'
+  if (
+    stage.includes('match') ||
+    stage.includes('hierarchical') ||
+    stage.includes('score')
+  )
+    return 'Matching'
+  if (
+    stage.includes('ai') ||
+    stage.includes('consensus') ||
+    stage.includes('contrastive') ||
+    stage.includes('calibration')
+  )
+    return 'Validation'
   if (stage.includes('queue') || stage.includes('notification')) return 'Output'
   return 'Other'
 }

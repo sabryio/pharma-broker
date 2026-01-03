@@ -59,6 +59,8 @@ export const MatchReviewItemSchema = z.object({
   aiStatus: z.string().nullable().optional(),
   aiConfidence: z.number().nullable().optional(),
   aiExplanation: z.string().nullable().optional(),
+  aiAutoApproved: z.boolean().nullable().optional(),
+  aiApprovedAt: z.string().nullable().optional(),
 })
 
 export const MatchReviewListResponseSchema = z.object({

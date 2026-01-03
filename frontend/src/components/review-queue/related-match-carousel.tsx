@@ -5,7 +5,16 @@ import { useCallback, useState } from 'react'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { ChevronLeft, ChevronRight, Layers, ArrowLeftRight, Sparkles, Calculator, GitCompare, Activity } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  ArrowLeftRight,
+  Sparkles,
+  Calculator,
+  GitCompare,
+  Activity,
+} from 'lucide-react'
 import type { OfferWithMatches, RequestWithMatches } from './types'
 import { ReviewCard } from './review-card'
 import { MatchConfidenceMeter } from './match-confidence-meter'
@@ -104,7 +113,7 @@ export function RelatedMatchCarousel({
   const isOfferMode = anchorMode === 'offer'
   const groups = isOfferMode ? groupedByOffer : groupedByRequest
   const currentGroup = groups[anchorIndex]
-  
+
   // Get current match early so it can be used in callbacks
   const matches = currentGroup?.matches ?? []
   const currentMatch = matches[relatedIndex]
@@ -148,7 +157,10 @@ export function RelatedMatchCarousel({
     mutationFn: recalculateConfidence,
     onSuccess: (data) => {
       const change = data.newScore - data.oldScore
-      const changeStr = change >= 0 ? `+${(change * 100).toFixed(1)}%` : `${(change * 100).toFixed(1)}%`
+      const changeStr =
+        change >= 0
+          ? `+${(change * 100).toFixed(1)}%`
+          : `${(change * 100).toFixed(1)}%`
       toast.success('Confidence recalculated', {
         description: `${(data.oldScore * 100).toFixed(1)}% → ${(data.newScore * 100).toFixed(1)}% (${changeStr})`,
       })
@@ -164,21 +176,21 @@ export function RelatedMatchCarousel({
 
   const handleReAudit = useCallback(() => {
     if (!currentMatch) return
-    
+
     toast.info('Running AI audit...', {
       description: 'Analyzing match with AI reviewer',
     })
-    
+
     reAuditMutation.mutate(currentMatch.matchId)
   }, [currentMatch, reAuditMutation])
 
   const handleRecalculate = useCallback(() => {
     if (!currentMatch) return
-    
+
     toast.info('Recalculating confidence...', {
       description: 'Using raw text validation',
     })
-    
+
     recalculateMutation.mutate(currentMatch.matchId)
   }, [currentMatch, recalculateMutation])
 
@@ -360,12 +372,14 @@ export function RelatedMatchCarousel({
               />
             )}
             {/* Fixed indicator badge */}
-            <div className={cn(
-              "absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-white text-xs font-medium shadow-lg transition-all duration-300",
-              rematchMutation.isPending
-                ? "bg-linear-to-r from-amber/80 to-orange-500/80 animate-pulse"
-                : "bg-linear-to-r from-teal/80 to-emerald/80"
-            )}>
+            <div
+              className={cn(
+                'absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-white text-xs font-medium shadow-lg transition-all duration-300',
+                rematchMutation.isPending
+                  ? 'bg-linear-to-r from-amber/80 to-orange-500/80 animate-pulse'
+                  : 'bg-linear-to-r from-teal/80 to-emerald/80',
+              )}
+            >
               {rematchMutation.isPending ? '🔄 Rematching...' : '⚓ Anchored'}
             </div>
           </div>
@@ -381,7 +395,9 @@ export function RelatedMatchCarousel({
             {/* Uncertainty Indicator */}
             <div className="mt-3 flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/30">
               <Activity className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-xs text-muted-foreground">Uncertainty:</span>
+              <span className="text-xs text-muted-foreground">
+                Uncertainty:
+              </span>
               <UncertaintyIndicator matchId={currentMatch.matchId} />
             </div>
 
@@ -390,15 +406,19 @@ export function RelatedMatchCarousel({
               <div className="relative p-4 rounded-2xl bg-linear-to-br from-slate-900/80 via-slate-800/60 to-slate-900/80 border border-slate-700/50 backdrop-blur-xl shadow-2xl">
                 {/* Decorative glow */}
                 <div className="absolute inset-0 rounded-2xl bg-linear-to-br from-violet-500/10 via-transparent to-cyan-500/10 pointer-events-none" />
-                
+
                 {/* Header */}
                 <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-700/50">
                   <div className="w-8 h-8 rounded-lg bg-linear-to-br from-violet-500/30 to-purple-500/30 flex items-center justify-center">
                     <Sparkles className="w-4 h-4 text-violet-400" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-semibold text-white">AI Tools</h4>
-                    <p className="text-[10px] text-slate-400">Analyze & recalculate</p>
+                    <h4 className="text-sm font-semibold text-white">
+                      AI Tools
+                    </h4>
+                    <p className="text-[10px] text-slate-400">
+                      Analyze & recalculate
+                    </p>
                   </div>
                 </div>
 
@@ -419,21 +439,27 @@ export function RelatedMatchCarousel({
                   >
                     {/* Shimmer effect */}
                     <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                    
-                    <div className={cn(
-                      'w-10 h-10 rounded-xl bg-linear-to-br from-violet-500/40 to-purple-600/40 flex items-center justify-center',
-                      'shadow-lg shadow-violet-500/20 group-hover:shadow-violet-500/40 transition-shadow',
-                    )}>
-                      <Sparkles className={cn(
-                        'w-5 h-5 text-violet-300',
-                        reAuditMutation.isPending && 'animate-spin'
-                      )} />
+
+                    <div
+                      className={cn(
+                        'w-10 h-10 rounded-xl bg-linear-to-br from-violet-500/40 to-purple-600/40 flex items-center justify-center',
+                        'shadow-lg shadow-violet-500/20 group-hover:shadow-violet-500/40 transition-shadow',
+                      )}
+                    >
+                      <Sparkles
+                        className={cn(
+                          'w-5 h-5 text-violet-300',
+                          reAuditMutation.isPending && 'animate-spin',
+                        )}
+                      />
                     </div>
                     <div className="text-center">
                       <span className="text-xs font-medium text-violet-300 group-hover:text-violet-200">
                         {reAuditMutation.isPending ? 'Auditing...' : 'AI Audit'}
                       </span>
-                      <p className="text-[9px] text-slate-500 mt-0.5">Expert review</p>
+                      <p className="text-[9px] text-slate-500 mt-0.5">
+                        Expert review
+                      </p>
                     </div>
                   </button>
 
@@ -452,21 +478,29 @@ export function RelatedMatchCarousel({
                   >
                     {/* Shimmer effect */}
                     <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                    
-                    <div className={cn(
-                      'w-10 h-10 rounded-xl bg-linear-to-br from-cyan-500/40 to-blue-600/40 flex items-center justify-center',
-                      'shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 transition-shadow',
-                    )}>
-                      <Calculator className={cn(
-                        'w-5 h-5 text-cyan-300',
-                        recalculateMutation.isPending && 'animate-spin'
-                      )} />
+
+                    <div
+                      className={cn(
+                        'w-10 h-10 rounded-xl bg-linear-to-br from-cyan-500/40 to-blue-600/40 flex items-center justify-center',
+                        'shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 transition-shadow',
+                      )}
+                    >
+                      <Calculator
+                        className={cn(
+                          'w-5 h-5 text-cyan-300',
+                          recalculateMutation.isPending && 'animate-spin',
+                        )}
+                      />
                     </div>
                     <div className="text-center">
                       <span className="text-xs font-medium text-cyan-300 group-hover:text-cyan-200">
-                        {recalculateMutation.isPending ? 'Calculating...' : 'Recalculate'}
+                        {recalculateMutation.isPending
+                          ? 'Calculating...'
+                          : 'Recalculate'}
                       </span>
-                      <p className="text-[9px] text-slate-500 mt-0.5">Raw text check</p>
+                      <p className="text-[9px] text-slate-500 mt-0.5">
+                        Raw text check
+                      </p>
                     </div>
                   </button>
                 </div>
@@ -474,7 +508,10 @@ export function RelatedMatchCarousel({
                 {/* Info tooltip */}
                 <div className="mt-3 pt-3 border-t border-slate-700/50">
                   <p className="text-[10px] text-slate-500 text-center leading-relaxed">
-                    💡 <span className="text-slate-400">AI Audit</span> uses LLM reasoning • <span className="text-slate-400">Recalculate</span> validates raw Arabic text
+                    💡 <span className="text-slate-400">AI Audit</span> uses LLM
+                    reasoning •{' '}
+                    <span className="text-slate-400">Recalculate</span>{' '}
+                    validates raw Arabic text
                   </p>
                 </div>
               </div>
@@ -551,10 +588,12 @@ export function RelatedMatchCarousel({
           </div>
 
           {/* Right: Dynamic Card (Carousel) */}
-          <div className={cn(
-            "lg:col-span-2 relative transition-all duration-300",
-            rematchMutation.isPending && "opacity-50 blur-sm"
-          )}>
+          <div
+            className={cn(
+              'lg:col-span-2 relative transition-all duration-300',
+              rematchMutation.isPending && 'opacity-50 blur-sm',
+            )}
+          >
             {isOfferMode ? (
               <ReviewCard
                 type="request"
@@ -599,13 +638,17 @@ export function RelatedMatchCarousel({
               />
             )}
             {/* Carousel indicator badge */}
-            <div className={cn(
-              "absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-white text-xs font-medium shadow-lg transition-all duration-300",
-              rematchMutation.isPending
-                ? "bg-linear-to-r from-gray-500/80 to-gray-600/80"
-                : "bg-linear-to-r from-amber/80 to-orange-500/80"
-            )}>
-              {rematchMutation.isPending ? '⏳ Loading...' : `🔄 ${relatedIndex + 1}/${totalMatches}`}
+            <div
+              className={cn(
+                'absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-white text-xs font-medium shadow-lg transition-all duration-300',
+                rematchMutation.isPending
+                  ? 'bg-linear-to-r from-gray-500/80 to-gray-600/80'
+                  : 'bg-linear-to-r from-amber/80 to-orange-500/80',
+              )}
+            >
+              {rematchMutation.isPending
+                ? '⏳ Loading...'
+                : `🔄 ${relatedIndex + 1}/${totalMatches}`}
             </div>
           </div>
         </div>
@@ -675,7 +718,9 @@ export function RelatedMatchCarousel({
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Offer Sender Profile */}
           <div className="p-4 rounded-xl bg-teal/5 border border-teal/20">
-            <h4 className="text-xs font-medium text-teal mb-3 uppercase tracking-wider">Offer Sender</h4>
+            <h4 className="text-xs font-medium text-teal mb-3 uppercase tracking-wider">
+              Offer Sender
+            </h4>
             <SenderProfile
               senderName={
                 isOfferMode
@@ -693,7 +738,9 @@ export function RelatedMatchCarousel({
 
           {/* Request Sender Profile */}
           <div className="p-4 rounded-xl bg-amber/5 border border-amber/20">
-            <h4 className="text-xs font-medium text-amber mb-3 uppercase tracking-wider">Request Sender</h4>
+            <h4 className="text-xs font-medium text-amber mb-3 uppercase tracking-wider">
+              Request Sender
+            </h4>
             <SenderProfile
               senderName={
                 isOfferMode

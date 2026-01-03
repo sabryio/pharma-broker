@@ -35,5 +35,12 @@ export default defineConfig({
     hmr: {
       clientPort: 3000, // Ensure HMR works through Docker port mapping
     },
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
   },
 })

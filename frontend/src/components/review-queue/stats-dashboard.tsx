@@ -262,7 +262,11 @@ export function StatsDashboard({
           </div>
           <div className="flex items-center justify-between">
             <p className="text-2xl font-bold text-red-400">{rejected}</p>
-            <TrendIndicator current={rejected} previous={rejectedYesterday} inverted />
+            <TrendIndicator
+              current={rejected}
+              previous={rejectedYesterday}
+              inverted
+            />
           </div>
         </div>
 
@@ -274,7 +278,10 @@ export function StatsDashboard({
           </div>
           <div className="flex items-center justify-between">
             <p className="text-2xl font-bold text-amber">{avgConfidence}%</p>
-            <TrendIndicator current={avgConfidence} previous={avgConfidenceYesterday} />
+            <TrendIndicator
+              current={avgConfidence}
+              previous={avgConfidenceYesterday}
+            />
           </div>
         </div>
       </div>
@@ -320,7 +327,11 @@ export function StatsDashboard({
             <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
               <XCircle className="w-5 h-5 text-red-400" />
             </div>
-            <TrendIndicator current={rejected} previous={rejectedYesterday} inverted />
+            <TrendIndicator
+              current={rejected}
+              previous={rejectedYesterday}
+              inverted
+            />
           </div>
           <p className="text-xs text-muted-foreground mb-1">Rejected Today</p>
           <p className="text-3xl font-bold text-red-400">{rejected}</p>
@@ -345,7 +356,9 @@ export function StatsDashboard({
             </div>
           </div>
           <p className="text-xs text-muted-foreground mb-1">Approval Rate</p>
-          <p className="text-3xl font-bold text-violet-400">{approvalRate.toFixed(1)}%</p>
+          <p className="text-3xl font-bold text-violet-400">
+            {approvalRate.toFixed(1)}%
+          </p>
         </div>
       </div>
 
@@ -355,7 +368,9 @@ export function StatsDashboard({
         <div className="p-4 rounded-xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50">
           <div className="flex items-center gap-2 mb-4">
             <BarChart3 className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Confidence Distribution</span>
+            <span className="text-sm font-medium text-foreground">
+              Confidence Distribution
+            </span>
           </div>
           <DistributionBar
             high={highConfidenceCount}
@@ -369,9 +384,14 @@ export function StatsDashboard({
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-amber" />
-              <span className="text-sm font-medium text-foreground">Avg Confidence</span>
+              <span className="text-sm font-medium text-foreground">
+                Avg Confidence
+              </span>
             </div>
-            <TrendIndicator current={avgConfidence} previous={avgConfidenceYesterday} />
+            <TrendIndicator
+              current={avgConfidence}
+              previous={avgConfidenceYesterday}
+            />
           </div>
           <div className="flex items-center gap-4">
             <p className="text-4xl font-bold text-amber">{avgConfidence}%</p>
@@ -383,13 +403,17 @@ export function StatsDashboard({
         <div className="p-4 rounded-xl bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 border border-cyan-500/20">
           <div className="flex items-center gap-2 mb-3">
             <Zap className="w-4 h-4 text-cyan-400" />
-            <span className="text-sm font-medium text-foreground">Performance</span>
+            <span className="text-sm font-medium text-foreground">
+              Performance
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="text-xs text-muted-foreground">Avg Review Time</p>
               <p className="text-lg font-bold text-cyan-400">
-                {avgReviewTimeMs ? `${(avgReviewTimeMs / 1000).toFixed(1)}s` : '—'}
+                {avgReviewTimeMs
+                  ? `${(avgReviewTimeMs / 1000).toFixed(1)}s`
+                  : '—'}
               </p>
             </div>
             <div>

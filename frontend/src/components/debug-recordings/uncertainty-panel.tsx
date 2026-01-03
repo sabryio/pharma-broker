@@ -43,16 +43,20 @@ interface UncertaintyBadgeProps {
 }
 
 function UncertaintyBadge({ level, className }: UncertaintyBadgeProps) {
-  const colorClass = getUncertaintyColor(level)
-  const bgClass = {
-    very_low: 'bg-green-500/20 border-green-500/30',
-    low: 'bg-green-500/20 border-green-500/30',
-    moderate: 'bg-yellow-500/20 border-yellow-500/30',
-    high: 'bg-orange-500/20 border-orange-500/30',
-    very_high: 'bg-red-500/20 border-red-500/30',
-  }[level] || 'bg-gray-500/20 border-gray-500/30'
+  const safeLevel = level || 'unknown'
+  const colorClass = getUncertaintyColor(safeLevel)
+  const bgClass =
+    {
+      very_low: 'bg-green-500/20 border-green-500/30',
+      low: 'bg-green-500/20 border-green-500/30',
+      moderate: 'bg-yellow-500/20 border-yellow-500/30',
+      high: 'bg-orange-500/20 border-orange-500/30',
+      very_high: 'bg-red-500/20 border-red-500/30',
+    }[safeLevel] || 'bg-gray-500/20 border-gray-500/30'
 
-  const label = level.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  const label = safeLevel
+    .replace('_', ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 
   return (
     <span
@@ -130,7 +134,9 @@ function ConfidenceIntervalBar({
         <span className="text-muted-foreground">
           CI: {formatConfidenceInterval(ciLower, ciUpper)}
         </span>
-        <span className="text-amber-400">Original: {originalPct.toFixed(1)}%</span>
+        <span className="text-amber-400">
+          Original: {originalPct.toFixed(1)}%
+        </span>
       </div>
     </div>
   )
@@ -223,10 +229,7 @@ export function UncertaintyIndicator({
       <Tooltip>
         <TooltipTrigger asChild>
           <div
-            className={cn(
-              'flex items-center gap-1.5 cursor-help',
-              className,
-            )}
+            className={cn('flex items-center gap-1.5 cursor-help', className)}
           >
             {result.isCertain ? (
               <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
@@ -368,7 +371,9 @@ export function UncertaintyPanel({
                     <p
                       className={cn(
                         'text-sm font-medium',
-                        result.isCertain ? 'text-emerald-400' : 'text-amber-400',
+                        result.isCertain
+                          ? 'text-emerald-400'
+                          : 'text-amber-400',
                       )}
                     >
                       {result.isCertain

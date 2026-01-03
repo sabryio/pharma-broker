@@ -74,7 +74,9 @@ export default function ReviewQueue() {
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [adjustments] = useState<AdjustmentSettings>(defaultAdjustments)
-  const [optimisticallyRemoved, setOptimisticallyRemoved] = useState<Set<string>>(new Set())
+  const [optimisticallyRemoved, setOptimisticallyRemoved] = useState<
+    Set<string>
+  >(new Set())
   const [filters, setFilters] = useState<FilterState>(defaultFilterState)
 
   // Carousel state
@@ -83,7 +85,8 @@ export default function ReviewQueue() {
   const [relatedIndex, setRelatedIndex] = useState(0)
   const [reviewMode, setReviewMode] = useState<'match' | 'curation'>('match')
 
-  const { notifyHighPriorityReview, notifyLowApprovalRate, settings } = useNotifications()
+  const { notifyHighPriorityReview, notifyLowApprovalRate, settings } =
+    useNotifications()
   const notifiedReviewsRef = useRef<Set<string>>(new Set())
   const lastApprovalRateRef = useRef<number | null>(null)
 
@@ -163,7 +166,9 @@ export default function ReviewQueue() {
 
   const approvalRate =
     history.length > 0
-      ? (history.filter((h) => h.action === 'approved').length / history.length) * 100
+      ? (history.filter((h) => h.action === 'approved').length /
+          history.length) *
+        100
       : 100
 
   useEffect(() => {
@@ -201,7 +206,12 @@ export default function ReviewQueue() {
       }
       lastApprovalRateRef.current = approvalRate
     }
-  }, [approvalRate, history.length, settings.approvalRateThreshold, notifyLowApprovalRate])
+  }, [
+    approvalRate,
+    history.length,
+    settings.approvalRateThreshold,
+    notifyLowApprovalRate,
+  ])
 
   const nextReview = useCallback(() => {
     if (pendingReviews.length > 0) {
@@ -211,7 +221,9 @@ export default function ReviewQueue() {
 
   const prevReview = useCallback(() => {
     if (pendingReviews.length > 0) {
-      setCurrentIndex((i) => (i - 1 + pendingReviews.length) % pendingReviews.length)
+      setCurrentIndex(
+        (i) => (i - 1 + pendingReviews.length) % pendingReviews.length,
+      )
     }
   }, [pendingReviews.length])
 
@@ -261,7 +273,13 @@ export default function ReviewQueue() {
         action: { label: 'Undo', onClick: () => restoreFromHistory(entry.id) },
       })
     },
-    [pendingReviews, adjustments, currentIndex, updateMutation, matchReviewsActions],
+    [
+      pendingReviews,
+      adjustments,
+      currentIndex,
+      updateMutation,
+      matchReviewsActions,
+    ],
   )
 
   const handleAnchorModeChange = useCallback(
@@ -278,7 +296,8 @@ export default function ReviewQueue() {
             if (reqIndex !== -1) {
               setAnchorIndex(reqIndex)
               const offIndex = groupedRequests[reqIndex].matches.findIndex(
-                (m) => m.offer.id === (currentGroup as OfferWithMatches).offer.id,
+                (m) =>
+                  m.offer.id === (currentGroup as OfferWithMatches).offer.id,
               )
               setRelatedIndex(Math.max(0, offIndex))
             }
@@ -292,7 +311,9 @@ export default function ReviewQueue() {
             if (offIndex !== -1) {
               setAnchorIndex(offIndex)
               const reqIndex = groupedOffers[offIndex].matches.findIndex(
-                (m) => m.request.id === (currentGroup as RequestWithMatches).request.id,
+                (m) =>
+                  m.request.id ===
+                  (currentGroup as RequestWithMatches).request.id,
               )
               setRelatedIndex(Math.max(0, reqIndex))
             }
@@ -307,7 +328,11 @@ export default function ReviewQueue() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (showHistory) return
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return
 
       switch (e.key) {
         case 'ArrowLeft':
@@ -382,7 +407,15 @@ export default function ReviewQueue() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [nextReview, prevReview, bulkMode, current, showHistory, history, handleSingleAction])
+  }, [
+    nextReview,
+    prevReview,
+    bulkMode,
+    current,
+    showHistory,
+    history,
+    handleSingleAction,
+  ])
 
   const toggleSelection = (id: string) => {
     const newSelected = new Set(selectedIds)
@@ -470,14 +503,22 @@ export default function ReviewQueue() {
     toast.success('Match restored to queue', { description: entry.product })
   }
 
-  const formatDateTime = (date: Date) => date.toISOString().replace('T', ' ').substring(0, 19)
+  const formatDateTime = (date: Date) =>
+    date.toISOString().replace('T', ' ').substring(0, 19)
 
   const exportToCSV = () => {
     if (history.length === 0) {
       toast.error('No history to export')
       return
     }
-    const headers = ['Timestamp', 'Product', 'Action', 'Confidence (%)', 'Offer Source', 'Request Source']
+    const headers = [
+      'Timestamp',
+      'Product',
+      'Action',
+      'Confidence (%)',
+      'Offer Source',
+      'Request Source',
+    ]
     const rows = history.map((e) => [
       formatDateTime(e.timestamp),
       e.product,
@@ -486,7 +527,10 @@ export default function ReviewQueue() {
       e.originalReview.offer.source,
       e.originalReview.request.source,
     ])
-    const csvContent = [headers.join(','), ...rows.map((row) => row.map((cell) => `"${cell}"`).join(','))].join('\n')
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
+    ].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -538,8 +582,12 @@ export default function ReviewQueue() {
               <AlertTriangle className="w-8 h-8 text-red-400" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-foreground mb-1">Failed to load review queue</h2>
-              <p className="text-muted-foreground text-sm mb-4">{error.message}</p>
+              <h2 className="text-lg font-semibold text-foreground mb-1">
+                Failed to load review queue
+              </h2>
+              <p className="text-muted-foreground text-sm mb-4">
+                {error.message}
+              </p>
               <button
                 onClick={() => refetch()}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal hover:bg-teal/80 text-white transition-colors mx-auto"
@@ -560,8 +608,12 @@ export default function ReviewQueue() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Review Queue</h1>
-              <p className="text-muted-foreground">All matches have been reviewed</p>
+              <h1 className="text-2xl font-bold text-foreground">
+                Review Queue
+              </h1>
+              <p className="text-muted-foreground">
+                All matches have been reviewed
+              </p>
             </div>
             <HeaderActions
               historyCount={history.length}
@@ -574,11 +626,17 @@ export default function ReviewQueue() {
               onExportPDF={exportToPDF}
             />
           </div>
-          {showHistory && <TimelineHistory history={history} onRestore={restoreFromHistory} />}
+          {showHistory && (
+            <TimelineHistory history={history} onRestore={restoreFromHistory} />
+          )}
           <div className="glass-card-enhanced p-12 rounded-2xl text-center">
             <CheckCircle className="w-16 h-16 text-emerald mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-foreground mb-2">Queue Empty</h2>
-            <p className="text-muted-foreground">No pending matches require review at this time.</p>
+            <h2 className="text-xl font-semibold text-foreground mb-2">
+              Queue Empty
+            </h2>
+            <p className="text-muted-foreground">
+              No pending matches require review at this time.
+            </p>
             <button
               onClick={() => refetch()}
               className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground transition-colors mx-auto"
@@ -598,7 +656,9 @@ export default function ReviewQueue() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Review Queue</h1>
-            <p className="text-muted-foreground">Verify low-confidence AI matches</p>
+            <p className="text-muted-foreground">
+              Verify low-confidence AI matches
+            </p>
           </div>
           <div className="flex items-center gap-4 bg-secondary/50 p-1 rounded-xl border border-white/5">
             <button
@@ -676,12 +736,23 @@ export default function ReviewQueue() {
           rejected={apiStats?.rejectedToday ?? 0}
           avgConfidence={
             pendingReviews.length > 0
-              ? Math.round(pendingReviews.reduce((acc, r) => acc + r.confidence, 0) / pendingReviews.length)
+              ? Math.round(
+                  pendingReviews.reduce((acc, r) => acc + r.confidence, 0) /
+                    pendingReviews.length,
+                )
               : (apiStats?.avgConfidence ?? 0)
           }
-          highConfidenceCount={pendingReviews.filter((r) => r.confidence >= 80).length}
-          mediumConfidenceCount={pendingReviews.filter((r) => r.confidence >= 50 && r.confidence < 80).length}
-          lowConfidenceCount={pendingReviews.filter((r) => r.confidence < 50).length}
+          highConfidenceCount={
+            pendingReviews.filter((r) => r.confidence >= 80).length
+          }
+          mediumConfidenceCount={
+            pendingReviews.filter(
+              (r) => r.confidence >= 50 && r.confidence < 80,
+            ).length
+          }
+          lowConfidenceCount={
+            pendingReviews.filter((r) => r.confidence < 50).length
+          }
           compact={bulkMode}
         />
 
@@ -695,8 +766,16 @@ export default function ReviewQueue() {
               filteredCount={filteredReviews.length}
             />
 
-            <QueueProgress pending={filteredReviews.length} total={totalReviews} />
-            {showHistory && <TimelineHistory history={history} onRestore={restoreFromHistory} />}
+            <QueueProgress
+              pending={filteredReviews.length}
+              total={totalReviews}
+            />
+            {showHistory && (
+              <TimelineHistory
+                history={history}
+                onRestore={restoreFromHistory}
+              />
+            )}
             {bulkMode && (
               <EnhancedBulkGrid
                 reviews={filteredReviews}
@@ -725,8 +804,12 @@ export default function ReviewQueue() {
                 />
                 <AdjustmentControls />
                 <QuickActionsBar
-                  onApprove={() => handleSingleAction(currentMatch.matchId, 'approved')}
-                  onReject={() => handleSingleAction(currentMatch.matchId, 'rejected')}
+                  onApprove={() =>
+                    handleSingleAction(currentMatch.matchId, 'approved')
+                  }
+                  onReject={() =>
+                    handleSingleAction(currentMatch.matchId, 'rejected')
+                  }
                   onUndo={undoLastAction}
                   canUndo={history.length > 0}
                   loading={updateMutation.isPending}

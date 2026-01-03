@@ -15,7 +15,7 @@ services:
       # For pg18+, mount at /var/lib/postgresql (not /data subdirectory)
       - ./data/postgres:/var/lib/postgresql
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d pharmabroker" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pharmabroker"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -51,6 +51,7 @@ services:
       RUST_LOG: info
       API_PORT: "8081"
       GRPC_PORT: "50051"
+      WS_AUTH_ENABLED: "false"
     ports:
       - "8081:8081" # REST API
       - "50051:50051" # gRPC
@@ -200,7 +201,6 @@ volumes:
   bridge_data:
   prometheus_data:
   grafana_data:
-
 
 networks:
   pharmabroker-network:

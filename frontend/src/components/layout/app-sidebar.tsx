@@ -3,6 +3,7 @@ import { Link, useLocation } from '@tanstack/react-router'
 import {
   ArrowRightLeft,
   BarChart3,
+  Bot,
   Brain,
   Bug,
   ChevronLeft,
@@ -23,6 +24,7 @@ const navItems = [
   { title: 'Requests', icon: ArrowRightLeft, path: '/requests' },
   { title: 'AI Parsing', icon: Brain, path: '/parsing-review' },
   { title: 'Review Queue', icon: ClipboardCheck, path: '/review-queue' },
+  { title: 'AI Supervision', icon: Bot, path: '/supervision' },
   { title: 'Matches', icon: Sparkles, path: '/matches' },
   { title: 'Groups', icon: Users, path: '/groups' },
   { title: 'Analytics', icon: BarChart3, path: '/analytics' },

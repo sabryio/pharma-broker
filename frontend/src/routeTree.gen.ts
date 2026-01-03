@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SupervisionRouteImport } from './routes/supervision'
 import { Route as ReviewQueueRouteImport } from './routes/review-queue'
 import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ParsingReviewRouteImport } from './routes/parsing-review'
@@ -18,6 +19,11 @@ import { Route as GroupsRouteImport } from './routes/groups'
 import { Route as DebugRecordingsRouteImport } from './routes/debug-recordings'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SupervisionRoute = SupervisionRouteImport.update({
+  id: '/supervision',
+  path: '/supervision',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReviewQueueRoute = ReviewQueueRouteImport.update({
   id: '/review-queue',
   path: '/review-queue',
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/parsing-review': typeof ParsingReviewRoute
   '/requests': typeof RequestsRoute
   '/review-queue': typeof ReviewQueueRoute
+  '/supervision': typeof SupervisionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByTo {
   '/parsing-review': typeof ParsingReviewRoute
   '/requests': typeof RequestsRoute
   '/review-queue': typeof ReviewQueueRoute
+  '/supervision': typeof SupervisionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/parsing-review': typeof ParsingReviewRoute
   '/requests': typeof RequestsRoute
   '/review-queue': typeof ReviewQueueRoute
+  '/supervision': typeof SupervisionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
     | '/parsing-review'
     | '/requests'
     | '/review-queue'
+    | '/supervision'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/parsing-review'
     | '/requests'
     | '/review-queue'
+    | '/supervision'
   id:
     | '__root__'
     | '/'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/parsing-review'
     | '/requests'
     | '/review-queue'
+    | '/supervision'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -132,10 +144,18 @@ export interface RootRouteChildren {
   ParsingReviewRoute: typeof ParsingReviewRoute
   RequestsRoute: typeof RequestsRoute
   ReviewQueueRoute: typeof ReviewQueueRoute
+  SupervisionRoute: typeof SupervisionRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/supervision': {
+      id: '/supervision'
+      path: '/supervision'
+      fullPath: '/supervision'
+      preLoaderRoute: typeof SupervisionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/review-queue': {
       id: '/review-queue'
       path: '/review-queue'
@@ -204,6 +224,7 @@ const rootRouteChildren: RootRouteChildren = {
   ParsingReviewRoute: ParsingReviewRoute,
   RequestsRoute: RequestsRoute,
   ReviewQueueRoute: ReviewQueueRoute,
+  SupervisionRoute: SupervisionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

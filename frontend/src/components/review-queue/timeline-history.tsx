@@ -62,7 +62,11 @@ function getDateGroup(date: Date): string {
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
   const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
 
-  const entryDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const entryDate = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  )
 
   if (entryDate.getTime() === today.getTime()) return 'Today'
   if (entryDate.getTime() === yesterday.getTime()) return 'Yesterday'
@@ -81,7 +85,9 @@ function TimelineEntry({
   isLast: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
-  const [relativeTime, setRelativeTime] = useState(getRelativeTime(entry.timestamp))
+  const [relativeTime, setRelativeTime] = useState(
+    getRelativeTime(entry.timestamp),
+  )
   const age = getAgeIndicator(entry.timestamp)
 
   // Update relative time every minute
@@ -187,21 +193,27 @@ function TimelineEntry({
             {/* Match details */}
             <div className="grid grid-cols-2 gap-3">
               <div className="p-2 rounded-lg bg-teal/10 border border-teal/20">
-                <p className="text-[10px] text-teal uppercase font-medium mb-1">Offer</p>
+                <p className="text-[10px] text-teal uppercase font-medium mb-1">
+                  Offer
+                </p>
                 <p className="text-sm text-foreground truncate">
                   {entry.originalReview.offer.product}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {entry.originalReview.offer.quantity} • {entry.originalReview.offer.price}
+                  {entry.originalReview.offer.quantity} •{' '}
+                  {entry.originalReview.offer.price}
                 </p>
               </div>
               <div className="p-2 rounded-lg bg-amber/10 border border-amber/20">
-                <p className="text-[10px] text-amber uppercase font-medium mb-1">Request</p>
+                <p className="text-[10px] text-amber uppercase font-medium mb-1">
+                  Request
+                </p>
                 <p className="text-sm text-foreground truncate">
                   {entry.originalReview.request.product}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {entry.originalReview.request.quantity} • {entry.originalReview.request.maxPrice}
+                  {entry.originalReview.request.quantity} •{' '}
+                  {entry.originalReview.request.maxPrice}
                 </p>
               </div>
             </div>
@@ -302,7 +314,7 @@ export function TimelineHistory({
         (h) =>
           h.product.toLowerCase().includes(query) ||
           h.originalReview.offer.source.toLowerCase().includes(query) ||
-          h.originalReview.request.source.toLowerCase().includes(query)
+          h.originalReview.request.source.toLowerCase().includes(query),
       )
     }
 
@@ -331,18 +343,20 @@ export function TimelineHistory({
   // Calculate approval rate trend
   const approvalTrend = useMemo(() => {
     if (history.length < 5) return { trend: 'neutral' as const, rate: 0 }
-    
+
     const recent = history.slice(0, 5)
     const older = history.slice(5, 10)
-    
-    const recentRate = recent.filter((h) => h.action === 'approved').length / recent.length
-    const olderRate = older.length > 0 
-      ? older.filter((h) => h.action === 'approved').length / older.length 
-      : recentRate
-    
+
+    const recentRate =
+      recent.filter((h) => h.action === 'approved').length / recent.length
+    const olderRate =
+      older.length > 0
+        ? older.filter((h) => h.action === 'approved').length / older.length
+        : recentRate
+
     const diff = recentRate - olderRate
     const trend = diff > 0.1 ? 'up' : diff < -0.1 ? 'down' : 'neutral'
-    
+
     return { trend, rate: Math.round(recentRate * 100) }
   }, [history])
 
@@ -392,11 +406,15 @@ export function TimelineHistory({
         <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-emerald" />
-            <span className="text-muted-foreground">{approvedCount} approved</span>
+            <span className="text-muted-foreground">
+              {approvedCount} approved
+            </span>
           </span>
           <span className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-red-500" />
-            <span className="text-muted-foreground">{rejectedCount} rejected</span>
+            <span className="text-muted-foreground">
+              {rejectedCount} rejected
+            </span>
           </span>
         </div>
       </div>
@@ -525,10 +543,7 @@ export function TimelineHistory({
 
       {/* Timeline content */}
       {filteredHistory.length > 0 && (
-        <div
-          className="overflow-y-auto pr-2"
-          style={{ maxHeight }}
-        >
+        <div className="overflow-y-auto pr-2" style={{ maxHeight }}>
           {groupedHistory.map(({ label, entries }) => (
             <div key={label} className="mb-4">
               <DateGroupHeader

@@ -117,6 +117,25 @@ export const queryKeys = {
     byJid: (jid: string) =>
       [...queryKeys.participants.all, 'by-jid', jid] as const,
   },
+
+  // AI Supervision
+  supervision: {
+    all: ['supervision'] as const,
+    stats: () => [...queryKeys.supervision.all, 'stats'] as const,
+    config: () => [...queryKeys.supervision.all, 'config'] as const,
+    audit: () => [...queryKeys.supervision.all, 'audit'] as const,
+    auditFiltered: (params: {
+      eventType?: string
+      matchId?: string
+      minConfidence?: number
+      maxConfidence?: number
+      overridden?: boolean
+      startDate?: string
+      endDate?: string
+      limit?: number
+      offset?: number
+    }) => [...queryKeys.supervision.audit(), params] as const,
+  },
 } as const
 
 // Type helper for query keys

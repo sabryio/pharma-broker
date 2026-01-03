@@ -3,7 +3,10 @@
 
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import { useParticipantStats, useParticipantByJid } from '@/hooks/use-participants'
+import {
+  useParticipantStats,
+  useParticipantByJid,
+} from '@/hooks/use-participants'
 import {
   Shield,
   ShieldCheck,
@@ -55,7 +58,11 @@ function getInitials(name: string): string {
 }
 
 // Reputation badge component
-function ReputationBadge({ reputation }: { reputation: 'new' | 'regular' | 'trusted' }) {
+function ReputationBadge({
+  reputation,
+}: {
+  reputation: 'new' | 'regular' | 'trusted'
+}) {
   const config = {
     new: {
       icon: ShieldAlert,
@@ -97,13 +104,14 @@ export function SenderProfile({
   showStats = true,
 }: SenderProfileProps) {
   const [expanded, setExpanded] = useState(false)
-  
+
   // Try to fetch stats by ID first, then by JID
-  const { data: statsById, isLoading: loadingById } = useParticipantStats(participantId)
+  const { data: statsById, isLoading: loadingById } =
+    useParticipantStats(participantId)
   const { data: statsByJid, isLoading: loadingByJid } = useParticipantByJid(
-    !participantId && senderJid ? senderJid : undefined
+    !participantId && senderJid ? senderJid : undefined,
   )
-  
+
   const stats = statsById || statsByJid
   const isLoading = loadingById || loadingByJid
 
@@ -123,7 +131,7 @@ export function SenderProfile({
         >
           {initials}
         </div>
-        
+
         {/* Name & reputation */}
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-foreground truncate max-w-[120px]">
@@ -171,12 +179,10 @@ export function SenderProfile({
           <div className="flex items-center gap-2">
             {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+            ) : expanded ? (
+              <ChevronUp className="w-4 h-4 text-muted-foreground" />
             ) : (
-              expanded ? (
-                <ChevronUp className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              )
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
             )}
           </div>
         )}
@@ -191,14 +197,18 @@ export function SenderProfile({
               <Package className="w-4 h-4 text-teal" />
               <div>
                 <p className="text-xs text-muted-foreground">Offers</p>
-                <p className="text-sm font-bold text-teal">{stats.totalOffers}</p>
+                <p className="text-sm font-bold text-teal">
+                  {stats.totalOffers}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2 p-2 rounded-lg bg-amber/10">
               <ShoppingCart className="w-4 h-4 text-amber" />
               <div>
                 <p className="text-xs text-muted-foreground">Requests</p>
-                <p className="text-sm font-bold text-amber">{stats.totalRequests}</p>
+                <p className="text-sm font-bold text-amber">
+                  {stats.totalRequests}
+                </p>
               </div>
             </div>
           </div>
@@ -209,21 +219,27 @@ export function SenderProfile({
               <CheckCircle className="w-3.5 h-3.5 text-emerald" />
               <div>
                 <p className="text-[10px] text-muted-foreground">Confirmed</p>
-                <p className="text-xs font-bold text-emerald">{stats.confirmedMatches}</p>
+                <p className="text-xs font-bold text-emerald">
+                  {stats.confirmedMatches}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-1.5 p-2 rounded-lg bg-red-500/10">
               <XCircle className="w-3.5 h-3.5 text-red-400" />
               <div>
                 <p className="text-[10px] text-muted-foreground">Rejected</p>
-                <p className="text-xs font-bold text-red-400">{stats.rejectedMatches}</p>
+                <p className="text-xs font-bold text-red-400">
+                  {stats.rejectedMatches}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-1.5 p-2 rounded-lg bg-violet-500/10">
               <TrendingUp className="w-3.5 h-3.5 text-violet-400" />
               <div>
                 <p className="text-[10px] text-muted-foreground">Rate</p>
-                <p className="text-xs font-bold text-violet-400">{stats.approvalRate.toFixed(0)}%</p>
+                <p className="text-xs font-bold text-violet-400">
+                  {stats.approvalRate.toFixed(0)}%
+                </p>
               </div>
             </div>
           </div>

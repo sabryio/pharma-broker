@@ -1,7 +1,14 @@
 // Match Card Component
 // Displays a single match with offer and request details
 
-import { ChevronDown, ChevronUp, CheckCircle, XCircle } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronUp,
+  CheckCircle,
+  XCircle,
+  Bot,
+  User,
+} from 'lucide-react'
 import type { MatchReviewItem } from '@/schema/match-review'
 import { cn } from '@/lib/utils'
 
@@ -67,7 +74,7 @@ export function MatchCard({
         'glass-card rounded-xl border transition-all cursor-pointer',
         isSelected
           ? 'border-teal/50 ring-2 ring-teal/20'
-          : 'border-border hover:border-teal/30'
+          : 'border-border hover:border-teal/30',
       )}
       onClick={onSelect}
     >
@@ -93,7 +100,7 @@ export function MatchCard({
           <div
             className={cn(
               'px-3 py-1 rounded-lg border text-sm font-medium',
-              confidenceColor
+              confidenceColor,
             )}
           >
             {Math.round(match.confidence)}%
@@ -103,11 +110,40 @@ export function MatchCard({
           <div
             className={cn(
               'px-3 py-1 rounded-lg border text-xs font-medium',
-              statusColor
+              statusColor,
             )}
           >
             {match.status}
           </div>
+
+          {/* AI/Human Approved Indicator - Requirements: 4.5 */}
+          {match.status === 'CONFIRMED' && (
+            <div
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium',
+                match.aiAutoApproved
+                  ? 'bg-violet-400/10 text-violet-400 border-violet-400/30'
+                  : 'bg-teal/10 text-teal border-teal/30',
+              )}
+              title={
+                match.aiAutoApproved
+                  ? `AI auto-approved${match.aiApprovedAt ? ` at ${new Date(match.aiApprovedAt).toLocaleString()}` : ''}`
+                  : 'Human approved'
+              }
+            >
+              {match.aiAutoApproved ? (
+                <>
+                  <Bot className="w-3.5 h-3.5" />
+                  AI
+                </>
+              ) : (
+                <>
+                  <User className="w-3.5 h-3.5" />
+                  Human
+                </>
+              )}
+            </div>
+          )}
 
           {/* Expand Button */}
           <button
@@ -168,7 +204,9 @@ export function MatchCard({
 
               {/* Request Details */}
               <div className="space-y-2">
-                <h4 className="text-sm font-medium text-amber">Request Details</h4>
+                <h4 className="text-sm font-medium text-amber">
+                  Request Details
+                </h4>
                 <div className="text-xs space-y-1">
                   <p>
                     <span className="text-muted-foreground">Product:</span>{' '}
@@ -204,11 +242,37 @@ export function MatchCard({
             </div>
 
             {/* AI Reasoning */}
-            {(match.reasoning || match.issues.length > 0) && (
+            {(match.reasoning ||
+              match.issues.length > 0 ||
+              match.aiExplanation) && (
               <div className="space-y-2">
-                <h4 className="text-sm font-medium text-foreground">AI Analysis</h4>
-                {match.reasoning && (
-                  <p className="text-xs text-muted-foreground">{match.reasoning}</p>
+                <h4 className="text-sm font-medium text-foreground">
+                  AI Analysis
+                </h4>
+                {match.aiExplanation && (
+                  <div className="p-3 rounded-lg bg-violet-400/10 border border-violet-400/20">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Bot className="w-4 h-4 text-violet-400" />
+                      <span className="text-xs font-medium text-violet-400">
+                        AI Explanation
+                        {match.aiConfidence !== null &&
+                          match.aiConfidence !== undefined && (
+                            <span className="ml-2 text-muted-foreground">
+                              ({(match.aiConfidence * 100).toFixed(0)}%
+                              confidence)
+                            </span>
+                          )}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {match.aiExplanation}
+                    </p>
+                  </div>
+                )}
+                {match.reasoning && !match.aiExplanation && (
+                  <p className="text-xs text-muted-foreground">
+                    {match.reasoning}
+                  </p>
                 )}
                 {match.issues.length > 0 && (
                   <div className="flex flex-wrap gap-2">
@@ -230,13 +294,19 @@ export function MatchCard({
               {match.offer.curationStatus && (
                 <div className="text-xs">
                   <span className="text-muted-foreground">Offer Curation:</span>{' '}
-                  <span className="text-foreground">{match.offer.curationStatus}</span>
+                  <span className="text-foreground">
+                    {match.offer.curationStatus}
+                  </span>
                 </div>
               )}
               {match.request.curationStatus && (
                 <div className="text-xs">
-                  <span className="text-muted-foreground">Request Curation:</span>{' '}
-                  <span className="text-foreground">{match.request.curationStatus}</span>
+                  <span className="text-muted-foreground">
+                    Request Curation:
+                  </span>{' '}
+                  <span className="text-foreground">
+                    {match.request.curationStatus}
+                  </span>
                 </div>
               )}
             </div>
@@ -254,7 +324,7 @@ export function MatchCard({
                     'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                     'bg-red-400/10 text-red-400 border border-red-400/30',
                     'hover:bg-red-400/20',
-                    'disabled:opacity-50 disabled:cursor-not-allowed'
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
                   )}
                 >
                   <XCircle className="w-3.5 h-3.5" />
@@ -270,7 +340,7 @@ export function MatchCard({
                     'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                     'bg-emerald/10 text-emerald border border-emerald/30',
                     'hover:bg-emerald/20',
-                    'disabled:opacity-50 disabled:cursor-not-allowed'
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
                   )}
                 >
                   <CheckCircle className="w-3.5 h-3.5" />

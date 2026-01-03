@@ -28,7 +28,7 @@ export interface UseMatchWebSocketReturn {
   disconnect: () => void
 }
 
-const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001'
+const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
 const INITIAL_RECONNECT_DELAY = 1000
 const MAX_RECONNECT_DELAY = 30000
 
@@ -116,7 +116,6 @@ export function useMatchWebSocket(
 
       ws.onclose = (event) => {
         if (!mountedRef.current) return
-        console.log('WebSocket disconnected:', event.code, event.reason)
         setIsConnected(false)
         onConnectionChange?.(false)
 
@@ -127,9 +126,12 @@ export function useMatchWebSocket(
           reconnectAttemptRef.current < maxReconnectAttempts
         ) {
           const delay = getReconnectDelay()
-          console.log(
-            `Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current + 1}/${maxReconnectAttempts})`,
-          )
+          // Only log first few reconnection attempts
+          if (reconnectAttemptRef.current < 3) {
+            console.log(
+              `Match WebSocket: reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current + 1}/${maxReconnectAttempts})`,
+            )
+          }
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectAttemptRef.current++
             connect()
@@ -137,8 +139,14 @@ export function useMatchWebSocket(
         }
       }
 
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
+      ws.onerror = () => {
+        // WebSocket errors are expected when server is unavailable
+        // The onclose handler will manage reconnection
+        if (import.meta.env.DEV && reconnectAttemptRef.current === 0) {
+          console.warn(
+            'Match WebSocket: connection failed (server may be unavailable)',
+          )
+        }
       }
 
       ws.onmessage = handleMessage

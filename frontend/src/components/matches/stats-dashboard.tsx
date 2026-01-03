@@ -1,12 +1,6 @@
 import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
-import {
-  Clock,
-  CheckCircle,
-  XCircle,
-  Activity,
-  BarChart3,
-} from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Activity, BarChart3 } from 'lucide-react'
 import type { MatchReviewItem, MatchReviewStats } from '@/schema/match-review'
 
 // Confidence band thresholds
@@ -44,13 +38,19 @@ export function calculateConfidenceBands(matches: MatchReviewItem[]): {
 } {
   return {
     high: matches.filter(
-      (m) => m.confidence >= CONFIDENCE_BANDS.high.min && m.confidence <= CONFIDENCE_BANDS.high.max
+      (m) =>
+        m.confidence >= CONFIDENCE_BANDS.high.min &&
+        m.confidence <= CONFIDENCE_BANDS.high.max,
     ).length,
     medium: matches.filter(
-      (m) => m.confidence >= CONFIDENCE_BANDS.medium.min && m.confidence <= CONFIDENCE_BANDS.medium.max
+      (m) =>
+        m.confidence >= CONFIDENCE_BANDS.medium.min &&
+        m.confidence <= CONFIDENCE_BANDS.medium.max,
     ).length,
     low: matches.filter(
-      (m) => m.confidence >= CONFIDENCE_BANDS.low.min && m.confidence <= CONFIDENCE_BANDS.low.max
+      (m) =>
+        m.confidence >= CONFIDENCE_BANDS.low.min &&
+        m.confidence <= CONFIDENCE_BANDS.low.max,
     ).length,
   }
 }
@@ -171,16 +171,19 @@ export function StatsDashboard({
   className,
 }: StatsDashboardProps) {
   // Calculate confidence bands from matches
-  const confidenceBands = useMemo(() => calculateConfidenceBands(matches), [matches])
+  const confidenceBands = useMemo(
+    () => calculateConfidenceBands(matches),
+    [matches],
+  )
 
   // Calculate average confidence from pending matches
   const pendingMatches = useMemo(
     () => matches.filter((m) => m.status === 'PENDING'),
-    [matches]
+    [matches],
   )
   const avgConfidence = useMemo(
     () => Math.round(calculateAverageConfidence(pendingMatches)),
-    [pendingMatches]
+    [pendingMatches],
   )
 
   if (isLoading) {
@@ -221,7 +224,9 @@ export function StatsDashboard({
             </div>
           </div>
           <p className="text-xs text-muted-foreground mb-1">Confirmed Today</p>
-          <p className="text-3xl font-bold text-emerald">{stats?.confirmedToday ?? 0}</p>
+          <p className="text-3xl font-bold text-emerald">
+            {stats?.confirmedToday ?? 0}
+          </p>
         </div>
 
         {/* Rejected Today */}
@@ -232,7 +237,9 @@ export function StatsDashboard({
             </div>
           </div>
           <p className="text-xs text-muted-foreground mb-1">Rejected Today</p>
-          <p className="text-3xl font-bold text-red-400">{stats?.rejectedToday ?? 0}</p>
+          <p className="text-3xl font-bold text-red-400">
+            {stats?.rejectedToday ?? 0}
+          </p>
         </div>
 
         {/* Average Confidence */}
@@ -271,15 +278,21 @@ export function StatsDashboard({
         />
         <div className="grid grid-cols-3 gap-4 mt-4">
           <div className="text-center">
-            <p className="text-2xl font-bold text-emerald">{confidenceBands.high}</p>
+            <p className="text-2xl font-bold text-emerald">
+              {confidenceBands.high}
+            </p>
             <p className="text-xs text-muted-foreground">High (≥80%)</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-amber">{confidenceBands.medium}</p>
+            <p className="text-2xl font-bold text-amber">
+              {confidenceBands.medium}
+            </p>
             <p className="text-xs text-muted-foreground">Medium (50-79%)</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-red-400">{confidenceBands.low}</p>
+            <p className="text-2xl font-bold text-red-400">
+              {confidenceBands.low}
+            </p>
             <p className="text-xs text-muted-foreground">Low (&lt;50%)</p>
           </div>
         </div>

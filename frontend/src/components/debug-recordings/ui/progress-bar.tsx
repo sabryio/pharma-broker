@@ -43,7 +43,7 @@ export function ProgressBar({
   className,
 }: ProgressBarProps) {
   const [width, setWidth] = useState(animated ? 0 : (value / max) * 100)
-  
+
   useEffect(() => {
     if (animated) {
       const timer = setTimeout(() => {
@@ -73,32 +73,36 @@ export function ProgressBar({
               </span>
             )}
             {valueLabel !== undefined && (
-              <span className={cn(
-                'text-sm font-semibold',
-                color === 'emerald' && 'text-emerald-400',
-                color === 'red' && 'text-red-400',
-                color === 'amber' && 'text-amber-400',
-                color === 'teal' && 'text-teal-400',
-                color === 'violet' && 'text-violet-400',
-                color === 'blue' && 'text-blue-400',
-              )}>
+              <span
+                className={cn(
+                  'text-sm font-semibold',
+                  color === 'emerald' && 'text-emerald-400',
+                  color === 'red' && 'text-red-400',
+                  color === 'amber' && 'text-amber-400',
+                  color === 'teal' && 'text-teal-400',
+                  color === 'violet' && 'text-violet-400',
+                  color === 'blue' && 'text-blue-400',
+                )}
+              >
                 {valueLabel}
               </span>
             )}
           </div>
         </div>
       )}
-      
-      <div className={cn(
-        'w-full rounded-full bg-secondary/50 overflow-hidden',
-        sizeClasses[size],
-      )}>
+
+      <div
+        className={cn(
+          'w-full rounded-full bg-secondary/50 overflow-hidden',
+          sizeClasses[size],
+        )}
+      >
         <div
           className={cn(
             'h-full rounded-full bg-gradient-to-r transition-all duration-700 ease-out',
             colorClasses[color],
           )}
-          style={{ 
+          style={{
             width: `${width}%`,
             boxShadow: width > 0 ? `0 0 12px rgba(20, 184, 166, 0.4)` : 'none',
           }}

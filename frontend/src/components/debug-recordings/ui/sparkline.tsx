@@ -21,9 +21,9 @@ const colorMap = {
   pink: { stroke: '#ec4899', fill: 'rgba(236, 72, 153, 0.2)' },
 }
 
-export function Sparkline({ 
-  data, 
-  color = 'teal', 
+export function Sparkline({
+  data,
+  color = 'teal',
   height = 40,
   showDots = false,
   animated = true,
@@ -42,11 +42,11 @@ export function Sparkline({
       return { x, y, value }
     })
 
-    const linePoints = pts.map(p => `${p.x},${p.y}`).join(' ')
+    const linePoints = pts.map((p) => `${p.x},${p.y}`).join(' ')
     const area = `0,${height} ${linePoints} 100,${height}`
-    
-    return { 
-      points: linePoints, 
+
+    return {
+      points: linePoints,
       areaPoints: area,
       lastPoint: pts[pts.length - 1],
     }
@@ -57,32 +57,38 @@ export function Sparkline({
   const colors = colorMap[color]
 
   return (
-    <svg 
-      viewBox={`0 0 100 ${height}`} 
-      className="w-full h-full" 
+    <svg
+      viewBox={`0 0 100 ${height}`}
+      className="w-full h-full"
       preserveAspectRatio="none"
     >
       <defs>
-        <linearGradient id={`sparkline-gradient-${color}`} x1="0%" y1="0%" x2="0%" y2="100%">
+        <linearGradient
+          id={`sparkline-gradient-${color}`}
+          x1="0%"
+          y1="0%"
+          x2="0%"
+          y2="100%"
+        >
           <stop offset="0%" stopColor={colors.stroke} stopOpacity="0.4" />
           <stop offset="100%" stopColor={colors.stroke} stopOpacity="0" />
         </linearGradient>
         <filter id="glow">
-          <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+          <feGaussianBlur stdDeviation="1" result="coloredBlur" />
           <feMerge>
-            <feMergeNode in="coloredBlur"/>
-            <feMergeNode in="SourceGraphic"/>
+            <feMergeNode in="coloredBlur" />
+            <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
       </defs>
-      
+
       {/* Area fill */}
       <polygon
         fill={`url(#sparkline-gradient-${color})`}
         points={areaPoints}
         className={animated ? 'animate-fade-in' : ''}
       />
-      
+
       {/* Line */}
       <polyline
         fill="none"
@@ -93,13 +99,17 @@ export function Sparkline({
         points={points}
         filter="url(#glow)"
         className={animated ? 'animate-draw-line' : ''}
-        style={animated ? {
-          strokeDasharray: 1000,
-          strokeDashoffset: 1000,
-          animation: 'draw-line 1.5s ease-out forwards',
-        } : undefined}
+        style={
+          animated
+            ? {
+                strokeDasharray: 1000,
+                strokeDashoffset: 1000,
+                animation: 'draw-line 1.5s ease-out forwards',
+              }
+            : undefined
+        }
       />
-      
+
       {/* End dot */}
       {showDots && lastPoint && (
         <g>
@@ -120,7 +130,7 @@ export function Sparkline({
           />
         </g>
       )}
-      
+
       <style>{`
         @keyframes draw-line {
           to {

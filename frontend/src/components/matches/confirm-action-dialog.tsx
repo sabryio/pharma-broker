@@ -48,7 +48,9 @@ export function ConfirmActionDialog({
   const requestProduct = match.request.product
 
   const handleConfirm = () => {
-    onConfirm(actionType === 'reject' && reason.trim() ? reason.trim() : undefined)
+    onConfirm(
+      actionType === 'reject' && reason.trim() ? reason.trim() : undefined,
+    )
   }
 
   const handleOpenChange = (open: boolean) => {
@@ -80,7 +82,10 @@ export function ConfirmActionDialog({
           <DialogDescription className="space-y-2">
             <span className="block">
               {actionVerb} this match for{' '}
-              <span className="font-medium text-foreground">{offerProduct}</span>?
+              <span className="font-medium text-foreground">
+                {offerProduct}
+              </span>
+              ?
             </span>
             <span className="block text-xs">
               <span className="text-muted-foreground">Offer:</span>{' '}
@@ -100,7 +105,9 @@ export function ConfirmActionDialog({
               className="text-sm font-medium text-foreground"
             >
               Rejection reason{' '}
-              <span className="text-muted-foreground font-normal">(optional)</span>
+              <span className="text-muted-foreground font-normal">
+                (optional)
+              </span>
             </label>
             <Textarea
               id="rejection-reason"
@@ -116,7 +123,7 @@ export function ConfirmActionDialog({
                   'text-xs',
                   reason.length >= MAX_REASON_LENGTH
                     ? 'text-red-400'
-                    : 'text-muted-foreground'
+                    : 'text-muted-foreground',
                 )}
               >
                 {reason.length}/{MAX_REASON_LENGTH}
@@ -126,11 +133,7 @@ export function ConfirmActionDialog({
         )}
 
         <DialogFooter className="gap-2 sm:gap-2">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            disabled={isLoading}
-          >
+          <Button variant="outline" onClick={onClose} disabled={isLoading}>
             Cancel
           </Button>
           <Button
@@ -138,7 +141,7 @@ export function ConfirmActionDialog({
             onClick={handleConfirm}
             disabled={isLoading}
             className={cn(
-              isApprove && 'bg-emerald hover:bg-emerald/90 text-white'
+              isApprove && 'bg-emerald hover:bg-emerald/90 text-white',
             )}
           >
             {isLoading ? (

@@ -198,7 +198,9 @@ export function ReasoningPanel({
             <BarChart3 className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-left">
-            <h4 className="text-sm font-semibold text-white">Score Breakdown</h4>
+            <h4 className="text-sm font-semibold text-white">
+              Score Breakdown
+            </h4>
             <p className="text-[10px] text-slate-400">
               {factors.length} factors • {confidence.toFixed(1)}% confidence
             </p>
@@ -245,42 +247,44 @@ export function ReasoningPanel({
           <div className="flex items-center justify-center py-4">
             <div className="relative w-32 h-32">
               <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                {factors.reduce(
-                  (acc, factor, idx) => {
-                    const percentage =
-                      (factor.contribution /
-                        factors.reduce((s, f) => s + f.contribution, 0)) *
-                      100
-                    const colors = [
-                      '#00E676',
-                      '#F59E0B',
-                      '#00F2FF',
-                      '#A855F7',
-                      '#EC4899',
-                    ]
-                    const circumference = 2 * Math.PI * 40
-                    const strokeDasharray = `${(percentage / 100) * circumference} ${circumference}`
+                {
+                  factors.reduce(
+                    (acc, factor, idx) => {
+                      const percentage =
+                        (factor.contribution /
+                          factors.reduce((s, f) => s + f.contribution, 0)) *
+                        100
+                      const colors = [
+                        '#00E676',
+                        '#F59E0B',
+                        '#00F2FF',
+                        '#A855F7',
+                        '#EC4899',
+                      ]
+                      const circumference = 2 * Math.PI * 40
+                      const strokeDasharray = `${(percentage / 100) * circumference} ${circumference}`
 
-                    acc.elements.push(
-                      <circle
-                        key={factor.name}
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="none"
-                        stroke={colors[idx % colors.length]}
-                        strokeWidth="20"
-                        strokeDasharray={strokeDasharray}
-                        strokeDashoffset={-acc.offset}
-                        className="transition-all duration-500"
-                        style={{ animationDelay: `${idx * 100}ms` }}
-                      />,
-                    )
-                    acc.offset += (percentage / 100) * circumference
-                    return acc
-                  },
-                  { elements: [] as React.ReactNode[], offset: 0 },
-                ).elements}
+                      acc.elements.push(
+                        <circle
+                          key={factor.name}
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          fill="none"
+                          stroke={colors[idx % colors.length]}
+                          strokeWidth="20"
+                          strokeDasharray={strokeDasharray}
+                          strokeDashoffset={-acc.offset}
+                          className="transition-all duration-500"
+                          style={{ animationDelay: `${idx * 100}ms` }}
+                        />,
+                      )
+                      acc.offset += (percentage / 100) * circumference
+                      return acc
+                    },
+                    { elements: [] as React.ReactNode[], offset: 0 },
+                  ).elements
+                }
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-2xl font-bold text-white">
@@ -351,7 +355,9 @@ export function ReasoningPanel({
                   </h5>
                   <ul className="text-xs text-slate-300 space-y-1">
                     {confidence < 50 && (
-                      <li>• Consider manual verification of medication names</li>
+                      <li>
+                        • Consider manual verification of medication names
+                      </li>
                     )}
                     {confidence < 70 && (
                       <li>• Check if quantities are compatible</li>
