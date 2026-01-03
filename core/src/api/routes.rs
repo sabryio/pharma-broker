@@ -422,6 +422,11 @@ where
             "/api/match-reviews/{id}/notes",
             put(match_reviews::update_match_notes::<RQ, A, MM>),
         )
+        // Match Review Undo
+        .route(
+            "/api/match-reviews/{id}/undo",
+            post(match_reviews::undo_match_action::<RQ, A, MM>),
+        )
         // WebSocket
         .route("/ws", get(ws::ws_handler::<RQ, A, MM>))
         .with_state(state)

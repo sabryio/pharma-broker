@@ -140,3 +140,38 @@ export async function recalculateConfidence(
   )
   return response.data
 }
+
+/**
+ * Undo match action request
+ */
+export interface UndoMatchRequest {
+  userId: string
+  originalAction: 'approved' | 'rejected'
+}
+
+/**
+ * Undo match action response
+ */
+export interface UndoMatchResponse {
+  success: boolean
+  id: string
+  newStatus: string
+  countersDecremented: boolean
+}
+
+/**
+ * Undo a recent match action within the undo window (8 seconds)
+ */
+export async function undoMatchAction(
+  id: string,
+  data: UndoMatchRequest,
+): Promise<UndoMatchResponse> {
+  const response = await apiClient.post<UndoMatchResponse>(
+    `/api/match-reviews/${id}/undo`,
+    {
+      user_id: data.userId,
+      original_action: data.originalAction,
+    },
+  )
+  return response.data
+}

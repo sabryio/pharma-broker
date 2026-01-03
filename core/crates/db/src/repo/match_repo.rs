@@ -43,6 +43,41 @@ impl MatchRepository for SeaOrmMatchRepo {
             .map_err(Error::from)
     }
 
+    async fn get_all(
+        &self,
+        limit: i64,
+        offset: i64,
+        status: Option<MatchStatus>,
+    ) -> Result<Vec<match_::Model>> {
+        let mut query = Match::find();
+
+        if let Some(s) = status {
+            query = query.filter(match_::Column::Status.eq(s));
+        }
+
+        query
+            .order_by_desc(match_::Column::Score)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&*self.db)
+            .await
+            .map_err(Error::from)
+    }
+
+    async fn count_all(&self, status: Option<MatchStatus>) -> Result<i64> {
+        let mut query = Match::find();
+
+        if let Some(s) = status {
+            query = query.filter(match_::Column::Status.eq(s));
+        }
+
+        query
+            .count(&*self.db)
+            .await
+            .map(|c| c as i64)
+            .map_err(Error::from)
+    }
+
     async fn count_pending(&self) -> Result<i64> {
         Match::find()
             .filter(match_::Column::Status.eq(MatchStatus::Pending))

@@ -129,15 +129,26 @@ where
     A: AuditLogRepository + 'static,
     MM: MedicationMappingRepository + 'static,
 {
+    // Parse status filter if provided
+    let status_filter = pagination.status.as_ref().and_then(|s| {
+        match s.to_uppercase().as_str() {
+            "PENDING" => Some(MatchStatus::Pending),
+            "CONFIRMED" => Some(MatchStatus::Confirmed),
+            "REJECTED" => Some(MatchStatus::Rejected),
+            "EXPIRED" => Some(MatchStatus::Expired),
+            _ => None, // "all" or invalid values return all matches
+        }
+    });
+
     let matches = state
         .match_repo
-        .get_pending(pagination.limit, pagination.offset)
+        .get_all(pagination.limit, pagination.offset, status_filter)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let total = state
         .match_repo
-        .count_pending()
+        .count_all(status_filter)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -506,6 +517,22 @@ where
             tracing::error!(match_id = %id, ">>> [DEBUG] Match not found");
             (StatusCode::NOT_FOUND, "Match not found".to_string())
         })?;
+
+    // Idempotency check: if requested status equals current status, return success without modifications
+    let current_status = match_entity.status;
+    if current_status == status {
+        tracing::debug!(
+            match_id = %id,
+            status = ?status,
+            "Idempotent request: match already has requested status, returning existing state"
+        );
+        return Ok(Json(UpdateMatchReviewResponse {
+            success: true,
+            id,
+            new_status: format!("{:?}", status),
+            reviewed_at: match_entity.confirmed_at.map(|dt| dt.to_rfc3339()),
+        }));
+    }
 
     tracing::info!(
         match_id = %match_entity.id,
@@ -1251,6 +1278,173 @@ where
         success: true,
         id,
         notes: updated.notes.unwrap_or_default(),
+    }))
+}
+
+/// Undo match action request
+#[derive(Debug, Deserialize)]
+pub struct UndoMatchRequest {
+    pub user_id: Uuid,
+    pub original_action: String,
+}
+
+/// Undo match action response
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UndoMatchResponse {
+    pub success: bool,
+    pub id: Uuid,
+    pub new_status: String,
+    pub counters_decremented: bool,
+}
+
+/// Undo window duration in seconds
+const UNDO_WINDOW_SECONDS: i64 = 8;
+
+/// Undo a recent match action
+/// POST /api/match-reviews/:id/undo
+pub async fn undo_match_action<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UndoMatchRequest>,
+) -> Result<Json<UndoMatchResponse>, (StatusCode, String)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMappingRepository + 'static,
+{
+    tracing::info!(
+        match_id = %id,
+        user_id = %req.user_id,
+        original_action = %req.original_action,
+        "Undo match action requested"
+    );
+
+    // Get the match to check current status and confirmed_at
+    let match_entity = state
+        .match_repo
+        .get_by_id(id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Match not found".to_string()))?;
+
+    // Validate the match is in a state that can be undone (Confirmed or Rejected)
+    if match_entity.status == MatchStatus::Pending {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Match is already in PENDING status".to_string(),
+        ));
+    }
+
+    // Check undo window (8 seconds from confirmed_at)
+    let confirmed_at = match_entity.confirmed_at.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Match has no confirmed_at timestamp".to_string(),
+        )
+    })?;
+
+    let now = Utc::now();
+    let elapsed_seconds = (now - confirmed_at).num_seconds();
+
+    if elapsed_seconds > UNDO_WINDOW_SECONDS {
+        tracing::debug!(
+            match_id = %id,
+            elapsed_seconds = %elapsed_seconds,
+            window_seconds = %UNDO_WINDOW_SECONDS,
+            "Undo window expired"
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Undo window expired. Action was {} seconds ago, window is {} seconds.",
+                elapsed_seconds, UNDO_WINDOW_SECONDS
+            ),
+        ));
+    }
+
+    // Decrement counters if the original action was a confirmation
+    let mut counters_decremented = false;
+    if match_entity.status == MatchStatus::Confirmed {
+        // Decrement offer match count
+        if let Err(e) = state
+            .offer_repo
+            .decrement_match_count(match_entity.offer_id)
+            .await
+        {
+            tracing::warn!(
+                error = %e,
+                offer_id = %match_entity.offer_id,
+                "Failed to decrement offer match count during undo"
+            );
+        } else {
+            counters_decremented = true;
+        }
+
+        // Decrement request match count
+        if let Err(e) = state
+            .request_repo
+            .decrement_match_count(match_entity.request_id)
+            .await
+        {
+            tracing::warn!(
+                error = %e,
+                request_id = %match_entity.request_id,
+                "Failed to decrement request match count during undo"
+            );
+        }
+    }
+
+    // Revert status to PENDING
+    let params = crate::repository::UpdateMatchStatusParams::new(
+        id,
+        MatchStatus::Pending,
+        req.user_id,
+        "Undone by user",
+    );
+
+    state.match_repo.update_status(params).await.map_err(|e| {
+        tracing::error!(error = %e, "Failed to revert match status during undo");
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    // Record undo in audit log
+    let audit_log = AuditLog::new(AuditAction::MatchUndone, EntityType::Match, id, req.user_id)
+        .with_details(serde_json::json!({
+            "original_action": req.original_action,
+            "original_status": format!("{:?}", match_entity.status),
+            "counters_decremented": counters_decremented,
+            "elapsed_seconds": elapsed_seconds
+        }));
+
+    if let Err(e) = state.audit_log_repo.save(&audit_log).await {
+        tracing::warn!(error = %e, id = %id, "Failed to save audit log for undo action");
+    }
+
+    // Broadcast WebSocket event for undo
+    let ws_event = WsEvent::MatchUndone(MatchStatusEvent {
+        match_id: id,
+        user_id: req.user_id,
+        notes: Some("Action undone".to_string()),
+        reason: Some(format!("Undone from {:?}", match_entity.status)),
+    });
+    if let Err(e) = state.ws_tx.send(ws_event) {
+        tracing::warn!(error = %e, "Failed to broadcast match undo event");
+    }
+
+    tracing::info!(
+        match_id = %id,
+        user_id = %req.user_id,
+        original_status = ?match_entity.status,
+        counters_decremented = %counters_decremented,
+        "Match action undone successfully"
+    );
+
+    Ok(Json(UndoMatchResponse {
+        success: true,
+        id,
+        new_status: "Pending".to_string(),
+        counters_decremented,
     }))
 }
 

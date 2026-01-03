@@ -382,6 +382,9 @@ mod tests {
         async fn increment_match_count(&self, _id: Uuid) -> DbResult<OfferModel> {
             unimplemented!()
         }
+        async fn decrement_match_count(&self, _id: Uuid) -> DbResult<OfferModel> {
+            unimplemented!()
+        }
         async fn update_medication(
             &self,
             _id: Uuid,
@@ -432,6 +435,9 @@ mod tests {
         async fn increment_match_count(&self, _id: Uuid) -> DbResult<RequestModel> {
             unimplemented!()
         }
+        async fn decrement_match_count(&self, _id: Uuid) -> DbResult<RequestModel> {
+            unimplemented!()
+        }
         async fn update_medication(
             &self,
             _id: Uuid,
@@ -449,6 +455,17 @@ mod tests {
             unimplemented!()
         }
         async fn get_pending(&self, _: i64, _: i64) -> DbResult<Vec<MatchModel>> {
+            unimplemented!()
+        }
+        async fn get_all(
+            &self,
+            _: i64,
+            _: i64,
+            _: Option<MatchStatus>,
+        ) -> DbResult<Vec<MatchModel>> {
+            unimplemented!()
+        }
+        async fn count_all(&self, _: Option<MatchStatus>) -> DbResult<i64> {
             unimplemented!()
         }
         async fn count_pending(&self) -> DbResult<i64> {

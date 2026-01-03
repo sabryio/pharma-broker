@@ -56,6 +56,8 @@ pub enum WsEvent {
     MatchConfirmed(MatchStatusEvent),
     /// Match was rejected by operator
     MatchRejected(MatchStatusEvent),
+    /// Match action was undone by operator
+    MatchUndone(MatchStatusEvent),
     /// Bulk match update completed
     BulkMatchUpdate {
         action: String,

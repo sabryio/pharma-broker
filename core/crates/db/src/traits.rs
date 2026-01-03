@@ -61,6 +61,8 @@ pub trait OfferRepository: Send + Sync {
     async fn update_status(&self, id: Uuid, status: ItemStatus) -> Result<OfferModel>;
     /// Increment the confirmed match count for an offer
     async fn increment_match_count(&self, id: Uuid) -> Result<OfferModel>;
+    /// Decrement the confirmed match count for an offer (for undo)
+    async fn decrement_match_count(&self, id: Uuid) -> Result<OfferModel>;
     /// Update medication info after AI re-parse
     async fn update_medication(
         &self,
@@ -93,6 +95,8 @@ pub trait RequestRepository: Send + Sync {
     async fn update_status(&self, id: Uuid, status: ItemStatus) -> Result<RequestModel>;
     /// Increment the confirmed match count for a request
     async fn increment_match_count(&self, id: Uuid) -> Result<RequestModel>;
+    /// Decrement the confirmed match count for a request (for undo)
+    async fn decrement_match_count(&self, id: Uuid) -> Result<RequestModel>;
     /// Update medication info after AI re-parse
     async fn update_medication(
         &self,
@@ -114,6 +118,15 @@ pub trait MatchRepository: Send + Sync {
     /// Get a match by its ID
     async fn get_by_id(&self, id: Uuid) -> Result<Option<MatchModel>>;
     async fn get_pending(&self, limit: i64, offset: i64) -> Result<Vec<MatchModel>>;
+    /// Get all matches with optional status filter
+    async fn get_all(
+        &self,
+        limit: i64,
+        offset: i64,
+        status: Option<MatchStatus>,
+    ) -> Result<Vec<MatchModel>>;
+    /// Count all matches with optional status filter
+    async fn count_all(&self, status: Option<MatchStatus>) -> Result<i64>;
     async fn count_pending(&self) -> Result<i64>;
     /// Check if a match exists between an offer and request
     async fn exists(&self, offer_id: Uuid, request_id: Uuid) -> Result<bool>;

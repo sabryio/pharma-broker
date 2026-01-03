@@ -13,6 +13,7 @@ import { Route as ReviewQueueRouteImport } from './routes/review-queue'
 import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ParsingReviewRouteImport } from './routes/parsing-review'
 import { Route as OffersRouteImport } from './routes/offers'
+import { Route as MatchesRouteImport } from './routes/matches'
 import { Route as GroupsRouteImport } from './routes/groups'
 import { Route as DebugRecordingsRouteImport } from './routes/debug-recordings'
 import { Route as IndexRouteImport } from './routes/index'
@@ -37,6 +38,11 @@ const OffersRoute = OffersRouteImport.update({
   path: '/offers',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MatchesRoute = MatchesRouteImport.update({
+  id: '/matches',
+  path: '/matches',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GroupsRoute = GroupsRouteImport.update({
   id: '/groups',
   path: '/groups',
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/debug-recordings': typeof DebugRecordingsRoute
   '/groups': typeof GroupsRoute
+  '/matches': typeof MatchesRoute
   '/offers': typeof OffersRoute
   '/parsing-review': typeof ParsingReviewRoute
   '/requests': typeof RequestsRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/debug-recordings': typeof DebugRecordingsRoute
   '/groups': typeof GroupsRoute
+  '/matches': typeof MatchesRoute
   '/offers': typeof OffersRoute
   '/parsing-review': typeof ParsingReviewRoute
   '/requests': typeof RequestsRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/debug-recordings': typeof DebugRecordingsRoute
   '/groups': typeof GroupsRoute
+  '/matches': typeof MatchesRoute
   '/offers': typeof OffersRoute
   '/parsing-review': typeof ParsingReviewRoute
   '/requests': typeof RequestsRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/debug-recordings'
     | '/groups'
+    | '/matches'
     | '/offers'
     | '/parsing-review'
     | '/requests'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/debug-recordings'
     | '/groups'
+    | '/matches'
     | '/offers'
     | '/parsing-review'
     | '/requests'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/debug-recordings'
     | '/groups'
+    | '/matches'
     | '/offers'
     | '/parsing-review'
     | '/requests'
@@ -115,6 +127,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DebugRecordingsRoute: typeof DebugRecordingsRoute
   GroupsRoute: typeof GroupsRoute
+  MatchesRoute: typeof MatchesRoute
   OffersRoute: typeof OffersRoute
   ParsingReviewRoute: typeof ParsingReviewRoute
   RequestsRoute: typeof RequestsRoute
@@ -151,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OffersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/matches': {
+      id: '/matches'
+      path: '/matches'
+      fullPath: '/matches'
+      preLoaderRoute: typeof MatchesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/groups': {
       id: '/groups'
       path: '/groups'
@@ -179,6 +199,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DebugRecordingsRoute: DebugRecordingsRoute,
   GroupsRoute: GroupsRoute,
+  MatchesRoute: MatchesRoute,
   OffersRoute: OffersRoute,
   ParsingReviewRoute: ParsingReviewRoute,
   RequestsRoute: RequestsRoute,
