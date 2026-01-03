@@ -102,15 +102,15 @@ where
             .iter()
             .filter(|r| {
                 // Apply filters
-                if let Some(min_score) = query.min_score {
-                    if r.final_score < min_score {
-                        return false;
-                    }
+                if let Some(min_score) = query.min_score
+                    && r.final_score < min_score
+                {
+                    return false;
                 }
-                if let Some(ai_involved) = query.ai_involved {
-                    if r.ai_involved != ai_involved {
-                        return false;
-                    }
+                if let Some(ai_involved) = query.ai_involved
+                    && r.ai_involved != ai_involved
+                {
+                    return false;
                 }
                 true
             })

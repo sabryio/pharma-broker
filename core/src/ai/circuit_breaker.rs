@@ -42,18 +42,21 @@ pub enum FallbackStrategy {
     RejectAll,
 }
 
-impl FallbackStrategy {
-    /// Parse from string (for environment variable)
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+impl std::str::FromStr for FallbackStrategy {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "deterministic" | "deterministic_only" => Self::DeterministicOnly,
             "cached" | "cached_embeddings" => Self::CachedEmbeddings,
             "queue" | "queue_for_later" => Self::QueueForLater,
             "reject" | "reject_all" => Self::RejectAll,
             _ => Self::default(),
-        }
+        })
     }
+}
 
+impl FallbackStrategy {
     /// Check if this strategy allows any matching
     pub fn allows_matching(&self) -> bool {
         !matches!(self, Self::RejectAll)
@@ -123,7 +126,8 @@ impl CircuitBreakerConfig {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(2),
             fallback_strategy: std::env::var("CB_FALLBACK_STRATEGY")
-                .map(|s| FallbackStrategy::from_str(&s))
+                .ok()
+                .and_then(|s| s.parse().ok())
                 .unwrap_or_default(),
         }
     }
@@ -397,28 +401,28 @@ mod tests {
     #[test]
     fn test_fallback_strategy_from_str() {
         assert_eq!(
-            FallbackStrategy::from_str("deterministic"),
-            FallbackStrategy::DeterministicOnly
+            "deterministic".parse::<FallbackStrategy>(),
+            Ok(FallbackStrategy::DeterministicOnly)
         );
         assert_eq!(
-            FallbackStrategy::from_str("deterministic_only"),
-            FallbackStrategy::DeterministicOnly
+            "deterministic_only".parse::<FallbackStrategy>(),
+            Ok(FallbackStrategy::DeterministicOnly)
         );
         assert_eq!(
-            FallbackStrategy::from_str("cached"),
-            FallbackStrategy::CachedEmbeddings
+            "cached".parse::<FallbackStrategy>(),
+            Ok(FallbackStrategy::CachedEmbeddings)
         );
         assert_eq!(
-            FallbackStrategy::from_str("queue"),
-            FallbackStrategy::QueueForLater
+            "queue".parse::<FallbackStrategy>(),
+            Ok(FallbackStrategy::QueueForLater)
         );
         assert_eq!(
-            FallbackStrategy::from_str("reject"),
-            FallbackStrategy::RejectAll
+            "reject".parse::<FallbackStrategy>(),
+            Ok(FallbackStrategy::RejectAll)
         );
         assert_eq!(
-            FallbackStrategy::from_str("unknown"),
-            FallbackStrategy::DeterministicOnly
+            "unknown".parse::<FallbackStrategy>(),
+            Ok(FallbackStrategy::DeterministicOnly)
         );
     }
 

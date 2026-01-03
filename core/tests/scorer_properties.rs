@@ -166,7 +166,7 @@ proptest! {
         let score = scorer.quantity_score(offer_qty, request_qty);
 
         prop_assert!(
-            score >= 0.0 && score <= 1.0,
+            (0.0..=1.0).contains(&score),
             "Quantity score should be in [0.0, 1.0], got {}",
             score
         );

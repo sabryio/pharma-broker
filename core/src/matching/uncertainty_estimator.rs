@@ -17,6 +17,9 @@ use crate::domain::{Offer, Request};
 use crate::matching::fuzzy::medication_similarity;
 use crate::matching::{Scorer, Weights};
 
+/// Type alias for match with uncertainty result tuple
+pub type MatchWithUncertainty = (Offer, Request, f64, UncertaintyResult);
+
 // =============================================================================
 // Configuration
 // =============================================================================
@@ -322,10 +325,7 @@ impl UncertaintyEstimator {
     pub fn filter_certain(
         &self,
         matches: Vec<(Offer, Request, f64)>,
-    ) -> (
-        Vec<(Offer, Request, f64, UncertaintyResult)>,
-        Vec<(Offer, Request, f64, UncertaintyResult)>,
-    ) {
+    ) -> (Vec<MatchWithUncertainty>, Vec<MatchWithUncertainty>) {
         let mut certain = Vec::new();
         let mut uncertain = Vec::new();
 

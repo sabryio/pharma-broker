@@ -212,7 +212,7 @@ proptest! {
 
         let dual_score = engine.get_dual_language_score(&name1, &name2, base_score);
 
-        prop_assert!(dual_score >= 0.0 && dual_score <= 1.0,
+        prop_assert!((0.0..=1.0).contains(&dual_score),
             "Dual-language score {} should be in [0, 1] for '{}' vs '{}' with base {}",
             dual_score, name1, name2, base_score);
     }

@@ -397,8 +397,10 @@ mod tests {
 
     #[test]
     fn test_learn_from_confirmation_disabled() {
-        let mut config = AliasLearnerConfig::default();
-        config.enabled = false;
+        let config = AliasLearnerConfig {
+            enabled: false,
+            ..Default::default()
+        };
         let learner = AliasLearner::new(config);
 
         let result = learner.learn_from_confirmation(

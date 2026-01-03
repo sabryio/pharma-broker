@@ -377,12 +377,14 @@ mod tests {
 
     #[test]
     fn test_factory_enabled_model_count() {
-        let mut config = AuditorFactoryConfig::default();
-        config.models = vec![
-            ModelConfig::new("model1"),
-            ModelConfig::new("model2").disabled(),
-            ModelConfig::new("model3"),
-        ];
+        let config = AuditorFactoryConfig {
+            models: vec![
+                ModelConfig::new("model1"),
+                ModelConfig::new("model2").disabled(),
+                ModelConfig::new("model3"),
+            ],
+            ..Default::default()
+        };
 
         let factory = AuditorFactory::new(config);
         assert_eq!(factory.enabled_model_count(), 2);
