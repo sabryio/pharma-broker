@@ -9,11 +9,13 @@ pub mod arabic;
 mod audit;
 mod audit_recorder;
 mod auditor_factory;
+mod blocklist;
 mod calibration;
 mod confidence;
 mod consensus_auditor;
 mod contrastive_validator;
 mod dosage;
+mod dosage_gate;
 mod embedding_cache;
 mod engine;
 mod ensemble;
@@ -74,6 +76,12 @@ pub use confidence::{ConfidenceConfig, ConfidenceManager, ConfidenceManagerStats
 
 // --- dosage ---
 pub use dosage::{Dosage, compare_dosages, is_same_dosage, parse_dosage};
+
+// --- dosage_gate ---
+pub use dosage_gate::{DosageFlag, DosageGate, DosageGateConfig, DosageGateResult};
+
+// --- blocklist ---
+pub use blocklist::{BlocklistEntry, BlocklistError, BlocklistSeverity, MedicationBlocklist};
 
 // --- arabic ---
 pub use arabic::normalize_arabic;
