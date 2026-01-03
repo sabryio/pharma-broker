@@ -3,6 +3,7 @@
 //! These implement the traits defined in `crate::traits`.
 
 mod audit_log;
+mod auto_approve_config;
 mod feedback;
 mod group;
 mod match_queue;
@@ -18,6 +19,7 @@ mod review_queue;
 mod weight_history;
 
 pub use audit_log::SeaOrmAuditLogRepo;
+pub use auto_approve_config::SeaOrmAutoApproveConfigRepo;
 pub use feedback::SeaOrmFeedbackRepo;
 pub use group::SeaOrmGroupRepo;
 pub use match_queue::SeaOrmMatchQueueRepo;

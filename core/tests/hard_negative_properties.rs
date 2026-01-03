@@ -6,6 +6,10 @@
 //! These tests validate:
 //! - Property 11: Hard Negative Sampling
 //! - Property 19: Hard Negative Fallback
+//!
+//! Run with: cargo test --features test-hard-negative-props --test hard_negative_properties
+
+#![cfg(feature = "test-hard-negative-props")]
 
 use pharma_core::matching::{
     HardNegativeConfig, HardNegativeMiner, MedicationInfo, medication_similarity,

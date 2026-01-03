@@ -2,6 +2,10 @@
 //!
 //! Tests for queue processing and retry logic.
 //! See: docs/phases/02-reliability.md
+//!
+//! Run with: cargo test --features test-phase02 --test phase02_reliability
+
+#![cfg(feature = "test-phase02")]
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};

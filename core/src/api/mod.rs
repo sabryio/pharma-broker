@@ -21,6 +21,7 @@ pub mod reclassify;
 pub mod reparse;
 pub mod review_queue;
 pub mod routes;
+pub mod supervision;
 pub mod uncertainty;
 pub mod weights;
 

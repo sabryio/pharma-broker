@@ -17,7 +17,7 @@ use tower_http::cors::{Any, CorsLayer};
 use super::{
     audit_records, audit_trail, calibration, confidence, curation, diagnostics, embedding_cache,
     groups, handlers, match_filter, match_reviews, matching, participants, reclassify, reparse,
-    review_queue, uncertainty, weights,
+    review_queue, supervision, uncertainty, weights,
 };
 use crate::ai::PharmaParser;
 use crate::matching::{AliasLearner, MatchingEngine};
@@ -331,6 +331,39 @@ where
         .route(
             "/api/embedding-cache/embedding/{term}",
             get(embedding_cache::get_embedding::<RQ, A, MM>),
+        )
+        // AI Supervision Management
+        .route(
+            "/api/supervision/stats",
+            get(supervision::get_stats::<RQ, A, MM>),
+        )
+        .route(
+            "/api/supervision/audit",
+            get(supervision::get_audit::<RQ, A, MM>),
+        )
+        .route(
+            "/api/supervision/config",
+            get(supervision::get_config::<RQ, A, MM>),
+        )
+        .route(
+            "/api/supervision/config",
+            put(supervision::update_config::<RQ, A, MM>),
+        )
+        .route(
+            "/api/supervision/override/{id}",
+            post(supervision::override_decision::<RQ, A, MM>),
+        )
+        .route(
+            "/api/supervision/undo/{id}",
+            post(supervision::undo_approval::<RQ, A, MM>),
+        )
+        .route(
+            "/api/supervision/pause",
+            post(supervision::pause_system::<RQ, A, MM>),
+        )
+        .route(
+            "/api/supervision/resume",
+            post(supervision::resume_system::<RQ, A, MM>),
         )
         // Audit Trail Management
         .route(

@@ -444,6 +444,37 @@ pub struct CurationStats {
     pub rejected_aliases: i64,
 }
 
+// Re-export auto_approve_config model
+pub use crate::entity::auto_approve_config::Model as AutoApproveConfigModel;
+
+/// Auto-approve configuration repository trait
+/// Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
+#[async_trait]
+pub trait AutoApproveConfigRepository: Send + Sync {
+    /// Get the current configuration
+    async fn get(&self) -> Result<Option<AutoApproveConfigModel>>;
+    /// Update the configuration
+    async fn update(&self, config: &AutoApproveConfigModel) -> Result<AutoApproveConfigModel>;
+    /// Create or update the configuration (upsert)
+    async fn save(&self, config: &AutoApproveConfigModel) -> Result<AutoApproveConfigModel>;
+    /// Get the configuration by ID
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<AutoApproveConfigModel>>;
+    /// Check if auto-approval is enabled
+    async fn is_enabled(&self) -> Result<bool>;
+    /// Enable or disable auto-approval
+    async fn set_enabled(&self, enabled: bool, user_id: Option<Uuid>) -> Result<()>;
+    /// Update the confidence threshold
+    async fn set_confidence_threshold(&self, threshold: f64, user_id: Option<Uuid>) -> Result<()>;
+    /// Update category-specific thresholds
+    async fn set_category_thresholds(
+        &self,
+        thresholds: &std::collections::HashMap<String, f64>,
+        user_id: Option<Uuid>,
+    ) -> Result<()>;
+    /// Update the schedule
+    async fn set_schedule(&self, schedule: Option<String>, user_id: Option<Uuid>) -> Result<()>;
+}
+
 // ============================================================================
 // Match Review Types
 // ============================================================================

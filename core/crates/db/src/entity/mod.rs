@@ -8,6 +8,7 @@
 //! - Entity modules - Individual entity definitions
 
 pub mod audit_log;
+pub mod auto_approve_config;
 pub mod common;
 pub mod feedback_record;
 pub mod group;
@@ -27,6 +28,7 @@ pub mod weight_history;
 
 // Re-export entity types
 pub use audit_log::Entity as AuditLog;
+pub use auto_approve_config::Entity as AutoApproveConfig;
 pub use feedback_record::Entity as FeedbackRecord;
 pub use group::Entity as Group;
 pub use match_::Entity as Match;

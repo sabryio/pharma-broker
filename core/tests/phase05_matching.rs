@@ -2,6 +2,10 @@
 //!
 //! Tests for scorer, weights, and thresholds.
 //! See: docs/phases/05-matching.md
+//!
+//! Run with: cargo test --features test-phase05 --test phase05_matching
+
+#![cfg(feature = "test-phase05")]
 
 use pharma_core::matching::{DecayType, MatchAction, Weights, cosine_similarity};
 

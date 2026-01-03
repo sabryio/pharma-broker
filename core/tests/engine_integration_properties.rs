@@ -6,6 +6,10 @@
 //! These tests validate:
 //! - Property 8: Dual-Language Matching
 //! - Property 10: Class Mismatch Flagging
+//!
+//! Run with: cargo test --features test-engine-props --test engine_integration_properties
+
+#![cfg(feature = "test-engine-props")]
 
 use pharma_core::matching::{ClassMismatchResult, MatchingEngine, contains_arabic};
 use proptest::prelude::*;

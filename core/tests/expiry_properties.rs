@@ -8,6 +8,10 @@
 //! - Property 14: Near-Expiry Decay
 //! - Property 15: Shelf Life Filtering
 //! - Property 16: Missing Expiry Handling
+//!
+//! Run with: cargo test --features test-expiry-props --test expiry_properties
+
+#![cfg(feature = "test-expiry-props")]
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use pharma_core::matching::{ExpiryConfig, ExpiryScorer, ExpiryWarning};

@@ -2,6 +2,10 @@
 //!
 //! Tests for JWT authentication and authorization.
 //! See: docs/phases/09-security.md
+//!
+//! Run with: cargo test --features test-phase09 --test phase09_security
+
+#![cfg(feature = "test-phase09")]
 
 use std::time::Duration;
 

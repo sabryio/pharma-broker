@@ -7,6 +7,10 @@
 //! - Property 5: Arabic Normalization Consistency
 //! - Property 6: Arabic Phonetic Key Grouping
 //! - Property 7: Arabic-Aware Distance Selection
+//!
+//! Run with: cargo test --features test-arabic-props --test arabic_matching_properties
+
+#![cfg(feature = "test-arabic-props")]
 
 use pharma_core::matching::{
     ArabicPhoneticMatcher, FuzzyStringStrategy, arabic_string_similarity, contains_arabic,

@@ -2,6 +2,10 @@
 //!
 //! Tests for janitor cleanup worker.
 //! See: docs/phases/11-background-jobs.md
+//!
+//! Run with: cargo test --features test-phase11 --test phase11_background
+
+#![cfg(feature = "test-phase11")]
 
 use std::time::Duration;
 

@@ -2,6 +2,10 @@
 //!
 //! Tests for WebSocket events.
 //! See: docs/phases/03-features.md
+//!
+//! Run with: cargo test --features test-phase03 --test phase03_features
+
+#![cfg(feature = "test-phase03")]
 
 use tokio::sync::broadcast;
 

@@ -2,6 +2,10 @@
 //!
 //! Tests for metrics collection and health endpoints.
 //! See: docs/phases/01-observability.md
+//!
+//! Run with: cargo test --features test-phase01 --test phase01_observability
+
+#![cfg(feature = "test-phase01")]
 
 use pharma_core::metrics;
 

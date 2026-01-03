@@ -20,6 +20,11 @@ mod m20251231_000012_create_participants;
 mod m20251231_000013_create_medication_master;
 mod m20251231_000014_create_medication_aliases;
 mod m20260102_000015_create_match_audit_records;
+// AI Supervised Auto-Approve migrations
+mod m20260103_000016_add_ai_supervision_to_matches;
+mod m20260103_000017_create_supervision_audit_log;
+mod m20260103_000018_create_auto_approve_config;
+mod m20260103_000019_create_medication_pair_cooldowns;
 
 pub struct Migrator;
 
@@ -44,6 +49,11 @@ impl MigratorTrait for Migrator {
             Box::new(m20251231_000014_create_medication_aliases::Migration),
             // Match Audit Trail (Phase 2)
             Box::new(m20260102_000015_create_match_audit_records::Migration),
+            // AI Supervised Auto-Approve (Phase 3)
+            Box::new(m20260103_000016_add_ai_supervision_to_matches::Migration),
+            Box::new(m20260103_000017_create_supervision_audit_log::Migration),
+            Box::new(m20260103_000018_create_auto_approve_config::Migration),
+            Box::new(m20260103_000019_create_medication_pair_cooldowns::Migration),
         ]
     }
 }

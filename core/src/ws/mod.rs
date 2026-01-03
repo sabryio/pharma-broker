@@ -82,8 +82,89 @@ pub enum WsEvent {
         new_medication: String,
         user_id: Uuid,
     },
+    // =========================================================================
+    // AI Supervision Events (Requirements: 3.1, 3.3)
+    // =========================================================================
+    /// Match was auto-approved by AI
+    AutoApproved(AutoApproveEvent),
+    /// AI decision was overridden by human
+    AutoApproveOverridden(AutoApproveOverrideEvent),
+    /// Auto-approval was undone
+    AutoApproveUndone(AutoApproveUndoEvent),
+    /// Auto-approve system was paused
+    AutoApprovePaused(AutoApprovePauseEvent),
+    /// Auto-approve system was resumed
+    AutoApproveResumed,
+    /// Match queued for human review (borderline case)
+    QueuedForReview(QueuedForReviewEvent),
+    /// Match blocked by safety guardrails
+    AutoApproveBlocked(AutoApproveBlockedEvent),
     /// Ping message (keep-alive)
     Ping,
+}
+
+// =============================================================================
+// AI Supervision Event Payloads (Requirements: 3.1, 3.3)
+// =============================================================================
+
+/// Event payload for auto-approved matches
+#[derive(Debug, Clone, Serialize)]
+pub struct AutoApproveEvent {
+    pub match_id: Uuid,
+    pub offer_medication: String,
+    pub request_medication: String,
+    pub ai_confidence: f64,
+    pub ai_explanation: String,
+    pub is_borderline: bool,
+    pub approved_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Event payload for overridden AI decisions
+#[derive(Debug, Clone, Serialize)]
+pub struct AutoApproveOverrideEvent {
+    pub match_id: Uuid,
+    pub user_id: Uuid,
+    pub reason: String,
+    pub original_confidence: f64,
+    pub overridden_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Event payload for undone auto-approvals
+#[derive(Debug, Clone, Serialize)]
+pub struct AutoApproveUndoEvent {
+    pub match_id: Uuid,
+    pub user_id: Uuid,
+    pub undone_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Event payload for system pause
+#[derive(Debug, Clone, Serialize)]
+pub struct AutoApprovePauseEvent {
+    pub user_id: Option<Uuid>,
+    pub reason: String,
+    pub paused_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Event payload for matches queued for human review
+#[derive(Debug, Clone, Serialize)]
+pub struct QueuedForReviewEvent {
+    pub match_id: Uuid,
+    pub offer_medication: String,
+    pub request_medication: String,
+    pub ai_confidence: f64,
+    pub ai_explanation: String,
+    pub is_borderline: bool,
+    pub queued_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Event payload for blocked matches
+#[derive(Debug, Clone, Serialize)]
+pub struct AutoApproveBlockedEvent {
+    pub match_id: Uuid,
+    pub offer_medication: String,
+    pub request_medication: String,
+    pub block_reason: String,
+    pub blocked_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// WebSocket handler with configurable authentication
@@ -259,4 +340,124 @@ async fn handle_socket<RQ, A, MM>(
     // Decrement connection count
     state.active_connections.fetch_sub(1, Ordering::SeqCst);
     info!("🔌 WebSocket client disconnected");
+}
+
+// =============================================================================
+// Tests for AI Supervision Events
+// =============================================================================
+
+#[cfg(test)]
+mod supervision_event_tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn test_auto_approve_event_serialization() {
+        let event = WsEvent::AutoApproved(AutoApproveEvent {
+            match_id: Uuid::new_v4(),
+            offer_medication: "Panadol 500mg".to_string(),
+            request_medication: "Panadol 500mg".to_string(),
+            ai_confidence: 0.95,
+            ai_explanation: "High confidence match".to_string(),
+            is_borderline: false,
+            approved_at: Utc::now(),
+        });
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"AutoApproved\""));
+        assert!(json.contains("\"ai_confidence\":0.95"));
+        assert!(json.contains("\"is_borderline\":false"));
+    }
+
+    #[test]
+    fn test_auto_approve_override_event_serialization() {
+        let event = WsEvent::AutoApproveOverridden(AutoApproveOverrideEvent {
+            match_id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            reason: "Incorrect medication match".to_string(),
+            original_confidence: 0.85,
+            overridden_at: Utc::now(),
+        });
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"AutoApproveOverridden\""));
+        assert!(json.contains("\"reason\":\"Incorrect medication match\""));
+    }
+
+    #[test]
+    fn test_auto_approve_undo_event_serialization() {
+        let event = WsEvent::AutoApproveUndone(AutoApproveUndoEvent {
+            match_id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            undone_at: Utc::now(),
+        });
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"AutoApproveUndone\""));
+    }
+
+    #[test]
+    fn test_auto_approve_paused_event_serialization() {
+        let event = WsEvent::AutoApprovePaused(AutoApprovePauseEvent {
+            user_id: Some(Uuid::new_v4()),
+            reason: "High override rate detected".to_string(),
+            paused_at: Utc::now(),
+        });
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"AutoApprovePaused\""));
+        assert!(json.contains("\"reason\":\"High override rate detected\""));
+    }
+
+    #[test]
+    fn test_auto_approve_resumed_event_serialization() {
+        let event = WsEvent::AutoApproveResumed;
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"AutoApproveResumed\""));
+    }
+
+    #[test]
+    fn test_queued_for_review_event_serialization() {
+        let event = WsEvent::QueuedForReview(QueuedForReviewEvent {
+            match_id: Uuid::new_v4(),
+            offer_medication: "Aspirin 100mg".to_string(),
+            request_medication: "Aspirin 100mg".to_string(),
+            ai_confidence: 0.78,
+            ai_explanation: "Borderline confidence".to_string(),
+            is_borderline: true,
+            queued_at: Utc::now(),
+        });
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"QueuedForReview\""));
+        assert!(json.contains("\"is_borderline\":true"));
+    }
+
+    #[test]
+    fn test_auto_approve_blocked_event_serialization() {
+        let event = WsEvent::AutoApproveBlocked(AutoApproveBlockedEvent {
+            match_id: Uuid::new_v4(),
+            offer_medication: "Metformin 500mg".to_string(),
+            request_medication: "Metoprolol 50mg".to_string(),
+            block_reason: "Blocklisted medication pair".to_string(),
+            blocked_at: Utc::now(),
+        });
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"AutoApproveBlocked\""));
+        assert!(json.contains("\"block_reason\":\"Blocklisted medication pair\""));
+    }
+
+    #[test]
+    fn test_auto_approve_paused_without_user_id() {
+        let event = WsEvent::AutoApprovePaused(AutoApprovePauseEvent {
+            user_id: None,
+            reason: "Automatic pause due to anomaly".to_string(),
+            paused_at: Utc::now(),
+        });
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"user_id\":null"));
+    }
 }

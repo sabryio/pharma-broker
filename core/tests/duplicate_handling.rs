@@ -5,6 +5,10 @@
 //! 1. Duplicate requests are not enqueued for matching
 //! 2. Non-active requests are skipped during match processing
 //! 3. Cross-participant duplicates don't create redundant matches
+//!
+//! Run with: cargo test --features test-phase05 --test duplicate_handling
+
+#![cfg(feature = "test-phase05")]
 
 use chrono::Utc;
 use rust_decimal::Decimal;

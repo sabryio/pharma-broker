@@ -9,6 +9,10 @@
 //! - Property 17: Recency Exponential Decay
 //! - Property 18: Category-Specific Decay
 //! - Property 20: Weight Sum Validation
+//!
+//! Run with: cargo test --features test-scorer-props --test scorer_properties
+
+#![cfg(feature = "test-scorer-props")]
 
 use chrono::{DateTime, Duration, Utc};
 use pharma_core::matching::{MedicationCategory, Scorer, Weights};

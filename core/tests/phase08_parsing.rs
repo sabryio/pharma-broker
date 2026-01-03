@@ -2,6 +2,10 @@
 //!
 //! Tests for batch processing configuration.
 //! See: docs/phases/08-parsing.md
+//!
+//! Run with: cargo test --features test-phase08 --test phase08_parsing
+
+#![cfg(feature = "test-phase08")]
 
 use std::time::Duration;
 

@@ -2,6 +2,10 @@
 //!
 //! Tests for Telegram and Email notifiers.
 //! See: docs/phases/10-notifications.md
+//!
+//! Run with: cargo test --features test-phase10 --test phase10_notifications
+
+#![cfg(feature = "test-phase10")]
 
 use chrono::Utc;
 

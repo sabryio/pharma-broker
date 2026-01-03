@@ -9,6 +9,7 @@ pub mod arabic;
 mod audit;
 mod audit_recorder;
 mod auditor_factory;
+mod auto_approve;
 mod blocklist;
 mod calibration;
 mod confidence;
@@ -31,10 +32,12 @@ mod hybrid_filter;
 mod learner;
 mod medication_resolver;
 mod reviewer;
+mod safety_guardrails;
 mod scheduler;
 mod score_types;
 mod scorer;
 mod service;
+mod supervision_audit;
 mod thresholds;
 mod uncertainty_estimator;
 mod warm_start;
@@ -209,6 +212,29 @@ pub use audit_recorder::{
 pub use uncertainty_estimator::{
     EnsembleUncertainty, EnsembleUncertaintyResult, UncertaintyConfig, UncertaintyEstimator,
     UncertaintyResult,
+};
+
+// --- auto_approve ---
+pub use auto_approve::{
+    AIEvaluationData, AIEvaluationError, AIEvaluationRepository, AIStatus, AutoApproveAction,
+    AutoApproveConfig, AutoApproveError, AutoApproveProcessor, AutoApproveResult, AutoApproveStats,
+    ConfigValidationError, FeedbackEvent, FeedbackEventType, InMemoryAIEvaluationRepository,
+    MAX_CONFIDENCE_THRESHOLD, MIN_CONFIDENCE_THRESHOLD, OverrideResult, ProcessingMetrics,
+    RetryInfo, SystemStatus, UndoResult,
+};
+
+// --- safety_guardrails ---
+pub use safety_guardrails::{
+    AnomalyDetector, AnomalyDetectorConfig, CooldownEntry, CooldownTracker, OverrideTracker,
+    OverrideTrackerConfig, PauseReason, SafetyCheckResult, SafetyGuardrails,
+    SafetyGuardrailsConfig,
+};
+
+// --- supervision_audit ---
+pub use supervision_audit::{
+    MemorySupervisionAuditRepository, SupervisionAuditConfig, SupervisionAuditEntry,
+    SupervisionAuditError, SupervisionAuditFilter, SupervisionAuditRepository,
+    SupervisionAuditTrail, SupervisionEventType,
 };
 
 // =============================================================================

@@ -2,6 +2,10 @@
 //!
 //! Comprehensive tests covering the full message processing flow.
 //! See: docs/phases/12-e2e-testing.md
+//!
+//! Run with: cargo test --features test-phase12 --test phase12_e2e
+
+#![cfg(feature = "test-phase12")]
 
 use chrono::Utc;
 use rust_decimal::Decimal;

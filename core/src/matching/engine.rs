@@ -1737,6 +1737,102 @@ impl MatchingEngine {
             "Loaded medication classes into index"
         );
     }
+
+    // =========================================================================
+    // AI Supervision Auto-Approve Methods
+    // Requirements: 3.2, 4.1, 4.2, 5.1
+    // =========================================================================
+
+    /// Get auto-approve statistics
+    /// Requirements: 3.2
+    pub async fn get_auto_approve_stats(&self) -> Result<super::AutoApproveStats, String> {
+        // Return default stats for now - will be connected to AutoApproveProcessor in Task 17
+        Ok(super::AutoApproveStats::default())
+    }
+
+    /// Get auto-approve configuration
+    /// Requirements: 5.1
+    pub async fn get_auto_approve_config(&self) -> Result<super::AutoApproveConfig, String> {
+        // Return default config for now - will be connected to AutoApproveProcessor in Task 17
+        Ok(super::AutoApproveConfig::default())
+    }
+
+    /// Update auto-approve configuration
+    /// Requirements: 5.1
+    pub async fn update_auto_approve_config(
+        &self,
+        _config: super::AutoApproveConfig,
+    ) -> Result<(), String> {
+        // Stub implementation - will be connected to AutoApproveProcessor in Task 17
+        tracing::info!("Auto-approve config update requested (stub)");
+        Ok(())
+    }
+
+    /// Get supervision audit log
+    /// Requirements: 2.3
+    pub async fn get_supervision_audit_log(
+        &self,
+        _filter: &super::SupervisionAuditFilter,
+    ) -> Result<Vec<super::SupervisionAuditEntry>, String> {
+        // Return empty list for now - will be connected to SupervisionAuditTrail in Task 17
+        Ok(Vec::new())
+    }
+
+    /// Override an auto-approve decision
+    /// Requirements: 4.1
+    pub async fn override_auto_approve_decision(
+        &self,
+        match_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        reason: &str,
+    ) -> Result<(), String> {
+        // Stub implementation - will be connected to AutoApproveProcessor in Task 17
+        tracing::info!(
+            match_id = %match_id,
+            user_id = %user_id,
+            reason = %reason,
+            "Auto-approve override requested (stub)"
+        );
+        Ok(())
+    }
+
+    /// Undo an auto-approval
+    /// Requirements: 4.2
+    pub async fn undo_auto_approval(
+        &self,
+        match_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) -> Result<(), String> {
+        // Stub implementation - will be connected to AutoApproveProcessor in Task 17
+        tracing::info!(
+            match_id = %match_id,
+            user_id = %user_id,
+            "Auto-approve undo requested (stub)"
+        );
+        Ok(())
+    }
+
+    /// Pause the auto-approve system
+    pub async fn pause_auto_approve(
+        &self,
+        user_id: uuid::Uuid,
+        reason: &str,
+    ) -> Result<(), String> {
+        // Stub implementation - will be connected to AutoApproveProcessor in Task 17
+        tracing::info!(
+            user_id = %user_id,
+            reason = %reason,
+            "Auto-approve pause requested (stub)"
+        );
+        Ok(())
+    }
+
+    /// Resume the auto-approve system
+    pub async fn resume_auto_approve(&self) -> Result<(), String> {
+        // Stub implementation - will be connected to AutoApproveProcessor in Task 17
+        tracing::info!("Auto-approve resume requested (stub)");
+        Ok(())
+    }
 }
 
 // =============================================================================
