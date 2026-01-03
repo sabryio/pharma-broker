@@ -266,6 +266,8 @@ impl UncertaintyEstimator {
             quantity: quantity / sum,
             price: price / sum,
             recency: recency / sum,
+            expiry: self.base_weights.expiry,
+            supplier: self.base_weights.supplier,
             ai_logic: self.base_weights.ai_logic,
         }
     }

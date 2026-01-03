@@ -11,20 +11,15 @@ use std::io;
 use std::path::Path;
 
 /// Severity level for blocklist entries
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BlocklistSeverity {
     /// Potentially fatal confusion (e.g., Metformin/Metoprolol)
     Critical,
     /// Serious adverse effects possible
+    #[default]
     High,
     /// Significant clinical difference
     Medium,
-}
-
-impl Default for BlocklistSeverity {
-    fn default() -> Self {
-        Self::High
-    }
 }
 
 /// A blocklist entry representing a pair of medications that must not be matched

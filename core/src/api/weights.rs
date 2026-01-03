@@ -44,6 +44,10 @@ pub struct UpdateWeightsRequest {
     pub quantity: f64,
     pub price: f64,
     pub recency: f64,
+    #[serde(default)]
+    pub expiry: f64,
+    #[serde(default)]
+    pub supplier: f64,
     pub ai_logic: f64,
     #[serde(default)]
     pub reason: Option<String>,
@@ -146,7 +150,14 @@ where
     };
 
     // Validate weights sum approximately to 1.0
-    let sum = req.medication + req.dosage + req.quantity + req.price + req.recency + req.ai_logic;
+    let sum = req.medication
+        + req.dosage
+        + req.quantity
+        + req.price
+        + req.recency
+        + req.expiry
+        + req.supplier
+        + req.ai_logic;
     if (sum - 1.0).abs() > 0.01 {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -160,6 +171,8 @@ where
         || req.quantity < 0.0
         || req.price < 0.0
         || req.recency < 0.0
+        || req.expiry < 0.0
+        || req.supplier < 0.0
         || req.ai_logic < 0.0
     {
         return Err((
@@ -174,6 +187,8 @@ where
         quantity: req.quantity,
         price: req.price,
         recency: req.recency,
+        expiry: req.expiry,
+        supplier: req.supplier,
         ai_logic: req.ai_logic,
     };
 

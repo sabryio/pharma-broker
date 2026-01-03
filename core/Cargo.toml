@@ -156,6 +156,7 @@ tokio-test = "0.4.4"
 rstest = "0.26.1"
 testcontainers = { version = "0.26.3", features = ["reusable-containers"] }
 testcontainers-modules = { version = "0.14.0", features = ["postgres"] }
+proptest = "1.5.0"
 
 [build-dependencies]
 tonic-prost-build = "0.14.2"

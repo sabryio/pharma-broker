@@ -3,10 +3,24 @@
 //! Ported from legacy/matching/scorer.go
 
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 use std::sync::RwLock;
 
 use super::{DecayType, Thresholds, Weights, compare_dosages, parse_dosage};
 use crate::domain::{ConfidenceBand, Offer, Request};
+
+/// Medication category for recency decay configuration
+/// Requirements: 6.4
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum MedicationCategory {
+    /// Urgent medications - shorter half-life (faster decay)
+    /// Examples: antibiotics, emergency medications
+    Urgent,
+    /// Stable medications - longer half-life (slower decay)
+    /// Examples: chronic condition medications, vitamins
+    #[default]
+    Stable,
+}
 
 /// Match score breakdown
 /// Ported from Go: MatchScore struct (scorer.go:15-24)
@@ -32,6 +46,12 @@ pub struct Scorer {
     decay_type: RwLock<DecayType>,
     min_medication_score: RwLock<f64>,
     medication_gate_enabled: RwLock<bool>,
+    /// Minimum quantity fulfillment ratio (default: 0.5)
+    /// Requirements: 4.1, 4.4
+    min_quantity_fulfillment: RwLock<f64>,
+    /// Category-specific half-life overrides
+    /// Requirements: 6.4
+    category_half_lives: RwLock<HashMap<MedicationCategory, f64>>,
 }
 
 impl Default for Scorer {
@@ -43,18 +63,27 @@ impl Default for Scorer {
 impl Scorer {
     /// Create a new scorer with optional custom weights and thresholds
     pub fn new(weights: Option<Weights>, thresholds: Option<Thresholds>) -> Self {
+        // Initialize category-specific half-lives
+        // Requirements 6.4: Urgent medications decay faster than stable
+        let mut category_half_lives = HashMap::new();
+        category_half_lives.insert(MedicationCategory::Urgent, 24.0); // 24 hours for urgent
+        category_half_lives.insert(MedicationCategory::Stable, 72.0); // 72 hours for stable
+
         Self {
             weights: RwLock::new(weights.unwrap_or_default()),
             thresholds: RwLock::new(thresholds.unwrap_or_default()),
-            recency_half_life: RwLock::new(24.0), // 24 hours default
+            recency_half_life: RwLock::new(72.0), // 72 hours default (Requirements 6.1)
             decay_type: RwLock::new(DecayType::Exponential),
             min_medication_score: RwLock::new(0.7), // Raised from 0.5 to reduce false positives
             medication_gate_enabled: RwLock::new(true),
+            min_quantity_fulfillment: RwLock::new(0.5), // 50% minimum (Requirements 4.1)
+            category_half_lives: RwLock::new(category_half_lives),
         }
     }
 
-    /// Calculate quantity score
+    /// Calculate quantity score with minimum fulfillment threshold
     /// Ported from Go: Scorer.QuantityScore (scorer.go:65-95)
+    /// Updated per Requirements 4.1, 4.2, 4.3, 4.4
     pub fn quantity_score(&self, offer_qty: f64, request_qty: f64) -> f64 {
         // Handle edge cases
         if request_qty <= 0.0 {
@@ -65,14 +94,32 @@ impl Scorer {
         }
 
         let ratio = offer_qty / request_qty;
+        let min_fulfillment = *self.min_quantity_fulfillment.read().unwrap();
 
-        // Perfect score within ±10% tolerance or over-supply
-        if ratio >= 0.9 {
+        // Requirements 4.1: Return 0.0 when ratio < min_quantity_fulfillment (default 0.5)
+        if ratio < min_fulfillment {
+            return 0.0;
+        }
+
+        // Requirements 4.3: Cap at 1.0 when offer exceeds request
+        if ratio >= 1.0 {
             return 1.0;
         }
 
-        // Partial fulfillment - return ratio
+        // Requirements 4.2: Proportional score between min_fulfillment and 1.0
+        // Map [min_fulfillment, 1.0] to [min_fulfillment, 1.0] (linear)
         ratio
+    }
+
+    /// Set minimum quantity fulfillment threshold
+    /// Requirements: 4.4
+    pub fn set_min_quantity_fulfillment(&self, threshold: f64) {
+        *self.min_quantity_fulfillment.write().unwrap() = threshold.clamp(0.0, 1.0);
+    }
+
+    /// Get minimum quantity fulfillment threshold
+    pub fn get_min_quantity_fulfillment(&self) -> f64 {
+        *self.min_quantity_fulfillment.read().unwrap()
     }
 
     /// Calculate price score
@@ -151,6 +198,39 @@ impl Scorer {
                 0.5_f64.powf(age_hours / half_life_hours)
             }
         }
+    }
+
+    /// Calculate recency score for a specific medication category
+    /// Requirements: 6.4 - Different decay rates per medication category
+    pub fn recency_score_for_category(
+        &self,
+        created_at: DateTime<Utc>,
+        category: MedicationCategory,
+    ) -> f64 {
+        let half_life = self.get_category_half_life(category);
+        self.recency_score_with_half_life(created_at, half_life)
+    }
+
+    /// Get the half-life for a specific medication category
+    /// Requirements: 6.4
+    pub fn get_category_half_life(&self, category: MedicationCategory) -> f64 {
+        let category_half_lives = self.category_half_lives.read().unwrap();
+        category_half_lives
+            .get(&category)
+            .copied()
+            .unwrap_or_else(|| *self.recency_half_life.read().unwrap())
+    }
+
+    /// Set the half-life for a specific medication category
+    /// Requirements: 6.4
+    pub fn set_category_half_life(&self, category: MedicationCategory, half_life_hours: f64) {
+        let mut category_half_lives = self.category_half_lives.write().unwrap();
+        category_half_lives.insert(category, half_life_hours.max(1.0)); // Minimum 1 hour
+    }
+
+    /// Get all category half-lives
+    pub fn get_all_category_half_lives(&self) -> HashMap<MedicationCategory, f64> {
+        self.category_half_lives.read().unwrap().clone()
     }
 
     /// Set decay type
@@ -285,16 +365,17 @@ mod tests {
     use rstest::rstest;
 
     // Ported from Go: TestQuantityScore (scorer_test.go:11-53)
+    // Updated for new minimum fulfillment threshold (0.5)
     #[rstest]
     #[case(10.0, 10.0, 1.0)] // exact match
-    #[case(20.0, 10.0, 1.0)] // offer exceeds request
-    #[case(100.0, 10.0, 1.0)] // large surplus
-    #[case(9.0, 10.0, 1.0)] // 90% (within tolerance)
-    #[case(9.5, 10.0, 1.0)] // 95% (within tolerance)
-    #[case(8.9, 10.0, 0.89)] // 89% (below tolerance)
+    #[case(20.0, 10.0, 1.0)] // offer exceeds request (capped at 1.0)
+    #[case(100.0, 10.0, 1.0)] // large surplus (capped at 1.0)
+    #[case(9.0, 10.0, 0.9)] // 90% fulfillment
+    #[case(9.5, 10.0, 0.95)] // 95% fulfillment
     #[case(8.0, 10.0, 0.8)] // 80% partial
-    #[case(5.0, 10.0, 0.5)] // 50% partial
-    #[case(2.5, 10.0, 0.25)] // 25% partial
+    #[case(5.0, 10.0, 0.5)] // 50% - at threshold
+    #[case(4.9, 10.0, 0.0)] // 49% - below threshold, returns 0.0
+    #[case(2.5, 10.0, 0.0)] // 25% - below threshold, returns 0.0
     #[case(10.0, 0.0, 1.0)] // zero request
     #[case(0.0, 10.0, 0.0)] // zero offer
     #[case(0.0, 0.0, 1.0)] // both zero
@@ -307,6 +388,27 @@ mod tests {
             result,
             expected
         );
+    }
+
+    #[test]
+    fn test_quantity_score_configurable_threshold() {
+        let scorer = Scorer::default();
+
+        // Default threshold is 0.5
+        assert!((scorer.get_min_quantity_fulfillment() - 0.5).abs() < 0.001);
+
+        // 40% should fail with default threshold
+        assert!((scorer.quantity_score(4.0, 10.0) - 0.0).abs() < 0.01);
+
+        // Change threshold to 0.3
+        scorer.set_min_quantity_fulfillment(0.3);
+        assert!((scorer.get_min_quantity_fulfillment() - 0.3).abs() < 0.001);
+
+        // Now 40% should pass
+        assert!((scorer.quantity_score(4.0, 10.0) - 0.4).abs() < 0.01);
+
+        // But 25% should still fail
+        assert!((scorer.quantity_score(2.5, 10.0) - 0.0).abs() < 0.01);
     }
 
     // Ported from Go: TestPriceScore (scorer_test.go:56-100)
@@ -352,9 +454,11 @@ mod tests {
         let new_weights = Weights {
             medication: 0.6,
             dosage: 0.1,
-            quantity: 0.2,
+            quantity: 0.1,
             price: 0.05,
             recency: 0.05,
+            expiry: 0.05,
+            supplier: 0.05,
             ai_logic: 0.0,
         };
 
@@ -362,5 +466,97 @@ mod tests {
         let got = scorer.get_weights();
 
         assert!((got.medication - 0.6).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_category_half_life_defaults() {
+        let scorer = Scorer::default();
+
+        // Urgent should have shorter half-life than stable
+        let urgent_half_life = scorer.get_category_half_life(MedicationCategory::Urgent);
+        let stable_half_life = scorer.get_category_half_life(MedicationCategory::Stable);
+
+        assert!(
+            urgent_half_life < stable_half_life,
+            "Urgent half-life ({}) should be less than stable half-life ({})",
+            urgent_half_life,
+            stable_half_life
+        );
+
+        // Check default values
+        assert!(
+            (urgent_half_life - 24.0).abs() < 0.001,
+            "Urgent default should be 24 hours"
+        );
+        assert!(
+            (stable_half_life - 72.0).abs() < 0.001,
+            "Stable default should be 72 hours"
+        );
+    }
+
+    #[test]
+    fn test_category_half_life_configurable() {
+        let scorer = Scorer::default();
+
+        // Change urgent half-life
+        scorer.set_category_half_life(MedicationCategory::Urgent, 12.0);
+        assert!((scorer.get_category_half_life(MedicationCategory::Urgent) - 12.0).abs() < 0.001);
+
+        // Change stable half-life
+        scorer.set_category_half_life(MedicationCategory::Stable, 96.0);
+        assert!((scorer.get_category_half_life(MedicationCategory::Stable) - 96.0).abs() < 0.001);
+
+        // Minimum enforcement (1 hour)
+        scorer.set_category_half_life(MedicationCategory::Urgent, 0.5);
+        assert!((scorer.get_category_half_life(MedicationCategory::Urgent) - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_recency_score_for_category() {
+        use chrono::Duration;
+
+        let scorer = Scorer::default();
+        let now = Utc::now();
+
+        // Create an offer that's 24 hours old
+        let created_at = now - Duration::hours(24);
+
+        // For urgent (24h half-life), score should be ~0.5
+        let urgent_score =
+            scorer.recency_score_for_category(created_at, MedicationCategory::Urgent);
+        assert!(
+            (urgent_score - 0.5).abs() < 0.05,
+            "Urgent score at 24h should be ~0.5, got {}",
+            urgent_score
+        );
+
+        // For stable (72h half-life), score should be ~0.79 (0.5^(24/72) = 0.5^0.333)
+        let stable_score =
+            scorer.recency_score_for_category(created_at, MedicationCategory::Stable);
+        let expected_stable = 0.5_f64.powf(24.0 / 72.0);
+        assert!(
+            (stable_score - expected_stable).abs() < 0.05,
+            "Stable score at 24h should be ~{}, got {}",
+            expected_stable,
+            stable_score
+        );
+
+        // Urgent should decay faster (lower score for same age)
+        assert!(
+            urgent_score < stable_score,
+            "Urgent score ({}) should be less than stable score ({}) for same age",
+            urgent_score,
+            stable_score
+        );
+    }
+
+    #[test]
+    fn test_get_all_category_half_lives() {
+        let scorer = Scorer::default();
+        let half_lives = scorer.get_all_category_half_lives();
+
+        assert!(half_lives.contains_key(&MedicationCategory::Urgent));
+        assert!(half_lives.contains_key(&MedicationCategory::Stable));
+        assert_eq!(half_lives.len(), 2);
     }
 }

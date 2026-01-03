@@ -19,15 +19,17 @@ use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use super::{
-    ABTestConfig, ABTestManager, ABTestResult, AIClient, AIReviewer, AuditRecorder, AuditTrail,
-    AuditTrailConfig, AutoActionHandler, CalibrationConfig, CalibrationReport,
-    ConfidenceCalibrator, ConfidenceConfig, ConfidenceManager, ConfidenceManagerStats,
-    EmbeddingCache, EmbeddingCacheStatsSnapshot, HistoricalLearner, HistoricalLearnerStats,
-    HistoricalLearningConfig, JobStatus, LearnerError, MatchAction, MatchFilter, MatchFilterConfig,
-    MatchFilterStatsSnapshot, MatchScore, MedicationAffinity, OutlierDetector,
-    OutlierDetectorConfig, PerformanceMetrics, ReviewResult, ReviewStatus, SchedulerConfig,
-    SchedulerStatus, Scorer, UncertaintyConfig, UncertaintyEstimator, WarmStartConfig,
-    WarmStartManager, WeightLearner, Weights,
+    ABTestConfig, ABTestManager, ABTestResult, AIClient, AIReviewer, ArabicPhoneticMatcher,
+    AuditRecorder, AuditTrail, AuditTrailConfig, AutoActionHandler, CalibrationConfig,
+    CalibrationReport, ConfidenceCalibrator, ConfidenceConfig, ConfidenceManager,
+    ConfidenceManagerStats, DosageFlag, DosageGate, DosageGateConfig, DosageGateResult,
+    EmbeddingCache, EmbeddingCacheStatsSnapshot, ExpiryConfig, ExpiryResult, ExpiryScorer,
+    HardNegativeIndex, HistoricalLearner, HistoricalLearnerStats, HistoricalLearningConfig,
+    JobStatus, LearnerError, MatchAction, MatchFilter, MatchFilterConfig, MatchFilterStatsSnapshot,
+    MatchScore, MedicationAffinity, MedicationBlocklist, OutlierDetector, OutlierDetectorConfig,
+    PerformanceMetrics, ReviewResult, ReviewStatus, SchedulerConfig, SchedulerStatus, Scorer,
+    UncertaintyConfig, UncertaintyEstimator, WarmStartConfig, WarmStartManager, WeightLearner,
+    Weights, contains_arabic,
 };
 
 /// Runtime state for the learning scheduler job
@@ -76,6 +78,62 @@ pub struct MatchingEngineConfig {
     pub audit_trail: AuditTrailConfig,
     /// Historical learning settings
     pub historical: HistoricalLearningConfig,
+    /// Dosage gate settings (Requirements 1.1, 1.3, 1.4)
+    pub dosage_gate: DosageGateConfig,
+    /// Expiry scorer settings (Requirements 5.1, 5.2, 5.4, 5.5)
+    pub expiry: ExpiryConfig,
+}
+
+/// Result of class mismatch detection (Requirement 3.2)
+///
+/// When embedding similarity is high (>0.8) but therapeutic classes differ,
+/// this indicates a potentially suspicious match that should be flagged for review.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct ClassMismatchResult {
+    /// Whether a class mismatch was detected
+    pub is_mismatch: bool,
+    /// The therapeutic class of the offer medication (if known)
+    pub offer_class: Option<String>,
+    /// The therapeutic class of the request medication (if known)
+    pub request_class: Option<String>,
+    /// Whether this match should be flagged as suspicious
+    pub suspicious: bool,
+    /// Reason for the suspicious flag (if any)
+    pub reason: Option<String>,
+}
+
+impl ClassMismatchResult {
+    /// Create a result indicating no mismatch
+    pub fn no_mismatch() -> Self {
+        Self::default()
+    }
+
+    /// Create a result indicating a class mismatch
+    pub fn mismatch(offer_class: Option<String>, request_class: Option<String>) -> Self {
+        let reason = match (&offer_class, &request_class) {
+            (Some(oc), Some(rc)) => Some(format!(
+                "High embedding similarity but different therapeutic classes: '{}' vs '{}'",
+                oc, rc
+            )),
+            (Some(oc), None) => Some(format!(
+                "High embedding similarity but request medication has unknown class (offer: '{}')",
+                oc
+            )),
+            (None, Some(rc)) => Some(format!(
+                "High embedding similarity but offer medication has unknown class (request: '{}')",
+                rc
+            )),
+            (None, None) => None,
+        };
+
+        Self {
+            is_mismatch: true,
+            offer_class,
+            request_class,
+            suspicious: true,
+            reason,
+        }
+    }
 }
 
 /// Unified matching engine orchestrating all components
@@ -106,6 +164,16 @@ pub struct MatchingEngine {
     audit_recorder: AuditRecorder,
     /// Uncertainty estimator
     uncertainty_estimator: UncertaintyEstimator,
+    /// Dosage gate for safety validation (Requirements 1.1, 1.3, 1.4)
+    dosage_gate: RwLock<DosageGate>,
+    /// Medication blocklist for dangerous pairs (Requirements 3.1, 3.5)
+    blocklist: RwLock<MedicationBlocklist>,
+    /// Expiry scorer for expiry date validation (Requirements 5.1, 5.2, 5.4, 5.5)
+    expiry_scorer: RwLock<ExpiryScorer>,
+    /// Arabic phonetic matcher for dual-language support (Requirements 2.5)
+    arabic_matcher: ArabicPhoneticMatcher,
+    /// Therapeutic class index for class mismatch detection (Requirement 3.2)
+    class_index: RwLock<HardNegativeIndex>,
     /// Configuration
     config: RwLock<MatchingEngineConfig>,
     /// Current sample count for warm start
@@ -152,6 +220,17 @@ impl MatchingEngine {
         let uncertainty_estimator =
             UncertaintyEstimator::new(UncertaintyConfig::from_env(), config.weights.clone());
 
+        // Initialize new safety components (Requirements 1.1, 3.1, 5.1)
+        let dosage_gate = RwLock::new(DosageGate::new(config.dosage_gate.clone()));
+        let blocklist = RwLock::new(MedicationBlocklist::with_defaults());
+        let expiry_scorer = RwLock::new(ExpiryScorer::new(config.expiry.clone()));
+
+        // Initialize Arabic phonetic matcher for dual-language support (Requirement 2.5)
+        let arabic_matcher = ArabicPhoneticMatcher::new();
+
+        // Initialize therapeutic class index for class mismatch detection (Requirement 3.2)
+        let class_index = RwLock::new(HardNegativeIndex::new());
+
         let ai_client = Arc::new(AIClient::from_env());
         let ai_reviewer = Arc::new(AIReviewer::new(ai_client.clone()));
 
@@ -169,6 +248,11 @@ impl MatchingEngine {
             historical_learner,
             audit_recorder,
             uncertainty_estimator,
+            dosage_gate,
+            blocklist,
+            expiry_scorer,
+            arabic_matcher,
+            class_index,
             config: RwLock::new(config),
             sample_count: RwLock::new(0),
             scheduler_handle: RwLock::new(None),
@@ -202,7 +286,7 @@ impl MatchingEngine {
     // =========================================================================
 
     /// Score a match between offer and request
-    /// Uses: Scorer + WarmStart + ABTest + AutoAction + ConfidenceManager + HistoricalLearner
+    /// Uses: Blocklist + Scorer + DosageGate + ExpiryScorer + WarmStart + ABTest + AutoAction + ConfidenceManager + HistoricalLearner
     pub async fn score_match(
         &self,
         offer: &Offer,
@@ -210,6 +294,32 @@ impl MatchingEngine {
         medication_score: f64,
         user_id: Option<&str>,
     ) -> (MatchScore, MatchAction) {
+        // 1. Check blocklist first - return 0.0 if blocked (Requirement 3.5)
+        {
+            let blocklist = self.blocklist.read().await;
+            if let Some(entry) = blocklist.is_blocked(&offer.medication, &request.medication) {
+                tracing::warn!(
+                    offer_med = %offer.medication,
+                    request_med = %request.medication,
+                    reason = %entry.reason,
+                    severity = ?entry.severity,
+                    "Blocked medication pair detected - returning zero score"
+                );
+                let score = MatchScore {
+                    total: 0.0,
+                    medication_score,
+                    dosage_score: 0.0,
+                    quantity_score: 0.0,
+                    price_score: 0.0,
+                    recency_score: 0.0,
+                    ai_logic_score: 0.0,
+                    confidence: crate::domain::ConfidenceBand::None,
+                    breakdown: "Blocked medication pair - zero score".to_string(),
+                };
+                return (score, MatchAction::Ignore);
+            }
+        }
+
         // Get weights (consider A/B test if user_id provided)
         let weights = self.get_weights_for_scoring(user_id).await;
 
@@ -222,10 +332,58 @@ impl MatchingEngine {
         // Update scorer with effective weights
         self.scorer.update_weights(effective_weights);
 
+        // Apply dual-language scoring for Arabic medication names (Requirement 2.5)
+        let effective_medication_score = self.compute_dual_language_score(
+            &offer.medication,
+            &request.medication,
+            medication_score,
+        );
+
         // Score the match
         let mut score = self
             .scorer
-            .score_match(offer, request, medication_score, None);
+            .score_match(offer, request, effective_medication_score, None);
+
+        // 2. Apply dosage gate evaluation (Requirements 1.1, 1.3, 1.4)
+        let dosage_gate = self.dosage_gate.read().await;
+        let dosage_gate_result = dosage_gate.evaluate(offer, request, score.dosage_score);
+        if !dosage_gate_result.passed {
+            score.total = dosage_gate.apply_to_score(score.total, &dosage_gate_result);
+            tracing::debug!(
+                offer_med = %offer.medication,
+                request_med = %request.medication,
+                dosage_score = score.dosage_score,
+                capped_score = score.total,
+                flags = ?dosage_gate_result.flags,
+                "Dosage gate triggered - score capped"
+            );
+        }
+
+        // 3. Apply expiry scoring (Requirements 5.1, 5.2, 5.4, 5.5)
+        // Drop dosage_gate lock before acquiring expiry_scorer lock
+        drop(dosage_gate);
+        let expiry_scorer = self.expiry_scorer.read().await;
+        let expiry_result = expiry_scorer.score_naive_date(offer.expiry_date, Utc::now());
+        if expiry_result.is_expired {
+            // Expired offers get zero score
+            score.total = 0.0;
+            tracing::warn!(
+                offer_id = %offer.id,
+                days_past = ?expiry_result.days_until_expiry,
+                "Expired offer detected - returning zero score"
+            );
+        } else if expiry_result.score < 1.0 {
+            // Apply expiry penalty to total score
+            let expiry_weight = expiry_scorer.config().weight;
+            let expiry_penalty = (1.0 - expiry_result.score) * expiry_weight;
+            score.total = (score.total - expiry_penalty).max(0.0);
+            tracing::debug!(
+                offer_id = %offer.id,
+                expiry_score = expiry_result.score,
+                days_remaining = ?expiry_result.days_until_expiry,
+                "Near-expiry penalty applied"
+            );
+        }
 
         // Apply historical learning bonus/penalty
         let historical_bonus = self
@@ -373,6 +531,55 @@ impl MatchingEngine {
         } else {
             self.scorer.get_weights()
         }
+    }
+
+    /// Compute dual-language medication score (Requirement 2.5)
+    ///
+    /// If either medication name contains Arabic text, computes scores for both
+    /// Arabic (using phonetic matching) and English representations, returning
+    /// the maximum score from both.
+    ///
+    /// # Arguments
+    /// * `offer_med` - The offer medication name
+    /// * `request_med` - The request medication name
+    /// * `base_score` - The base medication similarity score (e.g., from embeddings)
+    ///
+    /// # Returns
+    /// The maximum of the base score and Arabic phonetic similarity (if applicable)
+    fn compute_dual_language_score(
+        &self,
+        offer_med: &str,
+        request_med: &str,
+        base_score: f64,
+    ) -> f64 {
+        // Check if either medication contains Arabic text
+        let offer_has_arabic = contains_arabic(offer_med);
+        let request_has_arabic = contains_arabic(request_med);
+
+        if !offer_has_arabic && !request_has_arabic {
+            // No Arabic text - return base score
+            return base_score;
+        }
+
+        // Compute Arabic phonetic similarity
+        let arabic_score = self
+            .arabic_matcher
+            .phonetic_similarity(offer_med, request_med);
+
+        // Return maximum of base score and Arabic phonetic score
+        let max_score = base_score.max(arabic_score);
+
+        if max_score > base_score {
+            tracing::debug!(
+                offer_med = %offer_med,
+                request_med = %request_med,
+                base_score = base_score,
+                arabic_score = arabic_score,
+                "Dual-language matching improved score"
+            );
+        }
+
+        max_score
     }
 
     // =========================================================================
@@ -915,6 +1122,18 @@ impl MatchingEngine {
         self.historical_learner
             .set_config(config.historical.clone());
 
+        // Update dosage gate
+        self.dosage_gate
+            .write()
+            .await
+            .set_config(config.dosage_gate.clone());
+
+        // Update expiry scorer
+        self.expiry_scorer
+            .write()
+            .await
+            .set_config(config.expiry.clone());
+
         // Update A/B test base weights
         self.ab_test.set_base_weights(config.weights.clone());
 
@@ -1209,6 +1428,315 @@ impl MatchingEngine {
     pub fn medication_pair_count(&self) -> usize {
         self.historical_learner.pair_count()
     }
+
+    // =========================================================================
+    // Dosage Gate (Safety Validation)
+    // Requirements: 1.1, 1.3, 1.4
+    // =========================================================================
+
+    /// Evaluate dosage gate for an offer-request pair
+    pub async fn evaluate_dosage_gate(
+        &self,
+        offer: &Offer,
+        request: &Request,
+        dosage_score: f64,
+    ) -> DosageGateResult {
+        self.dosage_gate
+            .read()
+            .await
+            .evaluate(offer, request, dosage_score)
+    }
+
+    /// Get dosage gate configuration
+    pub async fn get_dosage_gate_config(&self) -> DosageGateConfig {
+        self.dosage_gate.read().await.config().clone()
+    }
+
+    /// Update dosage gate configuration
+    pub async fn set_dosage_gate_config(&self, config: DosageGateConfig) {
+        self.dosage_gate.write().await.set_config(config);
+    }
+
+    /// Check if dosage gate has specific flag
+    pub fn dosage_gate_has_flag(&self, result: &DosageGateResult, flag: &DosageFlag) -> bool {
+        result.has_flag(flag)
+    }
+
+    // =========================================================================
+    // Medication Blocklist (Dangerous Pair Prevention)
+    // Requirements: 3.1, 3.5
+    // =========================================================================
+
+    /// Check if a medication pair is blocked
+    pub async fn is_medication_pair_blocked(
+        &self,
+        med_a: &str,
+        med_b: &str,
+    ) -> Option<super::BlocklistEntry> {
+        self.blocklist
+            .read()
+            .await
+            .is_blocked(med_a, med_b)
+            .cloned()
+    }
+
+    /// Add an entry to the medication blocklist
+    pub async fn add_blocklist_entry(&self, entry: super::BlocklistEntry) {
+        self.blocklist.write().await.add_entry(entry);
+    }
+
+    /// Remove an entry from the medication blocklist
+    pub async fn remove_blocklist_entry(&self, med_a: &str, med_b: &str) -> bool {
+        self.blocklist.write().await.remove_entry(med_a, med_b)
+    }
+
+    /// Get the number of blocklist entries
+    pub async fn blocklist_len(&self) -> usize {
+        self.blocklist.read().await.len()
+    }
+
+    /// Check if blocklist is empty
+    pub async fn is_blocklist_empty(&self) -> bool {
+        self.blocklist.read().await.is_empty()
+    }
+
+    /// Clear all blocklist entries
+    pub async fn clear_blocklist(&self) {
+        self.blocklist.write().await.clear();
+    }
+
+    /// Reload blocklist with default dangerous pairs
+    pub async fn reload_default_blocklist(&self) {
+        *self.blocklist.write().await = MedicationBlocklist::with_defaults();
+    }
+
+    // =========================================================================
+    // Expiry Scorer (Expiry Date Validation)
+    // Requirements: 5.1, 5.2, 5.4, 5.5
+    // =========================================================================
+
+    /// Score an offer's expiry date
+    pub async fn score_expiry(&self, expiry_date: Option<DateTime<Utc>>) -> ExpiryResult {
+        self.expiry_scorer
+            .read()
+            .await
+            .score(expiry_date, Utc::now())
+    }
+
+    /// Check if an offer meets minimum shelf life requirement
+    pub async fn meets_shelf_life(
+        &self,
+        expiry_date: Option<DateTime<Utc>>,
+        min_days: u32,
+    ) -> bool {
+        self.expiry_scorer
+            .read()
+            .await
+            .meets_shelf_life(expiry_date, min_days)
+    }
+
+    /// Check if an offer is expired
+    pub async fn is_offer_expired(&self, expiry_date: Option<DateTime<Utc>>) -> bool {
+        self.expiry_scorer
+            .read()
+            .await
+            .is_expired(expiry_date, Utc::now())
+    }
+
+    /// Get expiry scorer configuration
+    pub async fn get_expiry_config(&self) -> ExpiryConfig {
+        self.expiry_scorer.read().await.config().clone()
+    }
+
+    /// Update expiry scorer configuration
+    pub async fn set_expiry_config(&self, config: ExpiryConfig) {
+        self.expiry_scorer.write().await.set_config(config);
+    }
+
+    // =========================================================================
+    // Arabic Phonetic Matching (Dual-Language Support)
+    // Requirements: 2.5
+    // =========================================================================
+
+    /// Get Arabic phonetic similarity between two medication names
+    ///
+    /// Returns a similarity score between 0.0 and 1.0, where 1.0 indicates
+    /// identical phonetic keys.
+    pub fn get_arabic_phonetic_similarity(&self, med_a: &str, med_b: &str) -> f64 {
+        self.arabic_matcher.phonetic_similarity(med_a, med_b)
+    }
+
+    /// Check if two medication names are phonetically equivalent in Arabic
+    pub fn are_arabic_phonetic_match(&self, med_a: &str, med_b: &str) -> bool {
+        self.arabic_matcher.is_phonetic_match(med_a, med_b)
+    }
+
+    /// Check if a medication name contains Arabic text
+    pub fn medication_contains_arabic(&self, medication: &str) -> bool {
+        contains_arabic(medication)
+    }
+
+    /// Get the canonical Arabic form of a medication name (if known)
+    pub fn get_arabic_canonical(&self, medication: &str) -> Option<String> {
+        self.arabic_matcher
+            .get_canonical(medication)
+            .map(|s| s.to_string())
+    }
+
+    /// Compute dual-language medication score
+    ///
+    /// If either medication name contains Arabic text, computes scores for both
+    /// Arabic (using phonetic matching) and English representations, returning
+    /// the maximum score from both.
+    pub fn get_dual_language_score(
+        &self,
+        offer_med: &str,
+        request_med: &str,
+        base_score: f64,
+    ) -> f64 {
+        self.compute_dual_language_score(offer_med, request_med, base_score)
+    }
+
+    // =========================================================================
+    // Class Mismatch Detection (Requirement 3.2)
+    // =========================================================================
+
+    /// Threshold for high embedding similarity that triggers class mismatch check
+    const CLASS_MISMATCH_SIMILARITY_THRESHOLD: f64 = 0.8;
+
+    /// Detect class mismatch when embedding similarity is high (>0.8)
+    ///
+    /// When two medications have high embedding similarity but belong to different
+    /// therapeutic classes, this indicates a potentially dangerous match that should
+    /// be flagged for review.
+    ///
+    /// # Arguments
+    /// * `offer_med` - The offer medication name
+    /// * `request_med` - The request medication name
+    /// * `embedding_similarity` - The embedding similarity score (0.0-1.0)
+    ///
+    /// # Returns
+    /// A `ClassMismatchResult` indicating whether a mismatch was detected
+    pub async fn detect_class_mismatch(
+        &self,
+        offer_med: &str,
+        request_med: &str,
+        embedding_similarity: f64,
+    ) -> ClassMismatchResult {
+        // Only check for class mismatch when embedding similarity is high
+        if embedding_similarity < Self::CLASS_MISMATCH_SIMILARITY_THRESHOLD {
+            return ClassMismatchResult::no_mismatch();
+        }
+
+        let index = self.class_index.read().await;
+
+        // Get therapeutic classes for both medications
+        let offer_class = index.get_class(offer_med).cloned();
+        let request_class = index.get_class(request_med).cloned();
+
+        // Check for mismatch
+        match (&offer_class, &request_class) {
+            (Some(oc), Some(rc)) if oc != rc => {
+                tracing::warn!(
+                    offer_med = %offer_med,
+                    request_med = %request_med,
+                    offer_class = %oc,
+                    request_class = %rc,
+                    embedding_similarity = embedding_similarity,
+                    "Class mismatch detected with high embedding similarity - flagging as suspicious"
+                );
+                ClassMismatchResult::mismatch(Some(oc.clone()), Some(rc.clone()))
+            }
+            (Some(_), None) | (None, Some(_)) => {
+                // One medication has unknown class - flag as suspicious if similarity is very high
+                if embedding_similarity > 0.9 {
+                    tracing::debug!(
+                        offer_med = %offer_med,
+                        request_med = %request_med,
+                        offer_class = ?offer_class,
+                        request_class = ?request_class,
+                        embedding_similarity = embedding_similarity,
+                        "High similarity with partial class information - flagging for review"
+                    );
+                    ClassMismatchResult::mismatch(offer_class, request_class)
+                } else {
+                    ClassMismatchResult::no_mismatch()
+                }
+            }
+            _ => ClassMismatchResult::no_mismatch(),
+        }
+    }
+
+    /// Add a medication to the therapeutic class index
+    ///
+    /// This allows the engine to track therapeutic classes for medications
+    /// and detect class mismatches during matching.
+    ///
+    /// # Arguments
+    /// * `medication` - The medication name
+    /// * `therapeutic_class` - The therapeutic class (e.g., "Antidiabetic", "Beta-blocker")
+    pub async fn add_medication_class(&self, medication: &str, therapeutic_class: &str) {
+        let mut index = self.class_index.write().await;
+        index.add_medication(medication, Some(therapeutic_class));
+    }
+
+    /// Get the therapeutic class for a medication
+    ///
+    /// # Arguments
+    /// * `medication` - The medication name
+    ///
+    /// # Returns
+    /// The therapeutic class if known, None otherwise
+    pub async fn get_medication_class(&self, medication: &str) -> Option<String> {
+        let index = self.class_index.read().await;
+        index.get_class(medication).cloned()
+    }
+
+    /// Check if the class index has been populated
+    pub async fn is_class_index_ready(&self) -> bool {
+        let index = self.class_index.read().await;
+        index.is_built()
+    }
+
+    /// Get the number of medications in the class index
+    pub async fn class_index_medication_count(&self) -> usize {
+        let index = self.class_index.read().await;
+        index.medication_count()
+    }
+
+    /// Get the number of therapeutic classes in the index
+    pub async fn class_index_class_count(&self) -> usize {
+        let index = self.class_index.read().await;
+        index.class_count()
+    }
+
+    /// Mark the class index as built (ready for use)
+    pub async fn mark_class_index_built(&self) {
+        let mut index = self.class_index.write().await;
+        index.mark_built();
+    }
+
+    /// Clear the class index
+    pub async fn clear_class_index(&self) {
+        let mut index = self.class_index.write().await;
+        index.clear();
+    }
+
+    /// Bulk load medications into the class index
+    ///
+    /// # Arguments
+    /// * `medications` - List of (medication_name, therapeutic_class) pairs
+    pub async fn load_medication_classes(&self, medications: &[(String, String)]) {
+        let mut index = self.class_index.write().await;
+        for (med, class) in medications {
+            index.add_medication(med, Some(class));
+        }
+        index.mark_built();
+        tracing::info!(
+            count = medications.len(),
+            "Loaded medication classes into index"
+        );
+    }
 }
 
 // =============================================================================
@@ -1282,8 +1810,10 @@ mod tests {
                 medication: 0.50,
                 dosage: 0.20,
                 quantity: 0.10,
-                price: 0.10,
-                recency: 0.10,
+                price: 0.05,
+                recency: 0.05,
+                expiry: 0.05,
+                supplier: 0.05,
                 ai_logic: 0.0,
             },
             start_time: Utc::now() - Duration::hours(1),
@@ -1332,8 +1862,10 @@ mod tests {
                 medication: 0.50,
                 dosage: 0.20,
                 quantity: 0.10,
-                price: 0.10,
-                recency: 0.10,
+                price: 0.05,
+                recency: 0.05,
+                expiry: 0.05,
+                supplier: 0.05,
                 ai_logic: 0.0,
             },
             ..Default::default()
@@ -1355,22 +1887,26 @@ mod tests {
 
         let request = Request {
             id: Uuid::new_v4(),
+            participant_id: Uuid::new_v4(), // Different from offers
             ..Default::default()
         };
 
         let offers = vec![
             Offer {
                 id: Uuid::new_v4(),
+                participant_id: Uuid::new_v4(), // Different from request
                 created_at: Utc::now(),
                 ..Default::default()
             },
             Offer {
                 id: Uuid::new_v4(),
+                participant_id: Uuid::new_v4(), // Different from request
                 created_at: Utc::now(),
                 ..Default::default()
             },
             Offer {
                 id: Uuid::new_v4(),
+                participant_id: Uuid::new_v4(), // Different from request
                 created_at: Utc::now() - Duration::days(10), // Stale
                 ..Default::default()
             },
@@ -1378,8 +1914,8 @@ mod tests {
 
         let filtered = engine.filter_offers_for_request(&offers, &request);
 
-        // Only offer-1 should pass (offer-2 same sender, offer-3 stale)
-        assert_eq!(filtered.len(), 1);
+        // offer-1 and offer-2 should pass (fresh), offer-3 filtered (stale)
+        assert_eq!(filtered.len(), 2);
     }
 
     #[tokio::test]
@@ -1388,11 +1924,13 @@ mod tests {
 
         let request = Request {
             id: Uuid::new_v4(),
+            participant_id: Uuid::new_v4(), // Different from offer
             ..Default::default()
         };
 
         let offers = vec![Offer {
             id: Uuid::new_v4(),
+            participant_id: Uuid::new_v4(), // Different from request
             created_at: Utc::now(),
             ..Default::default()
         }];
@@ -1608,5 +2146,196 @@ mod tests {
 
         engine.clear_historical_learning();
         assert_eq!(engine.medication_pair_count(), 0);
+    }
+
+    // =========================================================================
+    // Class Mismatch Detection Tests (Requirement 3.2)
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_class_mismatch_detection_different_classes() {
+        let engine = MatchingEngine::default();
+
+        // Add medications with different therapeutic classes
+        engine
+            .add_medication_class("Metformin", "Antidiabetic")
+            .await;
+        engine
+            .add_medication_class("Metoprolol", "Beta-blocker")
+            .await;
+        engine.mark_class_index_built().await;
+
+        // High similarity (>0.8) with different classes should flag as suspicious
+        let result = engine
+            .detect_class_mismatch("Metformin", "Metoprolol", 0.85)
+            .await;
+
+        assert!(result.is_mismatch);
+        assert!(result.suspicious);
+        assert_eq!(result.offer_class, Some("antidiabetic".to_string()));
+        // Note: HardNegativeIndex normalizes "Beta-blocker" to "betablocker" (removes hyphen)
+        assert_eq!(result.request_class, Some("betablocker".to_string()));
+        assert!(result.reason.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_class_mismatch_detection_same_class() {
+        let engine = MatchingEngine::default();
+
+        // Add medications with same therapeutic class
+        engine
+            .add_medication_class("Metformin", "Antidiabetic")
+            .await;
+        engine
+            .add_medication_class("Glipizide", "Antidiabetic")
+            .await;
+        engine.mark_class_index_built().await;
+
+        // High similarity with same class should NOT flag as suspicious
+        let result = engine
+            .detect_class_mismatch("Metformin", "Glipizide", 0.85)
+            .await;
+
+        assert!(!result.is_mismatch);
+        assert!(!result.suspicious);
+    }
+
+    #[tokio::test]
+    async fn test_class_mismatch_detection_low_similarity() {
+        let engine = MatchingEngine::default();
+
+        // Add medications with different therapeutic classes
+        engine
+            .add_medication_class("Metformin", "Antidiabetic")
+            .await;
+        engine
+            .add_medication_class("Metoprolol", "Beta-blocker")
+            .await;
+        engine.mark_class_index_built().await;
+
+        // Low similarity (<0.8) should NOT trigger class mismatch check
+        let result = engine
+            .detect_class_mismatch("Metformin", "Metoprolol", 0.75)
+            .await;
+
+        assert!(!result.is_mismatch);
+        assert!(!result.suspicious);
+    }
+
+    #[tokio::test]
+    async fn test_class_mismatch_detection_unknown_class() {
+        let engine = MatchingEngine::default();
+
+        // Add only one medication with class
+        engine
+            .add_medication_class("Metformin", "Antidiabetic")
+            .await;
+        engine.mark_class_index_built().await;
+
+        // Very high similarity (>0.9) with unknown class should flag
+        let result = engine
+            .detect_class_mismatch("Metformin", "UnknownMed", 0.95)
+            .await;
+
+        assert!(result.is_mismatch);
+        assert!(result.suspicious);
+        assert_eq!(result.offer_class, Some("antidiabetic".to_string()));
+        assert_eq!(result.request_class, None);
+
+        // High but not very high similarity (0.8-0.9) with unknown class should NOT flag
+        let result2 = engine
+            .detect_class_mismatch("Metformin", "UnknownMed", 0.85)
+            .await;
+
+        assert!(!result2.is_mismatch);
+        assert!(!result2.suspicious);
+    }
+
+    #[tokio::test]
+    async fn test_class_index_operations() {
+        let engine = MatchingEngine::default();
+
+        // Initially empty
+        assert!(!engine.is_class_index_ready().await);
+        assert_eq!(engine.class_index_medication_count().await, 0);
+        assert_eq!(engine.class_index_class_count().await, 0);
+
+        // Add medications
+        engine
+            .add_medication_class("Metformin", "Antidiabetic")
+            .await;
+        engine
+            .add_medication_class("Glipizide", "Antidiabetic")
+            .await;
+        engine
+            .add_medication_class("Metoprolol", "Beta-blocker")
+            .await;
+        engine.mark_class_index_built().await;
+
+        assert!(engine.is_class_index_ready().await);
+        assert_eq!(engine.class_index_medication_count().await, 3);
+        assert_eq!(engine.class_index_class_count().await, 2);
+
+        // Get class
+        let class = engine.get_medication_class("Metformin").await;
+        assert_eq!(class, Some("antidiabetic".to_string()));
+
+        // Clear
+        engine.clear_class_index().await;
+        assert!(!engine.is_class_index_ready().await);
+        assert_eq!(engine.class_index_medication_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_bulk_load_medication_classes() {
+        let engine = MatchingEngine::default();
+
+        let medications = vec![
+            ("Metformin".to_string(), "Antidiabetic".to_string()),
+            ("Glipizide".to_string(), "Antidiabetic".to_string()),
+            ("Metoprolol".to_string(), "Beta-blocker".to_string()),
+            ("Atenolol".to_string(), "Beta-blocker".to_string()),
+        ];
+
+        engine.load_medication_classes(&medications).await;
+
+        assert!(engine.is_class_index_ready().await);
+        assert_eq!(engine.class_index_medication_count().await, 4);
+        assert_eq!(engine.class_index_class_count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn test_class_mismatch_result_constructors() {
+        // Test no_mismatch constructor
+        let no_mismatch = ClassMismatchResult::no_mismatch();
+        assert!(!no_mismatch.is_mismatch);
+        assert!(!no_mismatch.suspicious);
+        assert!(no_mismatch.offer_class.is_none());
+        assert!(no_mismatch.request_class.is_none());
+        assert!(no_mismatch.reason.is_none());
+
+        // Test mismatch constructor with both classes
+        let mismatch = ClassMismatchResult::mismatch(
+            Some("Antidiabetic".to_string()),
+            Some("Beta-blocker".to_string()),
+        );
+        assert!(mismatch.is_mismatch);
+        assert!(mismatch.suspicious);
+        assert_eq!(mismatch.offer_class, Some("Antidiabetic".to_string()));
+        assert_eq!(mismatch.request_class, Some("Beta-blocker".to_string()));
+        assert!(mismatch.reason.is_some());
+        assert!(
+            mismatch
+                .reason
+                .unwrap()
+                .contains("different therapeutic classes")
+        );
+
+        // Test mismatch constructor with one unknown class
+        let partial_mismatch =
+            ClassMismatchResult::mismatch(Some("Antidiabetic".to_string()), None);
+        assert!(partial_mismatch.is_mismatch);
+        assert!(partial_mismatch.suspicious);
+        assert!(partial_mismatch.reason.unwrap().contains("unknown class"));
     }
 }

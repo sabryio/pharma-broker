@@ -248,6 +248,8 @@ impl WeightLearner {
             quantity: current.quantity * (1.0 + lr * correlations.get("quantity").unwrap_or(&0.0)),
             price: current.price * (1.0 + lr * correlations.get("price").unwrap_or(&0.0)),
             recency: current.recency * (1.0 + lr * correlations.get("recency").unwrap_or(&0.0)),
+            expiry: current.expiry * (1.0 + lr * correlations.get("expiry").unwrap_or(&0.0)),
+            supplier: current.supplier * (1.0 + lr * correlations.get("supplier").unwrap_or(&0.0)),
             ai_logic: current.ai_logic * (1.0 + lr * correlations.get("ai_logic").unwrap_or(&0.0)),
         }
     }
@@ -273,6 +275,8 @@ impl WeightLearner {
             quantity: constrain(current.quantity, adjusted.quantity),
             price: constrain(current.price, adjusted.price),
             recency: constrain(current.recency, adjusted.recency),
+            expiry: constrain(current.expiry, adjusted.expiry),
+            supplier: constrain(current.supplier, adjusted.supplier),
             ai_logic: constrain(current.ai_logic, adjusted.ai_logic),
         }
     }
@@ -285,17 +289,21 @@ impl WeightLearner {
             + weights.quantity
             + weights.price
             + weights.recency
+            + weights.expiry
+            + weights.supplier
             + weights.ai_logic;
 
         if sum == 0.0 {
-            // Fallback to equal weights
+            // Fallback to equal weights (8 weights now)
             return Weights {
-                medication: 1.0 / 6.0,
-                dosage: 1.0 / 6.0,
-                quantity: 1.0 / 6.0,
-                price: 1.0 / 6.0,
-                recency: 1.0 / 6.0,
-                ai_logic: 1.0 / 6.0,
+                medication: 1.0 / 8.0,
+                dosage: 1.0 / 8.0,
+                quantity: 1.0 / 8.0,
+                price: 1.0 / 8.0,
+                recency: 1.0 / 8.0,
+                expiry: 1.0 / 8.0,
+                supplier: 1.0 / 8.0,
+                ai_logic: 1.0 / 8.0,
             };
         }
 
@@ -305,6 +313,8 @@ impl WeightLearner {
             quantity: weights.quantity / sum,
             price: weights.price / sum,
             recency: weights.recency / sum,
+            expiry: weights.expiry / sum,
+            supplier: weights.supplier / sum,
             ai_logic: weights.ai_logic / sum,
         }
     }
@@ -489,7 +499,9 @@ mod tests {
             dosage: 0.10,
             quantity: 0.20,
             price: 0.15,
-            recency: 0.10,
+            recency: 0.05,
+            expiry: 0.025,
+            supplier: 0.025,
             ai_logic: 0.0,
         };
 
@@ -535,7 +547,9 @@ mod tests {
             dosage: 0.10,
             quantity: 0.20,
             price: 0.10,
-            recency: 0.10,
+            recency: 0.05,
+            expiry: 0.025,
+            supplier: 0.025,
             ai_logic: 0.0,
         };
 
@@ -544,8 +558,10 @@ mod tests {
             dosage: 0.02,     // Below min
             quantity: 0.21,   // Small change (0.01 < 0.02)
             price: 0.15,      // Acceptable change
-            recency: 0.10,    // No change
-            ai_logic: 0.05,   // Acceptable change
+            recency: 0.05,    // No change
+            expiry: 0.025,
+            supplier: 0.025,
+            ai_logic: 0.05, // Acceptable change
         };
 
         let constrained = learner.apply_constraints(&current, &adjusted);
@@ -572,7 +588,9 @@ mod tests {
             dosage: 0.10,
             quantity: 0.20,
             price: 0.15,
-            recency: 0.10,
+            recency: 0.05,
+            expiry: 0.025,
+            supplier: 0.025,
             ai_logic: 0.0,
         };
         // Sum = 1.05
@@ -584,6 +602,8 @@ mod tests {
             + normalized.quantity
             + normalized.price
             + normalized.recency
+            + normalized.expiry
+            + normalized.supplier
             + normalized.ai_logic;
 
         assert!((sum - 1.0).abs() < 0.0001, "sum: {}", sum);
@@ -609,20 +629,25 @@ mod tests {
             quantity: 0.0,
             price: 0.0,
             recency: 0.0,
+            expiry: 0.0,
+            supplier: 0.0,
             ai_logic: 0.0,
         };
 
         let normalized = learner.normalize_weights(&weights);
 
-        // Should return equal weights
-        assert_eq!(normalized.medication, 0.20);
-        assert_eq!(normalized.dosage, 0.20);
+        // Should return equal weights (1/8 for each of 8 weights)
+        let expected = 1.0 / 8.0;
+        assert!((normalized.medication - expected).abs() < 0.0001);
+        assert!((normalized.dosage - expected).abs() < 0.0001);
 
         let sum = normalized.medication
             + normalized.dosage
             + normalized.quantity
             + normalized.price
             + normalized.recency
+            + normalized.expiry
+            + normalized.supplier
             + normalized.ai_logic;
         assert!((sum - 1.0).abs() < 0.0001);
     }
@@ -694,12 +719,14 @@ mod tests {
             .calculate_optimal_weights(&stats, &current)
             .expect("should calculate");
 
-        // Sum should be 1.0
+        // Sum should be 1.0 (all 8 weight fields)
         let sum = weights.medication
             + weights.dosage
             + weights.quantity
             + weights.price
             + weights.recency
+            + weights.expiry
+            + weights.supplier
             + weights.ai_logic;
         assert!((sum - 1.0).abs() < 0.0001, "sum: {}", sum);
 

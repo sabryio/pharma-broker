@@ -1033,7 +1033,7 @@ mod tests {
     fn test_ensemble_default() {
         let matcher = EnsembleMatcher::default();
         assert!(matcher.is_enabled());
-        assert_eq!(matcher.strategy_names().len(), 5);
+        assert_eq!(matcher.strategy_names().len(), 6);
     }
 
     #[test]

@@ -2,8 +2,9 @@
 //!
 //! Provides distance and similarity metrics for medication names.
 //! Enhanced with n-gram and phonetic (Soundex) matching.
+//! Includes Arabic-aware string distance for better Arabic medication matching.
 
-use super::arabic::normalize_for_matching;
+use super::arabic::{contains_arabic, normalize_for_matching, phonetic_key};
 use std::collections::HashSet;
 use strsim::jaro_winkler;
 
@@ -111,6 +112,197 @@ fn phonetic_similarity(a: &str, b: &str) -> f64 {
     matches as f64 / 4.0
 }
 
+/// Arabic-aware edit distance that accounts for letter variations
+///
+/// This function calculates a modified Levenshtein distance that treats
+/// phonetically similar Arabic letters as having a lower substitution cost.
+///
+/// # Arguments
+/// * `a` - First string
+/// * `b` - Second string
+///
+/// # Returns
+/// The edit distance as a usize
+pub fn arabic_edit_distance(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+
+    let m = a_chars.len();
+    let n = b_chars.len();
+
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+
+    // Create distance matrix
+    let mut dp = vec![vec![0usize; n + 1]; m + 1];
+
+    // Initialize first row and column
+    for i in 0..=m {
+        dp[i][0] = i;
+    }
+    for j in 0..=n {
+        dp[0][j] = j;
+    }
+
+    // Fill the matrix
+    for i in 1..=m {
+        for j in 1..=n {
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else if are_phonetically_similar(a_chars[i - 1], b_chars[j - 1]) {
+                // Reduced cost for phonetically similar Arabic letters
+                // We use 0 cost to treat them as equivalent
+                0
+            } else {
+                1
+            };
+
+            dp[i][j] = (dp[i - 1][j] + 1) // deletion
+                .min(dp[i][j - 1] + 1) // insertion
+                .min(dp[i - 1][j - 1] + cost); // substitution
+        }
+    }
+
+    dp[m][n]
+}
+
+/// Check if two Arabic characters are phonetically similar
+///
+/// Returns true if the characters belong to the same phonetic group
+fn are_phonetically_similar(a: char, b: char) -> bool {
+    // Define phonetic groups
+    let groups: &[&[char]] = &[
+        // Emphatic vs non-emphatic S sounds
+        &['س', 'ص'],
+        // Emphatic vs non-emphatic D sounds
+        &['د', 'ض'],
+        // Emphatic vs non-emphatic T sounds
+        &['ت', 'ط'],
+        // Emphatic vs non-emphatic TH/Z sounds
+        &['ذ', 'ظ'],
+        // Guttural H sounds
+        &['ح', 'ه'],
+        // Glottal sounds
+        &['ع', 'ء', 'ا', 'أ', 'إ', 'آ', 'ٱ'],
+        // Q/K sounds
+        &['ق', 'ك'],
+        // Taa marbuta and ha
+        &['ة', 'ه'],
+        // Alef maksura and ya
+        &['ى', 'ي'],
+    ];
+
+    for group in groups {
+        if group.contains(&a) && group.contains(&b) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Calculate Arabic-aware string similarity (0.0 to 1.0)
+///
+/// Uses Arabic edit distance normalized by the maximum string length.
+/// Also incorporates phonetic key comparison for better matching.
+pub fn arabic_string_similarity(a: &str, b: &str) -> f64 {
+    if a.is_empty() && b.is_empty() {
+        return 1.0;
+    }
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+
+    // Normalize both strings
+    let norm_a = normalize_for_matching(a);
+    let norm_b = normalize_for_matching(b);
+
+    // If identical after normalization, perfect match
+    if norm_a == norm_b {
+        return 1.0;
+    }
+
+    // Calculate Arabic edit distance
+    let distance = arabic_edit_distance(&norm_a, &norm_b);
+    let max_len = norm_a.chars().count().max(norm_b.chars().count());
+
+    // Convert distance to similarity
+    let edit_sim = if max_len == 0 {
+        1.0
+    } else {
+        1.0 - (distance as f64 / max_len as f64)
+    };
+
+    // Also compare phonetic keys
+    let key_a = phonetic_key(&norm_a);
+    let key_b = phonetic_key(&norm_b);
+
+    let phonetic_sim = if key_a == key_b {
+        1.0
+    } else {
+        jaro_winkler(&key_a, &key_b)
+    };
+
+    // Return the maximum of edit-based and phonetic similarity
+    edit_sim.max(phonetic_sim)
+}
+
+/// Fuzzy string matching strategy that automatically selects
+/// the appropriate algorithm based on text content
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FuzzyStringStrategy {
+    /// Standard Levenshtein/Jaro-Winkler for non-Arabic text
+    #[default]
+    Standard,
+    /// Arabic-aware distance for Arabic text
+    Arabic,
+    /// Automatically detect based on text content
+    Auto,
+}
+
+impl FuzzyStringStrategy {
+    /// Calculate similarity using the selected strategy
+    pub fn similarity(&self, a: &str, b: &str) -> f64 {
+        match self {
+            FuzzyStringStrategy::Standard => standard_string_similarity(a, b),
+            FuzzyStringStrategy::Arabic => arabic_string_similarity(a, b),
+            FuzzyStringStrategy::Auto => {
+                // Detect if either string contains Arabic
+                if contains_arabic(a) || contains_arabic(b) {
+                    arabic_string_similarity(a, b)
+                } else {
+                    standard_string_similarity(a, b)
+                }
+            }
+        }
+    }
+
+    /// Detect the appropriate strategy based on text content
+    pub fn detect(a: &str, b: &str) -> Self {
+        if contains_arabic(a) || contains_arabic(b) {
+            FuzzyStringStrategy::Arabic
+        } else {
+            FuzzyStringStrategy::Standard
+        }
+    }
+}
+
+/// Standard string similarity using Jaro-Winkler
+fn standard_string_similarity(a: &str, b: &str) -> f64 {
+    let norm_a = normalize_for_matching(a);
+    let norm_b = normalize_for_matching(b);
+
+    if norm_a == norm_b {
+        return 1.0;
+    }
+
+    jaro_winkler(&norm_a, &norm_b)
+}
+
 /// Calculate similarity between two medication names (0.0 to 1.0)
 ///
 /// Uses ensemble of algorithms:
@@ -118,6 +310,7 @@ fn phonetic_similarity(a: &str, b: &str) -> f64 {
 /// 2. Jaro-Winkler similarity (best for typos)
 /// 3. N-gram similarity (best for partial matches)
 /// 4. Phonetic/Soundex similarity (best for pronunciation-based errors)
+/// 5. Arabic-aware distance (for Arabic text)
 pub fn medication_similarity(a: &str, b: &str) -> f64 {
     let norm_a = normalize_for_matching(a);
     let norm_b = normalize_for_matching(b);
@@ -127,6 +320,25 @@ pub fn medication_similarity(a: &str, b: &str) -> f64 {
         return 1.0;
     }
 
+    // Check if we should use Arabic-aware matching
+    let use_arabic = contains_arabic(a) || contains_arabic(b);
+
+    if use_arabic {
+        // Use Arabic-aware similarity for Arabic text
+        let arabic_sim = arabic_string_similarity(a, b);
+
+        // Also calculate standard similarity as a fallback
+        let jw = jaro_winkler(&norm_a, &norm_b);
+        let ngram = ngram_similarity(&norm_a, &norm_b, 2);
+
+        // Weighted ensemble for Arabic: Arabic (50%) + JW (30%) + N-gram (20%)
+        let ensemble = arabic_sim * 0.50 + jw * 0.30 + ngram * 0.20;
+
+        // Return the best of ensemble, Arabic similarity, or JW
+        return ensemble.max(arabic_sim).max(jw);
+    }
+
+    // Standard matching for non-Arabic text
     // Jaro-Winkler for typo detection (highest weight)
     let jw = jaro_winkler(&norm_a, &norm_b);
 
@@ -375,5 +587,111 @@ mod tests {
         // Should be penalized because raw texts are different
         // But not zero because parsed names are very similar
         assert!(sim < 0.6, "AI hallucination should be caught: {}", sim);
+    }
+
+    // Arabic-aware string distance tests
+    #[test]
+    fn test_arabic_edit_distance_identical() {
+        assert_eq!(arabic_edit_distance("اوجمنتين", "اوجمنتين"), 0);
+    }
+
+    #[test]
+    fn test_arabic_edit_distance_phonetically_similar() {
+        // ص and س are phonetically similar, so distance should be 0
+        let dist = arabic_edit_distance("صداع", "سداع");
+        assert_eq!(dist, 0, "Phonetically similar should have 0 distance");
+    }
+
+    #[test]
+    fn test_arabic_edit_distance_different() {
+        // Completely different strings
+        let dist = arabic_edit_distance("اوجمنتين", "بانادول");
+        assert!(dist > 0, "Different strings should have positive distance");
+    }
+
+    #[test]
+    fn test_are_phonetically_similar() {
+        // Same phonetic group
+        assert!(are_phonetically_similar('س', 'ص'));
+        assert!(are_phonetically_similar('د', 'ض'));
+        assert!(are_phonetically_similar('ت', 'ط'));
+        assert!(are_phonetically_similar('ق', 'ك'));
+
+        // Different phonetic groups
+        assert!(!are_phonetically_similar('س', 'ب'));
+        assert!(!are_phonetically_similar('ا', 'ب'));
+    }
+
+    #[test]
+    fn test_arabic_string_similarity_identical() {
+        let sim = arabic_string_similarity("اوجمنتين", "اوجمنتين");
+        assert!((sim - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_arabic_string_similarity_phonetically_equivalent() {
+        // كتافلام vs قتافلام (k vs q)
+        let sim = arabic_string_similarity("كتافلام", "قتافلام");
+        assert!(
+            sim > 0.9,
+            "Phonetically equivalent should have high similarity: {}",
+            sim
+        );
+    }
+
+    #[test]
+    fn test_arabic_string_similarity_different() {
+        let sim = arabic_string_similarity("اوجمنتين", "بانادول");
+        assert!(
+            sim < 0.7,
+            "Different strings should have lower similarity: {}",
+            sim
+        );
+    }
+
+    #[test]
+    fn test_fuzzy_string_strategy_detect() {
+        // Arabic text should use Arabic strategy
+        assert_eq!(
+            FuzzyStringStrategy::detect("اوجمنتين", "بانادول"),
+            FuzzyStringStrategy::Arabic
+        );
+
+        // English text should use Standard strategy
+        assert_eq!(
+            FuzzyStringStrategy::detect("Augmentin", "Panadol"),
+            FuzzyStringStrategy::Standard
+        );
+
+        // Mixed text should use Arabic strategy
+        assert_eq!(
+            FuzzyStringStrategy::detect("Augmentin اوجمنتين", "Panadol"),
+            FuzzyStringStrategy::Arabic
+        );
+    }
+
+    #[test]
+    fn test_fuzzy_string_strategy_similarity() {
+        // Auto strategy should detect and use appropriate algorithm
+        let auto = FuzzyStringStrategy::Auto;
+
+        // Arabic text
+        let sim = auto.similarity("كتافلام", "قتافلام");
+        assert!(sim > 0.9, "Arabic similarity should be high: {}", sim);
+
+        // English text
+        let sim = auto.similarity("Aspirin", "Aspriin");
+        assert!(sim > 0.9, "English similarity should be high: {}", sim);
+    }
+
+    #[test]
+    fn test_medication_similarity_uses_arabic_for_arabic_text() {
+        // Phonetically equivalent Arabic medications should have high similarity
+        let sim = medication_similarity("كتافلام", "قتافلام");
+        assert!(
+            sim > 0.9,
+            "Arabic medications with phonetic equivalence should match: {}",
+            sim
+        );
     }
 }

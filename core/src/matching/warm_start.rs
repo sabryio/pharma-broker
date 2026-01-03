@@ -37,7 +37,9 @@ impl Default for WarmStartConfig {
                 dosage: 0.10, // Reduced: was causing false positives (e.g., "12.5mg" matching unrelated meds)
                 quantity: 0.10,
                 price: 0.10,
-                recency: 0.15,
+                recency: 0.05,
+                expiry: 0.05,
+                supplier: 0.05,
                 ai_logic: 0.0,
             },
             prior_strength: 50,           // Equivalent to 50 samples
@@ -115,6 +117,10 @@ impl WarmStartManager {
             price: data_weight * learned_weights.price + prior_weight * config.prior_weights.price,
             recency: data_weight * learned_weights.recency
                 + prior_weight * config.prior_weights.recency,
+            expiry: data_weight * learned_weights.expiry
+                + prior_weight * config.prior_weights.expiry,
+            supplier: data_weight * learned_weights.supplier
+                + prior_weight * config.prior_weights.supplier,
             ai_logic: data_weight * learned_weights.ai_logic
                 + prior_weight * config.prior_weights.ai_logic,
         };
@@ -358,7 +364,9 @@ mod tests {
             dosage: 0.20,
             quantity: 0.10,
             price: 0.10,
-            recency: 0.10,
+            recency: 0.05,
+            expiry: 0.025,
+            supplier: 0.025,
             ai_logic: 0.0,
         };
 
@@ -378,7 +386,9 @@ mod tests {
             dosage: 0.20,
             quantity: 0.10,
             price: 0.10,
-            recency: 0.10,
+            recency: 0.05,
+            expiry: 0.025,
+            supplier: 0.025,
             ai_logic: 0.0,
         };
 
@@ -404,7 +414,9 @@ mod tests {
             dosage: 0.20,
             quantity: 0.10,
             price: 0.10,
-            recency: 0.10,
+            recency: 0.05,
+            expiry: 0.025,
+            supplier: 0.025,
             ai_logic: 0.0,
         };
 

@@ -19,10 +19,12 @@ mod dosage_gate;
 mod embedding_cache;
 mod engine;
 mod ensemble;
+mod expiry;
 mod fallback_matcher;
 mod filter;
 mod fts_search;
 mod fuzzy;
+mod hard_negative;
 mod hierarchical_matcher;
 mod historical;
 mod hybrid_filter;
@@ -49,7 +51,7 @@ pub use weights::{Thresholds, Weights};
 pub use ai_client::Client as AIClient;
 
 // --- scorer ---
-pub use scorer::{MatchScore, Scorer};
+pub use scorer::{MatchScore, MedicationCategory, Scorer};
 
 // --- actions ---
 pub use actions::{AutoActionConfig, AutoActionHandler, MatchAction, ParseAction};
@@ -80,20 +82,34 @@ pub use dosage::{Dosage, compare_dosages, is_same_dosage, parse_dosage};
 // --- dosage_gate ---
 pub use dosage_gate::{DosageFlag, DosageGate, DosageGateConfig, DosageGateResult};
 
+// --- expiry ---
+pub use expiry::{ExpiryConfig, ExpiryResult, ExpiryScorer, ExpiryWarning};
+
+// --- hard_negative ---
+pub use hard_negative::{
+    HardNegativeConfig, HardNegativeError, HardNegativeIndex, HardNegativeMiner, MedicationInfo,
+};
+
 // --- blocklist ---
 pub use blocklist::{BlocklistEntry, BlocklistError, BlocklistSeverity, MedicationBlocklist};
 
 // --- arabic ---
-pub use arabic::normalize_arabic;
+pub use arabic::{
+    ArabicPhoneticMatcher, contains_arabic, get_canonical_medication, is_arabic_char,
+    normalize_arabic, normalize_for_matching, normalize_for_phonetic_matching, phonetic_key,
+};
 
 // --- fuzzy ---
-pub use fuzzy::{medication_similarity, medication_similarity_with_raw};
+pub use fuzzy::{
+    FuzzyStringStrategy, arabic_edit_distance, arabic_string_similarity, medication_similarity,
+    medication_similarity_with_raw,
+};
 
 // --- embedding_cache ---
 pub use embedding_cache::{EmbeddingCache, EmbeddingCacheStatsSnapshot, SynonymIndex};
 
 // --- engine ---
-pub use engine::{MatchingEngine, MatchingEngineConfig, SchedulerStats};
+pub use engine::{ClassMismatchResult, MatchingEngine, MatchingEngineConfig, SchedulerStats};
 
 // --- ensemble ---
 pub use ensemble::{

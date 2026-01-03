@@ -9,6 +9,9 @@
 //! - Negative pairs: (offer, random_requests)
 //!
 //! A valid match should have a score significantly higher than negatives.
+//!
+//! Enhanced with hard negative mining to select challenging negative samples
+//! from the same therapeutic class or with similar spelling.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -17,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::matching::fuzzy::medication_similarity_with_raw;
+use crate::matching::hard_negative::HardNegativeMiner;
 use crate::repository::{OfferModel, RequestModel};
 
 /// Configuration for contrastive validation
@@ -32,6 +36,8 @@ pub struct ContrastiveConfig {
     pub enabled: bool,
     /// Minimum score to even consider validation (skip very low scores)
     pub min_score_threshold: f64,
+    /// Whether to use hard negative mining when available
+    pub use_hard_negatives: bool,
 }
 
 impl Default for ContrastiveConfig {
@@ -42,6 +48,7 @@ impl Default for ContrastiveConfig {
             min_margin_vs_max: 0.10,
             enabled: true,
             min_score_threshold: 0.50,
+            use_hard_negatives: true,
         }
     }
 }
@@ -69,6 +76,9 @@ impl ContrastiveConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0.50),
+            use_hard_negatives: std::env::var("CONTRASTIVE_USE_HARD_NEGATIVES")
+                .map(|v| v != "false" && v != "0")
+                .unwrap_or(true),
         }
     }
 
@@ -80,6 +90,7 @@ impl ContrastiveConfig {
             min_margin_vs_max: 0.15,
             enabled: true,
             min_score_threshold: 0.50,
+            use_hard_negatives: true,
         }
     }
 
@@ -91,6 +102,7 @@ impl ContrastiveConfig {
             min_margin_vs_max: 0.05,
             enabled: true,
             min_score_threshold: 0.40,
+            use_hard_negatives: true,
         }
     }
 }
@@ -192,6 +204,8 @@ impl ContrastiveStatsSnapshot {
 pub struct ContrastiveValidator {
     config: ContrastiveConfig,
     stats: ContrastiveStats,
+    /// Optional hard negative miner for strategic sample selection
+    hard_negative_miner: Option<HardNegativeMiner>,
 }
 
 impl Default for ContrastiveValidator {
@@ -206,12 +220,39 @@ impl ContrastiveValidator {
         Self {
             config,
             stats: ContrastiveStats::default(),
+            hard_negative_miner: None,
+        }
+    }
+
+    /// Create a new contrastive validator with a hard negative miner
+    pub fn with_hard_negative_miner(config: ContrastiveConfig, miner: HardNegativeMiner) -> Self {
+        Self {
+            config,
+            stats: ContrastiveStats::default(),
+            hard_negative_miner: Some(miner),
         }
     }
 
     /// Create from environment variables
     pub fn from_env() -> Self {
         Self::new(ContrastiveConfig::from_env())
+    }
+
+    /// Set the hard negative miner
+    pub fn set_hard_negative_miner(&mut self, miner: HardNegativeMiner) {
+        self.hard_negative_miner = Some(miner);
+    }
+
+    /// Get the hard negative miner if available
+    pub fn hard_negative_miner(&self) -> Option<&HardNegativeMiner> {
+        self.hard_negative_miner.as_ref()
+    }
+
+    /// Check if hard negative mining is available and ready
+    pub fn has_hard_negatives(&self) -> bool {
+        self.hard_negative_miner
+            .as_ref()
+            .is_some_and(|m| m.is_ready())
     }
 
     /// Validate a match using contrastive comparison
@@ -439,6 +480,169 @@ impl ContrastiveValidator {
         }
     }
 
+    /// Validate using hard negative mining for strategic sample selection
+    ///
+    /// This method uses the hard negative miner to select challenging negative samples
+    /// from the same therapeutic class or with similar spelling. If hard negatives
+    /// are not available, it falls back to random sampling with a warning.
+    ///
+    /// # Arguments
+    /// * `offer` - The offer being matched
+    /// * `matched_request` - The request that was matched
+    /// * `positive_score` - The score of the positive match
+    /// * `negative_pool` - Pool of requests to sample negatives from
+    ///
+    /// # Returns
+    /// A `ContrastiveResult` indicating whether the match passed validation
+    pub fn validate_with_hard_negatives(
+        &self,
+        offer: &OfferModel,
+        matched_request: &RequestModel,
+        positive_score: f64,
+        negative_pool: &[RequestModel],
+    ) -> ContrastiveResult {
+        self.stats.total_validations.fetch_add(1, Ordering::Relaxed);
+
+        // Check if validation is enabled
+        if !self.config.enabled {
+            self.stats.skipped.fetch_add(1, Ordering::Relaxed);
+            return ContrastiveResult::skipped("Contrastive validation disabled");
+        }
+
+        // Skip if score is below threshold
+        if positive_score < self.config.min_score_threshold {
+            self.stats.skipped.fetch_add(1, Ordering::Relaxed);
+            return ContrastiveResult::skipped(&format!(
+                "Score {:.2} below threshold {:.2}",
+                positive_score, self.config.min_score_threshold
+            ));
+        }
+
+        // Check if we should use hard negatives and if they're available
+        let use_hard_negatives = self.config.use_hard_negatives && self.has_hard_negatives();
+
+        // Get hard negative medication names if available
+        let hard_negative_names: Vec<String> = if use_hard_negatives {
+            self.hard_negative_miner
+                .as_ref()
+                .map(|miner| miner.get_hard_negatives(&offer.medication, self.config.num_negatives))
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
+
+        // If no hard negatives available, fall back to random sampling
+        if hard_negative_names.is_empty() {
+            if self.config.use_hard_negatives {
+                tracing::warn!(
+                    medication = %offer.medication,
+                    "No hard negatives available, falling back to random sampling"
+                );
+            }
+            return self.validate(offer, matched_request, positive_score, negative_pool);
+        }
+
+        // Find requests in the pool that match the hard negative medication names
+        let hard_negatives: Vec<&RequestModel> = negative_pool
+            .iter()
+            .filter(|r| {
+                r.id != matched_request.id
+                    && hard_negative_names
+                        .iter()
+                        .any(|name| r.medication.to_lowercase().contains(name))
+            })
+            .take(self.config.num_negatives)
+            .collect();
+
+        // If we couldn't find enough hard negatives in the pool, supplement with random
+        let negatives: Vec<&RequestModel> = if hard_negatives.len() < self.config.num_negatives {
+            let remaining = self.config.num_negatives - hard_negatives.len();
+            let hard_negative_ids: Vec<Uuid> = hard_negatives.iter().map(|r| r.id).collect();
+
+            // Get random negatives excluding already selected hard negatives
+            let random_negatives: Vec<&RequestModel> = negative_pool
+                .iter()
+                .filter(|r| r.id != matched_request.id && !hard_negative_ids.contains(&r.id))
+                .collect();
+
+            let mut rng = rand::rng();
+            let additional: Vec<&RequestModel> = random_negatives
+                .choose_multiple(&mut rng, remaining)
+                .cloned()
+                .collect();
+
+            let mut combined = hard_negatives;
+            combined.extend(additional);
+            combined
+        } else {
+            hard_negatives
+        };
+
+        if negatives.is_empty() {
+            self.stats.skipped.fetch_add(1, Ordering::Relaxed);
+            return ContrastiveResult::skipped("No valid negatives after hard negative selection");
+        }
+
+        // Calculate scores against negatives
+        let negative_scores: Vec<f64> = negatives
+            .iter()
+            .map(|neg| self.calculate_score(offer, neg))
+            .collect();
+
+        let negative_ids: Vec<Uuid> = negatives.iter().map(|n| n.id).collect();
+
+        let avg_negative = negative_scores.iter().sum::<f64>() / negative_scores.len() as f64;
+        let max_negative = negative_scores
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        let margin_vs_avg = positive_score - avg_negative;
+        let margin_vs_max = positive_score - max_negative;
+
+        // Check if margins meet thresholds
+        let valid = margin_vs_avg >= self.config.min_margin
+            && margin_vs_max >= self.config.min_margin_vs_max;
+
+        let reason = if valid {
+            format!(
+                "Valid (hard negatives): margin vs avg {:.2} >= {:.2}, margin vs max {:.2} >= {:.2}",
+                margin_vs_avg, self.config.min_margin, margin_vs_max, self.config.min_margin_vs_max
+            )
+        } else if margin_vs_avg < self.config.min_margin {
+            format!(
+                "Failed (hard negatives): margin vs avg {:.2} < {:.2} (positive {:.2}, avg negative {:.2})",
+                margin_vs_avg, self.config.min_margin, positive_score, avg_negative
+            )
+        } else {
+            format!(
+                "Failed (hard negatives): margin vs max {:.2} < {:.2} (positive {:.2}, max negative {:.2})",
+                margin_vs_max, self.config.min_margin_vs_max, positive_score, max_negative
+            )
+        };
+
+        if valid {
+            self.stats.passed.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.stats.failed.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .false_positives_detected
+                .fetch_add(1, Ordering::Relaxed);
+        }
+
+        ContrastiveResult {
+            valid,
+            positive_score,
+            avg_negative_score: avg_negative,
+            max_negative_score: max_negative,
+            margin_vs_avg,
+            margin_vs_max,
+            num_negatives: negatives.len(),
+            reason,
+            negative_ids,
+        }
+    }
+
     /// Sample random negatives from the pool
     fn sample_negatives<'a>(
         &self,
@@ -594,5 +798,71 @@ mod tests {
 
         assert_eq!(stats.total_validations.load(Ordering::Relaxed), 0);
         assert_eq!(stats.passed.load(Ordering::Relaxed), 0);
+    }
+
+    // =========================================================================
+    // Hard Negative Integration Tests
+    // =========================================================================
+
+    #[test]
+    fn test_config_use_hard_negatives_default() {
+        let config = ContrastiveConfig::default();
+        assert!(config.use_hard_negatives);
+    }
+
+    #[test]
+    fn test_validator_without_hard_negative_miner() {
+        let validator = ContrastiveValidator::default();
+        assert!(!validator.has_hard_negatives());
+        assert!(validator.hard_negative_miner().is_none());
+    }
+
+    #[test]
+    fn test_validator_with_hard_negative_miner() {
+        use crate::matching::hard_negative::{
+            HardNegativeConfig, HardNegativeMiner, MedicationInfo,
+        };
+
+        let mut miner = HardNegativeMiner::new(HardNegativeConfig::default());
+        let medications = vec![
+            MedicationInfo::new("Metformin").with_class("Antidiabetic"),
+            MedicationInfo::new("Glipizide").with_class("Antidiabetic"),
+        ];
+        miner.build_index(&medications).unwrap();
+
+        let validator =
+            ContrastiveValidator::with_hard_negative_miner(ContrastiveConfig::default(), miner);
+
+        assert!(validator.has_hard_negatives());
+        assert!(validator.hard_negative_miner().is_some());
+    }
+
+    #[test]
+    fn test_validator_set_hard_negative_miner() {
+        use crate::matching::hard_negative::{
+            HardNegativeConfig, HardNegativeMiner, MedicationInfo,
+        };
+
+        let mut validator = ContrastiveValidator::default();
+        assert!(!validator.has_hard_negatives());
+
+        let mut miner = HardNegativeMiner::new(HardNegativeConfig::default());
+        let medications = vec![MedicationInfo::new("Metformin").with_class("Antidiabetic")];
+        miner.build_index(&medications).unwrap();
+
+        validator.set_hard_negative_miner(miner);
+        assert!(validator.has_hard_negatives());
+    }
+
+    #[test]
+    fn test_has_hard_negatives_not_built() {
+        use crate::matching::hard_negative::{HardNegativeConfig, HardNegativeMiner};
+
+        // Miner exists but index not built
+        let miner = HardNegativeMiner::new(HardNegativeConfig::default());
+        let validator =
+            ContrastiveValidator::with_hard_negative_miner(ContrastiveConfig::default(), miner);
+
+        assert!(!validator.has_hard_negatives());
     }
 }
