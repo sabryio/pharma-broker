@@ -307,23 +307,28 @@ RULES:
 COMPARISON CRITERIA:
 - Are the names the same brand/product? (exact or transliteration match)
 - Are the Arabic names (Raw) equivalent transliterations?
-- Ignore dosage numbers when comparing names
+- Ignore dosage numbers when comparing names (note them as "ignored" in dosage comparison)
 
-OUTPUT:
-- approved: Names clearly match (same medication name)
-- flagged: Names are similar but uncertain (possible typo or variant)
-- rejected: Names are clearly different (different medication names)
+OUTPUT FORMAT:
+You MUST provide a JSON response with detailed match analysis:
+- status: "approved" (names match), "flagged" (uncertain), or "rejected" (different)
+- confidence: 0.0 to 1.0
+- explanation: Brief summary of name comparison result
+- match_details: Structured analysis with:
+  - brand_match: Compare brand/product names with match_type ("exact", "transliteration", "fuzzy", "no_match")
+  - arabic_match: Compare Arabic/raw names with match_type
+  - dosage: Compare dosages, set ignored=true if dosage differs but names match
+  - differences: List key differences found (if any)
+  - decision_reasons: List reasons for your decision
 
-Keep explanations brief and focused ONLY on name comparison."#;
+Keep explanations focused ONLY on name comparison."#;
 
         let user_prompt = format!(
             "Compare these medication NAMES only:\n\n\
-            OFFER NAME: {}\n\
-            OFFER RAW (Arabic): {}\n\n\
-            REQUEST NAME: {}\n\
-            REQUEST RAW (Arabic): {}\n\n\
+            OFFER:\n  Brand Name: {}\n  Arabic/Raw: {}\n\n\
+            REQUEST:\n  Brand Name: {}\n  Arabic/Raw: {}\n\n\
             Scoring engine score: {:.1}%\n\n\
-            Are these the SAME medication name? Compare names only, do not provide medical information.",
+            Provide detailed match analysis in the specified JSON format.",
             offer.medication,
             offer.medication_raw,
             request.medication,
@@ -570,6 +575,7 @@ mod tests {
                     confidence: 0.9,
                     explanation: "Match".to_string(),
                     suggested_action: None,
+                    match_details: None,
                 }),
                 error: None,
                 duration_ms: 100,
@@ -581,6 +587,7 @@ mod tests {
                     confidence: 0.85,
                     explanation: "Match".to_string(),
                     suggested_action: None,
+                    match_details: None,
                 }),
                 error: None,
                 duration_ms: 120,
@@ -609,6 +616,7 @@ mod tests {
                     confidence: 0.9,
                     explanation: "Match".to_string(),
                     suggested_action: None,
+                    match_details: None,
                 }),
                 error: None,
                 duration_ms: 100,
@@ -620,6 +628,7 @@ mod tests {
                     confidence: 0.8,
                     explanation: "No match".to_string(),
                     suggested_action: None,
+                    match_details: None,
                 }),
                 error: None,
                 duration_ms: 120,
@@ -631,6 +640,7 @@ mod tests {
                     confidence: 0.5,
                     explanation: "Uncertain".to_string(),
                     suggested_action: None,
+                    match_details: None,
                 }),
                 error: None,
                 duration_ms: 110,
@@ -656,6 +666,7 @@ mod tests {
                     confidence: 0.9,
                     explanation: "Match".to_string(),
                     suggested_action: None,
+                    match_details: None,
                 }),
                 error: None,
                 duration_ms: 100,
@@ -719,6 +730,7 @@ mod tests {
                     confidence: 0.9,
                     explanation: "Match".to_string(),
                     suggested_action: None,
+                    match_details: None,
                 }),
                 error: None,
                 duration_ms: 100,
@@ -730,6 +742,7 @@ mod tests {
                     confidence: 0.85,
                     explanation: "Match".to_string(),
                     suggested_action: None,
+                    match_details: None,
                 }),
                 error: None,
                 duration_ms: 120,
@@ -741,6 +754,7 @@ mod tests {
                     confidence: 0.5,
                     explanation: "Uncertain".to_string(),
                     suggested_action: None,
+                    match_details: None,
                 }),
                 error: None,
                 duration_ms: 110,

@@ -16,7 +16,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import type { ReviewOffer, ReviewRequest } from './types'
+import type { ReviewOffer, ReviewRequest, MatchDetails } from './types'
+import { getMatchTypeColor } from './types'
 import { MedicationCurationBadge } from './medication-curation-badge'
 
 import {
@@ -36,6 +37,9 @@ import {
   Loader2,
   ArrowRightLeft,
   RefreshCw,
+  Check,
+  X,
+  AlertTriangle,
 } from 'lucide-react'
 
 interface ReviewCardProps {
@@ -58,6 +62,257 @@ interface ReviewCardProps {
   aiStatus?: 'Approved' | 'Flagged' | 'Rejected' | null
   aiConfidence?: number | null
   aiExplanation?: string | null
+  matchDetails?: MatchDetails | null
+}
+
+/**
+ * Match status icon component
+ */
+function MatchStatusIcon({
+  matches,
+  className,
+}: {
+  matches: boolean
+  className?: string
+}) {
+  if (matches) {
+    return <Check className={cn('w-3.5 h-3.5 text-emerald', className)} />
+  }
+  return <X className={cn('w-3.5 h-3.5 text-destructive', className)} />
+}
+
+/**
+ * Enhanced AI Audit Popover Content with structured match details
+ */
+function AiAuditPopoverContent({
+  aiStatus,
+  aiConfidence,
+  aiExplanation,
+  matchDetails,
+  accentColor = 'teal',
+}: {
+  aiStatus: 'Approved' | 'Flagged' | 'Rejected'
+  aiConfidence?: number | null
+  aiExplanation?: string | null
+  matchDetails?: MatchDetails | null
+  accentColor?: 'teal' | 'amber'
+}) {
+  return (
+    <div className="space-y-3">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <div
+          className={cn(
+            'p-1 rounded',
+            accentColor === 'teal' ? 'bg-teal/10' : 'bg-amber/10',
+          )}
+        >
+          <Sparkles
+            className={cn(
+              'w-3.5 h-3.5',
+              accentColor === 'teal' ? 'text-teal' : 'text-amber',
+            )}
+          />
+        </div>
+        <span className="font-bold">AI Audit Result</span>
+      </div>
+
+      {/* Structured Match Details */}
+      {matchDetails ? (
+        <div className="space-y-2">
+          {/* Brand Name Comparison */}
+          <div className="p-2 rounded-lg bg-secondary/50 border border-border/50">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Brand Name
+              </span>
+              <div className="flex items-center gap-1">
+                <MatchStatusIcon matches={matchDetails.brandMatch.matches} />
+                <span
+                  className={cn(
+                    'text-[10px] font-medium',
+                    getMatchTypeColor(matchDetails.brandMatch.matchType),
+                  )}
+                >
+                  {matchDetails.brandMatch.matchType}
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-muted-foreground">Offer: </span>
+                <span className="font-medium">
+                  {matchDetails.brandMatch.offerValue || '—'}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Request: </span>
+                <span className="font-medium">
+                  {matchDetails.brandMatch.requestValue || '—'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Arabic Name Comparison */}
+          <div className="p-2 rounded-lg bg-secondary/50 border border-border/50">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Arabic Name
+              </span>
+              <div className="flex items-center gap-1">
+                <MatchStatusIcon matches={matchDetails.arabicMatch.matches} />
+                <span
+                  className={cn(
+                    'text-[10px] font-medium',
+                    getMatchTypeColor(matchDetails.arabicMatch.matchType),
+                  )}
+                >
+                  {matchDetails.arabicMatch.matchType}
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs" dir="auto">
+              <div>
+                <span className="text-muted-foreground">Offer: </span>
+                <span className="font-medium">
+                  {matchDetails.arabicMatch.offerValue || '—'}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Request: </span>
+                <span className="font-medium">
+                  {matchDetails.arabicMatch.requestValue || '—'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Dosage Comparison */}
+          <div className="p-2 rounded-lg bg-secondary/50 border border-border/50">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Dosage
+              </span>
+              <div className="flex items-center gap-1">
+                {matchDetails.dosage.ignored ? (
+                  <>
+                    <AlertTriangle className="w-3 h-3 text-amber" />
+                    <span className="text-[10px] font-medium text-amber">
+                      Ignored
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <MatchStatusIcon matches={matchDetails.dosage.matches} />
+                    <span
+                      className={cn(
+                        'text-[10px] font-medium',
+                        matchDetails.dosage.matches
+                          ? 'text-emerald'
+                          : 'text-destructive',
+                      )}
+                    >
+                      {matchDetails.dosage.matches ? 'Match' : 'Different'}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-muted-foreground">Offer: </span>
+                <span className="font-medium">
+                  {matchDetails.dosage.offerDosage || '—'}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Request: </span>
+                <span className="font-medium">
+                  {matchDetails.dosage.requestDosage || '—'}
+                </span>
+              </div>
+            </div>
+            {matchDetails.dosage.note && (
+              <p className="text-[10px] text-muted-foreground mt-1 italic">
+                {matchDetails.dosage.note}
+              </p>
+            )}
+          </div>
+
+          {/* Decision Reasons */}
+          {matchDetails.decisionReasons &&
+            matchDetails.decisionReasons.length > 0 && (
+              <div className="pt-2 border-t border-border/50">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  Decision Reasons
+                </span>
+                <ul className="mt-1 space-y-0.5">
+                  {matchDetails.decisionReasons.map((reason, i) => (
+                    <li
+                      key={i}
+                      className="flex items-start gap-1.5 text-xs text-muted-foreground"
+                    >
+                      <Check className="w-3 h-3 text-emerald shrink-0 mt-0.5" />
+                      <span>{reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+          {/* Differences */}
+          {matchDetails.differences && matchDetails.differences.length > 0 && (
+            <div className="pt-2 border-t border-border/50">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Differences Noted
+              </span>
+              <ul className="mt-1 space-y-0.5">
+                {matchDetails.differences.map((diff, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-1.5 text-xs text-amber"
+                  >
+                    <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                    <span>{diff}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Fallback to text explanation */
+        <p className="text-muted-foreground text-xs">
+          {aiExplanation ||
+            `This match was automatically ${aiStatus.toLowerCase()} by the AI review system based on medication similarity and historical patterns.`}
+        </p>
+      )}
+
+      {/* Confidence Bar */}
+      {aiConfidence && (
+        <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+          <span className="text-[10px] text-muted-foreground">Confidence</span>
+          <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all',
+                aiStatus === 'Approved'
+                  ? 'bg-emerald'
+                  : aiStatus === 'Rejected'
+                    ? 'bg-destructive'
+                    : 'bg-amber',
+              )}
+              style={{ width: `${aiConfidence * 100}%` }}
+            />
+          </div>
+          <span className="font-mono text-[10px] font-medium">
+            {Math.round(aiConfidence * 100)}%
+          </span>
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -564,33 +819,13 @@ export function ReviewCard({
                     )}
                   </div>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 p-3 text-xs leading-relaxed">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="p-1 rounded bg-teal/10">
-                      <Sparkles className="w-3.5 h-3.5 text-teal" />
-                    </div>
-                    <span className="font-bold">AI Audit Result</span>
-                  </div>
-                  <p className="text-muted-foreground">
-                    {aiExplanation ||
-                      `This match was automatically ${aiStatus.toLowerCase()} by the AI review system based on medication similarity and historical patterns.`}
-                  </p>
-                  {aiConfidence && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <div className="flex-1 h-1 bg-secondary rounded-full overflow-hidden">
-                        <div
-                          className={cn(
-                            'h-full rounded-full',
-                            aiStatus === 'Approved' ? 'bg-emerald' : 'bg-amber',
-                          )}
-                          style={{ width: `${aiConfidence * 100}%` }}
-                        />
-                      </div>
-                      <span className="font-mono text-[10px]">
-                        {Math.round(aiConfidence * 100)}%
-                      </span>
-                    </div>
-                  )}
+                <PopoverContent className="w-80 p-3 text-xs leading-relaxed">
+                  <AiAuditPopoverContent
+                    aiStatus={aiStatus}
+                    aiConfidence={aiConfidence}
+                    aiExplanation={aiExplanation}
+                    accentColor="teal"
+                  />
                 </PopoverContent>
               </Popover>
             )}
@@ -806,33 +1041,13 @@ export function ReviewCard({
                     )}
                   </div>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 p-3 text-xs leading-relaxed">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="p-1 rounded bg-teal/10">
-                      <Sparkles className="w-3.5 h-3.5 text-teal" />
-                    </div>
-                    <span className="font-bold">AI Audit Result</span>
-                  </div>
-                  <p className="text-muted-foreground">
-                    {aiExplanation ||
-                      `This match was automatically ${aiStatus.toLowerCase()} by the AI review system based on medication similarity and historical patterns.`}
-                  </p>
-                  {aiConfidence && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <div className="flex-1 h-1 bg-secondary rounded-full overflow-hidden">
-                        <div
-                          className={cn(
-                            'h-full rounded-full',
-                            aiStatus === 'Approved' ? 'bg-emerald' : 'bg-amber',
-                          )}
-                          style={{ width: `${aiConfidence * 100}%` }}
-                        />
-                      </div>
-                      <span className="font-mono text-[10px]">
-                        {Math.round(aiConfidence * 100)}%
-                      </span>
-                    </div>
-                  )}
+                <PopoverContent className="w-80 p-3 text-xs leading-relaxed">
+                  <AiAuditPopoverContent
+                    aiStatus={aiStatus}
+                    aiConfidence={aiConfidence}
+                    aiExplanation={aiExplanation}
+                    accentColor="amber"
+                  />
                 </PopoverContent>
               </Popover>
             )}

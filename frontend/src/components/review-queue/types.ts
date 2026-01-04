@@ -42,6 +42,7 @@ export interface MatchEntry {
   aiStatus?: string | null
   aiConfidence?: number | null
   aiExplanation?: string | null
+  matchDetails?: MatchDetails | null
 }
 
 /** An offer with all its related request matches */
@@ -136,4 +137,76 @@ export const defaultAdjustments: AdjustmentSettings = {
   priceFlexibility: 10,
   quantityTolerance: 15,
   dosageStrictness: 80,
+}
+
+// ============================================
+// Structured AI Match Details Types
+// ============================================
+
+/** Comparison result for a single field (brand name, Arabic name, etc.) */
+export interface MatchField {
+  /** Value from the offer */
+  offerValue: string
+  /** Value from the request */
+  requestValue: string
+  /** Whether the fields match */
+  matches: boolean
+  /** Type of match: "exact", "transliteration", "fuzzy", "partial", "no_match" */
+  matchType: string
+  /** Similarity score (0.0 - 1.0) */
+  similarity?: number
+}
+
+/** Dosage comparison details */
+export interface DosageComparison {
+  /** Dosage from the offer (e.g., "10.8mg") */
+  offerDosage?: string | null
+  /** Dosage from the request (e.g., "3.6mg") */
+  requestDosage?: string | null
+  /** Whether dosages match */
+  matches: boolean
+  /** Whether dosage difference is being ignored per matching rules */
+  ignored: boolean
+  /** Explanation note */
+  note?: string
+}
+
+/** Structured match details providing granular analysis breakdown */
+export interface MatchDetails {
+  /** Brand name comparison result */
+  brandMatch: MatchField
+  /** Arabic/transliteration name comparison */
+  arabicMatch: MatchField
+  /** Dosage comparison (may be ignored per rules) */
+  dosage: DosageComparison
+  /** Generic/active ingredient match (if applicable) */
+  genericMatch?: MatchField | null
+  /** Key differences found between offer and request */
+  differences?: string[]
+  /** Reasons supporting the final decision */
+  decisionReasons?: string[]
+}
+
+/** Helper to get match type color */
+export function getMatchTypeColor(matchType: string): string {
+  switch (matchType) {
+    case 'exact':
+      return 'text-emerald'
+    case 'transliteration':
+      return 'text-teal'
+    case 'fuzzy':
+    case 'partial':
+      return 'text-amber'
+    case 'no_match':
+      return 'text-destructive'
+    default:
+      return 'text-muted-foreground'
+  }
+}
+
+/** Helper to get match status icon based on match type */
+export function getMatchStatusIcon(
+  matches: boolean,
+): 'check' | 'warning' | 'x' {
+  return matches ? 'check' : 'x'
 }
