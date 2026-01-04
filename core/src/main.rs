@@ -12,7 +12,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use pharma_core::api::handlers::init_start_time;
 use pharma_core::api::{create_router, routes::AppState};
-use pharma_core::grpc::{GrpcDependencies, GrpcRepositories, PharmaCoreService, start_grpc_server};
+use pharma_core::grpc::{
+    BridgeClient, BridgeClientConfig, GrpcDependencies, GrpcRepositories, PharmaCoreService,
+    start_grpc_server,
+};
 use pharma_core::matching::{
     AliasLearner, MatchingEngine, MatchingEngineConfig, MedicationResolver,
     MedicationResolverConfig, PersistentAuditConfig, PersistentAuditRecorder,
@@ -223,6 +226,36 @@ async fn main() -> anyhow::Result<()> {
         "Alias learner initialized"
     );
 
+    // Initialize bridge client for sending messages via Go bridge
+    // Feature: send-message (Requirements 4.1, 4.2)
+    let bridge_client = {
+        let bridge_addr = std::env::var("BRIDGE_GRPC_ADDR")
+            .unwrap_or_else(|_| "http://localhost:50052".to_string());
+
+        let config = BridgeClientConfig {
+            address: bridge_addr.clone(),
+            ..Default::default()
+        };
+
+        let client = Arc::new(BridgeClient::new(config));
+
+        // Try to connect, but don't fail startup if bridge is not available
+        match client.connect().await {
+            Ok(()) => {
+                tracing::info!(address = %bridge_addr, "🔗 Bridge client connected");
+                Some(client)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    address = %bridge_addr,
+                    error = %e,
+                    "⚠️ Bridge client connection failed - send message feature will be unavailable"
+                );
+                None
+            }
+        }
+    };
+
     // Create application state for HTTP (with matching engine)
     let state = AppState {
         offer_repo: offer_repo.clone(),
@@ -243,6 +276,7 @@ async fn main() -> anyhow::Result<()> {
         feedback_repo: feedback_repo.clone(),
         review_queue_repo: review_queue_repo.clone(),
         active_connections: active_connections.clone(),
+        bridge_client, // Bridge client for sending messages via Go bridge
     };
 
     // Create HTTP router

@@ -288,6 +288,7 @@ var PharmaCore_ServiceDesc = grpc.ServiceDesc{
 
 const (
 	PharmaBridge_ConnectMatch_FullMethodName = "/pharma.PharmaBridge/ConnectMatch"
+	PharmaBridge_SendMessage_FullMethodName  = "/pharma.PharmaBridge/SendMessage"
 )
 
 // PharmaBridgeClient is the client API for PharmaBridge service.
@@ -298,6 +299,8 @@ const (
 type PharmaBridgeClient interface {
 	// ConnectMatch tells the bridge to notify parties (and operator) about a match
 	ConnectMatch(ctx context.Context, in *ConnectMatchRequest, opts ...grpc.CallOption) (*ConnectMatchResponse, error)
+	// SendMessage sends a WhatsApp message to a recipient
+	SendMessage(ctx context.Context, in *SendMessageRequest, opts ...grpc.CallOption) (*SendMessageResponse, error)
 }
 
 type pharmaBridgeClient struct {
@@ -318,6 +321,16 @@ func (c *pharmaBridgeClient) ConnectMatch(ctx context.Context, in *ConnectMatchR
 	return out, nil
 }
 
+func (c *pharmaBridgeClient) SendMessage(ctx context.Context, in *SendMessageRequest, opts ...grpc.CallOption) (*SendMessageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SendMessageResponse)
+	err := c.cc.Invoke(ctx, PharmaBridge_SendMessage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PharmaBridgeServer is the server API for PharmaBridge service.
 // All implementations must embed UnimplementedPharmaBridgeServer
 // for forward compatibility.
@@ -326,6 +339,8 @@ func (c *pharmaBridgeClient) ConnectMatch(ctx context.Context, in *ConnectMatchR
 type PharmaBridgeServer interface {
 	// ConnectMatch tells the bridge to notify parties (and operator) about a match
 	ConnectMatch(context.Context, *ConnectMatchRequest) (*ConnectMatchResponse, error)
+	// SendMessage sends a WhatsApp message to a recipient
+	SendMessage(context.Context, *SendMessageRequest) (*SendMessageResponse, error)
 	mustEmbedUnimplementedPharmaBridgeServer()
 }
 
@@ -338,6 +353,9 @@ type UnimplementedPharmaBridgeServer struct{}
 
 func (UnimplementedPharmaBridgeServer) ConnectMatch(context.Context, *ConnectMatchRequest) (*ConnectMatchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ConnectMatch not implemented")
+}
+func (UnimplementedPharmaBridgeServer) SendMessage(context.Context, *SendMessageRequest) (*SendMessageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SendMessage not implemented")
 }
 func (UnimplementedPharmaBridgeServer) mustEmbedUnimplementedPharmaBridgeServer() {}
 func (UnimplementedPharmaBridgeServer) testEmbeddedByValue()                      {}
@@ -378,6 +396,24 @@ func _PharmaBridge_ConnectMatch_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PharmaBridge_SendMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SendMessageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PharmaBridgeServer).SendMessage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PharmaBridge_SendMessage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PharmaBridgeServer).SendMessage(ctx, req.(*SendMessageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PharmaBridge_ServiceDesc is the grpc.ServiceDesc for PharmaBridge service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -388,6 +424,10 @@ var PharmaBridge_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ConnectMatch",
 			Handler:    _PharmaBridge_ConnectMatch_Handler,
+		},
+		{
+			MethodName: "SendMessage",
+			Handler:    _PharmaBridge_SendMessage_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

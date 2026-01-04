@@ -305,12 +305,12 @@ impl BroadcastEventEmitter {
     /// Untrack a subscription for a specific match_id
     #[allow(dead_code)]
     fn untrack_subscription(&self, match_id: Uuid) {
-        if let Ok(mut subs) = self.subscriptions.write() {
-            if let Some(count) = subs.get_mut(&match_id) {
-                *count = count.saturating_sub(1);
-                if *count == 0 {
-                    subs.remove(&match_id);
-                }
+        if let Ok(mut subs) = self.subscriptions.write()
+            && let Some(count) = subs.get_mut(&match_id)
+        {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                subs.remove(&match_id);
             }
         }
     }

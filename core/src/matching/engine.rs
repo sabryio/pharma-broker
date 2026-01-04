@@ -66,7 +66,6 @@ use super::{
     PauseReason,
     PerformanceMetrics,
     PersistentAuditRecorder,
-    PipelineEvent,
     ReviewResult,
     ReviewStatus,
     SchedulerConfig,
@@ -408,14 +407,6 @@ impl MatchingEngine {
         &self,
     ) -> &Arc<SupervisionAuditTrail<MemorySupervisionAuditRepository>> {
         &self.supervision_audit
-    }
-
-    /// Emit a pipeline event (if emitter is configured)
-    /// Feature: debug-recording-enhancement (Requirements 2.1, 2.2, 2.3, 2.4)
-    fn emit_event(&self, event: PipelineEvent) {
-        if let Some(emitter) = &self.event_emitter {
-            emitter.emit(event);
-        }
     }
 
     // =========================================================================

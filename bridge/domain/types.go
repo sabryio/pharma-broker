@@ -77,3 +77,69 @@ type Version string
 const CurrentVersion Version = "0.5.0"
 
 func (v Version) String() string { return string(v) }
+
+// JIDError represents an error in JID validation.
+type JIDError struct {
+	JID     string
+	Message string
+}
+
+func (e *JIDError) Error() string {
+	return fmt.Sprintf("invalid JID %q: %s", e.JID, e.Message)
+}
+
+// ValidJIDServers are the allowed server suffixes for WhatsApp JIDs.
+var ValidJIDServers = []string{"s.whatsapp.net", "g.us", "lid"}
+
+// ParseJID validates and parses a JID string.
+// Valid formats:
+//   - Individual: {phone}@s.whatsapp.net
+//   - Group: {id}@g.us
+//   - LID: {id}@lid
+//
+// Returns the JID if valid, or an error if invalid.
+func ParseJID(jid string) (JID, error) {
+	if jid == "" {
+		return "", &JIDError{JID: jid, Message: "JID cannot be empty"}
+	}
+
+	parts := strings.Split(jid, "@")
+	if len(parts) != 2 {
+		return "", &JIDError{JID: jid, Message: "JID must contain exactly one @ symbol"}
+	}
+
+	identifier := parts[0]
+	server := parts[1]
+
+	if identifier == "" {
+		return "", &JIDError{JID: jid, Message: "identifier part cannot be empty"}
+	}
+
+	if server == "" {
+		return "", &JIDError{JID: jid, Message: "server part cannot be empty"}
+	}
+
+	// Check if server is valid
+	validServer := false
+	for _, valid := range ValidJIDServers {
+		if server == valid {
+			validServer = true
+			break
+		}
+	}
+
+	if !validServer {
+		return "", &JIDError{
+			JID:     jid,
+			Message: fmt.Sprintf("invalid server %q, must be one of: %s", server, strings.Join(ValidJIDServers, ", ")),
+		}
+	}
+
+	return JID(jid), nil
+}
+
+// IsValidJID returns true if the JID string is valid.
+func IsValidJID(jid string) bool {
+	_, err := ParseJID(jid)
+	return err == nil
+}

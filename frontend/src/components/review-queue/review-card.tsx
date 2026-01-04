@@ -19,6 +19,7 @@ import {
 import type { ReviewOffer, ReviewRequest, MatchDetails } from './types'
 import { getMatchTypeColor } from './types'
 import { MedicationCurationBadge } from './medication-curation-badge'
+import { useSendMessage } from '@/hooks/use-send-message'
 
 import {
   Package,
@@ -373,7 +374,7 @@ function SenderBadge({
 }) {
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [message, setMessage] = useState('')
-  const [isSending, setIsSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
 
   const displayName = name || 'Unknown'
   const displayJid = jid ? jid.split('@')[0] : null
@@ -387,17 +388,28 @@ function SenderBadge({
     .join('')
     .toUpperCase()
 
+  // Use the send message hook
+  const sendMessageMutation = useSendMessage({
+    onSuccess: () => {
+      setMessage('')
+      setSendError(null)
+      setIsComposerOpen(false)
+    },
+    onError: (error) => {
+      setSendError(error.message)
+    },
+  })
+
   const handleSendMessage = async () => {
     if (!message.trim() || !jid) return
-
-    setIsSending(true)
-    // TODO: Implement actual WhatsApp message sending via API
-    // For now, simulate a delay
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    setIsSending(false)
-    setMessage('')
-    setIsComposerOpen(false)
+    setSendError(null)
+    sendMessageMutation.mutate({
+      recipient_jid: jid,
+      content: message.trim(),
+    })
   }
+
+  const isSending = sendMessageMutation.isPending
 
   return (
     <>
@@ -641,19 +653,38 @@ function SenderBadge({
                 🇪🇬 Thank you
               </button>
             </div>
+
+            {/* Character count */}
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>{message.length} / 4096 characters</span>
+              {message.length > 4096 && (
+                <span className="text-destructive">Message too long</span>
+              )}
+            </div>
+
+            {/* Error display */}
+            {sendError && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <p>{sendError}</p>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setIsComposerOpen(false)}
+              onClick={() => {
+                setIsComposerOpen(false)
+                setSendError(null)
+              }}
               disabled={isSending}
             >
               Cancel
             </Button>
             <Button
               onClick={handleSendMessage}
-              disabled={!message.trim() || isSending}
+              disabled={!message.trim() || isSending || message.length > 4096}
               className={cn(
                 'gap-2 min-w-[120px]',
                 accentColor === 'teal'

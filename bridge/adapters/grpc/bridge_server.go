@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 
 	"pharma-bridge/domain"
 	"pharma-bridge/ports"
@@ -74,5 +75,69 @@ func (s *BridgeServer) ConnectMatch(ctx context.Context, req *pb.ConnectMatchReq
 
 	return &pb.ConnectMatchResponse{
 		Success: true,
+	}, nil
+}
+
+// SendMessage sends a WhatsApp message to a recipient.
+// Implements pb.PharmaBridgeServer.SendMessage
+func (s *BridgeServer) SendMessage(ctx context.Context, req *pb.SendMessageRequest) (*pb.SendMessageResponse, error) {
+	// Log the incoming request
+	s.logger.Info().
+		Str("recipient_jid", req.RecipientJid).
+		Int("content_len", len(req.Content)).
+		Str("reference_id", req.GetReferenceId()).
+		Msg("📤 Processing SendMessage request")
+
+	// Validate JID format
+	jid, err := domain.ParseJID(req.RecipientJid)
+	if err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("recipient_jid", req.RecipientJid).
+			Msg("❌ Invalid JID format")
+		return &pb.SendMessageResponse{
+			Success: false,
+			Error:   proto.String(err.Error()),
+		}, nil
+	}
+
+	// Validate content is not empty
+	if req.Content == "" {
+		s.logger.Warn().Msg("❌ Empty message content")
+		return &pb.SendMessageResponse{
+			Success: false,
+			Error:   proto.String("message content cannot be empty"),
+		}, nil
+	}
+
+	// Send the message via WhatsApp
+	if err := s.provider.SendMessage(ctx, jid, req.Content); err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("recipient_jid", req.RecipientJid).
+			Msg("❌ Failed to send message")
+		return &pb.SendMessageResponse{
+			Success: false,
+			Error:   proto.String(fmt.Sprintf("failed to send message: %v", err)),
+		}, nil
+	}
+
+	// Generate a message ID (using reference_id if provided, otherwise generate one)
+	messageID := req.GetReferenceId()
+	if messageID == "" {
+		messageID = fmt.Sprintf("msg_%d", ctx.Value("request_id"))
+		if messageID == "msg_<nil>" {
+			messageID = fmt.Sprintf("msg_%d", domain.UnixTimestamp(0).Int64())
+		}
+	}
+
+	s.logger.Info().
+		Str("recipient_jid", req.RecipientJid).
+		Str("message_id", messageID).
+		Msg("✅ Message sent successfully")
+
+	return &pb.SendMessageResponse{
+		Success:   true,
+		MessageId: messageID,
 	}, nil
 }

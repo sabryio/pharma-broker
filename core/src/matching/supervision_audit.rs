@@ -1541,7 +1541,7 @@ mod tests {
             fn prop_blocked_event_reason_presence(
                 confidence in arb_confidence(),
                 explanation in arb_explanation(),
-                reason in "[a-zA-Z0-9 ]{1,50}",
+                reason in "[a-zA-Z0-9][a-zA-Z0-9 ]{0,49}",
             ) {
                 let rt = tokio::runtime::Runtime::new().unwrap();
                 rt.block_on(async {

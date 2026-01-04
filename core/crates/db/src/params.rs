@@ -265,7 +265,7 @@ impl RawMessageQueryParams {
 
     /// Get limit with default and max bounds
     pub fn get_limit(&self) -> i64 {
-        self.limit.unwrap_or(20).min(100).max(1)
+        self.limit.unwrap_or(20).clamp(1, 100)
     }
 
     /// Get offset with default

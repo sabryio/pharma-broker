@@ -3,6 +3,7 @@
 //! Uses pharma_db entity types directly via type aliases.
 
 // Retained domain modules with additional utility types
+pub mod jid;
 mod match_entity;
 mod stats;
 mod types;

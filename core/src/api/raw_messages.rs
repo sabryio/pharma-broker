@@ -233,10 +233,10 @@ fn validate_params(params: &RawMessageQueryParams) -> Result<(), String> {
     }
 
     // Validate date range
-    if let (Some(start), Some(end)) = (params.start_date, params.end_date) {
-        if start > end {
-            return Err("Start date must be before or equal to end date".to_string());
-        }
+    if let (Some(start), Some(end)) = (params.start_date, params.end_date)
+        && start > end
+    {
+        return Err("Start date must be before or equal to end date".to_string());
     }
 
     // Validate status

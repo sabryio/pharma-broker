@@ -26,6 +26,9 @@ service PharmaCore {
 service PharmaBridge {
     // ConnectMatch tells the bridge to notify parties (and operator) about a match
     rpc ConnectMatch(ConnectMatchRequest) returns (ConnectMatchResponse);
+    
+    // SendMessage sends a WhatsApp message to a recipient
+    rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
 }
 
 // RawMessage represents an incoming WhatsApp message
@@ -121,4 +124,19 @@ message ConnectMatchRequest {
 message ConnectMatchResponse {
     bool success = 1;
     string error = 2;
+}
+
+
+// SendMessageRequest for sending a WhatsApp message
+message SendMessageRequest {
+    string recipient_jid = 1;           // WhatsApp JID (e.g., "201234567890@s.whatsapp.net")
+    string content = 2;                 // Message text (max 4096 chars)
+    optional string reference_id = 3;   // Optional tracking reference from caller
+}
+
+// SendMessageResponse result of message send operation
+message SendMessageResponse {
+    bool success = 1;
+    string message_id = 2;              // WhatsApp message ID on success
+    optional string error = 3;          // Error message on failure
 }

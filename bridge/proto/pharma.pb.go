@@ -855,6 +855,128 @@ func (x *ConnectMatchResponse) GetError() string {
 	return ""
 }
 
+// SendMessageRequest for sending a WhatsApp message
+type SendMessageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RecipientJid  string                 `protobuf:"bytes,1,opt,name=recipient_jid,json=recipientJid,proto3" json:"recipient_jid,omitempty"`    // WhatsApp JID (e.g., "201234567890@s.whatsapp.net")
+	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`                                  // Message text (max 4096 chars)
+	ReferenceId   *string                `protobuf:"bytes,3,opt,name=reference_id,json=referenceId,proto3,oneof" json:"reference_id,omitempty"` // Optional tracking reference from caller
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendMessageRequest) Reset() {
+	*x = SendMessageRequest{}
+	mi := &file_proto_pharma_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendMessageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendMessageRequest) ProtoMessage() {}
+
+func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_pharma_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendMessageRequest.ProtoReflect.Descriptor instead.
+func (*SendMessageRequest) Descriptor() ([]byte, []int) {
+	return file_proto_pharma_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *SendMessageRequest) GetRecipientJid() string {
+	if x != nil {
+		return x.RecipientJid
+	}
+	return ""
+}
+
+func (x *SendMessageRequest) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *SendMessageRequest) GetReferenceId() string {
+	if x != nil && x.ReferenceId != nil {
+		return *x.ReferenceId
+	}
+	return ""
+}
+
+// SendMessageResponse result of message send operation
+type SendMessageResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	MessageId     string                 `protobuf:"bytes,2,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"` // WhatsApp message ID on success
+	Error         *string                `protobuf:"bytes,3,opt,name=error,proto3,oneof" json:"error,omitempty"`                    // Error message on failure
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendMessageResponse) Reset() {
+	*x = SendMessageResponse{}
+	mi := &file_proto_pharma_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendMessageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendMessageResponse) ProtoMessage() {}
+
+func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_pharma_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendMessageResponse.ProtoReflect.Descriptor instead.
+func (*SendMessageResponse) Descriptor() ([]byte, []int) {
+	return file_proto_pharma_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *SendMessageResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *SendMessageResponse) GetMessageId() string {
+	if x != nil {
+		return x.MessageId
+	}
+	return ""
+}
+
+func (x *SendMessageResponse) GetError() string {
+	if x != nil && x.Error != nil {
+		return *x.Error
+	}
+	return ""
+}
+
 var File_proto_pharma_proto protoreflect.FileDescriptor
 
 const file_proto_pharma_proto_rawDesc = "" +
@@ -930,7 +1052,18 @@ const file_proto_pharma_proto_rawDesc = "" +
 	"medication\"F\n" +
 	"\x14ConnectMatchResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error2\xde\x02\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\x8c\x01\n" +
+	"\x12SendMessageRequest\x12#\n" +
+	"\rrecipient_jid\x18\x01 \x01(\tR\frecipientJid\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\tR\acontent\x12&\n" +
+	"\freference_id\x18\x03 \x01(\tH\x00R\vreferenceId\x88\x01\x01B\x0f\n" +
+	"\r_reference_id\"s\n" +
+	"\x13SendMessageResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1d\n" +
+	"\n" +
+	"message_id\x18\x02 \x01(\tR\tmessageId\x12\x19\n" +
+	"\x05error\x18\x03 \x01(\tH\x00R\x05error\x88\x01\x01B\b\n" +
+	"\x06_error2\xde\x02\n" +
 	"\n" +
 	"PharmaCore\x12=\n" +
 	"\x0eProcessMessage\x12\x12.pharma.RawMessage\x1a\x17.pharma.ProcessResponse\x127\n" +
@@ -938,9 +1071,10 @@ const file_proto_pharma_proto_rawDesc = "" +
 	"\vHealthCheck\x12\x15.pharma.HealthRequest\x1a\x16.pharma.HealthResponse\x12U\n" +
 	"\x12GetMonitoredGroups\x12\x1e.pharma.MonitoredGroupsRequest\x1a\x1f.pharma.MonitoredGroupsResponse\x12C\n" +
 	"\n" +
-	"SyncGroups\x12\x19.pharma.SyncGroupsRequest\x1a\x1a.pharma.SyncGroupsResponse2Y\n" +
+	"SyncGroups\x12\x19.pharma.SyncGroupsRequest\x1a\x1a.pharma.SyncGroupsResponse2\xa1\x01\n" +
 	"\fPharmaBridge\x12I\n" +
-	"\fConnectMatch\x12\x1b.pharma.ConnectMatchRequest\x1a\x1c.pharma.ConnectMatchResponseB\x15Z\x13pharma-bridge/protob\x06proto3"
+	"\fConnectMatch\x12\x1b.pharma.ConnectMatchRequest\x1a\x1c.pharma.ConnectMatchResponse\x12F\n" +
+	"\vSendMessage\x12\x1a.pharma.SendMessageRequest\x1a\x1b.pharma.SendMessageResponseB\x15Z\x13pharma-bridge/protob\x06proto3"
 
 var (
 	file_proto_pharma_proto_rawDescOnce sync.Once
@@ -954,7 +1088,7 @@ func file_proto_pharma_proto_rawDescGZIP() []byte {
 	return file_proto_pharma_proto_rawDescData
 }
 
-var file_proto_pharma_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_proto_pharma_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_proto_pharma_proto_goTypes = []any{
 	(*RawMessage)(nil),              // 0: pharma.RawMessage
 	(*ProcessResponse)(nil),         // 1: pharma.ProcessResponse
@@ -969,6 +1103,8 @@ var file_proto_pharma_proto_goTypes = []any{
 	(*SyncGroupsResponse)(nil),      // 10: pharma.SyncGroupsResponse
 	(*ConnectMatchRequest)(nil),     // 11: pharma.ConnectMatchRequest
 	(*ConnectMatchResponse)(nil),    // 12: pharma.ConnectMatchResponse
+	(*SendMessageRequest)(nil),      // 13: pharma.SendMessageRequest
+	(*SendMessageResponse)(nil),     // 14: pharma.SendMessageResponse
 }
 var file_proto_pharma_proto_depIdxs = []int32{
 	8,  // 0: pharma.SyncGroupsRequest.groups:type_name -> pharma.GroupInfo
@@ -978,14 +1114,16 @@ var file_proto_pharma_proto_depIdxs = []int32{
 	6,  // 4: pharma.PharmaCore.GetMonitoredGroups:input_type -> pharma.MonitoredGroupsRequest
 	9,  // 5: pharma.PharmaCore.SyncGroups:input_type -> pharma.SyncGroupsRequest
 	11, // 6: pharma.PharmaBridge.ConnectMatch:input_type -> pharma.ConnectMatchRequest
-	1,  // 7: pharma.PharmaCore.ProcessMessage:output_type -> pharma.ProcessResponse
-	3,  // 8: pharma.PharmaCore.GetStats:output_type -> pharma.StatsResponse
-	5,  // 9: pharma.PharmaCore.HealthCheck:output_type -> pharma.HealthResponse
-	7,  // 10: pharma.PharmaCore.GetMonitoredGroups:output_type -> pharma.MonitoredGroupsResponse
-	10, // 11: pharma.PharmaCore.SyncGroups:output_type -> pharma.SyncGroupsResponse
-	12, // 12: pharma.PharmaBridge.ConnectMatch:output_type -> pharma.ConnectMatchResponse
-	7,  // [7:13] is the sub-list for method output_type
-	1,  // [1:7] is the sub-list for method input_type
+	13, // 7: pharma.PharmaBridge.SendMessage:input_type -> pharma.SendMessageRequest
+	1,  // 8: pharma.PharmaCore.ProcessMessage:output_type -> pharma.ProcessResponse
+	3,  // 9: pharma.PharmaCore.GetStats:output_type -> pharma.StatsResponse
+	5,  // 10: pharma.PharmaCore.HealthCheck:output_type -> pharma.HealthResponse
+	7,  // 11: pharma.PharmaCore.GetMonitoredGroups:output_type -> pharma.MonitoredGroupsResponse
+	10, // 12: pharma.PharmaCore.SyncGroups:output_type -> pharma.SyncGroupsResponse
+	12, // 13: pharma.PharmaBridge.ConnectMatch:output_type -> pharma.ConnectMatchResponse
+	14, // 14: pharma.PharmaBridge.SendMessage:output_type -> pharma.SendMessageResponse
+	8,  // [8:15] is the sub-list for method output_type
+	1,  // [1:8] is the sub-list for method input_type
 	1,  // [1:1] is the sub-list for extension type_name
 	1,  // [1:1] is the sub-list for extension extendee
 	0,  // [0:1] is the sub-list for field type_name
@@ -998,13 +1136,15 @@ func file_proto_pharma_proto_init() {
 	}
 	file_proto_pharma_proto_msgTypes[0].OneofWrappers = []any{}
 	file_proto_pharma_proto_msgTypes[1].OneofWrappers = []any{}
+	file_proto_pharma_proto_msgTypes[13].OneofWrappers = []any{}
+	file_proto_pharma_proto_msgTypes[14].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_pharma_proto_rawDesc), len(file_proto_pharma_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

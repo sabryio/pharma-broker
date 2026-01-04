@@ -39,6 +39,10 @@ pub enum AuditAction {
     SystemStartup,
     ConfigChanged,
 
+    // Messaging actions
+    MessageSent,
+    MessageFailed,
+
     // Generic
     Custom(String),
 }
@@ -69,6 +73,8 @@ impl std::fmt::Display for AuditAction {
             Self::ReviewSkipped => write!(f, "review_skipped"),
             Self::SystemStartup => write!(f, "system_startup"),
             Self::ConfigChanged => write!(f, "config_changed"),
+            Self::MessageSent => write!(f, "message_sent"),
+            Self::MessageFailed => write!(f, "message_failed"),
             Self::Custom(s) => write!(f, "{}", s),
         }
     }
@@ -86,6 +92,7 @@ pub enum EntityType {
     ReviewQueue,
     Group,
     System,
+    Message,
     Custom(String),
 }
 
@@ -100,6 +107,7 @@ impl std::fmt::Display for EntityType {
             Self::ReviewQueue => write!(f, "review_queue"),
             Self::Group => write!(f, "group"),
             Self::System => write!(f, "system"),
+            Self::Message => write!(f, "message"),
             Self::Custom(s) => write!(f, "{}", s),
         }
     }

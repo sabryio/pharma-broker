@@ -16,11 +16,12 @@ use tower_http::cors::{Any, CorsLayer};
 
 use super::{
     analytics, audit_records, audit_trail, calibration, confidence, curation, diagnostics,
-    embedding_cache, groups, handlers, match_filter, match_reviews, matching, participants,
-    pipeline_visualization, raw_messages, reclassify, reparse, review_queue, supervision,
-    uncertainty, weights,
+    embedding_cache, groups, handlers, match_filter, match_reviews, matching, messaging,
+    participants, pipeline_visualization, raw_messages, reclassify, reparse, review_queue,
+    supervision, uncertainty, weights,
 };
 use crate::ai::PharmaParser;
+use crate::grpc::BridgeClient;
 use crate::matching::{AliasLearner, MatchingEngine};
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
@@ -54,6 +55,8 @@ where
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub metrics_handle: Option<PrometheusHandle>,
     pub active_connections: Arc<AtomicUsize>,
+    /// Bridge client for sending WhatsApp messages (optional)
+    pub bridge_client: Option<Arc<BridgeClient>>,
 }
 
 impl<RQ, A, MM> Clone for AppState<RQ, A, MM>
@@ -82,6 +85,7 @@ where
             ws_tx: self.ws_tx.clone(),
             metrics_handle: self.metrics_handle.clone(),
             active_connections: self.active_connections.clone(),
+            bridge_client: self.bridge_client.clone(),
         }
     }
 }
@@ -100,6 +104,11 @@ where
         .route("/health/live", get(handlers::health_live))
         // Prometheus metrics
         .route("/metrics", get(metrics_handler::<RQ, A, MM>))
+        // Messaging
+        .route(
+            "/api/messages/send",
+            post(messaging::send_message::<RQ, A, MM>),
+        )
         // Offers
         .route("/api/offers", get(handlers::get_offers::<RQ, A, MM>))
         // Requests

@@ -151,7 +151,7 @@ impl LatencyStats {
         let avg_ms = sum as f64 / count as f64;
 
         // Median
-        let median_ms = if count % 2 == 0 {
+        let median_ms = if count.is_multiple_of(2) {
             (values[count / 2 - 1] + values[count / 2]) / 2
         } else {
             values[count / 2]
@@ -237,15 +237,15 @@ where
     let filtered_records: Vec<_> = records
         .iter()
         .filter(|r| {
-            if let Some(min_score) = query.min_score {
-                if r.final_score < min_score {
-                    return false;
-                }
+            if let Some(min_score) = query.min_score
+                && r.final_score < min_score
+            {
+                return false;
             }
-            if let Some(ai_involved) = query.ai_involved {
-                if r.ai_involved != ai_involved {
-                    return false;
-                }
+            if let Some(ai_involved) = query.ai_involved
+                && r.ai_involved != ai_involved
+            {
+                return false;
             }
             true
         })

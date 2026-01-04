@@ -15,6 +15,7 @@ pub mod handlers;
 pub mod match_filter;
 pub mod match_reviews;
 pub mod matching;
+pub mod messaging;
 pub mod middleware;
 pub mod participants;
 pub mod pipeline_visualization;
