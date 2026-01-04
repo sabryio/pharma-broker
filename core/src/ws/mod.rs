@@ -4,10 +4,15 @@
 //! about new offers, requests, and matches.
 
 mod auth;
+mod pipeline;
 
 pub use auth::{
     TokenClaims, TokenError, WsAuthConfig, generate_token, validate_hmac_token,
     validate_simple_token,
+};
+
+pub use pipeline::{
+    PipelineWsParams, PipelineWsState, pipeline_ws_all_handler, pipeline_ws_handler,
 };
 
 use axum::{

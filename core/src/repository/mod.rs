@@ -20,25 +20,27 @@ pub use pharma_db::{Database, DatabaseConnection};
 
 // Re-export SeaORM repos
 pub use pharma_db::repo::{
-    SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
-    SeaOrmMedicationAliasRepo, SeaOrmMedicationMappingRepo, SeaOrmMedicationMasterRepo,
-    SeaOrmOfferRepo, SeaOrmParticipantRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo,
-    SeaOrmReviewQueueRepo, SeaOrmWeightHistoryRepo,
+    SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchAuditRecordRepo,
+    SeaOrmMatchQueueRepo, SeaOrmMatchRepo, SeaOrmMedicationAliasRepo, SeaOrmMedicationMappingRepo,
+    SeaOrmMedicationMasterRepo, SeaOrmOfferRepo, SeaOrmParticipantRepo, SeaOrmRawMessageRepo,
+    SeaOrmRequestRepo, SeaOrmReviewQueueRepo, SeaOrmWeightHistoryRepo,
 };
 
 // Re-export pharma_db traits
 pub use pharma_db::traits::{
     AuditLogRepository, EnrichedReviewItem, FeedbackRepository, FeedbackStats, GroupRepository,
-    MatchQueueRepository, MatchRepository, MedicationAliasRepository, MedicationMappingRepository,
-    MedicationMasterRepository, OfferRepository, ParticipantRepository, RawMessageRepository,
-    RequestRepository, ReviewQueueRepository, ReviewQueueStats, WeightHistoryRepository,
+    MatchAuditRecordRepository, MatchQueueRepository, MatchRepository, MedicationAliasRepository,
+    MedicationMappingRepository, MedicationMasterRepository, OfferRepository,
+    ParticipantRepository, RawMessageRepository, RequestRepository, ReviewQueueRepository,
+    ReviewQueueStats, WeightHistoryRepository,
 };
 
 // Re-export entity types as type aliases for domain compatibility
 pub use pharma_db::traits::{
-    AuditLogModel, CurationStats, FeedbackModel, GroupModel, MatchModel, MatchQueueModel,
-    MedicationAliasModel, MedicationMappingModel, MedicationMasterModel, OfferModel,
-    ParticipantModel, RawMessageModel, RequestModel, ReviewQueueModel, WeightHistoryModel,
+    AuditLogModel, CurationStats, FeedbackModel, GroupModel, MatchAuditRecordModel, MatchModel,
+    MatchQueueModel, MedicationAliasModel, MedicationMappingModel, MedicationMasterModel,
+    OfferModel, ParticipantModel, RawMessageModel, RequestModel, ReviewQueueModel,
+    WeightHistoryModel,
 };
 
 // Re-export enums

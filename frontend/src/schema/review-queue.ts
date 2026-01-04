@@ -13,7 +13,7 @@ export const ReviewStatusSchema = z.enum([
 
 export const ApiReviewItemSchema = z.object({
   id: z.uuid(),
-  rawMessageId: z.uuid(),
+  rawMessageId: z.string(),
   aiResult: z.record(z.string(), z.unknown()),
   confidence: z.number().min(0).max(1),
   reason: z.string(),

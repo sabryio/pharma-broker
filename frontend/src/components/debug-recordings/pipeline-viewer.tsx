@@ -13,8 +13,17 @@ import {
   Layers,
   AlertCircle,
 } from 'lucide-react'
-import type { PipelineRecording } from './pipeline-types'
+import type {
+  PipelineRecording,
+  PipelineStep,
+  HierarchicalStage,
+  PipelineScoreBreakdown,
+  AIReviewDetails,
+  CalibrationDetails,
+  PipelineStage,
+} from './pipeline-types'
 import { PipelineTimeline } from './pipeline-timeline'
+import type { PipelineVisualizationResponse } from '@/hooks/use-audit-records'
 
 interface PipelineViewerProps {
   recording: PipelineRecording | null
@@ -405,150 +414,151 @@ function ScoreBreakdownCard({ breakdown }: { breakdown: any }) {
   )
 }
 
-// Mock data generator
-export function generateMockPipelineRecording(
-  matchId: string,
+// =============================================================================
+// Conversion Function: Backend Response to Frontend PipelineRecording
+// =============================================================================
+
+/**
+ * Convert backend PipelineVisualizationResponse to frontend PipelineRecording
+ * This bridges the gap between backend API types and frontend display types
+ * Requirements: 6.1, 6.2
+ */
+export function convertToPipelineRecording(
+  response: PipelineVisualizationResponse,
 ): PipelineRecording {
-  const now = new Date()
-  const startTime = new Date(now.getTime() - 2500)
+  // Convert stages to PipelineStep format
+  const steps: PipelineStep[] = response.stages.map((stage, index) => ({
+    id: `step-${response.matchId}-${index + 1}`,
+    stage: stage.stageName.toLowerCase().replace(/\s+/g, '_') as PipelineStage,
+    status: stage.status === 'completed' ? 'success' : stage.status === 'error' ? 'error' : 'pending',
+    startedAt: stage.startedAt,
+    completedAt: stage.completedAt,
+    durationMs: stage.durationMs,
+    metadata: {
+      candidatesIn: stage.candidatesIn,
+      candidatesOut: stage.candidatesOut,
+      involvesAi: stage.involvesAi,
+      ...stage.details,
+    },
+  }))
+
+  // Convert hierarchical stages if present
+  const hierarchicalStages: HierarchicalStage[] | undefined =
+    response.hierarchicalDetails?.map((h) => ({
+      stageName: h.stageName,
+      stageNumber: h.stageNumber,
+      candidatesIn: h.candidatesIn,
+      candidatesOut: h.candidatesOut,
+      threshold: h.threshold,
+      scores: h.candidates.map((c) => ({
+        candidateId: c.id,
+        candidateName: `Candidate ${c.id.slice(0, 8)}`,
+        score: c.score,
+        passed: c.passed,
+      })),
+      durationMs: h.durationMs,
+    }))
+
+  // Convert score breakdown if present
+  const scoreBreakdown: PipelineScoreBreakdown | undefined =
+    response.scoreBreakdown
+      ? {
+          medicationScore:
+            response.scoreBreakdown.components.find((c) => c.name === 'medication')?.rawScore ?? 0,
+          medicationWeight:
+            response.scoreBreakdown.components.find((c) => c.name === 'medication')?.weight ?? 0,
+          rawTextScore:
+            response.scoreBreakdown.components.find((c) => c.name === 'raw_text')?.rawScore ?? 0,
+          rawTextWeight:
+            response.scoreBreakdown.components.find((c) => c.name === 'raw_text')?.weight ?? 0,
+          embeddingScore:
+            response.scoreBreakdown.components.find((c) => c.name === 'embedding')?.rawScore ?? null,
+          embeddingWeight:
+            response.scoreBreakdown.components.find((c) => c.name === 'embedding')?.weight ?? 0,
+          dosageScore:
+            response.scoreBreakdown.components.find((c) => c.name === 'dosage')?.rawScore ?? 0,
+          dosageWeight:
+            response.scoreBreakdown.components.find((c) => c.name === 'dosage')?.weight ?? 0,
+          quantityScore:
+            response.scoreBreakdown.components.find((c) => c.name === 'quantity')?.rawScore ?? 0,
+          quantityWeight:
+            response.scoreBreakdown.components.find((c) => c.name === 'quantity')?.weight ?? 0,
+          priceScore:
+            response.scoreBreakdown.components.find((c) => c.name === 'price')?.rawScore ?? null,
+          priceWeight:
+            response.scoreBreakdown.components.find((c) => c.name === 'price')?.weight ?? 0,
+          recencyScore:
+            response.scoreBreakdown.components.find((c) => c.name === 'recency')?.rawScore ?? 0,
+          recencyWeight:
+            response.scoreBreakdown.components.find((c) => c.name === 'recency')?.weight ?? 0,
+          aiLogicScore:
+            response.scoreBreakdown.components.find((c) => c.name === 'ai_logic')?.rawScore ?? null,
+          aiLogicWeight:
+            response.scoreBreakdown.components.find((c) => c.name === 'ai_logic')?.weight ?? 0,
+          finalScore: response.scoreBreakdown.finalScore,
+          formula: response.scoreBreakdown.formula,
+        }
+      : undefined
+
+  // Convert AI review if present
+  const aiReview: AIReviewDetails | undefined = response.aiReview
+    ? {
+        model: response.aiReview.modelName,
+        temperature: 0.2, // Default, not provided by backend
+        promptTokens: response.aiReview.tokenUsage?.promptTokens ?? 0,
+        completionTokens: response.aiReview.tokenUsage?.completionTokens ?? 0,
+        offerText: '', // Not provided by backend visualization
+        requestText: '', // Not provided by backend visualization
+        decision: response.aiReview.decision as 'approve' | 'reject' | 'uncertain',
+        confidence: response.aiReview.confidence,
+        explanation: response.aiReview.reasoning ?? '',
+        reasoning: response.aiReview.reasoning ? [response.aiReview.reasoning] : [],
+        issues: [],
+        durationMs: response.aiReview.latencyMs,
+      }
+    : undefined
+
+  // Convert calibration if present
+  const calibration: CalibrationDetails | undefined = response.calibration
+    ? {
+        rawScore: response.calibration.rawScore,
+        calibratedScore: response.calibration.calibratedScore,
+        calibrationMethod: response.calibration.method,
+        binIndex: response.calibration.binIndex,
+        binCount: undefined,
+        ece: response.calibration.ece,
+        mce: undefined,
+      }
+    : undefined
+
+  // Calculate total duration from stages
+  const totalDurationMs =
+    response.totalLatencyMs ||
+    steps.reduce((sum, step) => sum + (step.durationMs ?? 0), 0)
+
+  // Determine final status based on score
+  const finalStatus: 'auto_approved' | 'needs_review' | 'auto_rejected' =
+    response.finalScore >= 0.85
+      ? 'auto_approved'
+      : response.finalScore >= 0.5
+        ? 'needs_review'
+        : 'auto_rejected'
 
   return {
-    id: `pipeline-${matchId}`,
-    matchId,
-    offerId: `offer-${matchId.slice(0, 8)}`,
-    requestId: `request-${matchId.slice(0, 8)}`,
-    startedAt: startTime.toISOString(),
-    completedAt: now.toISOString(),
-    totalDurationMs: 2500,
+    id: `pipeline-${response.matchId}`,
+    matchId: response.matchId,
+    offerId: response.offerId,
+    requestId: response.requestId,
+    startedAt: steps[0]?.startedAt ?? response.createdAt,
+    completedAt: steps[steps.length - 1]?.completedAt ?? response.createdAt,
+    totalDurationMs,
     status: 'completed',
-    steps: [
-      {
-        id: 'step-1',
-        stage: 'message_received',
-        status: 'success',
-        startedAt: startTime.toISOString(),
-        durationMs: 50,
-      },
-      {
-        id: 'step-2',
-        stage: 'ai_parsing',
-        status: 'success',
-        startedAt: new Date(startTime.getTime() + 50).toISOString(),
-        durationMs: 400,
-      },
-      {
-        id: 'step-3',
-        stage: 'medication_resolution',
-        status: 'success',
-        startedAt: new Date(startTime.getTime() + 450).toISOString(),
-        durationMs: 100,
-      },
-      {
-        id: 'step-4',
-        stage: 'match_candidate_search',
-        status: 'success',
-        startedAt: new Date(startTime.getTime() + 550).toISOString(),
-        durationMs: 100,
-      },
-      {
-        id: 'step-5',
-        stage: 'hierarchical_stage_1',
-        status: 'success',
-        startedAt: new Date(startTime.getTime() + 650).toISOString(),
-        durationMs: 20,
-      },
-      {
-        id: 'step-6',
-        stage: 'score_calculation',
-        status: 'success',
-        startedAt: new Date(startTime.getTime() + 670).toISOString(),
-        durationMs: 30,
-      },
-      {
-        id: 'step-7',
-        stage: 'ai_review',
-        status: 'success',
-        startedAt: new Date(startTime.getTime() + 700).toISOString(),
-        durationMs: 750,
-      },
-      {
-        id: 'step-8',
-        stage: 'calibration',
-        status: 'success',
-        startedAt: new Date(startTime.getTime() + 1450).toISOString(),
-        durationMs: 20,
-      },
-      {
-        id: 'step-9',
-        stage: 'match_created',
-        status: 'success',
-        startedAt: new Date(startTime.getTime() + 1470).toISOString(),
-        durationMs: 30,
-      },
-    ],
-    parsing: {
-      offer: {
-        rawMessage: 'عندي اوجمنتين 1 جرام 20 علبة السعر 180 جنيه',
-        language: 'ar',
-        detectedType: 'offer',
-        aiModel: 'gpt-4o-mini',
-        temperature: 0.2,
-        promptTokens: 150,
-        completionTokens: 95,
-        parsedFields: {
-          medication: 'Augmentin 1g',
-          medicationRaw: 'اوجمنتين 1 جرام',
-          quantity: 20,
-          unit: 'boxes',
-          price: 180,
-          currency: 'EGP',
-          expiryDate: null,
-          urgencyLevel: null,
-        },
-        confidence: 0.94,
-      },
-      request: {
-        rawMessage: 'محتاج اوجمنتين جرام 10 علب ضروري',
-        language: 'ar',
-        detectedType: 'request',
-        aiModel: 'gpt-4o-mini',
-        temperature: 0.2,
-        promptTokens: 140,
-        completionTokens: 88,
-        parsedFields: {
-          medication: 'Augmentin 1g',
-          medicationRaw: 'اوجمنتين جرام',
-          quantity: 10,
-          unit: 'boxes',
-          price: null,
-          currency: null,
-          expiryDate: null,
-          urgencyLevel: 'urgent',
-        },
-        confidence: 0.91,
-      },
-    },
-    scoreBreakdown: {
-      medicationScore: 0.95,
-      medicationWeight: 0.85,
-      rawTextScore: 0.88,
-      rawTextWeight: 0.05,
-      embeddingScore: 0.91,
-      embeddingWeight: 0.05,
-      dosageScore: 1.0,
-      dosageWeight: 0.02,
-      quantityScore: 0.8,
-      quantityWeight: 0.01,
-      priceScore: null,
-      priceWeight: 0.01,
-      recencyScore: 0.95,
-      recencyWeight: 0.005,
-      aiLogicScore: 0.89,
-      aiLogicWeight: 0.005,
-      finalScore: 0.82,
-      formula: 'Σ(score_i × weight_i)',
-    },
-    finalScore: 0.78,
-    finalStatus: 'needs_review',
+    steps,
+    hierarchicalStages,
+    scoreBreakdown,
+    aiReview,
+    calibration,
+    finalScore: response.finalScore,
+    finalStatus,
   }
 }

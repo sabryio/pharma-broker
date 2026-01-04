@@ -26,6 +26,7 @@ pub use crate::entity::audit_log::Model as AuditLogModel;
 pub use crate::entity::feedback_record::Model as FeedbackModel;
 pub use crate::entity::group::Model as GroupModel;
 pub use crate::entity::match_::Model as MatchModel;
+pub use crate::entity::match_audit_record::Model as MatchAuditRecordModel;
 pub use crate::entity::match_queue::Model as MatchQueueModel;
 pub use crate::entity::match_queue::QueueStatus;
 pub use crate::entity::medication_alias::CurationStatus;
@@ -381,6 +382,34 @@ pub trait AuditLogRepository: Send + Sync {
     ) -> Result<Vec<AuditLogModel>>;
     async fn count(&self) -> Result<i64>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
+}
+
+/// Match audit record repository trait
+/// Requirements: 5.1, 5.3, 5.4
+#[async_trait]
+pub trait MatchAuditRecordRepository: Send + Sync {
+    /// Insert a new audit record
+    async fn insert(&self, record: &MatchAuditRecordModel) -> Result<MatchAuditRecordModel>;
+    /// Get an audit record by its ID
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<MatchAuditRecordModel>>;
+    /// Get an audit record by match ID
+    async fn get_by_match_id(&self, match_id: Uuid) -> Result<Option<MatchAuditRecordModel>>;
+    /// Get audit records by session ID (for frontend integration)
+    async fn get_by_session(&self, session_id: &str) -> Result<Vec<MatchAuditRecordModel>>;
+    /// List recent audit records with pagination
+    async fn list_recent(&self, limit: usize, offset: usize) -> Result<Vec<MatchAuditRecordModel>>;
+    /// Delete audit records older than the cutoff date (for retention)
+    async fn delete_older_than(&self, cutoff: DateTime<Utc>) -> Result<u64>;
+    /// Count total audit records
+    async fn count(&self) -> Result<i64>;
+    /// Update review status for an audit record
+    async fn update_review_status(
+        &self,
+        id: Uuid,
+        status: &str,
+        reviewed_by: Uuid,
+        notes: Option<&str>,
+    ) -> Result<MatchAuditRecordModel>;
 }
 
 /// Match queue repository trait

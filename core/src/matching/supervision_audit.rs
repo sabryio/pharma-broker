@@ -464,29 +464,29 @@ impl SupervisionAuditFilter {
     /// Check if an entry matches this filter
     pub fn matches(&self, entry: &SupervisionAuditEntry) -> bool {
         // Match ID filter
-        if let Some(match_id) = self.match_id {
-            if entry.match_id != Some(match_id) {
-                return false;
-            }
+        if let Some(match_id) = self.match_id
+            && entry.match_id != Some(match_id)
+        {
+            return false;
         }
 
         // Event type filter
-        if let Some(event_type) = self.event_type {
-            if entry.event_type != event_type {
-                return false;
-            }
+        if let Some(event_type) = self.event_type
+            && entry.event_type != event_type
+        {
+            return false;
         }
 
         // Date range filter
-        if let Some(start) = self.start_time {
-            if entry.timestamp < start {
-                return false;
-            }
+        if let Some(start) = self.start_time
+            && entry.timestamp < start
+        {
+            return false;
         }
-        if let Some(end) = self.end_time {
-            if entry.timestamp > end {
-                return false;
-            }
+        if let Some(end) = self.end_time
+            && entry.timestamp > end
+        {
+            return false;
         }
 
         // Confidence range filter
@@ -510,17 +510,17 @@ impl SupervisionAuditFilter {
         }
 
         // Override status filter
-        if let Some(overridden) = self.overridden {
-            if entry.overridden != overridden {
-                return false;
-            }
+        if let Some(overridden) = self.overridden
+            && entry.overridden != overridden
+        {
+            return false;
         }
 
         // Override by filter
-        if let Some(override_by) = self.override_by {
-            if entry.override_by != Some(override_by) {
-                return false;
-            }
+        if let Some(override_by) = self.override_by
+            && entry.override_by != Some(override_by)
+        {
+            return false;
         }
 
         true
@@ -1098,8 +1098,10 @@ mod tests {
     fn test_supervision_audit_entry_config_changed() {
         let user_id = Uuid::new_v4();
         let old_config = AutoApproveConfig::default();
-        let mut new_config = AutoApproveConfig::default();
-        new_config.confidence_threshold = 0.90;
+        let new_config = AutoApproveConfig {
+            confidence_threshold: 0.90,
+            ..Default::default()
+        };
 
         let entry = SupervisionAuditEntry::config_changed(user_id, &old_config, &new_config);
 
@@ -1220,8 +1222,10 @@ mod tests {
         let trail = SupervisionAuditTrail::new(SupervisionAuditConfig::default());
         let user_id = Uuid::new_v4();
         let old_config = AutoApproveConfig::default();
-        let mut new_config = AutoApproveConfig::default();
-        new_config.confidence_threshold = 0.90;
+        let new_config = AutoApproveConfig {
+            confidence_threshold: 0.90,
+            ..Default::default()
+        };
 
         let entry = trail
             .log_config_change(user_id, &old_config, &new_config)

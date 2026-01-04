@@ -15,9 +15,9 @@ use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
 
 use super::{
-    audit_records, audit_trail, calibration, confidence, curation, diagnostics, embedding_cache,
-    groups, handlers, match_filter, match_reviews, matching, participants, reclassify, reparse,
-    review_queue, supervision, uncertainty, weights,
+    analytics, audit_records, audit_trail, calibration, confidence, curation, diagnostics,
+    embedding_cache, groups, handlers, match_filter, match_reviews, matching, participants,
+    pipeline_visualization, reclassify, reparse, review_queue, supervision, uncertainty, weights,
 };
 use crate::ai::PharmaParser;
 use crate::matching::{AliasLearner, MatchingEngine};
@@ -413,12 +413,20 @@ where
             get(audit_records::get_audit_recorder_status::<RQ, A, MM>),
         )
         .route(
+            "/api/audit-records/analytics",
+            get(analytics::get_performance_analytics::<RQ, A, MM>),
+        )
+        .route(
             "/api/audit-records/session/{session_id}",
             get(audit_records::get_session_records::<RQ, A, MM>),
         )
         .route(
             "/api/audit-records/{match_id}",
             get(audit_records::get_audit_record::<RQ, A, MM>),
+        )
+        .route(
+            "/api/audit-records/{match_id}/pipeline",
+            get(pipeline_visualization::get_pipeline_visualization::<RQ, A, MM>),
         )
         .route(
             "/api/audit-records/{match_id}/review",

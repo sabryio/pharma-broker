@@ -75,10 +75,10 @@ impl AutoApproveConfig {
             config.enabled = val.parse().unwrap_or(false);
         }
 
-        if let Ok(val) = env::var("AUTO_APPROVE_CONFIDENCE_THRESHOLD") {
-            if let Ok(threshold) = val.parse::<f64>() {
-                config.confidence_threshold = config.clamp_threshold(threshold);
-            }
+        if let Ok(val) = env::var("AUTO_APPROVE_CONFIDENCE_THRESHOLD")
+            && let Ok(threshold) = val.parse::<f64>()
+        {
+            config.confidence_threshold = config.clamp_threshold(threshold);
         }
 
         if let Ok(val) = env::var("AUTO_APPROVE_BATCH_SIZE") {
@@ -105,10 +105,10 @@ impl AutoApproveConfig {
             config.override_cooldown_mins = val.parse().unwrap_or(60);
         }
 
-        if let Ok(val) = env::var("AUTO_APPROVE_SCHEDULE") {
-            if !val.is_empty() {
-                config.schedule = Some(val);
-            }
+        if let Ok(val) = env::var("AUTO_APPROVE_SCHEDULE")
+            && !val.is_empty()
+        {
+            config.schedule = Some(val);
         }
 
         config
@@ -162,10 +162,10 @@ impl AutoApproveConfig {
     /// Returns category-specific threshold if configured, otherwise global threshold
     /// Requirements: 5.3
     pub fn get_threshold_for_category(&self, category: Option<&str>) -> f64 {
-        if let Some(cat) = category {
-            if let Some(threshold) = self.category_thresholds.get(cat) {
-                return *threshold;
-            }
+        if let Some(cat) = category
+            && let Some(threshold) = self.category_thresholds.get(cat)
+        {
+            return *threshold;
         }
         self.confidence_threshold
     }
@@ -589,8 +589,10 @@ mod tests {
 
     #[test]
     fn test_validate_threshold_too_low() {
-        let mut config = AutoApproveConfig::default();
-        config.confidence_threshold = 0.50;
+        let config = AutoApproveConfig {
+            confidence_threshold: 0.50,
+            ..Default::default()
+        };
 
         let result = config.validate();
         assert!(matches!(
@@ -601,8 +603,10 @@ mod tests {
 
     #[test]
     fn test_validate_threshold_too_high() {
-        let mut config = AutoApproveConfig::default();
-        config.confidence_threshold = 1.0;
+        let config = AutoApproveConfig {
+            confidence_threshold: 1.0,
+            ..Default::default()
+        };
 
         let result = config.validate();
         assert!(matches!(
@@ -613,8 +617,10 @@ mod tests {
 
     #[test]
     fn test_validate_invalid_batch_size() {
-        let mut config = AutoApproveConfig::default();
-        config.batch_size = 0;
+        let config = AutoApproveConfig {
+            batch_size: 0,
+            ..Default::default()
+        };
 
         let result = config.validate();
         assert!(matches!(
@@ -625,8 +631,10 @@ mod tests {
 
     #[test]
     fn test_validate_invalid_override_rate() {
-        let mut config = AutoApproveConfig::default();
-        config.override_rate_pause_threshold = 1.5;
+        let config = AutoApproveConfig {
+            override_rate_pause_threshold: 1.5,
+            ..Default::default()
+        };
 
         let result = config.validate();
         assert!(matches!(
@@ -699,8 +707,10 @@ mod tests {
     fn test_schedule_within_business_hours() {
         use chrono::TimeZone;
 
-        let mut config = AutoApproveConfig::default();
-        config.schedule = Some("09:00-17:00".to_string());
+        let config = AutoApproveConfig {
+            schedule: Some("09:00-17:00".to_string()),
+            ..Default::default()
+        };
 
         // 10:00 AM should be within schedule
         let time_10am = Utc.with_ymd_and_hms(2026, 1, 3, 10, 0, 0).unwrap();
@@ -723,8 +733,10 @@ mod tests {
     fn test_schedule_overnight_range() {
         use chrono::TimeZone;
 
-        let mut config = AutoApproveConfig::default();
-        config.schedule = Some("22:00-06:00".to_string()); // Night shift
+        let config = AutoApproveConfig {
+            schedule: Some("22:00-06:00".to_string()), // Night shift
+            ..Default::default()
+        };
 
         // 11:00 PM should be within schedule
         let time_11pm = Utc.with_ymd_and_hms(2026, 1, 3, 23, 0, 0).unwrap();
@@ -747,8 +759,10 @@ mod tests {
     fn test_schedule_boundary_conditions() {
         use chrono::TimeZone;
 
-        let mut config = AutoApproveConfig::default();
-        config.schedule = Some("09:00-17:00".to_string());
+        let config = AutoApproveConfig {
+            schedule: Some("09:00-17:00".to_string()),
+            ..Default::default()
+        };
 
         // Exactly at start time should be within schedule
         let time_9am = Utc.with_ymd_and_hms(2026, 1, 3, 9, 0, 0).unwrap();
@@ -2371,15 +2385,16 @@ impl std::fmt::Display for AIStatus {
     }
 }
 
-impl AIStatus {
-    /// Parse from string
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for AIStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "evaluated" => Some(AIStatus::Evaluated),
-            "pending" => Some(AIStatus::Pending),
-            "failed" => Some(AIStatus::Failed),
-            "skipped" => Some(AIStatus::Skipped),
-            _ => None,
+            "evaluated" => Ok(AIStatus::Evaluated),
+            "pending" => Ok(AIStatus::Pending),
+            "failed" => Ok(AIStatus::Failed),
+            "skipped" => Ok(AIStatus::Skipped),
+            _ => Err(()),
         }
     }
 }
@@ -2690,12 +2705,12 @@ mod ai_evaluation_tests {
 
     #[test]
     fn test_ai_status_from_str() {
-        assert_eq!(AIStatus::from_str("evaluated"), Some(AIStatus::Evaluated));
-        assert_eq!(AIStatus::from_str("EVALUATED"), Some(AIStatus::Evaluated));
-        assert_eq!(AIStatus::from_str("pending"), Some(AIStatus::Pending));
-        assert_eq!(AIStatus::from_str("failed"), Some(AIStatus::Failed));
-        assert_eq!(AIStatus::from_str("skipped"), Some(AIStatus::Skipped));
-        assert_eq!(AIStatus::from_str("unknown"), None);
+        assert_eq!("evaluated".parse::<AIStatus>(), Ok(AIStatus::Evaluated));
+        assert_eq!("EVALUATED".parse::<AIStatus>(), Ok(AIStatus::Evaluated));
+        assert_eq!("pending".parse::<AIStatus>(), Ok(AIStatus::Pending));
+        assert_eq!("failed".parse::<AIStatus>(), Ok(AIStatus::Failed));
+        assert_eq!("skipped".parse::<AIStatus>(), Ok(AIStatus::Skipped));
+        assert!("unknown".parse::<AIStatus>().is_err());
     }
 
     #[tokio::test]

@@ -16,46 +16,67 @@ path = "src/main.rs"
 [[bin]]
 name = "bench-parser"
 path = "src/bin/bench_parser.rs"
+required-features = ["bins"]
 
 [[bin]]
 name = "pipeline-sim"
 path = "src/bin/pipeline_sim.rs"
+required-features = ["bins"]
 
 [[bin]]
 name = "parse-cli"
 path = "src/bin/parse_cli.rs"
+required-features = ["bins"]
 
 [[bin]]
 name = "compare-models"
 path = "src/bin/compare_models.rs"
+required-features = ["bins"]
 
 [[bin]]
 name = "analyze-models"
 path = "src/bin/analyze_models.rs"
+required-features = ["bins"]
 
 [[bin]]
 name = "bench-hybrid-rag"
 path = "src/bin/bench_hybrid_rag.rs"
+required-features = ["bins"]
 
 [[bin]]
 name = "vector-search"
 path = "src/bin/vector_search.rs"
+required-features = ["bins"]
 
 [[bin]]
 name = "refresh-embeddings"
 path = "src/bin/refresh_embeddings.rs"
+required-features = ["bins"]
 
 [[bin]]
 name = "reset-db"
 path = "src/bin/reset_db.rs"
+required-features = ["bins"]
 
 [[bin]]
 name = "monitor"
 path = "src/bin/monitor.rs"
+required-features = ["bins"]
 
 [[bin]]
 name = "db-health"
 path = "src/bin/db_health.rs"
+required-features = ["bins"]
+
+[[bin]]
+name = "migrate-identity"
+path = "src/bin/migrate_identity.rs"
+required-features = ["bins"]
+
+[[bin]]
+name = "seed-medications"
+path = "src/bin/seed_medications.rs"
+required-features = ["bins"]
 
 [dependencies]
 # Async runtime
@@ -163,6 +184,7 @@ tonic-prost-build = "0.14.2"
 
 [features]
 default = []
+bins = []                                               # Enable utility binaries (bench-parser, monitor, etc.)
 tokio-console = ["console-subscriber", "tokio/tracing"]
 
 # Test phase features - use these to run specific test groups
@@ -201,9 +223,18 @@ test-properties = [
     "test-arabic-props",
     "test-engine-props",
     "test-hard-negative-props",
+    "test-pipeline-props",
+    "test-pipeline-api-props",
+    "test-analytics-props",
 ]
 test-scorer-props = []
 test-expiry-props = []
 test-arabic-props = []
 test-engine-props = []
 test-hard-negative-props = []
+test-pipeline-props = []
+test-pipeline-api-props = []
+test-analytics-props = []
+
+# Debug Recording Enhancement integration tests
+test-debug-recording = []

@@ -18,6 +18,17 @@ export {
   selectPlayback,
   selectCurrentSnapshot,
   selectViewMode as selectRecordingsViewMode,
+  // Live Pipeline Selectors (Task 10.2)
+  selectLivePipelineStates,
+  selectLivePipelineState,
+  selectSubscribedMatchId,
+  selectPipelineConnectionStatus,
+  selectPipelineConnectionError,
+  selectLiveStages,
+  selectCurrentLiveStage,
+  selectAiProcessingState,
+  selectIsPipelineRunning,
+  selectSubscribedPipelineState,
   // Reducer
   default as recordingsReducer,
 } from './recordingsSlice'

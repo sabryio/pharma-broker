@@ -3,7 +3,7 @@
 // Migrated to use Redux for state management
 
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   Video,
@@ -22,12 +22,9 @@ import {
   Activity,
   Eye,
   BarChart3,
-  Cpu,
-  Sparkles,
   Target,
   Gauge,
   Zap,
-  TrendingUp,
   FileJson,
   Settings2,
 } from 'lucide-react'
@@ -37,17 +34,16 @@ import {
   RecordingCard,
   RecordingPlayback,
   PipelineViewer,
-  generateMockPipelineRecording,
+  convertToPipelineRecording,
   StatsCard,
   CircularProgress,
-  HeatMap,
-  generateMockHeatmapData,
   ProgressBar,
-  Sparkline,
   AuditRecordsViewer,
+  PerformanceAnalyticsView,
   type MatchRecording,
   type PipelineRecording,
 } from '@/components/debug-recordings'
+import { usePipelineVisualization } from '@/hooks/use-audit-records'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { useAppSelector, useRecordingsActions } from '@/store'
@@ -149,12 +145,13 @@ function DebugRecordings() {
     useState<MatchRecording | null>(null)
   const [pipelineRecording, setPipelineRecording] =
     useState<PipelineRecording | null>(null)
+  const [pipelineMatchId, setPipelineMatchId] = useState<string | undefined>(undefined)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<SortBy>('date')
   const [filterOutcome, setFilterOutcome] = useState<FilterOutcome>('all')
 
-  // Generate mock heatmap data
-  const heatmapData = useMemo(() => generateMockHeatmapData(), [])
+  // Fetch pipeline visualization from backend
+  const { data: pipelineData, refetch: refetchPipeline, isLoading: isPipelineLoading } = usePipelineVisualization(pipelineMatchId)
 
   // Filter and sort recordings
   const filteredRecordings = useMemo(() => {
@@ -202,6 +199,14 @@ function DebugRecordings() {
 
     return result
   }, [recordings, searchQuery, sortBy, filterOutcome])
+
+  // Convert pipeline data when it arrives from backend
+  useEffect(() => {
+    if (pipelineData) {
+      const converted = convertToPipelineRecording(pipelineData)
+      setPipelineRecording(converted)
+    }
+  }, [pipelineData])
 
   // Stats calculations
   const stats = useMemo(() => {
@@ -252,17 +257,6 @@ function DebugRecordings() {
     return recordings
       .slice(0, 20)
       .map((r) => r.snapshots.length)
-      .reverse()
-  }, [recordings])
-
-  const confidenceTrendData = useMemo(() => {
-    return recordings
-      .slice(0, 30)
-      .map(
-        (r) =>
-          r.snapshots.reduce((acc, s) => acc + s.confidence, 0) /
-          (r.snapshots.length || 1),
-      )
       .reverse()
   }, [recordings])
 
@@ -326,8 +320,8 @@ function DebugRecordings() {
 
   const handleViewPipeline = useCallback(
     (recording: MatchRecording) => {
-      const mockPipeline = generateMockPipelineRecording(recording.matchId)
-      setPipelineRecording(mockPipeline)
+      // Set the match ID to trigger fetching real pipeline data from backend
+      setPipelineMatchId(recording.matchId)
       actions.setViewMode('pipeline')
     },
     [actions],
@@ -377,11 +371,6 @@ function DebugRecordings() {
       actions.selectRecording(matchId)
     },
     [actions],
-  )
-
-  const selectedRecording = useMemo(
-    () => recordings.find((r) => r.matchId === selectedRecordingId),
-    [recordings, selectedRecordingId],
   )
 
   return (
@@ -736,18 +725,26 @@ function DebugRecordings() {
           {/* Pipeline Mode */}
           {viewMode === 'pipeline' && (
             <div className="space-y-6">
-              {pipelineRecording ? (
+              {isPipelineLoading ? (
+                <div className="text-center py-20">
+                  <RefreshCw className="w-16 h-16 text-muted-foreground/20 mx-auto mb-4 animate-spin" />
+                  <h3 className="text-lg font-semibold text-foreground mb-2">
+                    Loading Pipeline Data
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Fetching pipeline visualization from backend...
+                  </p>
+                </div>
+              ) : pipelineRecording ? (
                 <PipelineViewer
                   recording={pipelineRecording}
-                  onClose={() => setPipelineRecording(null)}
+                  onClose={() => {
+                    setPipelineRecording(null)
+                    setPipelineMatchId(undefined)
+                  }}
                   onRefresh={() => {
-                    if (selectedRecording) {
-                      setPipelineRecording(
-                        generateMockPipelineRecording(
-                          selectedRecording.matchId,
-                        ),
-                      )
-                    }
+                    // Refetch pipeline data from backend
+                    refetchPipeline()
                   }}
                   onExport={() => {
                     const blob = new Blob(
@@ -785,128 +782,7 @@ function DebugRecordings() {
           )}
 
           {/* Analytics Mode */}
-          {viewMode === 'analytics' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Activity Heatmap */}
-                <div className="p-6 rounded-2xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h3 className="text-lg font-semibold text-foreground">
-                        Activity Heatmap
-                      </h3>
-                      <p className="text-sm text-muted-foreground">
-                        Recording activity by day and hour
-                      </p>
-                    </div>
-                    <Cpu className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                  <HeatMap data={heatmapData} />
-                </div>
-
-                {/* Performance Metrics */}
-                <div className="p-6 rounded-2xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h3 className="text-lg font-semibold text-foreground">
-                        Performance Metrics
-                      </h3>
-                      <p className="text-sm text-muted-foreground">
-                        System performance indicators
-                      </p>
-                    </div>
-                    <Sparkles className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 rounded-xl bg-background/50 border border-border/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 rounded-lg bg-teal-500/20 flex items-center justify-center">
-                          <Zap className="w-4 h-4 text-teal-400" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">
-                          Avg Processing
-                        </span>
-                      </div>
-                      <p className="text-2xl font-bold text-foreground">
-                        {formatDuration(stats.avgDuration)}
-                      </p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-background/50 border border-border/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
-                          <Activity className="w-4 h-4 text-violet-400" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">
-                          Events/Recording
-                        </span>
-                      </div>
-                      <p className="text-2xl font-bold text-foreground">
-                        {stats.avgSnapshots.toFixed(1)}
-                      </p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-background/50 border border-border/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                          <Target className="w-4 h-4 text-emerald-400" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">
-                          Approval Rate
-                        </span>
-                      </div>
-                      <p className="text-2xl font-bold text-emerald-400">
-                        {stats.total > 0
-                          ? ((stats.approved / stats.total) * 100).toFixed(0)
-                          : 0}
-                        %
-                      </p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-background/50 border border-border/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
-                          <Gauge className="w-4 h-4 text-amber-400" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">
-                          Avg Confidence
-                        </span>
-                      </div>
-                      <p className="text-2xl font-bold text-amber-400">
-                        {stats.avgConfidence.toFixed(0)}%
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Confidence Trend */}
-              <div className="p-6 rounded-2xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="text-lg font-semibold text-foreground">
-                      Confidence Trend
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      Average confidence over recent recordings
-                    </p>
-                  </div>
-                  <TrendingUp className="w-5 h-5 text-muted-foreground" />
-                </div>
-                <div className="h-40">
-                  {confidenceTrendData.length > 1 ? (
-                    <Sparkline
-                      data={confidenceTrendData}
-                      color="teal"
-                      height={160}
-                      showDots
-                    />
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-muted-foreground/50">
-                      Not enough data for trend visualization
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+          {viewMode === 'analytics' && <PerformanceAnalyticsView />}
 
           {/* Audit Records Mode */}
           {viewMode === 'audit' && <AuditRecordsViewer />}

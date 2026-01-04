@@ -99,6 +99,14 @@ export const queryKeys = {
     session: (sessionId: string) =>
       [...queryKeys.auditRecords.all, 'session', sessionId] as const,
     status: () => [...queryKeys.auditRecords.all, 'status'] as const,
+    pipeline: (matchId: string) =>
+      [...queryKeys.auditRecords.all, 'pipeline', matchId] as const,
+    analytics: (params: {
+      limit?: number
+      minScore?: number
+      aiInvolved?: boolean
+      hours?: number
+    }) => [...queryKeys.auditRecords.all, 'analytics', params] as const,
   },
 
   // Uncertainty Estimation

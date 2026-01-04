@@ -27,9 +27,10 @@ use super::{
     ExpiryResult, ExpiryScorer, HardNegativeIndex, HistoricalLearner, HistoricalLearnerStats,
     HistoricalLearningConfig, JobStatus, LearnerError, MatchAction, MatchFilter, MatchFilterConfig,
     MatchFilterStatsSnapshot, MatchScore, MedicationAffinity, MedicationBlocklist, OutlierDetector,
-    OutlierDetectorConfig, PauseReason, PerformanceMetrics, ReviewResult, ReviewStatus,
-    SchedulerConfig, SchedulerStatus, Scorer, UncertaintyConfig, UncertaintyEstimator,
-    WarmStartConfig, WarmStartManager, WeightLearner, Weights, contains_arabic,
+    OutlierDetectorConfig, PauseReason, PerformanceMetrics, PipelineEvent, ReviewResult,
+    ReviewStatus, SchedulerConfig, SchedulerStatus, Scorer, SharedEventEmitter, UncertaintyConfig,
+    UncertaintyEstimator, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
+    contains_arabic,
 };
 
 /// Runtime state for the learning scheduler job
@@ -197,6 +198,9 @@ pub struct MatchingEngine {
     /// Auto-approve processor for AI-supervised auto-approval
     /// Requirements: 1.1, 1.2, 1.3, 1.4, 6.1, 6.2, 7.1-7.5
     auto_approve_processor: Arc<AutoApproveProcessor>,
+    /// Pipeline event emitter for real-time WebSocket updates
+    /// Feature: debug-recording-enhancement (Requirements 2.1, 2.2, 2.3, 2.4)
+    event_emitter: Option<SharedEventEmitter>,
 }
 
 impl Default for MatchingEngine {
@@ -278,6 +282,7 @@ impl MatchingEngine {
             ai_client,
             ai_reviewer: ai_reviewer.clone(),
             auto_approve_processor,
+            event_emitter: None, // Default to None, can be set via set_event_emitter
         }
     }
 
@@ -294,6 +299,25 @@ impl MatchingEngine {
     /// Update the notifier
     pub fn set_notifier(&mut self, notifier: Arc<dyn MatchNotifier>) {
         self.notifier = notifier;
+    }
+
+    /// Set the pipeline event emitter for real-time WebSocket updates
+    /// Feature: debug-recording-enhancement (Requirements 2.1, 2.2, 2.3, 2.4)
+    pub fn set_event_emitter(&mut self, emitter: SharedEventEmitter) {
+        self.event_emitter = Some(emitter);
+    }
+
+    /// Get the pipeline event emitter (if configured)
+    pub fn get_event_emitter(&self) -> Option<&SharedEventEmitter> {
+        self.event_emitter.as_ref()
+    }
+
+    /// Emit a pipeline event (if emitter is configured)
+    /// Feature: debug-recording-enhancement (Requirements 2.1, 2.2, 2.3, 2.4)
+    fn emit_event(&self, event: PipelineEvent) {
+        if let Some(emitter) = &self.event_emitter {
+            emitter.emit(event);
+        }
     }
 
     // =========================================================================

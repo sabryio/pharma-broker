@@ -21,13 +21,14 @@ export { RecordingPlayback } from './recording-playback'
 
 // Pipeline Components
 export { PipelineTimeline } from './pipeline-timeline'
-export {
-  PipelineViewer,
-  generateMockPipelineRecording,
-} from './pipeline-viewer'
+export { PipelineViewer, convertToPipelineRecording } from './pipeline-viewer'
+export { LivePipelineViewer } from './live-pipeline-viewer'
 
 // Audit Records Components
 export { AuditRecordsViewer } from './audit-records-viewer'
+
+// Performance Analytics Components
+export { PerformanceAnalyticsView } from './performance-analytics-view'
 
 // Uncertainty Components
 export { UncertaintyPanel, UncertaintyIndicator } from './uncertainty-panel'

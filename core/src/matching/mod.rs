@@ -31,6 +31,10 @@ mod historical;
 mod hybrid_filter;
 mod learner;
 mod medication_resolver;
+mod performance_tracker;
+mod persistent_audit;
+mod pipeline_events;
+mod pipeline_types;
 mod reviewer;
 mod safety_guardrails;
 mod scheduler;
@@ -203,9 +207,9 @@ pub use contrastive_validator::{
 // --- audit_recorder ---
 pub use audit_recorder::{
     AIInvolvementRecord, AuditRecordBuilder, AuditRecorder, AuditRecorderConfig,
-    AuditRecorderStats, AuditRecorderStatsSnapshot, ClientMetadata, FrontendAuditRecord,
-    MatchAuditRecord, PipelineStageRecord, PipelineStageSummary, ReplayContext, ResolutionDetails,
-    StageTimer,
+    AuditRecorderStats, AuditRecorderStatsSnapshot, ClientMetadata, EnhancedMatchAuditRecord,
+    FrontendAuditRecord, MatchAuditRecord, PipelineStageRecord, PipelineStageSummary,
+    ReplayContext, ResolutionDetails, StageTimer,
 };
 
 // --- uncertainty_estimator ---
@@ -235,6 +239,33 @@ pub use supervision_audit::{
     MemorySupervisionAuditRepository, SupervisionAuditConfig, SupervisionAuditEntry,
     SupervisionAuditError, SupervisionAuditFilter, SupervisionAuditRepository,
     SupervisionAuditTrail, SupervisionEventType,
+};
+
+// --- pipeline_types ---
+pub use pipeline_types::{
+    AiReviewDetails, CalibrationDetails, CandidateScore, ComponentScore as EnhancedComponentScore,
+    ConsensusDetails as EnhancedConsensusDetails, ContrastiveDetails as EnhancedContrastiveDetails,
+    EnhancedPipelineStageRecord, HierarchicalStageDetails, ModelAuditDetail, ParsingDetails,
+    PerformanceMetrics as PipelinePerformanceMetrics, PipelineStageDetails, PipelineStageType,
+    ResolutionDetails as PipelineResolutionDetails, ResolutionStageResult, ScoringDetails,
+};
+
+// --- performance_tracker ---
+pub use performance_tracker::{
+    DbQueryGuard, PerformanceTracker, SharedPerformanceTracker, StageTimingGuard,
+    estimate_memory_usage, new_shared_tracker,
+};
+
+// --- pipeline_events ---
+pub use pipeline_events::{
+    AiOperation, BroadcastEventEmitter, FilteredEventReceiver, MatchOutcome, PipelineEvent,
+    PipelineEventEmitter, SharedEventEmitter, new_shared_emitter, new_shared_emitter_with_capacity,
+};
+
+// --- persistent_audit ---
+pub use persistent_audit::{
+    PersistentAuditConfig, PersistentAuditRecorder, PersistentAuditStats,
+    PersistentAuditStatsSnapshot,
 };
 
 // =============================================================================
