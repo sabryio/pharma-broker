@@ -64,6 +64,15 @@ impl RequestRepository for SeaOrmRequestRepo {
             .map_err(Error::from)
     }
 
+    async fn count_by_raw_message_id(&self, raw_message_id: Uuid) -> Result<i64> {
+        Request::find()
+            .filter(request::Column::RawMessageId.eq(raw_message_id))
+            .count(&*self.db)
+            .await
+            .map(|c| c as i64)
+            .map_err(Error::from)
+    }
+
     async fn find_recent_duplicate(
         &self,
         params: crate::params::FindDuplicateParams<'_>,

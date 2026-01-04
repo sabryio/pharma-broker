@@ -122,6 +122,11 @@ impl RawMessageRepository for SeaOrmRawMessageRepo {
         Ok(result.rows_affected)
     }
 
+    async fn delete_by_id(&self, id: Uuid) -> Result<bool> {
+        let result = RawMessage::delete_by_id(id).exec(&*self.db).await?;
+        Ok(result.rows_affected > 0)
+    }
+
     async fn get_all(&self, params: &RawMessageQueryParams) -> Result<Vec<raw_message::Model>> {
         let query = RawMessage::find();
         let mut query = Self::apply_filters(query, params);

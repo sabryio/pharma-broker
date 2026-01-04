@@ -63,6 +63,15 @@ impl OfferRepository for SeaOrmOfferRepo {
             .map_err(Error::from)
     }
 
+    async fn count_by_raw_message_id(&self, raw_message_id: Uuid) -> Result<i64> {
+        Offer::find()
+            .filter(offer::Column::RawMessageId.eq(raw_message_id))
+            .count(&*self.db)
+            .await
+            .map(|c| c as i64)
+            .map_err(Error::from)
+    }
+
     async fn find_recent_duplicate(
         &self,
         params: crate::params::FindDuplicateParams<'_>,

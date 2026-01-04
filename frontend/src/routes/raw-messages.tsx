@@ -2,9 +2,17 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent } from '@/components/ui/card'
 import { SendMessageDialog } from '@/components/ui/send-message-dialog'
-import { useRawMessages } from '@/hooks/use-raw-messages'
+import {
+  useRawMessages,
+  useReprocessMessage,
+  useDeleteMessage,
+  useBulkReprocessMessages,
+  useBulkDeleteMessages,
+  useBulkMarkProcessed,
+} from '@/hooks/use-raw-messages'
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
+import type { RowSelectionState } from '@tanstack/react-table'
 import {
   FilterToolbar,
   MessageTable,
@@ -13,10 +21,12 @@ import {
   MessageActionBar,
   EmptyState,
   LoadingSkeleton,
+  ConfirmDeleteDialog,
   calculatePagination,
   calculateCanGoNext,
   defaultFilters,
   defaultPagination,
+  exportSelectedToCSV,
   type RawMessage,
   type RawMessageFilters,
   type PaginationState,
@@ -33,12 +43,31 @@ function RawMessages() {
   // State
   const [filters, setFilters] = useState<RawMessageFilters>(defaultFilters)
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [pagination, setPagination] = useState<PaginationState>(defaultPagination)
-  const [selectedMessage, setSelectedMessage] = useState<RawMessage | null>(null)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [pagination, setPagination] =
+    useState<PaginationState>(defaultPagination)
+  const [selectedMessage, setSelectedMessage] = useState<RawMessage | null>(
+    null,
+  )
+
+  // TanStack Table row selection state
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
 
   // Send message dialog state
   const [replyToMessage, setReplyToMessage] = useState<RawMessage | null>(null)
+
+  // Delete confirmation dialog state
+  const [deleteDialogState, setDeleteDialogState] = useState<{
+    open: boolean
+    type: 'single' | 'bulk'
+    messageId?: string
+  }>({ open: false, type: 'single' })
+
+  // Mutation hooks
+  const reprocessMutation = useReprocessMessage()
+  const deleteMutation = useDeleteMessage()
+  const bulkReprocessMutation = useBulkReprocessMessages()
+  const bulkDeleteMutation = useBulkDeleteMessages()
+  const bulkMarkProcessedMutation = useBulkMarkProcessed()
 
   // Fetch data first (before callbacks that depend on it)
   const { data, isLoading, isError, error, isFetching, refetch } =
@@ -74,10 +103,10 @@ function RawMessages() {
     filters.startDate ||
     filters.endDate
 
-  const isAllSelected = useMemo(() => {
-    if (messages.length === 0) return false
-    return messages.every((m) => selectedIds.has(m.id))
-  }, [messages, selectedIds])
+  // Calculate selected count and check if all selected
+  const selectedIds = useMemo(() => Object.keys(rowSelection), [rowSelection])
+  const selectedCount = selectedIds.length
+  const isAllSelected = messages.length > 0 && selectedCount === messages.length
 
   // Debounce search (300ms)
   useEffect(() => {
@@ -87,6 +116,16 @@ function RawMessages() {
     }, 300)
     return () => clearTimeout(timer)
   }, [filters.search])
+
+  // Clear selection when data changes
+  useEffect(() => {
+    setRowSelection({})
+  }, [
+    pagination.pageIndex,
+    pagination.pageSize,
+    debouncedSearch,
+    filters.status,
+  ])
 
   // Reset pagination on filter change
   const handleFiltersChange = useCallback(
@@ -120,30 +159,21 @@ function RawMessages() {
     setPagination(defaultPagination)
   }, [])
 
-  // Selection handlers
-  const handleToggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }, [])
-
+  // Selection handlers for action bar
   const handleSelectAll = useCallback(() => {
-    setSelectedIds((prev) => {
-      if (prev.size === messages.length && messages.length > 0) {
-        return new Set()
-      }
-      return new Set(messages.map((m) => m.id))
-    })
-  }, [messages])
+    if (isAllSelected) {
+      setRowSelection({})
+    } else {
+      const newSelection: RowSelectionState = {}
+      messages.forEach((m) => {
+        newSelection[m.id] = true
+      })
+      setRowSelection(newSelection)
+    }
+  }, [messages, isAllSelected])
 
   const handleClearSelection = useCallback(() => {
-    setSelectedIds(new Set())
+    setRowSelection({})
   }, [])
 
   // Action handlers
@@ -159,15 +189,73 @@ function RawMessages() {
     [navigate],
   )
 
-  const handleReprocess = useCallback((message: RawMessage) => {
-    // TODO: Implement reprocess API call
-    toast.info(`Reprocessing message ${message.id.slice(0, 8)}...`)
-  }, [])
+  const handleReprocess = useCallback(
+    (message: RawMessage) => {
+      reprocessMutation.mutate(message.id, {
+        onSuccess: () => {
+          toast.success('Message queued for reprocessing')
+        },
+        onError: (err) => {
+          toast.error(`Failed to reprocess: ${err.message}`)
+        },
+      })
+    },
+    [reprocessMutation],
+  )
 
   const handleDelete = useCallback((message: RawMessage) => {
-    // TODO: Implement delete API call
-    toast.info(`Delete message ${message.id.slice(0, 8)}`)
+    setDeleteDialogState({
+      open: true,
+      type: 'single',
+      messageId: message.id,
+    })
   }, [])
+
+  const handleConfirmDelete = useCallback(() => {
+    if (deleteDialogState.type === 'single' && deleteDialogState.messageId) {
+      deleteMutation.mutate(deleteDialogState.messageId, {
+        onSuccess: () => {
+          toast.success('Message deleted')
+          setDeleteDialogState({ open: false, type: 'single' })
+          // Clear selection if deleted message was selected
+          if (selectedMessage?.id === deleteDialogState.messageId) {
+            setSelectedMessage(null)
+          }
+        },
+        onError: (err) => {
+          toast.error(`Failed to delete: ${err.message}`)
+        },
+      })
+    } else if (deleteDialogState.type === 'bulk') {
+      bulkDeleteMutation.mutate(selectedIds, {
+        onSuccess: (response) => {
+          const result = response.data
+          if (result) {
+            const successCount = result.succeeded.length
+            const failCount = result.failed.length
+            if (failCount === 0) {
+              toast.success(`${successCount} messages deleted`)
+            } else {
+              toast.warning(
+                `${successCount} deleted, ${failCount} failed (may have associated data)`,
+              )
+            }
+          }
+          setDeleteDialogState({ open: false, type: 'single' })
+          setRowSelection({})
+        },
+        onError: (err) => {
+          toast.error(`Bulk delete failed: ${err.message}`)
+        },
+      })
+    }
+  }, [
+    deleteDialogState,
+    deleteMutation,
+    bulkDeleteMutation,
+    selectedIds,
+    selectedMessage,
+  ])
 
   // Reply handler - opens send message dialog
   const handleReply = useCallback((message: RawMessage) => {
@@ -176,27 +264,72 @@ function RawMessages() {
 
   // Bulk action handlers
   const handleBulkReprocess = useCallback(() => {
-    // TODO: Implement bulk reprocess API call
-    toast.info(`Reprocessing ${selectedIds.size} messages...`)
-    setSelectedIds(new Set())
-  }, [selectedIds.size])
+    bulkReprocessMutation.mutate(selectedIds, {
+      onSuccess: (response) => {
+        const result = response.data
+        if (result) {
+          const successCount = result.succeeded.length
+          const failCount = result.failed.length
+          if (failCount === 0) {
+            toast.success(`${successCount} messages queued for reprocessing`)
+          } else {
+            toast.warning(`${successCount} queued, ${failCount} failed`)
+          }
+        }
+        setRowSelection({})
+      },
+      onError: (err) => {
+        toast.error(`Bulk reprocess failed: ${err.message}`)
+      },
+    })
+  }, [bulkReprocessMutation, selectedIds])
 
   const handleBulkDelete = useCallback(() => {
-    // TODO: Implement bulk delete API call
-    toast.info(`Deleting ${selectedIds.size} messages...`)
-    setSelectedIds(new Set())
-  }, [selectedIds.size])
+    setDeleteDialogState({
+      open: true,
+      type: 'bulk',
+    })
+  }, [])
 
   const handleBulkExport = useCallback(() => {
-    // TODO: Implement export functionality
-    toast.info(`Exporting ${selectedIds.size} messages...`)
-  }, [selectedIds.size])
+    try {
+      const selectedMessages = messages.filter((m) =>
+        selectedIds.includes(m.id),
+      )
+      exportSelectedToCSV(
+        selectedMessages as RawMessage[],
+        new Set(selectedIds),
+      )
+      toast.success(`Exported ${selectedIds.length} messages to CSV`)
+    } catch (err) {
+      toast.error(
+        `Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      )
+    }
+  }, [messages, selectedIds])
 
   const handleBulkMarkProcessed = useCallback(() => {
-    // TODO: Implement mark as processed API call
-    toast.info(`Marking ${selectedIds.size} messages as processed...`)
-    setSelectedIds(new Set())
-  }, [selectedIds.size])
+    bulkMarkProcessedMutation.mutate(selectedIds, {
+      onSuccess: (response) => {
+        const result = response.data
+        if (result) {
+          const successCount = result.succeeded.length
+          const failCount = result.failed.length
+          if (failCount === 0) {
+            toast.success(`${successCount} messages marked as processed`)
+          } else {
+            toast.warning(
+              `${successCount} marked, ${failCount} failed (may already be processed)`,
+            )
+          }
+        }
+        setRowSelection({})
+      },
+      onError: (err) => {
+        toast.error(`Bulk mark processed failed: ${err.message}`)
+      },
+    })
+  }, [bulkMarkProcessedMutation, selectedIds])
 
   return (
     <DashboardLayout>
@@ -247,13 +380,11 @@ function RawMessages() {
                 sortBy={filters.sortBy}
                 sortOrder={filters.sortOrder}
                 onSort={handleSort}
-                onRowClick={setSelectedMessage}
+                onViewDetailsClick={setSelectedMessage}
                 selectedId={selectedMessage?.id}
-                // Selection
-                selectedIds={selectedIds}
-                onToggleSelect={handleToggleSelect}
-                onSelectAll={handleSelectAll}
-                isAllSelected={isAllSelected}
+                // TanStack Table row selection
+                rowSelection={rowSelection}
+                onRowSelectionChange={setRowSelection}
                 // Actions
                 onReprocess={handleReprocess}
                 onDelete={handleDelete}
@@ -286,7 +417,7 @@ function RawMessages() {
 
         {/* Floating Action Bar for Bulk Operations */}
         <MessageActionBar
-          selectedCount={selectedIds.size}
+          selectedCount={selectedCount}
           totalCount={messages.length}
           onSelectAll={handleSelectAll}
           onClearSelection={handleClearSelection}
@@ -295,6 +426,11 @@ function RawMessages() {
           onBulkDelete={handleBulkDelete}
           onBulkExport={handleBulkExport}
           onBulkMarkProcessed={handleBulkMarkProcessed}
+          loading={
+            bulkReprocessMutation.isPending ||
+            bulkDeleteMutation.isPending ||
+            bulkMarkProcessedMutation.isPending
+          }
         />
 
         {/* Send Message Dialog */}
@@ -312,6 +448,29 @@ function RawMessages() {
             }}
           />
         )}
+
+        {/* Delete Confirmation Dialog */}
+        <ConfirmDeleteDialog
+          open={deleteDialogState.open}
+          onOpenChange={(open) =>
+            setDeleteDialogState((prev) => ({ ...prev, open }))
+          }
+          onConfirm={handleConfirmDelete}
+          title={
+            deleteDialogState.type === 'single'
+              ? 'Delete Message'
+              : 'Delete Selected Messages'
+          }
+          description={
+            deleteDialogState.type === 'single'
+              ? 'Are you sure you want to delete this message? Messages with associated offers or requests cannot be deleted.'
+              : `Are you sure you want to delete ${selectedCount} selected messages? Messages with associated offers or requests will be skipped.`
+          }
+          isLoading={deleteMutation.isPending || bulkDeleteMutation.isPending}
+          itemCount={
+            deleteDialogState.type === 'bulk' ? selectedCount : undefined
+          }
+        />
       </div>
     </DashboardLayout>
   )

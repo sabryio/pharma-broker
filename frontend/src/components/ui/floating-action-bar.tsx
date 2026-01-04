@@ -44,7 +44,8 @@ interface FloatingActionBarProps {
 type ActionState = 'idle' | 'processing' | 'success' | 'error'
 
 const variantStyles = {
-  default: 'bg-secondary/80 hover:bg-secondary text-foreground border-border/50',
+  default:
+    'bg-secondary/80 hover:bg-secondary text-foreground border-border/50',
   destructive:
     'bg-gradient-to-r from-red-500/20 to-rose-500/20 border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300',
   success:
@@ -66,7 +67,9 @@ export function FloatingActionBar({
   className,
 }: FloatingActionBarProps) {
   const [isMinimized, setIsMinimized] = useState(false)
-  const [actionStates, setActionStates] = useState<Record<string, ActionState>>({})
+  const [actionStates, setActionStates] = useState<Record<string, ActionState>>(
+    {},
+  )
 
   // Reset states when selection changes
   useEffect(() => {
@@ -114,9 +117,7 @@ export function FloatingActionBar({
         ) : (
           <ChevronDown className="w-4 h-4" />
         )}
-        <span className="text-sm font-medium">
-          {selectedCount} selected
-        </span>
+        <span className="text-sm font-medium">{selectedCount} selected</span>
       </button>
     )
   }

@@ -36,7 +36,10 @@ const quickTemplates = [
   { label: '🇪🇬 Ask availability', text: 'مرحباً، هل العرض ما زال متاحاً؟' },
   { label: '🇬🇧 Ask availability', text: 'Hello, is this still available?' },
   { label: '🇪🇬 Thank you', text: 'شكراً على العرض، سأتواصل معك قريباً.' },
-  { label: '🇬🇧 Follow up', text: 'Hi, just following up on my previous message.' },
+  {
+    label: '🇬🇧 Follow up',
+    text: 'Hi, just following up on my previous message.',
+  },
 ]
 
 export function SendMessageDialog({
@@ -124,9 +127,13 @@ export function SendMessageDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn('sm:max-w-md overflow-hidden', styles.border)}>
+      <DialogContent
+        className={cn('sm:max-w-md overflow-hidden', styles.border)}
+      >
         {/* Gradient header */}
-        <div className={cn('absolute top-0 left-0 right-0 h-1', styles.header)} />
+        <div
+          className={cn('absolute top-0 left-0 right-0 h-1', styles.header)}
+        />
 
         <DialogHeader className="pt-2">
           <DialogTitle className="flex items-center gap-3">
@@ -161,7 +168,10 @@ export function SendMessageDialog({
             placeholder="Type your message..."
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            className={cn('min-h-[120px] resize-none focus:ring-2', styles.ring)}
+            className={cn(
+              'min-h-[120px] resize-none focus:ring-2',
+              styles.ring,
+            )}
             dir="auto"
             onKeyDown={(e) => {
               // Send on Ctrl+Enter or Cmd+Enter
@@ -195,8 +205,13 @@ export function SendMessageDialog({
 
           {/* Keyboard hint */}
           <div className="text-xs text-muted-foreground">
-            Press <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">Ctrl</kbd>+
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">Enter</kbd> to send
+            Press{' '}
+            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">Ctrl</kbd>
+            +
+            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">
+              Enter
+            </kbd>{' '}
+            to send
           </div>
 
           {/* Error display */}

@@ -50,7 +50,9 @@ export function DateRangePicker({
               startDate && 'border-primary/50',
             )}
           >
-            <CalendarIcon className={cn('mr-1.5', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+            <CalendarIcon
+              className={cn('mr-1.5', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')}
+            />
             {startDate ? format(startDate, 'MMM d') : 'From'}
           </Button>
         </PopoverTrigger>
@@ -83,7 +85,9 @@ export function DateRangePicker({
               endDate && 'border-primary/50',
             )}
           >
-            <CalendarIcon className={cn('mr-1.5', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+            <CalendarIcon
+              className={cn('mr-1.5', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')}
+            />
             {endDate ? format(endDate, 'MMM d') : 'To'}
           </Button>
         </PopoverTrigger>

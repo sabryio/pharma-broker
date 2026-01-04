@@ -45,7 +45,10 @@ export function FilterToolbar({
   const [endDateOpen, setEndDateOpen] = useState(false)
 
   const updateFilter = useCallback(
-    <K extends keyof RawMessageFilters>(key: K, value: RawMessageFilters[K]) => {
+    <K extends keyof RawMessageFilters>(
+      key: K,
+      value: RawMessageFilters[K],
+    ) => {
       onFiltersChange({ ...filters, [key]: value })
     },
     [filters, onFiltersChange],

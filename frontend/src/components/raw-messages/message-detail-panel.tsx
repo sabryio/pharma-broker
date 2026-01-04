@@ -35,7 +35,7 @@ export function MessageDetailPanel({
       <SheetContent className="w-[400px] sm:w-[450px] p-0">
         {message && (
           <>
-            <SheetHeader className="px-4 py-3 border-b">
+            <SheetHeader className="px-4 py-3 border-b pr-12">
               <div className="flex items-center justify-between">
                 <SheetTitle className="text-sm font-medium">
                   Message Details
@@ -75,7 +75,8 @@ export function MessageDetailPanel({
                         </p>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        {message.replyToContent || 'Original message unavailable'}
+                        {message.replyToContent ||
+                          'Original message unavailable'}
                       </p>
                     </div>
                   </section>
@@ -174,7 +175,10 @@ export function MessageDetailPanel({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">ID</span>
-                      <Badge variant="secondary" className="font-mono text-[10px]">
+                      <Badge
+                        variant="secondary"
+                        className="font-mono text-[10px]"
+                      >
                         {message.id.slice(0, 8)}...
                       </Badge>
                     </div>
@@ -183,7 +187,10 @@ export function MessageDetailPanel({
                         <span className="text-xs text-muted-foreground">
                           External
                         </span>
-                        <Badge variant="secondary" className="font-mono text-[10px]">
+                        <Badge
+                          variant="secondary"
+                          className="font-mono text-[10px]"
+                        >
                           {message.externalId.slice(0, 12)}...
                         </Badge>
                       </div>

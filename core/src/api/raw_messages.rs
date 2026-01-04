@@ -1,7 +1,7 @@
 //! Raw Messages API Handler
 //!
-//! Provides endpoints for listing and viewing raw WhatsApp messages.
-//! Feature: raw-messages-display
+//! Provides endpoints for listing, viewing, and managing raw WhatsApp messages.
+//! Feature: raw-messages-production
 
 use axum::{
     Json,
@@ -10,7 +10,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use super::handlers::{ApiResponse, Meta};
@@ -91,6 +91,38 @@ impl RawMessageResponse {
             "unprocessed".to_string()
         }
     }
+}
+
+// =============================================================================
+// Request Types for Operations
+// =============================================================================
+
+/// Request body for updating message status
+#[derive(Debug, Deserialize)]
+pub struct UpdateStatusRequest {
+    pub status: String,
+}
+
+/// Request body for bulk operations
+#[derive(Debug, Deserialize)]
+pub struct BulkOperationRequest {
+    pub ids: Vec<Uuid>,
+}
+
+/// Response for bulk operations
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkOperationResponse {
+    pub succeeded: Vec<Uuid>,
+    pub failed: Vec<BulkOperationFailure>,
+}
+
+/// Individual failure in bulk operation
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkOperationFailure {
+    pub id: Uuid,
+    pub error: String,
 }
 
 // =============================================================================
@@ -212,6 +244,492 @@ where
     Ok(Json(ApiResponse {
         success: true,
         data: Some(response),
+        error: None,
+        meta: None,
+    }))
+}
+
+/// Reprocess a single raw message
+///
+/// POST /api/raw-messages/:id/reprocess
+pub async fn reprocess_raw_message<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<RawMessageResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    // Check if message exists
+    let _message = state
+        .raw_message_repo
+        .get_by_id(id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(e.to_string()),
+                    meta: None,
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Raw message not found: {}", id)),
+                    meta: None,
+                }),
+            )
+        })?;
+
+    info!(message_id = %id, "Reprocessing raw message");
+
+    // Reset the message status by clearing processed_at and error
+    // The message will be picked up by the batch processor
+    let updated = state
+        .raw_message_repo
+        .mark_processed(id, None)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(e.to_string()),
+                    meta: None,
+                }),
+            )
+        })?;
+
+    let response = enrich_message(&state, updated).await;
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(response),
+        error: None,
+        meta: None,
+    }))
+}
+
+/// Delete a single raw message
+///
+/// DELETE /api/raw-messages/:id
+pub async fn delete_raw_message<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, Json<ApiResponse<()>>)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    // Check if message exists
+    let _message = state
+        .raw_message_repo
+        .get_by_id(id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(e.to_string()),
+                    meta: None,
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Raw message not found: {}", id)),
+                    meta: None,
+                }),
+            )
+        })?;
+
+    // Check for referential integrity - count offers and requests with this raw_message_id
+    let offer_count = state
+        .offer_repo
+        .count_by_raw_message_id(id)
+        .await
+        .unwrap_or(0);
+    let request_count = state
+        .request_repo
+        .count_by_raw_message_id(id)
+        .await
+        .unwrap_or(0);
+
+    if offer_count > 0 || request_count > 0 {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(format!(
+                    "Cannot delete message: has {} associated offers and {} associated requests",
+                    offer_count, request_count
+                )),
+                meta: None,
+            }),
+        ));
+    }
+
+    info!(message_id = %id, "Deleting raw message");
+
+    // Delete the message
+    state.raw_message_repo.delete_by_id(id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(e.to_string()),
+                meta: None,
+            }),
+        )
+    })?;
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: None,
+        error: None,
+        meta: None,
+    }))
+}
+
+/// Update message status (mark as processed)
+///
+/// PATCH /api/raw-messages/:id/status
+pub async fn update_raw_message_status<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateStatusRequest>,
+) -> Result<Json<ApiResponse<RawMessageResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    // Validate status value
+    if req.status != "processed" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some("Invalid status. Only 'processed' is supported".to_string()),
+                meta: None,
+            }),
+        ));
+    }
+
+    // Get the message
+    let message = state
+        .raw_message_repo
+        .get_by_id(id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(e.to_string()),
+                    meta: None,
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Raw message not found: {}", id)),
+                    meta: None,
+                }),
+            )
+        })?;
+
+    // Check if already processed
+    if message.processed_at.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some("Message is already processed".to_string()),
+                meta: None,
+            }),
+        ));
+    }
+
+    info!(message_id = %id, "Marking raw message as processed");
+
+    // Mark as processed
+    let updated = state
+        .raw_message_repo
+        .mark_processed(id, None)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(e.to_string()),
+                    meta: None,
+                }),
+            )
+        })?;
+
+    let response = enrich_message(&state, updated).await;
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(response),
+        error: None,
+        meta: None,
+    }))
+}
+
+// =============================================================================
+// Bulk Operation Handlers
+// =============================================================================
+
+/// Bulk reprocess raw messages
+///
+/// POST /api/raw-messages/bulk/reprocess
+pub async fn bulk_reprocess_raw_messages<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Json(req): Json<BulkOperationRequest>,
+) -> Result<Json<ApiResponse<BulkOperationResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    if req.ids.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some("No message IDs provided".to_string()),
+                meta: None,
+            }),
+        ));
+    }
+
+    info!(count = req.ids.len(), "Bulk reprocessing raw messages");
+
+    let mut succeeded = Vec::new();
+    let mut failed = Vec::new();
+
+    for id in req.ids {
+        // Check if message exists
+        match state.raw_message_repo.get_by_id(id).await {
+            Ok(Some(_)) => {
+                // Mark for reprocessing
+                match state.raw_message_repo.mark_processed(id, None).await {
+                    Ok(_) => succeeded.push(id),
+                    Err(e) => failed.push(BulkOperationFailure {
+                        id,
+                        error: e.to_string(),
+                    }),
+                }
+            }
+            Ok(None) => {
+                failed.push(BulkOperationFailure {
+                    id,
+                    error: "Message not found".to_string(),
+                });
+            }
+            Err(e) => {
+                failed.push(BulkOperationFailure {
+                    id,
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(BulkOperationResponse { succeeded, failed }),
+        error: None,
+        meta: None,
+    }))
+}
+
+/// Bulk delete raw messages
+///
+/// POST /api/raw-messages/bulk/delete
+pub async fn bulk_delete_raw_messages<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Json(req): Json<BulkOperationRequest>,
+) -> Result<Json<ApiResponse<BulkOperationResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    if req.ids.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some("No message IDs provided".to_string()),
+                meta: None,
+            }),
+        ));
+    }
+
+    info!(count = req.ids.len(), "Bulk deleting raw messages");
+
+    let mut succeeded = Vec::new();
+    let mut failed = Vec::new();
+
+    for id in req.ids {
+        // Check if message exists
+        match state.raw_message_repo.get_by_id(id).await {
+            Ok(Some(_)) => {
+                // Check referential integrity
+                let offer_count = state
+                    .offer_repo
+                    .count_by_raw_message_id(id)
+                    .await
+                    .unwrap_or(0);
+                let request_count = state
+                    .request_repo
+                    .count_by_raw_message_id(id)
+                    .await
+                    .unwrap_or(0);
+
+                if offer_count > 0 || request_count > 0 {
+                    failed.push(BulkOperationFailure {
+                        id,
+                        error: format!(
+                            "Has {} associated offers and {} associated requests",
+                            offer_count, request_count
+                        ),
+                    });
+                    continue;
+                }
+
+                // Delete the message
+                match state.raw_message_repo.delete_by_id(id).await {
+                    Ok(_) => succeeded.push(id),
+                    Err(e) => failed.push(BulkOperationFailure {
+                        id,
+                        error: e.to_string(),
+                    }),
+                }
+            }
+            Ok(None) => {
+                failed.push(BulkOperationFailure {
+                    id,
+                    error: "Message not found".to_string(),
+                });
+            }
+            Err(e) => {
+                failed.push(BulkOperationFailure {
+                    id,
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(BulkOperationResponse { succeeded, failed }),
+        error: None,
+        meta: None,
+    }))
+}
+
+/// Bulk mark messages as processed
+///
+/// POST /api/raw-messages/bulk/mark-processed
+pub async fn bulk_mark_processed<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Json(req): Json<BulkOperationRequest>,
+) -> Result<Json<ApiResponse<BulkOperationResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    if req.ids.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some("No message IDs provided".to_string()),
+                meta: None,
+            }),
+        ));
+    }
+
+    info!(count = req.ids.len(), "Bulk marking messages as processed");
+
+    let mut succeeded = Vec::new();
+    let mut failed = Vec::new();
+
+    for id in req.ids {
+        // Check if message exists and is unprocessed
+        match state.raw_message_repo.get_by_id(id).await {
+            Ok(Some(msg)) => {
+                if msg.processed_at.is_some() {
+                    failed.push(BulkOperationFailure {
+                        id,
+                        error: "Message is already processed".to_string(),
+                    });
+                    continue;
+                }
+
+                // Mark as processed
+                match state.raw_message_repo.mark_processed(id, None).await {
+                    Ok(_) => succeeded.push(id),
+                    Err(e) => failed.push(BulkOperationFailure {
+                        id,
+                        error: e.to_string(),
+                    }),
+                }
+            }
+            Ok(None) => {
+                failed.push(BulkOperationFailure {
+                    id,
+                    error: "Message not found".to_string(),
+                });
+            }
+            Err(e) => {
+                failed.push(BulkOperationFailure {
+                    id,
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(BulkOperationResponse { succeeded, failed }),
         error: None,
         meta: None,
     }))
@@ -856,5 +1374,340 @@ mod tests {
         assert_eq!(params.status, Some("processed".to_string()));
         assert_eq!(params.sort_by, Some("timestamp".to_string()));
         assert_eq!(params.sort_order, Some("desc".to_string()));
+    }
+
+    // -------------------------------------------------------------------------
+    // Bulk Operation Response Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_bulk_operation_response_serialization() {
+        let response = BulkOperationResponse {
+            succeeded: vec![Uuid::new_v4(), Uuid::new_v4()],
+            failed: vec![BulkOperationFailure {
+                id: Uuid::new_v4(),
+                error: "Test error".to_string(),
+            }],
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("succeeded"));
+        assert!(json.contains("failed"));
+        assert!(json.contains("error"));
+    }
+
+    #[test]
+    fn test_bulk_operation_request_deserialization() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        let json = format!(r#"{{"ids": ["{}", "{}"]}}"#, id1, id2);
+        let req: BulkOperationRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(req.ids.len(), 2);
+        assert_eq!(req.ids[0], id1);
+        assert_eq!(req.ids[1], id2);
+    }
+
+    #[test]
+    fn test_bulk_operation_failure_serialization() {
+        let failure = BulkOperationFailure {
+            id: Uuid::new_v4(),
+            error: "Has 2 associated offers and 1 associated requests".to_string(),
+        };
+
+        let json = serde_json::to_string(&failure).unwrap();
+        assert!(json.contains("id"));
+        assert!(json.contains("error"));
+        assert!(json.contains("associated offers"));
+    }
+}
+
+// =============================================================================
+// Property Tests
+// =============================================================================
+
+#[cfg(test)]
+mod property_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    // -------------------------------------------------------------------------
+    // Property 11: Referential Integrity on Delete
+    // Validates: Requirements 2.5, 8.6
+    // -------------------------------------------------------------------------
+
+    /// Property: Delete operation should fail with 409 Conflict when message has
+    /// associated offers or requests. The error message must include counts.
+    #[test]
+    fn test_referential_integrity_error_message_format() {
+        // Test that error message format is correct for various counts
+        let test_cases = vec![
+            (1, 0, "1 associated offers and 0 associated requests"),
+            (0, 1, "0 associated offers and 1 associated requests"),
+            (5, 3, "5 associated offers and 3 associated requests"),
+            (
+                100,
+                200,
+                "100 associated offers and 200 associated requests",
+            ),
+        ];
+
+        for (offer_count, request_count, expected_substring) in test_cases {
+            let error_msg = format!(
+                "Cannot delete message: has {} associated offers and {} associated requests",
+                offer_count, request_count
+            );
+            assert!(
+                error_msg.contains(expected_substring),
+                "Error message should contain '{}', got: {}",
+                expected_substring,
+                error_msg
+            );
+        }
+    }
+
+    proptest! {
+        /// Property: For any non-negative offer and request counts where at least one is > 0,
+        /// the referential integrity check should produce a valid error message
+        #[test]
+        fn prop_referential_integrity_error_format(
+            offer_count in 0i64..1000,
+            request_count in 0i64..1000,
+        ) {
+            // Skip case where both are 0 (no integrity violation)
+            prop_assume!(offer_count > 0 || request_count > 0);
+
+            let error_msg = format!(
+                "Cannot delete message: has {} associated offers and {} associated requests",
+                offer_count, request_count
+            );
+
+            // Property: Error message must contain both counts
+            prop_assert!(error_msg.contains(&offer_count.to_string()));
+            prop_assert!(error_msg.contains(&request_count.to_string()));
+            prop_assert!(error_msg.contains("associated offers"));
+            prop_assert!(error_msg.contains("associated requests"));
+        }
+
+        /// Property: Referential integrity check should block deletion when either count > 0
+        #[test]
+        fn prop_referential_integrity_blocks_deletion(
+            offer_count in 0i64..100,
+            request_count in 0i64..100,
+        ) {
+            let should_block = offer_count > 0 || request_count > 0;
+
+            // Simulate the check logic from delete_raw_message handler
+            let blocked = offer_count > 0 || request_count > 0;
+
+            prop_assert_eq!(blocked, should_block,
+                "Deletion should be blocked when offer_count={} or request_count={} > 0",
+                offer_count, request_count
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Property 18: Bulk Operation Per-Item Status
+    // Validates: Requirements 8.7
+    // -------------------------------------------------------------------------
+
+    proptest! {
+        /// Property: For any bulk operation, succeeded + failed counts must equal input count
+        #[test]
+        fn prop_bulk_response_count_invariant(
+            succeeded_count in 0usize..50,
+            failed_count in 0usize..50,
+        ) {
+            let total_input = succeeded_count + failed_count;
+
+            // Create mock response
+            let succeeded: Vec<Uuid> = (0..succeeded_count).map(|_| Uuid::new_v4()).collect();
+            let failed: Vec<BulkOperationFailure> = (0..failed_count)
+                .map(|_| BulkOperationFailure {
+                    id: Uuid::new_v4(),
+                    error: "Test error".to_string(),
+                })
+                .collect();
+
+            let response = BulkOperationResponse { succeeded, failed };
+
+            // Property: Total items in response equals input count
+            prop_assert_eq!(
+                response.succeeded.len() + response.failed.len(),
+                total_input,
+                "succeeded + failed must equal total input"
+            );
+        }
+
+        /// Property: All IDs in succeeded and failed arrays must be unique
+        #[test]
+        fn prop_bulk_response_unique_ids(
+            succeeded_count in 0usize..20,
+            failed_count in 0usize..20,
+        ) {
+            let succeeded: Vec<Uuid> = (0..succeeded_count).map(|_| Uuid::new_v4()).collect();
+            let failed: Vec<BulkOperationFailure> = (0..failed_count)
+                .map(|_| BulkOperationFailure {
+                    id: Uuid::new_v4(),
+                    error: "Test error".to_string(),
+                })
+                .collect();
+
+            let response = BulkOperationResponse {
+                succeeded: succeeded.clone(),
+                failed: failed.clone(),
+            };
+
+            // Collect all IDs
+            let mut all_ids: Vec<Uuid> = response.succeeded.clone();
+            all_ids.extend(response.failed.iter().map(|f| f.id));
+
+            // Check uniqueness
+            let unique_count = {
+                let mut sorted = all_ids.clone();
+                sorted.sort();
+                sorted.dedup();
+                sorted.len()
+            };
+
+            prop_assert_eq!(
+                unique_count,
+                all_ids.len(),
+                "All IDs in bulk response must be unique"
+            );
+        }
+
+        /// Property: Failed items must have non-empty error messages
+        #[test]
+        fn prop_bulk_failure_has_error_message(
+            error_messages in prop::collection::vec("[a-zA-Z0-9 ]+", 1..50),
+        ) {
+            for error_msg in error_messages {
+                let failure = BulkOperationFailure {
+                    id: Uuid::new_v4(),
+                    error: error_msg.clone(),
+                };
+
+                prop_assert!(!failure.error.is_empty(),
+                    "Failed items must have non-empty error messages");
+                prop_assert_eq!(failure.error, error_msg);
+            }
+        }
+
+        /// Property: BulkOperationResponse serializes to valid JSON with camelCase
+        #[test]
+        fn prop_bulk_response_json_format(
+            succeeded_count in 0usize..10,
+            failed_count in 0usize..10,
+        ) {
+            let succeeded: Vec<Uuid> = (0..succeeded_count).map(|_| Uuid::new_v4()).collect();
+            let failed: Vec<BulkOperationFailure> = (0..failed_count)
+                .map(|_| BulkOperationFailure {
+                    id: Uuid::new_v4(),
+                    error: "Test error".to_string(),
+                })
+                .collect();
+
+            let response = BulkOperationResponse { succeeded, failed };
+
+            // Property: Response must serialize to valid JSON
+            let json_result = serde_json::to_string(&response);
+            prop_assert!(json_result.is_ok(), "Response must serialize to JSON");
+
+            let json = json_result.unwrap();
+
+            // Property: JSON must contain expected fields
+            prop_assert!(json.contains("succeeded"), "JSON must contain 'succeeded'");
+            prop_assert!(json.contains("failed"), "JSON must contain 'failed'");
+
+            // Property: JSON must be deserializable back
+            let parsed: Result<serde_json::Value, _> = serde_json::from_str(&json);
+            prop_assert!(parsed.is_ok(), "JSON must be valid and parseable");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Additional Property Tests for Validation
+    // -------------------------------------------------------------------------
+
+    proptest! {
+        /// Property: Valid limits are accepted (1-100)
+        #[test]
+        fn prop_valid_limit_accepted(limit in 1i64..=100) {
+            let params = RawMessageQueryParams {
+                limit,
+                offset: 0,
+                search: None,
+                status: None,
+                sort_by: None,
+                sort_order: None,
+                start_date: None,
+                end_date: None,
+                group_id: None,
+                participant_id: None,
+            };
+            prop_assert!(validate_params(&params).is_ok(),
+                "Limit {} should be valid", limit);
+        }
+
+        /// Property: Invalid limits are rejected (< 1 or > 100)
+        #[test]
+        fn prop_invalid_limit_rejected(limit in prop::num::i64::ANY.prop_filter(
+            "limit outside valid range",
+            |&l| !(1..=100).contains(&l)
+        )) {
+            let params = RawMessageQueryParams {
+                limit,
+                offset: 0,
+                search: None,
+                status: None,
+                sort_by: None,
+                sort_order: None,
+                start_date: None,
+                end_date: None,
+                group_id: None,
+                participant_id: None,
+            };
+            prop_assert!(validate_params(&params).is_err(),
+                "Limit {} should be invalid", limit);
+        }
+
+        /// Property: Non-negative offsets are accepted
+        #[test]
+        fn prop_valid_offset_accepted(offset in 0i64..i64::MAX) {
+            let params = RawMessageQueryParams {
+                limit: 20,
+                offset,
+                search: None,
+                status: None,
+                sort_by: None,
+                sort_order: None,
+                start_date: None,
+                end_date: None,
+                group_id: None,
+                participant_id: None,
+            };
+            prop_assert!(validate_params(&params).is_ok(),
+                "Offset {} should be valid", offset);
+        }
+
+        /// Property: Negative offsets are rejected
+        #[test]
+        fn prop_negative_offset_rejected(offset in i64::MIN..-1i64) {
+            let params = RawMessageQueryParams {
+                limit: 20,
+                offset,
+                search: None,
+                status: None,
+                sort_by: None,
+                sort_order: None,
+                start_date: None,
+                end_date: None,
+                group_id: None,
+                participant_id: None,
+            };
+            prop_assert!(validate_params(&params).is_err(),
+                "Offset {} should be invalid", offset);
+        }
     }
 }

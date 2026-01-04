@@ -472,7 +472,29 @@ where
         )
         .route(
             "/api/raw-messages/{id}",
-            get(raw_messages::get_raw_message::<RQ, A, MM>),
+            get(raw_messages::get_raw_message::<RQ, A, MM>)
+                .delete(raw_messages::delete_raw_message::<RQ, A, MM>),
+        )
+        .route(
+            "/api/raw-messages/{id}/reprocess",
+            post(raw_messages::reprocess_raw_message::<RQ, A, MM>),
+        )
+        .route(
+            "/api/raw-messages/{id}/status",
+            axum::routing::patch(raw_messages::update_raw_message_status::<RQ, A, MM>),
+        )
+        // Raw Messages Bulk Operations
+        .route(
+            "/api/raw-messages/bulk/reprocess",
+            post(raw_messages::bulk_reprocess_raw_messages::<RQ, A, MM>),
+        )
+        .route(
+            "/api/raw-messages/bulk/delete",
+            post(raw_messages::bulk_delete_raw_messages::<RQ, A, MM>),
+        )
+        .route(
+            "/api/raw-messages/bulk/mark-processed",
+            post(raw_messages::bulk_mark_processed::<RQ, A, MM>),
         )
         // Match Review Notes
         .route(

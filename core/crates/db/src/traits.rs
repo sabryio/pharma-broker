@@ -52,6 +52,8 @@ pub trait OfferRepository: Send + Sync {
     async fn get_active(&self, limit: i64, offset: i64) -> Result<Vec<OfferModel>>;
     async fn search(&self, query: &str, limit: i64, offset: i64) -> Result<Vec<OfferModel>>;
     async fn count_active(&self) -> Result<i64>;
+    /// Count offers by raw message ID (for referential integrity checks)
+    async fn count_by_raw_message_id(&self, raw_message_id: Uuid) -> Result<i64>;
     async fn find_recent_duplicate(
         &self,
         params: FindDuplicateParams<'_>,
@@ -86,6 +88,8 @@ pub trait RequestRepository: Send + Sync {
     async fn get_active(&self, limit: i64, offset: i64) -> Result<Vec<RequestModel>>;
     async fn search(&self, query: &str, limit: i64, offset: i64) -> Result<Vec<RequestModel>>;
     async fn count_active(&self) -> Result<i64>;
+    /// Count requests by raw message ID (for referential integrity checks)
+    async fn count_by_raw_message_id(&self, raw_message_id: Uuid) -> Result<i64>;
     async fn find_recent_duplicate(
         &self,
         params: FindDuplicateParams<'_>,
@@ -171,6 +175,8 @@ pub trait RawMessageRepository: Send + Sync {
     /// Mark a message as processed
     async fn mark_processed(&self, id: Uuid, error: Option<&str>) -> Result<RawMessageModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
+    /// Delete a raw message by its ID
+    async fn delete_by_id(&self, id: Uuid) -> Result<bool>;
 
     /// Get paginated raw messages with optional filters, sorting, and search
     async fn get_all(&self, params: &RawMessageQueryParams) -> Result<Vec<RawMessageModel>>;

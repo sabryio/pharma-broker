@@ -4,8 +4,8 @@
 // Feature: send-message
 // Validates: Requirements 6.3, 6.4, 6.6, 6.8
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { sendMessage, type SendMessageRequest } from '@/api/messaging'
+import { describe, it, expect, vi } from 'vitest'
+import { type SendMessageRequest } from '@/api/messaging'
 
 // Mock the API client
 vi.mock('@/api/client', () => ({

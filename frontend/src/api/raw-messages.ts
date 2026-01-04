@@ -2,6 +2,30 @@ import apiClient from './client'
 import type { ApiResponse } from '@/schema/api'
 import type { RawMessage, RawMessageParams } from '@/schema/raw-message'
 
+// =============================================================================
+// Types for Bulk Operations
+// =============================================================================
+
+/**
+ * Individual failure in a bulk operation
+ */
+export interface BulkOperationFailure {
+  id: string
+  error: string
+}
+
+/**
+ * Response from bulk operations containing succeeded and failed items
+ */
+export interface BulkOperationResult {
+  succeeded: string[]
+  failed: BulkOperationFailure[]
+}
+
+// =============================================================================
+// Query Functions
+// =============================================================================
+
 /**
  * Fetch paginated raw messages from the API with optional filters
  */
@@ -44,6 +68,103 @@ export async function getRawMessage(
 ): Promise<ApiResponse<RawMessage>> {
   const response = await apiClient.get<ApiResponse<RawMessage>>(
     `/api/raw-messages/${id}`,
+  )
+
+  return response.data
+}
+
+// =============================================================================
+// Single Message Operations
+// =============================================================================
+
+/**
+ * Reprocess a single raw message through the parsing pipeline
+ * Resets the message status so it will be picked up by the batch processor
+ */
+export async function reprocessMessage(
+  id: string,
+): Promise<ApiResponse<RawMessage>> {
+  const response = await apiClient.post<ApiResponse<RawMessage>>(
+    `/api/raw-messages/${id}/reprocess`,
+  )
+
+  return response.data
+}
+
+/**
+ * Delete a single raw message
+ * Will fail with 409 Conflict if the message has associated offers or requests
+ */
+export async function deleteMessage(id: string): Promise<ApiResponse<void>> {
+  const response = await apiClient.delete<ApiResponse<void>>(
+    `/api/raw-messages/${id}`,
+  )
+
+  return response.data
+}
+
+/**
+ * Update message status (mark as processed)
+ * Only 'processed' status is currently supported
+ */
+export async function updateMessageStatus(
+  id: string,
+  status: 'processed',
+): Promise<ApiResponse<RawMessage>> {
+  const response = await apiClient.patch<ApiResponse<RawMessage>>(
+    `/api/raw-messages/${id}/status`,
+    { status },
+  )
+
+  return response.data
+}
+
+// =============================================================================
+// Bulk Operations
+// =============================================================================
+
+/**
+ * Bulk reprocess multiple raw messages
+ * Returns per-item status for each message
+ */
+export async function bulkReprocessMessages(
+  ids: string[],
+): Promise<ApiResponse<BulkOperationResult>> {
+  const response = await apiClient.post<ApiResponse<BulkOperationResult>>(
+    '/api/raw-messages/bulk/reprocess',
+    { ids },
+  )
+
+  return response.data
+}
+
+/**
+ * Bulk delete multiple raw messages
+ * Messages with associated offers/requests will fail individually
+ * Returns per-item status for each message
+ */
+export async function bulkDeleteMessages(
+  ids: string[],
+): Promise<ApiResponse<BulkOperationResult>> {
+  const response = await apiClient.post<ApiResponse<BulkOperationResult>>(
+    '/api/raw-messages/bulk/delete',
+    { ids },
+  )
+
+  return response.data
+}
+
+/**
+ * Bulk mark multiple messages as processed
+ * Already processed messages will fail individually
+ * Returns per-item status for each message
+ */
+export async function bulkMarkProcessed(
+  ids: string[],
+): Promise<ApiResponse<BulkOperationResult>> {
+  const response = await apiClient.post<ApiResponse<BulkOperationResult>>(
+    '/api/raw-messages/bulk/mark-processed',
+    { ids },
   )
 
   return response.data

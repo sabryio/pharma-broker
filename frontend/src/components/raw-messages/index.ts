@@ -1,6 +1,7 @@
 // Raw Messages Components - Barrel Export
 export * from './types'
 export * from './utils'
+export * from './export-utils'
 export { StatusBadge } from './status-badge'
 export { FilterToolbar } from './filter-toolbar'
 export { MessageTable } from './message-table'
@@ -9,3 +10,4 @@ export { MessageDetailPanel } from './message-detail-panel'
 export { MessageActionBar } from './message-action-bar'
 export { EmptyState } from './empty-state'
 export { LoadingSkeleton } from './loading-skeleton'
+export { ConfirmDeleteDialog } from './confirm-delete-dialog'
