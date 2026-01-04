@@ -307,6 +307,15 @@ mod tests {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             Ok(self.deleted_count)
         }
+        async fn get_all(
+            &self,
+            _: &pharma_db::params::RawMessageQueryParams,
+        ) -> DbResult<Vec<RawMessageModel>> {
+            unimplemented!()
+        }
+        async fn count_all(&self, _: &pharma_db::params::RawMessageQueryParams) -> DbResult<i64> {
+            unimplemented!()
+        }
     }
 
     #[async_trait]

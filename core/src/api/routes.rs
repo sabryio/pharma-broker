@@ -17,7 +17,8 @@ use tower_http::cors::{Any, CorsLayer};
 use super::{
     analytics, audit_records, audit_trail, calibration, confidence, curation, diagnostics,
     embedding_cache, groups, handlers, match_filter, match_reviews, matching, participants,
-    pipeline_visualization, reclassify, reparse, review_queue, supervision, uncertainty, weights,
+    pipeline_visualization, raw_messages, reclassify, reparse, review_queue, supervision,
+    uncertainty, weights,
 };
 use crate::ai::PharmaParser;
 use crate::matching::{AliasLearner, MatchingEngine};
@@ -454,6 +455,15 @@ where
         .route(
             "/api/participants/by-jid/{jid}",
             get(participants::get_participant_by_jid::<RQ, A, MM>),
+        )
+        // Raw Messages
+        .route(
+            "/api/raw-messages",
+            get(raw_messages::list_raw_messages::<RQ, A, MM>),
+        )
+        .route(
+            "/api/raw-messages/{id}",
+            get(raw_messages::get_raw_message::<RQ, A, MM>),
         )
         // Match Review Notes
         .route(

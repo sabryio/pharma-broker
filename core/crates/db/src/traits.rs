@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use crate::Result;
 use crate::params::{
-    AuditByEntityParams, FindDuplicateParams, SemanticDuplicateParams, UpdateMatchStatusParams,
-    UpdateReviewStatusParams,
+    AuditByEntityParams, FindDuplicateParams, RawMessageQueryParams, SemanticDuplicateParams,
+    UpdateMatchStatusParams, UpdateReviewStatusParams,
 };
 
 // Re-export ID newtypes for consumers
@@ -171,6 +171,12 @@ pub trait RawMessageRepository: Send + Sync {
     /// Mark a message as processed
     async fn mark_processed(&self, id: Uuid, error: Option<&str>) -> Result<RawMessageModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
+
+    /// Get paginated raw messages with optional filters, sorting, and search
+    async fn get_all(&self, params: &RawMessageQueryParams) -> Result<Vec<RawMessageModel>>;
+
+    /// Count raw messages matching the given filters
+    async fn count_all(&self, params: &RawMessageQueryParams) -> Result<i64>;
 }
 
 /// Group repository trait

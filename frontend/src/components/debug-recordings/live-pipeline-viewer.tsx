@@ -78,7 +78,11 @@ function convertToPipelineRecording(
   }
 
   // Map outcome to finalStatus
-  let finalStatus: 'auto_approved' | 'needs_review' | 'auto_rejected' | undefined
+  let finalStatus:
+    | 'auto_approved'
+    | 'needs_review'
+    | 'auto_rejected'
+    | undefined
   if (state.outcome) {
     switch (state.outcome) {
       case 'auto_approved':
@@ -104,7 +108,12 @@ function convertToPipelineRecording(
     startedAt: state.startedAt ?? new Date().toISOString(),
     completedAt: state.completedAt,
     totalDurationMs,
-    status: state.status === 'completed' ? 'completed' : state.status === 'error' ? 'error' : 'running',
+    status:
+      state.status === 'completed'
+        ? 'completed'
+        : state.status === 'error'
+          ? 'error'
+          : 'running',
     steps,
     finalScore: state.finalScore,
     finalStatus,
@@ -187,7 +196,9 @@ function AiProcessingIndicator({
       {model && <span className="text-purple-300">({model})</span>}
       {operation && <span className="text-purple-300">• {operation}</span>}
       {estimatedDurationMs && (
-        <span className="text-purple-300">~{Math.round(estimatedDurationMs / 1000)}s</span>
+        <span className="text-purple-300">
+          ~{Math.round(estimatedDurationMs / 1000)}s
+        </span>
       )}
     </div>
   )
@@ -357,7 +368,8 @@ export function LivePipelineViewer({
   }, [livePipelineState, hookPipelineState])
 
   // Get AI processing state
-  const aiProcessing = livePipelineState?.aiProcessing ?? hookPipelineState?.aiProcessing
+  const aiProcessing =
+    livePipelineState?.aiProcessing ?? hookPipelineState?.aiProcessing
 
   return (
     <div className="relative">

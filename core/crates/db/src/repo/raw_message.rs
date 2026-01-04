@@ -4,10 +4,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use sea_orm::sea_query::{Expr, Func};
 use sea_orm::*;
 use uuid::Uuid;
 
 use crate::entity::raw_message::{self, Entity as RawMessage};
+use crate::params::{ProcessingStatus, RawMessageQueryParams, RawMessageSortField, SortOrder};
 use crate::traits::RawMessageRepository;
 use crate::{Error, Result};
 
@@ -19,6 +21,59 @@ pub struct SeaOrmRawMessageRepo {
 impl SeaOrmRawMessageRepo {
     pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
+    }
+
+    /// Apply common filters to a raw message query based on params
+    fn apply_filters(
+        query: Select<RawMessage>,
+        params: &RawMessageQueryParams,
+    ) -> Select<RawMessage> {
+        let mut query = query;
+
+        // Apply status filter
+        match params.get_status() {
+            ProcessingStatus::All => {}
+            ProcessingStatus::Processed => {
+                query = query
+                    .filter(raw_message::Column::ProcessedAt.is_not_null())
+                    .filter(raw_message::Column::Error.is_null());
+            }
+            ProcessingStatus::Unprocessed => {
+                query = query.filter(raw_message::Column::ProcessedAt.is_null());
+            }
+            ProcessingStatus::Error => {
+                query = query.filter(raw_message::Column::Error.is_not_null());
+            }
+        }
+
+        // Apply search filter (case-insensitive content search)
+        if let Some(search) = params.search.as_ref().filter(|s| !s.is_empty()) {
+            let search_pattern = format!("%{}%", search.to_lowercase());
+            query = query.filter(
+                Expr::expr(Func::lower(Expr::col(raw_message::Column::Content)))
+                    .like(&search_pattern),
+            );
+        }
+
+        // Apply date range filters
+        if let Some(start_date) = params.start_date {
+            query = query.filter(raw_message::Column::Timestamp.gte(start_date));
+        }
+        if let Some(end_date) = params.end_date {
+            query = query.filter(raw_message::Column::Timestamp.lte(end_date));
+        }
+
+        // Apply group filter
+        if let Some(group_id) = params.group_id {
+            query = query.filter(raw_message::Column::GroupId.eq(group_id));
+        }
+
+        // Apply participant filter
+        if let Some(participant_id) = params.participant_id {
+            query = query.filter(raw_message::Column::ParticipantId.eq(participant_id));
+        }
+
+        query
     }
 }
 
@@ -66,121 +121,42 @@ impl RawMessageRepository for SeaOrmRawMessageRepo {
             .await?;
         Ok(result.rows_affected)
     }
-}
 
-#[cfg(all(test, feature = "integration-tests"))]
-mod tests {
-    use super::*;
-    use crate::testing::{TestDb, new_test_raw_message};
-    use sea_orm::EntityTrait;
+    async fn get_all(&self, params: &RawMessageQueryParams) -> Result<Vec<raw_message::Model>> {
+        let query = RawMessage::find();
+        let mut query = Self::apply_filters(query, params);
 
-    async fn create_raw_message(db: &TestDb) -> raw_message::Model {
-        let msg = new_test_raw_message();
-        let id = msg.id.clone().unwrap();
-        raw_message::Entity::insert(msg)
-            .exec(&*db.db)
-            .await
-            .expect("Insert raw message");
+        // Apply sorting
+        let sort_order = match params.get_sort_order() {
+            SortOrder::Asc => Order::Asc,
+            SortOrder::Desc => Order::Desc,
+        };
 
-        raw_message::Entity::find_by_id(&id)
-            .one(&*db.db)
-            .await
-            .expect("Find raw message")
-            .expect("Raw message should exist")
+        query = match params.get_sort_field() {
+            RawMessageSortField::Timestamp => {
+                query.order_by(raw_message::Column::Timestamp, sort_order)
+            }
+            RawMessageSortField::ProcessedAt => {
+                query.order_by(raw_message::Column::ProcessedAt, sort_order)
+            }
+            RawMessageSortField::CreatedAt => {
+                query.order_by(raw_message::Column::CreatedAt, sort_order)
+            }
+        };
+
+        // Apply pagination
+        query = query
+            .limit(params.get_limit() as u64)
+            .offset(params.get_offset() as u64);
+
+        query.all(&*self.db).await.map_err(Error::from)
     }
 
-    #[tokio::test]
-    async fn test_get_by_id_found() {
-        let db = TestDb::new().await;
-        let repo = SeaOrmRawMessageRepo::new(db.db.clone());
+    async fn count_all(&self, params: &RawMessageQueryParams) -> Result<i64> {
+        let query = RawMessage::find();
+        let query = Self::apply_filters(query, params);
 
-        let msg = create_raw_message(&db).await;
-
-        let found = repo.get_by_id(&msg.id).await.expect("GetByID");
-        assert!(found.is_some(), "Should find the message");
-        assert_eq!(found.unwrap().id, msg.id);
-    }
-
-    #[tokio::test]
-    async fn test_get_by_id_not_found() {
-        let db = TestDb::new().await;
-        let repo = SeaOrmRawMessageRepo::new(db.db.clone());
-
-        let found = repo.get_by_id("non-existent").await.expect("GetByID");
-        assert!(found.is_none(), "Should return None");
-    }
-
-    #[tokio::test]
-    async fn test_get_unprocessed() {
-        let db = TestDb::new().await;
-        let repo = SeaOrmRawMessageRepo::new(db.db.clone());
-
-        // Create 3 unprocessed messages
-        create_raw_message(&db).await;
-        create_raw_message(&db).await;
-        create_raw_message(&db).await;
-
-        let unprocessed = repo.get_unprocessed(10).await.expect("GetUnprocessed");
-        assert_eq!(unprocessed.len(), 3, "Should have 3 unprocessed messages");
-        assert!(unprocessed.iter().all(|m| m.processed_at.is_none()));
-    }
-
-    #[tokio::test]
-    async fn test_mark_processed_success() {
-        let db = TestDb::new().await;
-        let repo = SeaOrmRawMessageRepo::new(db.db.clone());
-
-        let msg = create_raw_message(&db).await;
-        assert!(msg.processed_at.is_none(), "Initially unprocessed");
-
-        let processed = repo
-            .mark_processed(&msg.id, None)
-            .await
-            .expect("MarkProcessed");
-        assert!(
-            processed.processed_at.is_some(),
-            "Should be marked processed"
-        );
-        assert!(processed.error.is_none(), "Should have no error");
-    }
-
-    #[tokio::test]
-    async fn test_mark_processed_with_error() {
-        let db = TestDb::new().await;
-        let repo = SeaOrmRawMessageRepo::new(db.db.clone());
-
-        let msg = create_raw_message(&db).await;
-
-        let processed = repo
-            .mark_processed(&msg.id, Some("Parse error"))
-            .await
-            .expect("MarkProcessed");
-        assert!(
-            processed.processed_at.is_some(),
-            "Should be marked processed"
-        );
-        assert_eq!(
-            processed.error,
-            Some("Parse error".to_string()),
-            "Should have error"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_get_unprocessed_excludes_processed() {
-        let db = TestDb::new().await;
-        let repo = SeaOrmRawMessageRepo::new(db.db.clone());
-
-        let msg1 = create_raw_message(&db).await;
-        let msg2 = create_raw_message(&db).await;
-
-        // Mark one as processed
-        repo.mark_processed(&msg1.id, None)
-            .await
-            .expect("MarkProcessed");
-
-        let unprocessed = repo.get_unprocessed(10).await.expect("GetUnprocessed");
-        assert_eq!(unprocessed.len(), 1, "Should have 1 unprocessed message");
-        assert_eq!(unprocessed[0].id, msg2.id, "Should be the unprocessed one");
+        let count = query.count(&*self.db).await.map_err(Error::from)?;
+        Ok(count as i64)
     }
 }

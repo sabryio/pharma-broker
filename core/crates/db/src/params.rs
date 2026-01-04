@@ -185,3 +185,165 @@ impl<'a> AuditByEntityParams<'a> {
         }
     }
 }
+
+// ============================================================================
+// Raw Message Query Parameters
+// ============================================================================
+
+use chrono::{DateTime, Utc};
+use serde::Deserialize;
+
+/// Processing status filter for raw messages
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessingStatus {
+    /// Return all messages regardless of processing status
+    #[default]
+    All,
+    /// Return only successfully processed messages (processed_at is set, no error)
+    Processed,
+    /// Return only unprocessed messages (processed_at is null)
+    Unprocessed,
+    /// Return only messages with processing errors
+    Error,
+}
+
+/// Sort field for raw messages
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RawMessageSortField {
+    /// Sort by message timestamp (when the message was sent)
+    #[default]
+    Timestamp,
+    /// Sort by when the message was processed
+    ProcessedAt,
+    /// Sort by when the record was created in the database
+    CreatedAt,
+}
+
+/// Sort order
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SortOrder {
+    /// Ascending order (oldest first for dates)
+    Asc,
+    /// Descending order (newest first for dates)
+    #[default]
+    Desc,
+}
+
+/// Query parameters for listing raw messages with filtering, sorting, and pagination
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct RawMessageQueryParams {
+    /// Maximum number of results to return (default: 20, max: 100)
+    pub limit: Option<i64>,
+    /// Number of results to skip for pagination (default: 0)
+    pub offset: Option<i64>,
+    /// Search term to filter by message content (case-insensitive)
+    pub search: Option<String>,
+    /// Filter by processing status
+    pub status: Option<ProcessingStatus>,
+    /// Field to sort by
+    pub sort_by: Option<RawMessageSortField>,
+    /// Sort direction
+    pub sort_order: Option<SortOrder>,
+    /// Filter messages with timestamp >= start_date
+    pub start_date: Option<DateTime<Utc>>,
+    /// Filter messages with timestamp <= end_date
+    pub end_date: Option<DateTime<Utc>>,
+    /// Filter by group ID
+    pub group_id: Option<Uuid>,
+    /// Filter by participant ID
+    pub participant_id: Option<Uuid>,
+}
+
+impl RawMessageQueryParams {
+    /// Create new query params with defaults
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Get limit with default and max bounds
+    pub fn get_limit(&self) -> i64 {
+        self.limit.unwrap_or(20).min(100).max(1)
+    }
+
+    /// Get offset with default
+    pub fn get_offset(&self) -> i64 {
+        self.offset.unwrap_or(0).max(0)
+    }
+
+    /// Get sort field with default
+    pub fn get_sort_field(&self) -> RawMessageSortField {
+        self.sort_by.unwrap_or_default()
+    }
+
+    /// Get sort order with default
+    pub fn get_sort_order(&self) -> SortOrder {
+        self.sort_order.unwrap_or_default()
+    }
+
+    /// Get processing status filter with default
+    pub fn get_status(&self) -> ProcessingStatus {
+        self.status.unwrap_or_default()
+    }
+
+    /// Builder: set limit
+    pub fn with_limit(mut self, limit: i64) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    /// Builder: set offset
+    pub fn with_offset(mut self, offset: i64) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    /// Builder: set search term
+    pub fn with_search(mut self, search: impl Into<String>) -> Self {
+        self.search = Some(search.into());
+        self
+    }
+
+    /// Builder: set status filter
+    pub fn with_status(mut self, status: ProcessingStatus) -> Self {
+        self.status = Some(status);
+        self
+    }
+
+    /// Builder: set sort field
+    pub fn with_sort_by(mut self, sort_by: RawMessageSortField) -> Self {
+        self.sort_by = Some(sort_by);
+        self
+    }
+
+    /// Builder: set sort order
+    pub fn with_sort_order(mut self, sort_order: SortOrder) -> Self {
+        self.sort_order = Some(sort_order);
+        self
+    }
+
+    /// Builder: set date range
+    pub fn with_date_range(
+        mut self,
+        start: Option<DateTime<Utc>>,
+        end: Option<DateTime<Utc>>,
+    ) -> Self {
+        self.start_date = start;
+        self.end_date = end;
+        self
+    }
+
+    /// Builder: set group filter
+    pub fn with_group(mut self, group_id: Uuid) -> Self {
+        self.group_id = Some(group_id);
+        self
+    }
+
+    /// Builder: set participant filter
+    pub fn with_participant(mut self, participant_id: Uuid) -> Self {
+        self.participant_id = Some(participant_id);
+        self
+    }
+}

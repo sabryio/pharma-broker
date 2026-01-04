@@ -152,7 +152,6 @@ function RecorderStatusPanel() {
   )
 }
 
-
 // =============================================================================
 // Audit Record Card
 // =============================================================================
@@ -253,7 +252,6 @@ function AuditRecordCard({
   )
 }
 
-
 // =============================================================================
 // Score Breakdown Component (Requirements 6.5)
 // =============================================================================
@@ -346,7 +344,6 @@ function ScoreBreakdownPanel({ scoreBreakdown }: ScoreBreakdownPanelProps) {
     </div>
   )
 }
-
 
 // =============================================================================
 // Pipeline Visualization Panel (Requirements 6.2, 6.3, 6.4)
@@ -571,7 +568,6 @@ function PipelineVisualizationPanel({
   )
 }
 
-
 // =============================================================================
 // Audit Record Detail Panel (Requirements 6.2, 6.3, 6.4, 6.5, 6.6, 7.1)
 // =============================================================================
@@ -715,7 +711,9 @@ function AuditRecordDetail({ matchId, onClose }: AuditRecordDetailProps) {
               </p>
             </div>
             <div className="p-3 rounded-lg bg-background/50 border border-border/30">
-              <p className="text-xs text-muted-foreground mb-1">Total Latency</p>
+              <p className="text-xs text-muted-foreground mb-1">
+                Total Latency
+              </p>
               <p className="text-2xl font-bold text-foreground">
                 {record.totalLatencyMs}ms
               </p>
@@ -804,7 +802,9 @@ function AuditRecordDetail({ matchId, onClose }: AuditRecordDetailProps) {
 
           {/* Review Actions */}
           <div className="flex items-center gap-3 pt-4 border-t border-border/30">
-            <span className="text-sm text-muted-foreground">Review Status:</span>
+            <span className="text-sm text-muted-foreground">
+              Review Status:
+            </span>
             <span
               className={cn(
                 'px-2 py-1 rounded-full text-xs font-medium',
@@ -910,7 +910,6 @@ function AuditRecordDetail({ matchId, onClose }: AuditRecordDetailProps) {
     </div>
   )
 }
-
 
 // =============================================================================
 // Main Audit Records Viewer

@@ -145,13 +145,19 @@ function DebugRecordings() {
     useState<MatchRecording | null>(null)
   const [pipelineRecording, setPipelineRecording] =
     useState<PipelineRecording | null>(null)
-  const [pipelineMatchId, setPipelineMatchId] = useState<string | undefined>(undefined)
+  const [pipelineMatchId, setPipelineMatchId] = useState<string | undefined>(
+    undefined,
+  )
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<SortBy>('date')
   const [filterOutcome, setFilterOutcome] = useState<FilterOutcome>('all')
 
   // Fetch pipeline visualization from backend
-  const { data: pipelineData, refetch: refetchPipeline, isLoading: isPipelineLoading } = usePipelineVisualization(pipelineMatchId)
+  const {
+    data: pipelineData,
+    refetch: refetchPipeline,
+    isLoading: isPipelineLoading,
+  } = usePipelineVisualization(pipelineMatchId)
 
   // Filter and sort recordings
   const filteredRecordings = useMemo(() => {

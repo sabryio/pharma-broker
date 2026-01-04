@@ -144,6 +144,24 @@ export const queryKeys = {
       offset?: number
     }) => [...queryKeys.supervision.audit(), params] as const,
   },
+
+  // Raw Messages
+  rawMessages: {
+    all: ['raw-messages'] as const,
+    lists: () => [...queryKeys.rawMessages.all, 'list'] as const,
+    list: (params: {
+      limit?: number
+      offset?: number
+      search?: string
+      status?: string
+      sort_by?: string
+      sort_order?: string
+      start_date?: string
+      end_date?: string
+    }) => [...queryKeys.rawMessages.lists(), params] as const,
+    details: () => [...queryKeys.rawMessages.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.rawMessages.details(), id] as const,
+  },
 } as const
 
 // Type helper for query keys

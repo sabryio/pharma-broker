@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SupervisionRouteImport } from './routes/supervision'
 import { Route as ReviewQueueRouteImport } from './routes/review-queue'
 import { Route as RequestsRouteImport } from './routes/requests'
+import { Route as RawMessagesRouteImport } from './routes/raw-messages'
 import { Route as ParsingReviewRouteImport } from './routes/parsing-review'
 import { Route as OffersRouteImport } from './routes/offers'
 import { Route as MatchesRouteImport } from './routes/matches'
@@ -32,6 +33,11 @@ const ReviewQueueRoute = ReviewQueueRouteImport.update({
 const RequestsRoute = RequestsRouteImport.update({
   id: '/requests',
   path: '/requests',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RawMessagesRoute = RawMessagesRouteImport.update({
+  id: '/raw-messages',
+  path: '/raw-messages',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ParsingReviewRoute = ParsingReviewRouteImport.update({
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/matches': typeof MatchesRoute
   '/offers': typeof OffersRoute
   '/parsing-review': typeof ParsingReviewRoute
+  '/raw-messages': typeof RawMessagesRoute
   '/requests': typeof RequestsRoute
   '/review-queue': typeof ReviewQueueRoute
   '/supervision': typeof SupervisionRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/matches': typeof MatchesRoute
   '/offers': typeof OffersRoute
   '/parsing-review': typeof ParsingReviewRoute
+  '/raw-messages': typeof RawMessagesRoute
   '/requests': typeof RequestsRoute
   '/review-queue': typeof ReviewQueueRoute
   '/supervision': typeof SupervisionRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/matches': typeof MatchesRoute
   '/offers': typeof OffersRoute
   '/parsing-review': typeof ParsingReviewRoute
+  '/raw-messages': typeof RawMessagesRoute
   '/requests': typeof RequestsRoute
   '/review-queue': typeof ReviewQueueRoute
   '/supervision': typeof SupervisionRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/matches'
     | '/offers'
     | '/parsing-review'
+    | '/raw-messages'
     | '/requests'
     | '/review-queue'
     | '/supervision'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/matches'
     | '/offers'
     | '/parsing-review'
+    | '/raw-messages'
     | '/requests'
     | '/review-queue'
     | '/supervision'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/matches'
     | '/offers'
     | '/parsing-review'
+    | '/raw-messages'
     | '/requests'
     | '/review-queue'
     | '/supervision'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   MatchesRoute: typeof MatchesRoute
   OffersRoute: typeof OffersRoute
   ParsingReviewRoute: typeof ParsingReviewRoute
+  RawMessagesRoute: typeof RawMessagesRoute
   RequestsRoute: typeof RequestsRoute
   ReviewQueueRoute: typeof ReviewQueueRoute
   SupervisionRoute: typeof SupervisionRoute
@@ -168,6 +181,13 @@ declare module '@tanstack/react-router' {
       path: '/requests'
       fullPath: '/requests'
       preLoaderRoute: typeof RequestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/raw-messages': {
+      id: '/raw-messages'
+      path: '/raw-messages'
+      fullPath: '/raw-messages'
+      preLoaderRoute: typeof RawMessagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parsing-review': {
@@ -222,6 +242,7 @@ const rootRouteChildren: RootRouteChildren = {
   MatchesRoute: MatchesRoute,
   OffersRoute: OffersRoute,
   ParsingReviewRoute: ParsingReviewRoute,
+  RawMessagesRoute: RawMessagesRoute,
   RequestsRoute: RequestsRoute,
   ReviewQueueRoute: ReviewQueueRoute,
   SupervisionRoute: SupervisionRoute,

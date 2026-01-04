@@ -430,7 +430,12 @@ export function convertToPipelineRecording(
   const steps: PipelineStep[] = response.stages.map((stage, index) => ({
     id: `step-${response.matchId}-${index + 1}`,
     stage: stage.stageName.toLowerCase().replace(/\s+/g, '_') as PipelineStage,
-    status: stage.status === 'completed' ? 'success' : stage.status === 'error' ? 'error' : 'pending',
+    status:
+      stage.status === 'completed'
+        ? 'success'
+        : stage.status === 'error'
+          ? 'error'
+          : 'pending',
     startedAt: stage.startedAt,
     completedAt: stage.completedAt,
     durationMs: stage.durationMs,
@@ -464,37 +469,63 @@ export function convertToPipelineRecording(
     response.scoreBreakdown
       ? {
           medicationScore:
-            response.scoreBreakdown.components.find((c) => c.name === 'medication')?.rawScore ?? 0,
+            response.scoreBreakdown.components.find(
+              (c) => c.name === 'medication',
+            )?.rawScore ?? 0,
           medicationWeight:
-            response.scoreBreakdown.components.find((c) => c.name === 'medication')?.weight ?? 0,
+            response.scoreBreakdown.components.find(
+              (c) => c.name === 'medication',
+            )?.weight ?? 0,
           rawTextScore:
-            response.scoreBreakdown.components.find((c) => c.name === 'raw_text')?.rawScore ?? 0,
+            response.scoreBreakdown.components.find(
+              (c) => c.name === 'raw_text',
+            )?.rawScore ?? 0,
           rawTextWeight:
-            response.scoreBreakdown.components.find((c) => c.name === 'raw_text')?.weight ?? 0,
+            response.scoreBreakdown.components.find(
+              (c) => c.name === 'raw_text',
+            )?.weight ?? 0,
           embeddingScore:
-            response.scoreBreakdown.components.find((c) => c.name === 'embedding')?.rawScore ?? null,
+            response.scoreBreakdown.components.find(
+              (c) => c.name === 'embedding',
+            )?.rawScore ?? null,
           embeddingWeight:
-            response.scoreBreakdown.components.find((c) => c.name === 'embedding')?.weight ?? 0,
+            response.scoreBreakdown.components.find(
+              (c) => c.name === 'embedding',
+            )?.weight ?? 0,
           dosageScore:
-            response.scoreBreakdown.components.find((c) => c.name === 'dosage')?.rawScore ?? 0,
+            response.scoreBreakdown.components.find((c) => c.name === 'dosage')
+              ?.rawScore ?? 0,
           dosageWeight:
-            response.scoreBreakdown.components.find((c) => c.name === 'dosage')?.weight ?? 0,
+            response.scoreBreakdown.components.find((c) => c.name === 'dosage')
+              ?.weight ?? 0,
           quantityScore:
-            response.scoreBreakdown.components.find((c) => c.name === 'quantity')?.rawScore ?? 0,
+            response.scoreBreakdown.components.find(
+              (c) => c.name === 'quantity',
+            )?.rawScore ?? 0,
           quantityWeight:
-            response.scoreBreakdown.components.find((c) => c.name === 'quantity')?.weight ?? 0,
+            response.scoreBreakdown.components.find(
+              (c) => c.name === 'quantity',
+            )?.weight ?? 0,
           priceScore:
-            response.scoreBreakdown.components.find((c) => c.name === 'price')?.rawScore ?? null,
+            response.scoreBreakdown.components.find((c) => c.name === 'price')
+              ?.rawScore ?? null,
           priceWeight:
-            response.scoreBreakdown.components.find((c) => c.name === 'price')?.weight ?? 0,
+            response.scoreBreakdown.components.find((c) => c.name === 'price')
+              ?.weight ?? 0,
           recencyScore:
-            response.scoreBreakdown.components.find((c) => c.name === 'recency')?.rawScore ?? 0,
+            response.scoreBreakdown.components.find((c) => c.name === 'recency')
+              ?.rawScore ?? 0,
           recencyWeight:
-            response.scoreBreakdown.components.find((c) => c.name === 'recency')?.weight ?? 0,
+            response.scoreBreakdown.components.find((c) => c.name === 'recency')
+              ?.weight ?? 0,
           aiLogicScore:
-            response.scoreBreakdown.components.find((c) => c.name === 'ai_logic')?.rawScore ?? null,
+            response.scoreBreakdown.components.find(
+              (c) => c.name === 'ai_logic',
+            )?.rawScore ?? null,
           aiLogicWeight:
-            response.scoreBreakdown.components.find((c) => c.name === 'ai_logic')?.weight ?? 0,
+            response.scoreBreakdown.components.find(
+              (c) => c.name === 'ai_logic',
+            )?.weight ?? 0,
           finalScore: response.scoreBreakdown.finalScore,
           formula: response.scoreBreakdown.formula,
         }
@@ -509,10 +540,15 @@ export function convertToPipelineRecording(
         completionTokens: response.aiReview.tokenUsage?.completionTokens ?? 0,
         offerText: '', // Not provided by backend visualization
         requestText: '', // Not provided by backend visualization
-        decision: response.aiReview.decision as 'approve' | 'reject' | 'uncertain',
+        decision: response.aiReview.decision as
+          | 'approve'
+          | 'reject'
+          | 'uncertain',
         confidence: response.aiReview.confidence,
         explanation: response.aiReview.reasoning ?? '',
-        reasoning: response.aiReview.reasoning ? [response.aiReview.reasoning] : [],
+        reasoning: response.aiReview.reasoning
+          ? [response.aiReview.reasoning]
+          : [],
         issues: [],
         durationMs: response.aiReview.latencyMs,
       }
