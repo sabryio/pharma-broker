@@ -1,5 +1,6 @@
 // Filter Toolbar Component for Raw Messages
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
+import { format } from 'date-fns'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -10,11 +11,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Calendar } from '@/components/ui/calendar'
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Search, X, Calendar, RefreshCw } from 'lucide-react'
+import { Search, X, CalendarIcon, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { RawMessageFilters, ProcessingStatus } from './types'
 import { defaultFilters } from './types'
@@ -34,6 +41,9 @@ export function FilterToolbar({
   isRefreshing,
   totalCount,
 }: FilterToolbarProps) {
+  const [startDateOpen, setStartDateOpen] = useState(false)
+  const [endDateOpen, setEndDateOpen] = useState(false)
+
   const updateFilter = useCallback(
     <K extends keyof RawMessageFilters>(key: K, value: RawMessageFilters[K]) => {
       onFiltersChange({ ...filters, [key]: value })
@@ -50,6 +60,20 @@ export function FilterToolbar({
     filters.status !== 'all' ||
     filters.startDate ||
     filters.endDate
+
+  // Parse dates for calendar
+  const startDate = filters.startDate ? new Date(filters.startDate) : undefined
+  const endDate = filters.endDate ? new Date(filters.endDate) : undefined
+
+  const handleStartDateSelect = (date: Date | undefined) => {
+    updateFilter('startDate', date ? format(date, 'yyyy-MM-dd') : '')
+    setStartDateOpen(false)
+  }
+
+  const handleEndDateSelect = (date: Date | undefined) => {
+    updateFilter('endDate', date ? format(date, 'yyyy-MM-dd') : '')
+    setEndDateOpen(false)
+  }
 
   return (
     <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg border">
@@ -80,32 +104,86 @@ export function FilterToolbar({
         </SelectContent>
       </Select>
 
-      {/* Date Range */}
+      {/* Date Range with Calendar Picker */}
       <div className="flex items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="relative">
-              <Calendar className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-              <Input
-                type="date"
-                value={filters.startDate}
-                onChange={(e) => updateFilter('startDate', e.target.value)}
-                className="h-8 w-[130px] pl-7 text-sm bg-background"
-              />
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>Start date</TooltipContent>
-        </Tooltip>
+        {/* Start Date */}
+        <Popover open={startDateOpen} onOpenChange={setStartDateOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn(
+                'h-8 px-2 text-xs justify-start font-normal',
+                !startDate && 'text-muted-foreground',
+                startDate && 'border-primary/50',
+              )}
+            >
+              <CalendarIcon className="mr-1.5 h-3 w-3" />
+              {startDate ? format(startDate, 'MMM d') : 'From'}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={startDate}
+              onSelect={handleStartDateSelect}
+              disabled={(date) => (endDate ? date > endDate : false)}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+
         <span className="text-muted-foreground text-xs">→</span>
-        <Input
-          type="date"
-          value={filters.endDate}
-          onChange={(e) => updateFilter('endDate', e.target.value)}
-          className="h-8 w-[130px] text-sm bg-background"
-        />
+
+        {/* End Date */}
+        <Popover open={endDateOpen} onOpenChange={setEndDateOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn(
+                'h-8 px-2 text-xs justify-start font-normal',
+                !endDate && 'text-muted-foreground',
+                endDate && 'border-primary/50',
+              )}
+            >
+              <CalendarIcon className="mr-1.5 h-3 w-3" />
+              {endDate ? format(endDate, 'MMM d') : 'To'}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={endDate}
+              onSelect={handleEndDateSelect}
+              disabled={(date) => (startDate ? date < startDate : false)}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+
+        {/* Clear Date Range */}
+        {(startDate || endDate) && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  updateFilter('startDate', '')
+                  updateFilter('endDate', '')
+                }}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Clear dates</TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
-      {/* Clear Filters */}
+      {/* Clear All Filters */}
       {hasActiveFilters && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -113,12 +191,13 @@ export function FilterToolbar({
               variant="ghost"
               size="sm"
               onClick={clearFilters}
-              className="h-8 px-2"
+              className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3.5 h-3.5 mr-1" />
+              Clear
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Clear filters</TooltipContent>
+          <TooltipContent>Clear all filters</TooltipContent>
         </Tooltip>
       )}
 
