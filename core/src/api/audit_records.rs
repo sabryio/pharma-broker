@@ -154,8 +154,80 @@ where
         "Matching engine not available".to_string(),
     ))?;
 
-    let recorder = engine.get_audit_recorder();
     let limit = query.limit.unwrap_or(50);
+
+    // Try to use PersistentAuditRecorder first (queries both buffer and database)
+    // Feature: debug-recordings-persistence (Requirements 3.1)
+    if let Some(persistent_recorder) = engine.get_persistent_audit_recorder() {
+        let records: Vec<FrontendAuditRecord> = if let Some(session_id) = &query.session_id {
+            // Query by session from both buffer and database
+            match persistent_recorder.get_by_session(session_id).await {
+                Ok(session_records) => session_records
+                    .iter()
+                    .map(FrontendAuditRecord::from)
+                    .collect(),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to query persistent recorder, falling back to in-memory");
+                    engine
+                        .get_audit_recorder()
+                        .get_by_session(session_id)
+                        .iter()
+                        .map(FrontendAuditRecord::from)
+                        .collect()
+                }
+            }
+        } else {
+            // List recent from both buffer and database
+            match persistent_recorder.list_audit_records(limit, 0).await {
+                Ok(all_records) => all_records
+                    .iter()
+                    .filter(|r| {
+                        // Apply filters
+                        if let Some(min_score) = query.min_score
+                            && r.final_score < min_score
+                        {
+                            return false;
+                        }
+                        if let Some(ai_involved) = query.ai_involved
+                            && r.ai_involved != ai_involved
+                        {
+                            return false;
+                        }
+                        true
+                    })
+                    .map(FrontendAuditRecord::from)
+                    .collect(),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to query persistent recorder, falling back to in-memory");
+                    engine
+                        .get_audit_recorder()
+                        .get_recent(limit)
+                        .iter()
+                        .filter(|r| {
+                            if let Some(min_score) = query.min_score
+                                && r.final_score < min_score
+                            {
+                                return false;
+                            }
+                            if let Some(ai_involved) = query.ai_involved
+                                && r.ai_involved != ai_involved
+                            {
+                                return false;
+                            }
+                            true
+                        })
+                        .map(FrontendAuditRecord::from)
+                        .collect()
+                }
+            }
+        };
+
+        let total = records.len();
+        return Ok(Json(AuditRecordsResponse { records, total }));
+    }
+
+    // Fallback to in-memory AuditRecorder if PersistentAuditRecorder is not configured
+    let recorder = engine.get_audit_recorder();
 
     let records: Vec<FrontendAuditRecord> = if let Some(session_id) = &query.session_id {
         recorder
@@ -204,6 +276,39 @@ where
         "Matching engine not available".to_string(),
     ))?;
 
+    // Try to use PersistentAuditRecorder first (queries both buffer and database)
+    // Feature: debug-recordings-persistence (Requirements 3.1)
+    if let Some(persistent_recorder) = engine.get_persistent_audit_recorder() {
+        match persistent_recorder.get_by_match_id(match_id).await {
+            Ok(Some(record)) => {
+                // Try to create replay context
+                let replay_context = record.to_replay_context().ok();
+
+                // Extract session info for response
+                let session_id = record.session_id.clone();
+                let client_metadata = record.client_metadata.clone();
+
+                return Ok(Json(AuditRecordDetailResponse {
+                    record,
+                    replay_context,
+                    session_id,
+                    client_metadata,
+                }));
+            }
+            Ok(None) => {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    format!("Audit record not found for match {}", match_id),
+                ));
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to query persistent recorder, falling back to in-memory");
+                // Fall through to in-memory recorder
+            }
+        }
+    }
+
+    // Fallback to in-memory AuditRecorder
     let recorder = engine.get_audit_recorder();
 
     let record = recorder.get_by_match_id(match_id).ok_or((
@@ -295,10 +400,15 @@ where
 }
 
 /// GET /api/audit-records/session/:session_id - Get records by session
-/// Requirements: 3.3
+/// Requirements: 3.1, 3.2, 3.3
 ///
 /// Queries both in-memory buffer and database for records associated with
 /// the given session_id, merging and deduplicating results.
+///
+/// Feature: debug-recordings-persistence
+/// - Uses PersistentAuditRecorder to query both buffer and database (Req 3.1)
+/// - Deduplicates records by id field (Req 3.2)
+/// - Orders results by created_at timestamp descending (Req 3.3)
 pub async fn get_session_records<RQ, A, MM>(
     State(state): State<AppState<RQ, A, MM>>,
     Path(session_id): Path<String>,
@@ -313,23 +423,67 @@ where
         "Matching engine not available".to_string(),
     ))?;
 
-    let recorder = engine.get_audit_recorder();
+    // Try to use PersistentAuditRecorder first (queries both buffer and database)
+    // Feature: debug-recordings-persistence (Requirements 3.1)
+    if let Some(persistent_recorder) = engine.get_persistent_audit_recorder() {
+        // Get records from both in-memory buffer and database
+        let buffer_records = persistent_recorder
+            .get_by_session_from_buffer(&session_id)
+            .await;
+        let from_buffer = buffer_records.len();
 
-    // Get records from in-memory buffer
+        // Query database - handle errors gracefully with partial results (Req 3.1)
+        let (db_records, from_database) = match persistent_recorder
+            .get_by_session(&session_id)
+            .await
+        {
+            Ok(all_records) => {
+                // get_by_session returns merged results, calculate db-only count
+                let db_count = all_records.len().saturating_sub(from_buffer);
+                (all_records, db_count)
+            }
+            Err(e) => {
+                // Log error but continue with buffer-only results
+                tracing::warn!(
+                    error = %e,
+                    session_id = %session_id,
+                    "Failed to query database for session records, returning buffer-only results"
+                );
+                (buffer_records.clone(), 0)
+            }
+        };
+
+        // Deduplicate records by id field (Req 3.2)
+        let deduplicated = deduplicate_records(db_records);
+
+        // Sort by created_at timestamp descending (Req 3.3)
+        let sorted = sort_records_by_timestamp(deduplicated);
+
+        // Convert to frontend format
+        let records: Vec<FrontendAuditRecord> =
+            sorted.iter().map(FrontendAuditRecord::from).collect();
+
+        return Ok(Json(SessionAuditRecordsResponse {
+            session_id,
+            total: records.len(),
+            records,
+            source: RecordSource {
+                from_buffer,
+                from_database,
+            },
+        }));
+    }
+
+    // Fallback to in-memory AuditRecorder if PersistentAuditRecorder is not configured
+    let recorder = engine.get_audit_recorder();
     let buffer_records = recorder.get_by_session(&session_id);
     let from_buffer = buffer_records.len();
 
-    // Convert to frontend format
-    let records: Vec<FrontendAuditRecord> = buffer_records
-        .iter()
-        .map(FrontendAuditRecord::from)
-        .collect();
+    // Sort by created_at timestamp descending (Req 3.3)
+    let sorted = sort_records_by_timestamp(buffer_records);
 
-    // Note: For full database integration, the PersistentAuditRecorder
-    // should be used instead. This endpoint currently only queries the
-    // in-memory buffer. Database queries would be added when the
-    // PersistentAuditRecorder is integrated into the AppState.
-    let from_database = 0;
+    // Convert to frontend format
+    let records: Vec<FrontendAuditRecord> = sorted.iter().map(FrontendAuditRecord::from).collect();
 
     Ok(Json(SessionAuditRecordsResponse {
         session_id,
@@ -337,7 +491,34 @@ where
         records,
         source: RecordSource {
             from_buffer,
-            from_database,
+            from_database: 0,
         },
     }))
+}
+
+/// Deduplicate records by id field
+/// Feature: debug-recordings-persistence (Requirements 3.2)
+///
+/// Uses the `id` field to identify duplicates and keeps a single instance
+/// of each unique record.
+fn deduplicate_records(records: Vec<MatchAuditRecord>) -> Vec<MatchAuditRecord> {
+    use std::collections::HashSet;
+
+    let mut seen_ids: HashSet<uuid::Uuid> = HashSet::new();
+    let mut deduplicated = Vec::with_capacity(records.len());
+
+    for record in records {
+        if seen_ids.insert(record.id) {
+            deduplicated.push(record);
+        }
+    }
+
+    deduplicated
+}
+
+/// Sort records by created_at timestamp in descending order (most recent first)
+/// Feature: debug-recordings-persistence (Requirements 3.3)
+fn sort_records_by_timestamp(mut records: Vec<MatchAuditRecord>) -> Vec<MatchAuditRecord> {
+    records.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    records
 }

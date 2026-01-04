@@ -15,14 +15,16 @@ use pharma_core::api::{create_router, routes::AppState};
 use pharma_core::grpc::{GrpcDependencies, GrpcRepositories, PharmaCoreService, start_grpc_server};
 use pharma_core::matching::{
     AliasLearner, MatchingEngine, MatchingEngineConfig, MedicationResolver,
-    MedicationResolverConfig,
+    MedicationResolverConfig, PersistentAuditConfig, PersistentAuditRecorder,
 };
 use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
-    SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
-    SeaOrmMedicationAliasRepo, SeaOrmMedicationMasterRepo, SeaOrmOfferRepo, SeaOrmRawMessageRepo,
-    SeaOrmRequestRepo, SeaOrmReviewQueueRepo, create_connection,
+    SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchAuditRecordRepo,
+    SeaOrmMatchQueueRepo, SeaOrmMatchRepo, SeaOrmMedicationAliasRepo, SeaOrmMedicationMasterRepo,
+    SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo, SeaOrmReviewQueueRepo,
+    create_connection,
 };
+use pharma_core::worker::auto_approve_worker::{AutoApproveWorker, AutoApproveWorkerRepos};
 use pharma_core::worker::match_processor::{MatchProcessor, MatchProcessorRepos};
 
 /// Initialize tracing subscriber with optional tokio-console support
@@ -120,8 +122,29 @@ async fn main() -> anyhow::Result<()> {
     // Create matching engine and set repositories for learning job
     let mut matching_engine = MatchingEngine::new(engine_config);
     matching_engine.set_repositories(feedback_repo.clone(), audit_log_repo.clone());
+
+    // Create PersistentAuditRecorder for database-backed audit storage
+    // Feature: debug-recordings-persistence (Requirements 2.1, 2.2)
+    let match_audit_record_repo = Arc::new(SeaOrmMatchAuditRecordRepo::new(db.clone()));
+    let persistent_audit_config = PersistentAuditConfig::from_env();
+    let mut persistent_audit_recorder =
+        PersistentAuditRecorder::new(persistent_audit_config.clone(), match_audit_record_repo);
+
+    // Start background flush task for persistent audit recorder
+    let _audit_flush_handle = persistent_audit_recorder.start_flush_task();
+    tracing::info!(
+        flush_interval_secs = persistent_audit_config.flush_interval_secs,
+        max_buffer_size = persistent_audit_config.max_buffer_size,
+        "📝 Persistent audit recorder started with background flush task"
+    );
+
+    // Inject PersistentAuditRecorder into MatchingEngine
+    matching_engine.set_persistent_audit_recorder(Arc::new(persistent_audit_recorder));
+
     let matching_engine = Arc::new(matching_engine);
-    tracing::info!("⚖️ Matching engine initialized with feedback repository");
+    tracing::info!(
+        "⚖️ Matching engine initialized with feedback repository and persistent audit recorder"
+    );
 
     // Start the learning scheduler if enabled
     if scheduler_enabled {
@@ -154,6 +177,27 @@ async fn main() -> anyhow::Result<()> {
     let worker_handle = tokio::spawn(async move {
         processor.run(rx_match).await;
     });
+
+    // Initialize and start AutoApproveWorker (AI supervision background worker)
+    // Feature: ai-supervision-persistence (Requirements 1.2, 1.3, 1.4)
+    let rx_auto_approve = worker_shutdown_rx.clone();
+    let auto_approve_repos = AutoApproveWorkerRepos {
+        match_repo: match_repo.clone(),
+        offer_repo: offer_repo.clone(),
+        request_repo: request_repo.clone(),
+    };
+    let auto_approve_processor = matching_engine.get_auto_approve_processor();
+    let supervision_audit = matching_engine.supervision_audit().clone();
+    let auto_approve_worker = AutoApproveWorker::new(
+        auto_approve_repos,
+        auto_approve_processor,
+        ws_tx.clone(),
+        supervision_audit,
+    );
+    let auto_approve_handle = tokio::spawn(async move {
+        auto_approve_worker.run(rx_auto_approve).await;
+    });
+    tracing::info!("🤖 Auto-approve worker started with supervision audit trail");
 
     // Initialize and start Janitor (cleanup & partitioning worker)
     let janitor_config = pharma_core::worker::janitor::JanitorConfig::from_env();
@@ -358,6 +402,13 @@ async fn main() -> anyhow::Result<()> {
                         Ok(Ok(())) => tracing::info!("✅ Janitor stopped gracefully"),
                         Ok(Err(e)) => tracing::warn!("⚠️ Janitor task panicked: {}", e),
                         Err(_) => tracing::warn!("⚠️ Janitor drain timed out after {:?}", drain_timeout),
+                    }
+                },
+                async {
+                    match tokio::time::timeout(drain_timeout, auto_approve_handle).await {
+                        Ok(Ok(())) => tracing::info!("✅ AutoApproveWorker stopped gracefully"),
+                        Ok(Err(e)) => tracing::warn!("⚠️ AutoApproveWorker task panicked: {}", e),
+                        Err(_) => tracing::warn!("⚠️ AutoApproveWorker drain timed out after {:?}", drain_timeout),
                     }
                 }
             );

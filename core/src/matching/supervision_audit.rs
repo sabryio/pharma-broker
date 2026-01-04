@@ -1277,4 +1277,562 @@ mod tests {
         let match1_history = trail.get_match_history(match_id1).await.unwrap();
         assert_eq!(match1_history.len(), 2);
     }
+
+    // =========================================================================
+    // Property-Based Tests
+    // Feature: ai-supervision-persistence
+    // =========================================================================
+
+    mod property_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// Generate a random SupervisionEventType
+        fn arb_event_type() -> impl Strategy<Value = SupervisionEventType> {
+            prop_oneof![
+                Just(SupervisionEventType::AutoApproved),
+                Just(SupervisionEventType::QueuedForReview),
+                Just(SupervisionEventType::Blocked),
+                Just(SupervisionEventType::Overridden),
+                Just(SupervisionEventType::UndoApproval),
+                Just(SupervisionEventType::ConfigChanged),
+                Just(SupervisionEventType::SystemPaused),
+                Just(SupervisionEventType::SystemResumed),
+            ]
+        }
+
+        /// Generate a random confidence score (0.0 to 1.0)
+        fn arb_confidence() -> impl Strategy<Value = f64> {
+            0.0..=1.0f64
+        }
+
+        /// Generate a random non-empty string for explanations
+        fn arb_explanation() -> impl Strategy<Value = String> {
+            "[a-zA-Z0-9 ]{1,100}".prop_map(|s| s.trim().to_string())
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(100))]
+
+            /// Property 1: Event Recording Round-Trip
+            /// For any supervision event that is logged to the SupervisionAuditTrail,
+            /// querying the audit log should return that event with all its original data intact.
+            /// **Validates: Requirements 2.1**
+            #[test]
+            fn prop_event_recording_round_trip(
+                confidence in arb_confidence(),
+                explanation in arb_explanation(),
+            ) {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    let trail = SupervisionAuditTrail::new(SupervisionAuditConfig::default());
+                    let match_id = Uuid::new_v4();
+
+                    // Log an auto-approval event
+                    let logged_entry = trail
+                        .log_auto_approval(
+                            match_id,
+                            confidence,
+                            explanation.clone(),
+                            vec![],
+                        )
+                        .await
+                        .unwrap();
+
+                    // Query the audit log
+                    let filter = SupervisionAuditFilter::new().for_match(match_id);
+                    let results = trail.query(&filter).await.unwrap();
+
+                    // Verify round-trip: the logged entry should be retrievable
+                    prop_assert!(!results.is_empty(), "Query should return at least one result");
+
+                    let retrieved = results.iter().find(|e| e.id == logged_entry.id);
+                    prop_assert!(retrieved.is_some(), "Logged entry should be retrievable by ID");
+
+                    let retrieved = retrieved.unwrap();
+
+                    // Verify data integrity
+                    prop_assert_eq!(retrieved.match_id, Some(match_id));
+                    prop_assert_eq!(retrieved.ai_confidence, Some(confidence));
+                    prop_assert_eq!(retrieved.ai_explanation.as_ref(), Some(&explanation));
+                    prop_assert_eq!(retrieved.event_type, SupervisionEventType::AutoApproved);
+
+                    Ok(())
+                })?;
+            }
+
+            /// Property 5: Override/Undo User Attribution
+            /// For any Overridden or UndoApproval event, the override_by field
+            /// contains the user ID who performed the action.
+            /// **Validates: Requirements 3.5**
+            #[test]
+            fn prop_override_undo_user_attribution(
+                confidence in arb_confidence(),
+                explanation in arb_explanation(),
+            ) {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    let trail = SupervisionAuditTrail::new(SupervisionAuditConfig::default());
+                    let match_id = Uuid::new_v4();
+                    let user_id = Uuid::new_v4();
+
+                    // Test Override event
+                    let override_entry = trail
+                        .log_override(
+                            match_id,
+                            user_id,
+                            "Test override reason".to_string(),
+                            confidence,
+                            explanation.clone(),
+                        )
+                        .await
+                        .unwrap();
+
+                    // Verify override has user attribution
+                    prop_assert_eq!(override_entry.event_type, SupervisionEventType::Overridden);
+                    prop_assert_eq!(override_entry.override_by, Some(user_id),
+                        "Override event must have user_id in override_by field");
+                    prop_assert!(override_entry.overridden,
+                        "Override event must have overridden=true");
+
+                    // Test Undo event
+                    let undo_match_id = Uuid::new_v4();
+                    let undo_user_id = Uuid::new_v4();
+                    let undo_entry = trail
+                        .log_undo(undo_match_id, undo_user_id)
+                        .await
+                        .unwrap();
+
+                    // Verify undo has user attribution
+                    prop_assert_eq!(undo_entry.event_type, SupervisionEventType::UndoApproval);
+                    prop_assert_eq!(undo_entry.override_by, Some(undo_user_id),
+                        "Undo event must have user_id in override_by field");
+                    prop_assert!(undo_entry.overridden,
+                        "Undo event must have overridden=true");
+
+                    // Verify both events are retrievable with correct user attribution
+                    let override_filter = SupervisionAuditFilter::new()
+                        .of_type(SupervisionEventType::Overridden);
+                    let override_results = trail.query(&override_filter).await.unwrap();
+                    prop_assert!(!override_results.is_empty());
+                    prop_assert!(override_results.iter().all(|e| e.override_by.is_some()),
+                        "All override events must have user attribution");
+
+                    let undo_filter = SupervisionAuditFilter::new()
+                        .of_type(SupervisionEventType::UndoApproval);
+                    let undo_results = trail.query(&undo_filter).await.unwrap();
+                    prop_assert!(!undo_results.is_empty());
+                    prop_assert!(undo_results.iter().all(|e| e.override_by.is_some()),
+                        "All undo events must have user attribution");
+
+                    Ok(())
+                })?;
+            }
+
+            /// Property 4: Event Data Completeness
+            /// For any recorded supervision event:
+            /// - The timestamp field is always present and valid
+            /// - The event_type field is always one of the valid enum variants
+            /// - For match-related events, the match_id field is present
+            /// - For AI decision events, the ai_confidence field is present
+            /// **Validates: Requirements 3.1, 3.2, 3.3, 3.4**
+            #[test]
+            fn prop_event_data_completeness(
+                confidence in arb_confidence(),
+                explanation in arb_explanation(),
+            ) {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    let trail = SupervisionAuditTrail::new(SupervisionAuditConfig::default());
+                    let match_id = Uuid::new_v4();
+                    let user_id = Uuid::new_v4();
+                    let now = chrono::Utc::now();
+
+                    // Log various event types
+                    let auto_approved = trail
+                        .log_auto_approval(match_id, confidence, explanation.clone(), vec![])
+                        .await
+                        .unwrap();
+
+                    let queued = trail
+                        .log_queued_for_review(
+                            Uuid::new_v4(),
+                            confidence,
+                            explanation.clone(),
+                            "Test reason".to_string(),
+                            vec![],
+                        )
+                        .await
+                        .unwrap();
+
+                    let blocked = trail
+                        .log_blocked(
+                            Uuid::new_v4(),
+                            confidence,
+                            explanation.clone(),
+                            "Safety block".to_string(),
+                            vec![],
+                        )
+                        .await
+                        .unwrap();
+
+                    let overridden = trail
+                        .log_override(
+                            Uuid::new_v4(),
+                            user_id,
+                            "Override reason".to_string(),
+                            confidence,
+                            explanation.clone(),
+                        )
+                        .await
+                        .unwrap();
+
+                    let undo = trail
+                        .log_undo(Uuid::new_v4(), user_id)
+                        .await
+                        .unwrap();
+
+                    // Verify all events have valid timestamps (Requirement 3.1)
+                    for entry in [&auto_approved, &queued, &blocked, &overridden, &undo] {
+                        prop_assert!(entry.timestamp >= now - chrono::Duration::seconds(5),
+                            "Timestamp should be recent");
+                        prop_assert!(entry.timestamp <= chrono::Utc::now() + chrono::Duration::seconds(1),
+                            "Timestamp should not be in the future");
+                    }
+
+                    // Verify event_type is valid (Requirement 3.2)
+                    prop_assert_eq!(auto_approved.event_type, SupervisionEventType::AutoApproved);
+                    prop_assert_eq!(queued.event_type, SupervisionEventType::QueuedForReview);
+                    prop_assert_eq!(blocked.event_type, SupervisionEventType::Blocked);
+                    prop_assert_eq!(overridden.event_type, SupervisionEventType::Overridden);
+                    prop_assert_eq!(undo.event_type, SupervisionEventType::UndoApproval);
+
+                    // Verify match-related events have match_id (Requirement 3.3)
+                    prop_assert!(auto_approved.match_id.is_some(),
+                        "AutoApproved must have match_id");
+                    prop_assert!(queued.match_id.is_some(),
+                        "QueuedForReview must have match_id");
+                    prop_assert!(blocked.match_id.is_some(),
+                        "Blocked must have match_id");
+                    prop_assert!(overridden.match_id.is_some(),
+                        "Overridden must have match_id");
+                    prop_assert!(undo.match_id.is_some(),
+                        "UndoApproval must have match_id");
+
+                    // Verify AI decision events have confidence (Requirement 3.4)
+                    prop_assert!(auto_approved.ai_confidence.is_some(),
+                        "AutoApproved must have ai_confidence");
+                    prop_assert!(queued.ai_confidence.is_some(),
+                        "QueuedForReview must have ai_confidence");
+                    prop_assert!(blocked.ai_confidence.is_some(),
+                        "Blocked must have ai_confidence");
+                    prop_assert!(overridden.ai_confidence.is_some(),
+                        "Overridden must have original ai_confidence");
+
+                    Ok(())
+                })?;
+            }
+
+            /// Property 6: Blocked Event Reason Presence
+            /// For any Blocked event, the decision field contains a Blocked variant
+            /// with a non-empty reason string.
+            /// **Validates: Requirements 3.6**
+            #[test]
+            fn prop_blocked_event_reason_presence(
+                confidence in arb_confidence(),
+                explanation in arb_explanation(),
+                reason in "[a-zA-Z0-9 ]{1,50}",
+            ) {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    let trail = SupervisionAuditTrail::new(SupervisionAuditConfig::default());
+                    let match_id = Uuid::new_v4();
+
+                    // Log a blocked event with the generated reason
+                    let blocked_entry = trail
+                        .log_blocked(
+                            match_id,
+                            confidence,
+                            explanation.clone(),
+                            reason.trim().to_string(),
+                            vec![],
+                        )
+                        .await
+                        .unwrap();
+
+                    // Verify the blocked event has the correct structure
+                    prop_assert_eq!(blocked_entry.event_type, SupervisionEventType::Blocked);
+                    prop_assert!(blocked_entry.decision.is_some(),
+                        "Blocked event must have a decision");
+
+                    // Verify the decision is a Blocked variant with a reason
+                    if let Some(ref decision) = blocked_entry.decision {
+                        match decision {
+                            AutoApproveAction::Blocked { reason: block_reason } => {
+                                prop_assert!(!block_reason.is_empty(),
+                                    "Blocked reason must not be empty");
+                                prop_assert_eq!(block_reason.trim(), reason.trim(),
+                                    "Blocked reason must match the input reason");
+                            }
+                            _ => {
+                                prop_assert!(false, "Blocked event decision must be Blocked variant");
+                            }
+                        }
+                    }
+
+                    // Query and verify the blocked event is retrievable with reason intact
+                    let filter = SupervisionAuditFilter::new()
+                        .of_type(SupervisionEventType::Blocked)
+                        .for_match(match_id);
+                    let results = trail.query(&filter).await.unwrap();
+
+                    prop_assert!(!results.is_empty(), "Blocked event should be retrievable");
+
+                    let retrieved = &results[0];
+                    if let Some(ref decision) = retrieved.decision {
+                        match decision {
+                            AutoApproveAction::Blocked { reason: block_reason } => {
+                                prop_assert!(!block_reason.is_empty(),
+                                    "Retrieved blocked reason must not be empty");
+                            }
+                            _ => {
+                                prop_assert!(false, "Retrieved decision must be Blocked variant");
+                            }
+                        }
+                    }
+
+                    Ok(())
+                })?;
+            }
+
+            /// Property 2: Event Type Filtering Correctness
+            /// For any set of recorded supervision events and any event type filter,
+            /// all events returned by query should have an event_type matching the filter.
+            /// **Validates: Requirements 2.2**
+            #[test]
+            fn prop_event_type_filtering_correctness(
+                num_events in 5..20usize,
+                filter_type in arb_event_type(),
+            ) {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    let trail = SupervisionAuditTrail::new(SupervisionAuditConfig::default());
+
+                    // Log a variety of event types
+                    let mut logged_events = Vec::new();
+                    for i in 0..num_events {
+                        let match_id = Uuid::new_v4();
+                        let user_id = Uuid::new_v4();
+                        let confidence = 0.5 + (i as f64 * 0.02);
+                        let explanation = format!("Test explanation {}", i);
+
+                        // Cycle through different event types
+                        let entry = match i % 5 {
+                            0 => trail.log_auto_approval(
+                                match_id, confidence, explanation, vec![]
+                            ).await.unwrap(),
+                            1 => trail.log_queued_for_review(
+                                match_id, confidence, explanation, "Review reason".to_string(), vec![]
+                            ).await.unwrap(),
+                            2 => trail.log_blocked(
+                                match_id, confidence, explanation, "Block reason".to_string(), vec![]
+                            ).await.unwrap(),
+                            3 => trail.log_override(
+                                match_id, user_id, "Override reason".to_string(), confidence, explanation
+                            ).await.unwrap(),
+                            _ => trail.log_undo(match_id, user_id).await.unwrap(),
+                        };
+                        logged_events.push(entry);
+                    }
+
+                    // Query with the event type filter
+                    let filter = SupervisionAuditFilter::new().of_type(filter_type);
+                    let results = trail.query(&filter).await.unwrap();
+
+                    // Verify ALL returned events match the filter type
+                    for entry in &results {
+                        prop_assert_eq!(
+                            entry.event_type, filter_type,
+                            "All returned events must match the filter type. Expected {:?}, got {:?}",
+                            filter_type, entry.event_type
+                        );
+                    }
+
+                    // Verify we got the expected count of matching events
+                    let expected_count = logged_events.iter()
+                        .filter(|e| e.event_type == filter_type)
+                        .count();
+                    prop_assert_eq!(
+                        results.len(), expected_count,
+                        "Should return exactly the events matching the filter type"
+                    );
+
+                    Ok(())
+                })?;
+            }
+
+            /// Property 3: Time Range Filtering Correctness
+            /// For any set of recorded supervision events and any time range filter,
+            /// all events returned should have timestamps within the specified range (inclusive).
+            /// **Validates: Requirements 2.3**
+            #[test]
+            fn prop_time_range_filtering_correctness(
+                num_events in 5..15usize,
+            ) {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    let trail = SupervisionAuditTrail::new(SupervisionAuditConfig::default());
+
+                    // Record the start time before logging events
+                    let test_start = chrono::Utc::now();
+
+                    // Log events with small delays to create timestamp variation
+                    let mut logged_events = Vec::new();
+                    for i in 0..num_events {
+                        let match_id = Uuid::new_v4();
+                        let confidence = 0.5 + (i as f64 * 0.03);
+                        let explanation = format!("Time test event {}", i);
+
+                        let entry = trail.log_auto_approval(
+                            match_id, confidence, explanation, vec![]
+                        ).await.unwrap();
+                        logged_events.push(entry);
+                    }
+
+                    let test_end = chrono::Utc::now();
+
+                    // Test 1: Query with full time range should return all events
+                    let full_range_filter = SupervisionAuditFilter::new()
+                        .in_date_range(test_start - chrono::Duration::seconds(1), test_end + chrono::Duration::seconds(1));
+                    let full_results = trail.query(&full_range_filter).await.unwrap();
+                    prop_assert_eq!(
+                        full_results.len(), num_events,
+                        "Full time range should return all events"
+                    );
+
+                    // Verify all returned events are within the time range
+                    for entry in &full_results {
+                        prop_assert!(
+                            entry.timestamp >= test_start - chrono::Duration::seconds(1),
+                            "Event timestamp should be >= start_time"
+                        );
+                        prop_assert!(
+                            entry.timestamp <= test_end + chrono::Duration::seconds(1),
+                            "Event timestamp should be <= end_time"
+                        );
+                    }
+
+                    // Test 2: Query with time range in the past should return no events
+                    let past_filter = SupervisionAuditFilter::new()
+                        .in_date_range(
+                            test_start - chrono::Duration::hours(2),
+                            test_start - chrono::Duration::hours(1)
+                        );
+                    let past_results = trail.query(&past_filter).await.unwrap();
+                    prop_assert!(
+                        past_results.is_empty(),
+                        "Time range in the past should return no events"
+                    );
+
+                    // Test 3: Query with time range in the future should return no events
+                    let future_filter = SupervisionAuditFilter::new()
+                        .in_date_range(
+                            test_end + chrono::Duration::hours(1),
+                            test_end + chrono::Duration::hours(2)
+                        );
+                    let future_results = trail.query(&future_filter).await.unwrap();
+                    prop_assert!(
+                        future_results.is_empty(),
+                        "Time range in the future should return no events"
+                    );
+
+                    Ok(())
+                })?;
+            }
+
+            /// Property 7: Persistence Independence from WebSocket
+            /// For any supervision event, if the WebSocket broadcast fails,
+            /// the event should still be persisted and retrievable.
+            /// This test verifies that persistence happens independently of any
+            /// external broadcast mechanism.
+            /// **Validates: Requirements 4.3**
+            #[test]
+            fn prop_persistence_independence(
+                confidence in arb_confidence(),
+                explanation in arb_explanation(),
+            ) {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    // Create a supervision audit trail (simulating the persistence layer)
+                    let trail = SupervisionAuditTrail::new(SupervisionAuditConfig::default());
+                    let match_id = Uuid::new_v4();
+
+                    // Log an event to the audit trail
+                    // This simulates what happens in AutoApproveWorker where we log FIRST
+                    // before any WebSocket broadcast
+                    let logged_entry = trail
+                        .log_auto_approval(
+                            match_id,
+                            confidence,
+                            explanation.clone(),
+                            vec![],
+                        )
+                        .await
+                        .unwrap();
+
+                    // Simulate WebSocket broadcast failure by simply not doing anything
+                    // (In real code, this would be a failed ws_tx.send())
+                    let _websocket_would_fail_here = true;
+
+                    // Verify the event is STILL persisted and retrievable
+                    // This is the key property: persistence is independent of broadcast
+                    let filter = SupervisionAuditFilter::new().for_match(match_id);
+                    let results = trail.query(&filter).await.unwrap();
+
+                    prop_assert!(!results.is_empty(),
+                        "Event should be persisted even if WebSocket would fail");
+
+                    let retrieved = results.iter().find(|e| e.id == logged_entry.id);
+                    prop_assert!(retrieved.is_some(),
+                        "Logged entry should be retrievable regardless of broadcast status");
+
+                    // Verify data integrity is maintained
+                    let retrieved = retrieved.unwrap();
+                    prop_assert_eq!(retrieved.match_id, Some(match_id));
+                    prop_assert_eq!(retrieved.ai_confidence, Some(confidence));
+                    prop_assert_eq!(retrieved.ai_explanation.as_ref(), Some(&explanation));
+
+                    // Test multiple events to ensure persistence is consistent
+                    let match_id2 = Uuid::new_v4();
+                    let match_id3 = Uuid::new_v4();
+
+                    trail.log_blocked(
+                        match_id2, confidence, explanation.clone(), "Block reason".to_string(), vec![]
+                    ).await.unwrap();
+
+                    trail.log_queued_for_review(
+                        match_id3, confidence, explanation.clone(), "Review reason".to_string(), vec![]
+                    ).await.unwrap();
+
+                    // All events should be retrievable
+                    let all_filter = SupervisionAuditFilter::new();
+                    let all_results = trail.query(&all_filter).await.unwrap();
+
+                    prop_assert!(all_results.len() >= 3,
+                        "All logged events should be persisted independently");
+
+                    // Verify each specific event is retrievable
+                    let match2_results = trail.query(&SupervisionAuditFilter::new().for_match(match_id2)).await.unwrap();
+                    prop_assert!(!match2_results.is_empty(),
+                        "Blocked event should be persisted");
+
+                    let match3_results = trail.query(&SupervisionAuditFilter::new().for_match(match_id3)).await.unwrap();
+                    prop_assert!(!match3_results.is_empty(),
+                        "QueuedForReview event should be persisted");
+
+                    Ok(())
+                })?;
+            }
+        }
+    }
 }

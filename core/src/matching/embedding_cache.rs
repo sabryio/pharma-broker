@@ -34,15 +34,15 @@ impl SynonymIndex {
             let canonical = master.canonical_name.to_lowercase();
 
             // Map Arabic name if present
-            if let Some(ref arabic_name) = master.canonical_name_ar {
-                if !arabic_name.is_empty() {
-                    let arabic_lower = arabic_name.to_lowercase();
-                    name_to_canonical.insert(arabic_lower.clone(), canonical.clone());
-                    canonical_to_synonyms
-                        .entry(canonical.clone())
-                        .or_default()
-                        .insert(arabic_lower);
-                }
+            if let Some(ref arabic_name) = master.canonical_name_ar
+                && !arabic_name.is_empty()
+            {
+                let arabic_lower = arabic_name.to_lowercase();
+                name_to_canonical.insert(arabic_lower.clone(), canonical.clone());
+                canonical_to_synonyms
+                    .entry(canonical.clone())
+                    .or_default()
+                    .insert(arabic_lower);
             }
 
             // Map English name
@@ -56,15 +56,15 @@ impl SynonymIndex {
             }
 
             // Map active ingredient as a synonym if present
-            if let Some(ref ingredient) = master.active_ingredient {
-                if !ingredient.is_empty() {
-                    let ingredient_lower = ingredient.to_lowercase();
-                    name_to_canonical.insert(ingredient_lower.clone(), canonical.clone());
-                    canonical_to_synonyms
-                        .entry(canonical.clone())
-                        .or_default()
-                        .insert(ingredient_lower);
-                }
+            if let Some(ref ingredient) = master.active_ingredient
+                && !ingredient.is_empty()
+            {
+                let ingredient_lower = ingredient.to_lowercase();
+                name_to_canonical.insert(ingredient_lower.clone(), canonical.clone());
+                canonical_to_synonyms
+                    .entry(canonical.clone())
+                    .or_default()
+                    .insert(ingredient_lower);
             }
         }
 
@@ -173,17 +173,17 @@ impl EmbeddingCache {
             }
 
             // Map Arabic name if present
-            if let Some(ref arabic_name) = master.canonical_name_ar {
-                if !arabic_name.is_empty() {
-                    new_embeddings.insert(arabic_name.to_lowercase(), embedding.clone());
-                }
+            if let Some(ref arabic_name) = master.canonical_name_ar
+                && !arabic_name.is_empty()
+            {
+                new_embeddings.insert(arabic_name.to_lowercase(), embedding.clone());
             }
 
             // Map active ingredient if present
-            if let Some(ref ingredient) = master.active_ingredient {
-                if !ingredient.is_empty() {
-                    new_embeddings.insert(ingredient.to_lowercase(), embedding.clone());
-                }
+            if let Some(ref ingredient) = master.active_ingredient
+                && !ingredient.is_empty()
+            {
+                new_embeddings.insert(ingredient.to_lowercase(), embedding.clone());
             }
 
             count += 1;

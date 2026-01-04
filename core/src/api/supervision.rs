@@ -243,11 +243,18 @@ pub struct AuditLogResponse {
 
 /// Request to override an AI decision
 /// Requirements: 4.1
+/// Feature: ai-supervision-persistence (Requirements 1.5, 3.5)
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OverrideRequest {
     pub user_id: Uuid,
     pub reason: String,
+    /// Original AI confidence score for audit trail
+    #[serde(default)]
+    pub original_confidence: Option<f64>,
+    /// Original AI explanation for audit trail
+    #[serde(default)]
+    pub original_explanation: Option<String>,
 }
 
 /// Request to undo an auto-approval
@@ -449,7 +456,13 @@ where
 
     // Perform the override
     engine
-        .override_auto_approve_decision(match_id, req.user_id, &req.reason)
+        .override_auto_approve_decision(
+            match_id,
+            req.user_id,
+            &req.reason,
+            req.original_confidence.unwrap_or(0.0),
+            req.original_explanation.as_deref().unwrap_or("Unknown"),
+        )
         .await
         .map_err(|e| {
             let status = match e.to_string().as_str() {

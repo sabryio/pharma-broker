@@ -80,8 +80,8 @@ impl TestRawMessage {
     }
 
     fn in_date_range(&self, start: Option<DateTime<Utc>>, end: Option<DateTime<Utc>>) -> bool {
-        let after_start = start.map_or(true, |s| self.timestamp >= s);
-        let before_end = end.map_or(true, |e| self.timestamp <= e);
+        let after_start = start.is_none_or(|s| self.timestamp >= s);
+        let before_end = end.is_none_or(|e| self.timestamp <= e);
         after_start && before_end
     }
 }
@@ -491,12 +491,12 @@ fn validate_api_params(params: &TestApiParams) -> ValidationResult {
     }
 
     // Validate date range
-    if let (Some(start), Some(end)) = (params.start_date, params.end_date) {
-        if start > end {
-            return ValidationResult::Invalid(
-                "Start date must be before or equal to end date".to_string(),
-            );
-        }
+    if let (Some(start), Some(end)) = (params.start_date, params.end_date)
+        && start > end
+    {
+        return ValidationResult::Invalid(
+            "Start date must be before or equal to end date".to_string(),
+        );
     }
 
     // Validate status

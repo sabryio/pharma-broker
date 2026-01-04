@@ -43,7 +43,11 @@ import {
   type MatchRecording,
   type PipelineRecording,
 } from '@/components/debug-recordings'
-import { usePipelineVisualization } from '@/hooks/use-audit-records'
+import {
+  usePipelineVisualization,
+  useAuditRecords,
+  type FrontendAuditRecord,
+} from '@/hooks/use-audit-records'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { useAppSelector, useRecordingsActions } from '@/store'
@@ -62,6 +66,114 @@ export const Route = createFileRoute('/debug-recordings')({
 type ViewMode = 'overview' | 'recordings' | 'pipeline' | 'analytics' | 'audit'
 type SortBy = 'date' | 'duration' | 'snapshots' | 'confidence'
 type FilterOutcome = 'all' | 'approved' | 'rejected' | 'pending'
+
+// Convert backend audit record to frontend MatchRecording format
+function convertAuditToRecording(audit: FrontendAuditRecord): MatchRecording {
+  const outcome: 'approved' | 'rejected' | 'pending' | undefined =
+    audit.reviewStatus === 'approved'
+      ? 'approved'
+      : audit.reviewStatus === 'rejected'
+        ? 'rejected'
+        : 'pending'
+
+  // Map review status to MatchStatus enum values
+  const matchStatus: 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'EXPIRED' =
+    audit.reviewStatus === 'approved'
+      ? 'CONFIRMED'
+      : audit.reviewStatus === 'rejected'
+        ? 'REJECTED'
+        : 'PENDING'
+
+  // Create full offer summary matching OfferSummarySchema
+  const offerSummary = {
+    id: audit.matchId,
+    product: audit.offerProduct,
+    medicationRaw: null,
+    source: 'backend',
+    sourceGroup: null,
+    senderName: null,
+    senderJid: null,
+    rawMessage: null,
+    quantity: null,
+    price: null,
+    expiry: null,
+  }
+
+  // Create full request summary matching RequestSummarySchema
+  const requestSummary = {
+    id: audit.matchId,
+    product: audit.requestProduct,
+    medicationRaw: null,
+    source: 'backend',
+    sourceGroup: null,
+    senderName: null,
+    senderJid: null,
+    rawMessage: null,
+    quantity: null,
+    maxPrice: null,
+    urgency: 'normal',
+  }
+
+  return {
+    id: audit.matchId,
+    matchId: audit.matchId,
+    startedAt: new Date(audit.createdAt),
+    endedAt: new Date(audit.createdAt),
+    duration: audit.totalLatencyMs,
+    outcome,
+    snapshots: [
+      {
+        id: `${audit.matchId}-snapshot`,
+        timestamp: new Date(audit.createdAt),
+        matchReview: {
+          id: audit.matchId,
+          offer: offerSummary,
+          request: requestSummary,
+          confidence: audit.finalScore * 100,
+          createdAt: audit.createdAt,
+          status: matchStatus,
+          reasoning: audit.resolutionStage,
+          issues: [],
+          confirmedAt: null,
+          notes: null,
+        },
+        offer: {
+          id: audit.matchId,
+          product: audit.offerProduct,
+          medicationRaw: null,
+          quantity: null,
+          price: null,
+        },
+        request: {
+          id: audit.matchId,
+          product: audit.requestProduct,
+          medicationRaw: null,
+          quantity: null,
+          maxPrice: null,
+        },
+        confidence: audit.finalScore * 100,
+        aiStatus: audit.aiInvolved ? 'completed' : null,
+        aiConfidence: audit.aiInvolved ? audit.finalScore * 100 : null,
+        aiExplanation: null,
+        issues: [],
+        reasoning: audit.resolutionStage,
+        adjustments: {
+          priceFlexibility: 0,
+          quantityTolerance: 0,
+          dosageStrictness: 0,
+        },
+        event: {
+          type: audit.reviewStatus === 'approved' ? 'approve' : 'view',
+          label: audit.reviewStatus === 'approved' ? 'Approved' : 'Viewed',
+        },
+        metadata: {
+          userAgent: 'backend-audit',
+          sessionId: `audit-${audit.id}`,
+        },
+      },
+    ],
+  }
+}
 
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000)
@@ -152,6 +264,31 @@ function DebugRecordings() {
   const [sortBy, setSortBy] = useState<SortBy>('date')
   const [filterOutcome, setFilterOutcome] = useState<FilterOutcome>('all')
 
+  // Fetch audit records from backend to populate recordings
+  const { data: auditRecordsData, isLoading: isAuditLoading } = useAuditRecords(
+    { limit: 50 },
+  )
+
+  // Convert backend audit records to MatchRecording format
+  const backendRecordings = useMemo(() => {
+    if (!auditRecordsData?.records) return []
+    return auditRecordsData.records.map(convertAuditToRecording)
+  }, [auditRecordsData])
+
+  // Merge frontend Redux recordings with backend audit records
+  // Backend records take precedence if there's overlap by matchId
+  const allRecordings = useMemo(() => {
+    const merged = new Map<string, MatchRecording>()
+    // Add backend records first
+    backendRecordings.forEach((r) => merged.set(r.matchId, r))
+    // Frontend recordings override (they have more detail if present)
+    recordings.forEach((r) => merged.set(r.matchId, r))
+    return Array.from(merged.values()).sort(
+      (a, b) =>
+        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+    )
+  }, [recordings, backendRecordings])
+
   // Fetch pipeline visualization from backend
   const {
     data: pipelineData,
@@ -159,9 +296,9 @@ function DebugRecordings() {
     isLoading: isPipelineLoading,
   } = usePipelineVisualization(pipelineMatchId)
 
-  // Filter and sort recordings
+  // Filter and sort recordings (now includes backend data)
   const filteredRecordings = useMemo(() => {
-    let result = [...recordings]
+    let result = [...allRecordings]
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
@@ -204,7 +341,7 @@ function DebugRecordings() {
     })
 
     return result
-  }, [recordings, searchQuery, sortBy, filterOutcome])
+  }, [allRecordings, searchQuery, sortBy, filterOutcome])
 
   // Convert pipeline data when it arrives from backend
   useEffect(() => {
@@ -214,34 +351,38 @@ function DebugRecordings() {
     }
   }, [pipelineData])
 
-  // Stats calculations
+  // Stats calculations (using merged recordings)
   const stats = useMemo(() => {
-    const total = recordings.length
-    const approved = recordings.filter((r) => r.outcome === 'approved').length
-    const rejected = recordings.filter((r) => r.outcome === 'rejected').length
-    const pending = recordings.filter(
+    const total = allRecordings.length
+    const approved = allRecordings.filter(
+      (r) => r.outcome === 'approved',
+    ).length
+    const rejected = allRecordings.filter(
+      (r) => r.outcome === 'rejected',
+    ).length
+    const pending = allRecordings.filter(
       (r) => !r.outcome || r.outcome === 'pending',
     ).length
     const avgDuration =
-      recordings.length > 0
-        ? recordings.reduce((acc, r) => acc + (r.duration || 0), 0) /
-          recordings.length
+      allRecordings.length > 0
+        ? allRecordings.reduce((acc, r) => acc + (r.duration || 0), 0) /
+          allRecordings.length
         : 0
     const avgSnapshots =
-      recordings.length > 0
-        ? recordings.reduce((acc, r) => acc + r.snapshots.length, 0) /
-          recordings.length
+      allRecordings.length > 0
+        ? allRecordings.reduce((acc, r) => acc + r.snapshots.length, 0) /
+          allRecordings.length
         : 0
     const avgConfidence =
-      recordings.length > 0
-        ? recordings.reduce((acc, r) => {
+      allRecordings.length > 0
+        ? allRecordings.reduce((acc, r) => {
             const recAvg =
               r.snapshots.reduce((a, s) => a + s.confidence, 0) /
               (r.snapshots.length || 1)
             return acc + recAvg
-          }, 0) / recordings.length
+          }, 0) / allRecordings.length
         : 0
-    const totalEvents = recordings.reduce(
+    const totalEvents = allRecordings.reduce(
       (acc, r) => acc + r.snapshots.length,
       0,
     )
@@ -256,15 +397,15 @@ function DebugRecordings() {
       avgConfidence,
       totalEvents,
     }
-  }, [recordings])
+  }, [allRecordings])
 
   // Sparkline data
   const sparklineData = useMemo(() => {
-    return recordings
+    return allRecordings
       .slice(0, 20)
       .map((r) => r.snapshots.length)
       .reverse()
-  }, [recordings])
+  }, [allRecordings])
 
   // Export a single recording
   const exportRecording = useCallback(
@@ -305,9 +446,9 @@ function DebugRecordings() {
     a.click()
     URL.revokeObjectURL(url)
     toast.success('All recordings exported', {
-      description: `${recordings.length} recordings`,
+      description: `${allRecordings.length} recordings`,
     })
-  }, [recordingsMap, recordings.length])
+  }, [recordingsMap, allRecordings.length])
 
   const handleDelete = useCallback(
     (recording: MatchRecording) => {
@@ -414,7 +555,7 @@ function DebugRecordings() {
                   <Upload className="w-4 h-4" />
                   Import
                 </button>
-                {recordings.length > 0 && (
+                {allRecordings.length > 0 && (
                   <button
                     onClick={handleExportAll}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-400 transition-all hover:scale-105"
@@ -425,7 +566,7 @@ function DebugRecordings() {
                 )}
                 <button
                   onClick={handleClearAll}
-                  disabled={recordings.length === 0}
+                  disabled={allRecordings.length === 0}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -437,7 +578,7 @@ function DebugRecordings() {
             <ViewModeTabs
               activeMode={viewMode}
               onModeChange={handleViewModeChange}
-              recordingCount={recordings.length}
+              recordingCount={allRecordings.length}
             />
           </div>
         </div>
@@ -590,20 +731,21 @@ function DebugRecordings() {
                     View All →
                   </button>
                 </div>
-                {recordings.length === 0 ? (
+                {allRecordings.length === 0 ? (
                   <div className="text-center py-16">
                     <VideoOff className="w-16 h-16 text-muted-foreground/20 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-foreground mb-2">
                       No Recordings Yet
                     </h3>
                     <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                      Recordings will appear here when you review matches in the
-                      Review Queue.
+                      {isAuditLoading
+                        ? 'Loading recordings from server...'
+                        : 'Recordings will appear here when matches are processed by the backend.'}
                     </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {recordings.slice(0, 6).map((recording) => (
+                    {allRecordings.slice(0, 6).map((recording) => (
                       <RecordingCard
                         key={recording.matchId}
                         recording={recording}
@@ -690,7 +832,7 @@ function DebugRecordings() {
                   </span>{' '}
                   of{' '}
                   <span className="text-foreground font-semibold">
-                    {recordings.length}
+                    {allRecordings.length}
                   </span>{' '}
                   recordings
                 </p>

@@ -2,8 +2,12 @@
 //!
 //! Processes pending matches for AI-supervised auto-approval in batches.
 //! Requirements: 1.3, 6.1, 6.2
+//! Feature: ai-supervision-persistence (Requirements 1.2, 1.3, 1.4)
 
-use crate::matching::{AutoApproveProcessor, AutoApproveResult};
+use crate::matching::{
+    AutoApproveProcessor, AutoApproveResult, MemorySupervisionAuditRepository,
+    SupervisionAuditTrail,
+};
 use crate::repository::{MatchRepository, OfferRepository, RequestRepository};
 use crate::ws::WsEvent;
 use std::sync::Arc;
@@ -22,11 +26,15 @@ pub struct AutoApproveWorkerRepos {
 
 /// AutoApproveWorker handles background processing of pending matches for auto-approval
 /// Requirements: 1.3, 6.1, 6.2
+/// Feature: ai-supervision-persistence (Requirements 1.2, 1.3, 1.4)
 pub struct AutoApproveWorker {
     repos: AutoApproveWorkerRepos,
     processor: Arc<AutoApproveProcessor>,
     ws_tx: broadcast::Sender<WsEvent>,
     worker_id: String,
+    /// Supervision audit trail for logging AI decisions
+    /// Feature: ai-supervision-persistence (Requirements 1.2, 1.3, 1.4)
+    supervision_audit: Arc<SupervisionAuditTrail<MemorySupervisionAuditRepository>>,
 }
 
 impl AutoApproveWorker {
@@ -34,12 +42,14 @@ impl AutoApproveWorker {
         repos: AutoApproveWorkerRepos,
         processor: Arc<AutoApproveProcessor>,
         ws_tx: broadcast::Sender<WsEvent>,
+        supervision_audit: Arc<SupervisionAuditTrail<MemorySupervisionAuditRepository>>,
     ) -> Self {
         Self {
             repos,
             processor,
             ws_tx,
             worker_id: Uuid::new_v4().to_string(),
+            supervision_audit,
         }
     }
 
@@ -206,7 +216,8 @@ impl AutoApproveWorker {
     }
 
     /// Handle the result of auto-approval processing
-    /// Broadcasts WebSocket events for real-time updates
+    /// Logs to supervision audit trail FIRST, then broadcasts WebSocket events
+    /// Feature: ai-supervision-persistence (Requirements 1.2, 1.3, 1.4, 4.1, 4.3)
     async fn handle_auto_approve_result(
         &self,
         result: &AutoApproveResult,
@@ -215,8 +226,28 @@ impl AutoApproveWorker {
     ) {
         use crate::ws::{AutoApproveBlockedEvent, AutoApproveEvent, QueuedForReviewEvent};
 
+        // Log to supervision audit trail FIRST (persistence before broadcast)
+        // Feature: ai-supervision-persistence (Requirements 1.2, 1.3, 1.4)
         match &result.action {
             crate::matching::AutoApproveAction::Approved => {
+                // Log auto-approval to audit trail
+                if let Err(e) = self
+                    .supervision_audit
+                    .log_auto_approval(
+                        result.match_id,
+                        result.ai_confidence,
+                        result.ai_explanation.clone(),
+                        result.safety_checks.clone(),
+                    )
+                    .await
+                {
+                    warn!(
+                        error = %e,
+                        match_id = %result.match_id,
+                        "Failed to log auto-approval to supervision audit trail - continuing with WebSocket broadcast"
+                    );
+                }
+
                 // Broadcast auto-approved event
                 let _ = self.ws_tx.send(WsEvent::AutoApproved(AutoApproveEvent {
                     match_id: result.match_id,
@@ -236,6 +267,25 @@ impl AutoApproveWorker {
                 );
             }
             crate::matching::AutoApproveAction::QueuedForReview { reason } => {
+                // Log queued-for-review to audit trail
+                if let Err(e) = self
+                    .supervision_audit
+                    .log_queued_for_review(
+                        result.match_id,
+                        result.ai_confidence,
+                        result.ai_explanation.clone(),
+                        reason.clone(),
+                        result.safety_checks.clone(),
+                    )
+                    .await
+                {
+                    warn!(
+                        error = %e,
+                        match_id = %result.match_id,
+                        "Failed to log queued-for-review to supervision audit trail - continuing with WebSocket broadcast"
+                    );
+                }
+
                 // Broadcast queued for review event
                 let _ = self
                     .ws_tx
@@ -257,6 +307,25 @@ impl AutoApproveWorker {
                 );
             }
             crate::matching::AutoApproveAction::Blocked { reason } => {
+                // Log blocked to audit trail
+                if let Err(e) = self
+                    .supervision_audit
+                    .log_blocked(
+                        result.match_id,
+                        result.ai_confidence,
+                        result.ai_explanation.clone(),
+                        reason.clone(),
+                        result.safety_checks.clone(),
+                    )
+                    .await
+                {
+                    warn!(
+                        error = %e,
+                        match_id = %result.match_id,
+                        "Failed to log blocked to supervision audit trail - continuing with WebSocket broadcast"
+                    );
+                }
+
                 // Broadcast blocked event
                 let _ = self
                     .ws_tx

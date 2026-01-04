@@ -19,17 +19,68 @@ use tokio::sync::RwLock;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use super::{
-    ABTestConfig, ABTestManager, ABTestResult, AIClient, AIReviewer, ArabicPhoneticMatcher,
-    AuditRecorder, AuditTrail, AuditTrailConfig, AutoActionHandler, AutoApproveConfig,
-    AutoApproveProcessor, CalibrationConfig, CalibrationReport, ConfidenceCalibrator,
-    ConfidenceConfig, ConfidenceManager, ConfidenceManagerStats, DosageFlag, DosageGate,
-    DosageGateConfig, DosageGateResult, EmbeddingCache, EmbeddingCacheStatsSnapshot, ExpiryConfig,
-    ExpiryResult, ExpiryScorer, HardNegativeIndex, HistoricalLearner, HistoricalLearnerStats,
-    HistoricalLearningConfig, JobStatus, LearnerError, MatchAction, MatchFilter, MatchFilterConfig,
-    MatchFilterStatsSnapshot, MatchScore, MedicationAffinity, MedicationBlocklist, OutlierDetector,
-    OutlierDetectorConfig, PauseReason, PerformanceMetrics, PipelineEvent, ReviewResult,
-    ReviewStatus, SchedulerConfig, SchedulerStatus, Scorer, SharedEventEmitter, UncertaintyConfig,
-    UncertaintyEstimator, WarmStartConfig, WarmStartManager, WeightLearner, Weights,
+    ABTestConfig,
+    ABTestManager,
+    ABTestResult,
+    AIClient,
+    AIReviewer,
+    ArabicPhoneticMatcher,
+    AuditRecorder,
+    AuditTrail,
+    AuditTrailConfig,
+    AutoActionHandler,
+    AutoApproveConfig,
+    AutoApproveProcessor,
+    CalibrationConfig,
+    CalibrationReport,
+    ConfidenceCalibrator,
+    ConfidenceConfig,
+    ConfidenceManager,
+    ConfidenceManagerStats,
+    DosageFlag,
+    DosageGate,
+    DosageGateConfig,
+    DosageGateResult,
+    EmbeddingCache,
+    EmbeddingCacheStatsSnapshot,
+    ExpiryConfig,
+    ExpiryResult,
+    ExpiryScorer,
+    HardNegativeIndex,
+    HistoricalLearner,
+    HistoricalLearnerStats,
+    HistoricalLearningConfig,
+    JobStatus,
+    LearnerError,
+    MatchAction,
+    MatchFilter,
+    MatchFilterConfig,
+    MatchFilterStatsSnapshot,
+    MatchScore,
+    MedicationAffinity,
+    MedicationBlocklist,
+    // Supervision audit trail for AI decision logging (Feature: ai-supervision-persistence)
+    MemorySupervisionAuditRepository,
+    OutlierDetector,
+    OutlierDetectorConfig,
+    PauseReason,
+    PerformanceMetrics,
+    PersistentAuditRecorder,
+    PipelineEvent,
+    ReviewResult,
+    ReviewStatus,
+    SchedulerConfig,
+    SchedulerStatus,
+    Scorer,
+    SharedEventEmitter,
+    SupervisionAuditConfig,
+    SupervisionAuditTrail,
+    UncertaintyConfig,
+    UncertaintyEstimator,
+    WarmStartConfig,
+    WarmStartManager,
+    WeightLearner,
+    Weights,
     contains_arabic,
 };
 
@@ -163,6 +214,10 @@ pub struct MatchingEngine {
     historical_learner: HistoricalLearner,
     /// Audit recorder for debugging/replay
     audit_recorder: AuditRecorder,
+    /// Persistent audit recorder for database-backed audit storage
+    /// Feature: debug-recordings-persistence (Requirements 2.1)
+    persistent_audit_recorder:
+        Option<Arc<PersistentAuditRecorder<pharma_db::repo::SeaOrmMatchAuditRecordRepo>>>,
     /// Uncertainty estimator
     uncertainty_estimator: UncertaintyEstimator,
     /// Dosage gate for safety validation (Requirements 1.1, 1.3, 1.4)
@@ -201,6 +256,9 @@ pub struct MatchingEngine {
     /// Pipeline event emitter for real-time WebSocket updates
     /// Feature: debug-recording-enhancement (Requirements 2.1, 2.2, 2.3, 2.4)
     event_emitter: Option<SharedEventEmitter>,
+    /// Supervision audit trail for AI decision logging
+    /// Feature: ai-supervision-persistence (Requirements 1.1, 2.1, 2.2, 2.3)
+    supervision_audit: Arc<SupervisionAuditTrail<MemorySupervisionAuditRepository>>,
 }
 
 impl Default for MatchingEngine {
@@ -265,6 +323,7 @@ impl MatchingEngine {
             audit_trail,
             historical_learner,
             audit_recorder,
+            persistent_audit_recorder: None, // Default to None, can be set via set_persistent_audit_recorder()
             uncertainty_estimator,
             dosage_gate,
             blocklist,
@@ -283,7 +342,29 @@ impl MatchingEngine {
             ai_reviewer: ai_reviewer.clone(),
             auto_approve_processor,
             event_emitter: None, // Default to None, can be set via set_event_emitter
+            // Initialize supervision audit trail with default config
+            // Feature: ai-supervision-persistence (Requirements 1.1)
+            supervision_audit: Arc::new(SupervisionAuditTrail::new(
+                SupervisionAuditConfig::default(),
+            )),
         }
+    }
+
+    /// Set the persistent audit recorder for database-backed audit storage
+    /// Feature: debug-recordings-persistence (Requirements 2.1)
+    pub fn set_persistent_audit_recorder(
+        &mut self,
+        recorder: Arc<PersistentAuditRecorder<pharma_db::repo::SeaOrmMatchAuditRecordRepo>>,
+    ) {
+        self.persistent_audit_recorder = Some(recorder);
+    }
+
+    /// Get the persistent audit recorder (if configured)
+    /// Feature: debug-recordings-persistence
+    pub fn get_persistent_audit_recorder(
+        &self,
+    ) -> Option<&Arc<PersistentAuditRecorder<pharma_db::repo::SeaOrmMatchAuditRecordRepo>>> {
+        self.persistent_audit_recorder.as_ref()
     }
 
     /// Set repositories for the learning job
@@ -312,12 +393,126 @@ impl MatchingEngine {
         self.event_emitter.as_ref()
     }
 
+    /// Set the supervision audit trail for AI decision logging
+    /// Feature: ai-supervision-persistence (Requirements 1.1)
+    pub fn set_supervision_audit(
+        &mut self,
+        audit: Arc<SupervisionAuditTrail<MemorySupervisionAuditRepository>>,
+    ) {
+        self.supervision_audit = audit;
+    }
+
+    /// Get the supervision audit trail reference
+    /// Feature: ai-supervision-persistence
+    pub fn supervision_audit(
+        &self,
+    ) -> &Arc<SupervisionAuditTrail<MemorySupervisionAuditRepository>> {
+        &self.supervision_audit
+    }
+
     /// Emit a pipeline event (if emitter is configured)
     /// Feature: debug-recording-enhancement (Requirements 2.1, 2.2, 2.3, 2.4)
     fn emit_event(&self, event: PipelineEvent) {
         if let Some(emitter) = &self.event_emitter {
             emitter.emit(event);
         }
+    }
+
+    // =========================================================================
+    // Audit Record Building
+    // =========================================================================
+
+    /// Build a MatchAuditRecord from scoring results
+    /// Feature: debug-recordings-persistence (Requirements 1.2, 4.1, 4.4)
+    ///
+    /// Creates a complete audit record containing:
+    /// - Unique identifier for deduplication
+    /// - Session identifier (if provided)
+    /// - Timestamps
+    /// - Input parameters (offer/request snapshots)
+    /// - Weights snapshot
+    /// - Scoring results (breakdown and final score)
+    pub fn build_audit_record(
+        &self,
+        offer: &Offer,
+        request: &Request,
+        score: &MatchScore,
+        action: &MatchAction,
+        session_id: Option<&str>,
+    ) -> super::MatchAuditRecord {
+        use super::MatchAuditRecord;
+
+        let weights = self.scorer.get_weights();
+
+        // Build score breakdown as JSON
+        let score_breakdown = serde_json::json!({
+            "medication_score": score.medication_score,
+            "dosage_score": score.dosage_score,
+            "quantity_score": score.quantity_score,
+            "price_score": score.price_score,
+            "recency_score": score.recency_score,
+            "ai_logic_score": score.ai_logic_score,
+            "total": score.total,
+            "confidence": format!("{:?}", score.confidence),
+            "breakdown": score.breakdown,
+            "action": format!("{:?}", action),
+        });
+
+        // Build weights snapshot as JSON
+        let weights_snapshot = serde_json::json!({
+            "medication": weights.medication,
+            "dosage": weights.dosage,
+            "quantity": weights.quantity,
+            "price": weights.price,
+            "recency": weights.recency,
+            "expiry": weights.expiry,
+            "supplier": weights.supplier,
+            "ai_logic": weights.ai_logic,
+        });
+
+        MatchAuditRecord {
+            id: uuid::Uuid::new_v4(),
+            match_id: uuid::Uuid::new_v4(), // Will be updated when match is created
+            offer_id: offer.id,
+            request_id: request.id,
+            pipeline_version: env!("CARGO_PKG_VERSION").to_string(),
+            offer_snapshot: serde_json::to_value(offer).unwrap_or_default(),
+            request_snapshot: serde_json::to_value(request).unwrap_or_default(),
+            weights_snapshot,
+            config_snapshot: None,
+            score_breakdown,
+            final_score: score.total,
+            pipeline_stages: Vec::new(),
+            ai_involved: score.ai_logic_score > 0.0,
+            ai_record: None,
+            resolution_stage: "scoring".to_string(),
+            resolution_details: None,
+            total_latency_ms: 0, // Will be set by caller if needed
+            created_at: chrono::Utc::now(),
+            review_status: None,
+            reviewed_by: None,
+            reviewed_at: None,
+            review_notes: None,
+            session_id: session_id.map(|s| s.to_string()),
+            client_metadata: None,
+        }
+    }
+
+    /// Build a MatchAuditRecord with AI involvement details
+    /// Feature: debug-recordings-persistence (Requirements 1.3)
+    pub fn build_audit_record_with_ai(
+        &self,
+        offer: &Offer,
+        request: &Request,
+        score: &MatchScore,
+        action: &MatchAction,
+        session_id: Option<&str>,
+        ai_record: super::AIInvolvementRecord,
+    ) -> super::MatchAuditRecord {
+        let mut record = self.build_audit_record(offer, request, score, action, session_id);
+        record.ai_involved = true;
+        record.ai_record = Some(ai_record);
+        record
     }
 
     // =========================================================================
@@ -444,6 +639,19 @@ impl MatchingEngine {
         // Determine action based on score
         let action = self.auto_action.determine_action(score.total).await;
 
+        // Record audit data if persistent recorder is configured
+        // Feature: debug-recordings-persistence (Requirements 1.1, 1.2, 1.4)
+        if let Some(recorder) = &self.persistent_audit_recorder {
+            let record = self.build_audit_record(offer, request, &score, &action, None);
+            if !recorder.record(record).await {
+                tracing::warn!(
+                    offer_id = %offer.id,
+                    request_id = %request.id,
+                    "Failed to record audit - continuing with scoring result"
+                );
+            }
+        }
+
         (score, action)
     }
 
@@ -458,8 +666,12 @@ impl MatchingEngine {
     ) -> (MatchScore, MatchAction, Option<ReviewResult>) {
         let mut ai_score = None;
         let mut review_result = None;
+        let mut ai_record: Option<super::AIInvolvementRecord> = None;
 
         if use_ai_logic {
+            // Track AI call timing for audit record
+            let ai_start = std::time::Instant::now();
+
             // Call AI for logic scoring
             let review_res = self
                 .ai_reviewer
@@ -471,12 +683,30 @@ impl MatchingEngine {
                 )
                 .await;
 
+            let ai_latency_ms = ai_start.elapsed().as_millis() as u64;
+
             if let Ok(res) = review_res {
                 ai_score = Some(match res.status {
                     ReviewStatus::Approved => (res.confidence as f64).max(0.95),
                     ReviewStatus::Flagged => (res.confidence as f64).min(0.70),
                     ReviewStatus::Rejected => 0.1,
                 });
+
+                // Build AI involvement record for audit
+                // Feature: debug-recordings-persistence (Requirements 1.3)
+                ai_record = Some(super::AIInvolvementRecord {
+                    model: "ai-reviewer".to_string(),
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    latency_ms: ai_latency_ms,
+                    response: serde_json::json!({
+                        "status": format!("{:?}", res.status),
+                        "confidence": res.confidence,
+                        "explanation": res.explanation,
+                        "suggested_action": res.suggested_action,
+                    }),
+                });
+
                 review_result = Some(res);
             }
         }
@@ -491,6 +721,25 @@ impl MatchingEngine {
             .score_match(offer, request, medication_score, ai_score);
 
         let action = self.auto_action.determine_action(score.total).await;
+
+        // Record audit data with AI details if persistent recorder is configured
+        // Feature: debug-recordings-persistence (Requirements 1.3)
+        if let Some(recorder) = &self.persistent_audit_recorder {
+            let record = if let Some(ai_rec) = ai_record {
+                self.build_audit_record_with_ai(offer, request, &score, &action, None, ai_rec)
+            } else {
+                self.build_audit_record(offer, request, &score, &action, None)
+            };
+            if !recorder.record(record).await {
+                tracing::warn!(
+                    offer_id = %offer.id,
+                    request_id = %request.id,
+                    ai_used = use_ai_logic,
+                    "Failed to record AI audit - continuing with scoring result"
+                );
+            }
+        }
+
         (score, action, review_result)
     }
 
@@ -1807,23 +2056,46 @@ impl MatchingEngine {
     }
 
     /// Get supervision audit log
-    /// Requirements: 2.3
+    /// Feature: ai-supervision-persistence (Requirements 2.1, 2.2, 2.3, 2.4)
     pub async fn get_supervision_audit_log(
         &self,
-        _filter: &super::SupervisionAuditFilter,
+        filter: &super::SupervisionAuditFilter,
     ) -> Result<Vec<super::SupervisionAuditEntry>, String> {
-        // Return empty list for now - will be connected to SupervisionAuditTrail in Task 17
-        Ok(Vec::new())
+        self.supervision_audit
+            .query(filter)
+            .await
+            .map_err(|e| format!("Failed to query supervision audit log: {}", e))
     }
 
     /// Override an auto-approve decision
-    /// Requirements: 4.1
+    /// Feature: ai-supervision-persistence (Requirements 1.5, 3.5, 4.1)
     pub async fn override_auto_approve_decision(
         &self,
         match_id: uuid::Uuid,
         user_id: uuid::Uuid,
         reason: &str,
+        original_confidence: f64,
+        original_explanation: &str,
     ) -> Result<(), String> {
+        // Log to supervision audit trail
+        if let Err(e) = self
+            .supervision_audit
+            .log_override(
+                match_id,
+                user_id,
+                reason.to_string(),
+                original_confidence,
+                original_explanation.to_string(),
+            )
+            .await
+        {
+            tracing::warn!(
+                error = %e,
+                match_id = %match_id,
+                "Failed to log override to supervision audit trail"
+            );
+        }
+
         // Record the override in the processor for tracking
         self.auto_approve_processor.record_override().await;
 
@@ -1831,18 +2103,28 @@ impl MatchingEngine {
             match_id = %match_id,
             user_id = %user_id,
             reason = %reason,
+            original_confidence = %original_confidence,
             "Auto-approve decision overridden"
         );
         Ok(())
     }
 
     /// Undo an auto-approval
-    /// Requirements: 4.2
+    /// Feature: ai-supervision-persistence (Requirements 1.6, 3.5, 4.2)
     pub async fn undo_auto_approval(
         &self,
         match_id: uuid::Uuid,
         user_id: uuid::Uuid,
     ) -> Result<(), String> {
+        // Log to supervision audit trail
+        if let Err(e) = self.supervision_audit.log_undo(match_id, user_id).await {
+            tracing::warn!(
+                error = %e,
+                match_id = %match_id,
+                "Failed to log undo to supervision audit trail"
+            );
+        }
+
         tracing::info!(
             match_id = %match_id,
             user_id = %user_id,
