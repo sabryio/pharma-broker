@@ -73,6 +73,15 @@ impl RequestRepository for SeaOrmRequestRepo {
             .map_err(Error::from)
     }
 
+    async fn get_by_raw_message_id(&self, raw_message_id: Uuid) -> Result<Vec<request::Model>> {
+        Request::find()
+            .filter(request::Column::RawMessageId.eq(raw_message_id))
+            .order_by_desc(request::Column::CreatedAt)
+            .all(&*self.db)
+            .await
+            .map_err(Error::from)
+    }
+
     async fn find_recent_duplicate(
         &self,
         params: crate::params::FindDuplicateParams<'_>,

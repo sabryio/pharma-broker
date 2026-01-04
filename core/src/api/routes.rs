@@ -480,6 +480,10 @@ where
             post(raw_messages::reprocess_raw_message::<RQ, A, MM>),
         )
         .route(
+            "/api/raw-messages/{id}/items",
+            get(raw_messages::get_raw_message_items::<RQ, A, MM>),
+        )
+        .route(
             "/api/raw-messages/{id}/status",
             axum::routing::patch(raw_messages::update_raw_message_status::<RQ, A, MM>),
         )

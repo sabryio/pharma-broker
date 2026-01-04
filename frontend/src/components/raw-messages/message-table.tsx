@@ -45,6 +45,8 @@ import {
   ExternalLink,
   MessageSquare,
   Phone,
+  Package,
+  ShoppingCart,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from './status-badge'
@@ -59,6 +61,7 @@ interface MessageTableProps {
   sortOrder: SortOrder
   onSort: (field: SortField) => void
   onViewDetailsClick?: (message: RawMessage) => void
+  onViewItemsClick?: (message: RawMessage) => void
   selectedId?: string
   // Selection props
   rowSelection?: RowSelectionState
@@ -77,6 +80,7 @@ export function MessageTable({
   sortOrder,
   onSort,
   onViewDetailsClick,
+  onViewItemsClick,
   selectedId,
   rowSelection = {},
   onRowSelectionChange,
@@ -226,6 +230,54 @@ export function MessageTable({
         size: 150,
       }),
 
+      // Processed Items column
+      columnHelper.display({
+        id: 'processedItems',
+        header: 'Items',
+        cell: ({ row }) => {
+          const message = row.original
+          const offerCount = message.offerCount ?? 0
+          const requestCount = message.requestCount ?? 0
+          const hasItems = offerCount > 0 || requestCount > 0
+
+          if (!hasItems) {
+            return (
+              <span className="text-xs text-muted-foreground">—</span>
+            )
+          }
+
+          return (
+            <div
+              className="flex flex-wrap gap-1 cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation()
+                onViewItemsClick?.(message)
+              }}
+            >
+              {offerCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="px-1.5 py-0 text-[10px] font-normal gap-1 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
+                >
+                  <Package className="w-2.5 h-2.5" />
+                  {offerCount}
+                </Badge>
+              )}
+              {requestCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="px-1.5 py-0 text-[10px] font-normal gap-1 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
+                >
+                  <ShoppingCart className="w-2.5 h-2.5" />
+                  {requestCount}
+                </Badge>
+              )}
+            </div>
+          )
+        },
+        size: 100,
+      }),
+
       // Status column
       columnHelper.accessor('processedAt', {
         header: () => (
@@ -323,6 +375,7 @@ export function MessageTable({
       sortOrder,
       onSort,
       onViewDetailsClick,
+      onViewItemsClick,
       onReply,
       onCopyContent,
       onViewGroup,

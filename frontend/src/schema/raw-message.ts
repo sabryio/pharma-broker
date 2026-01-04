@@ -45,9 +45,34 @@ export const RawMessageSchema = z.object({
   groupJid: z.string().nullable(),
   // Computed fields
   status: z.string(),
+  // Processed items counts
+  offerCount: z.number(),
+  requestCount: z.number(),
 })
 
 export type RawMessage = z.infer<typeof RawMessageSchema>
+
+// Processed item schema
+export const ProcessedItemSchema = z.object({
+  id: z.string().uuid(),
+  itemType: z.string(),
+  medication: z.string(),
+  quantity: z.string().nullable(),
+  status: z.string(),
+  createdAt: z.string().datetime({ offset: true }),
+})
+
+export type ProcessedItem = z.infer<typeof ProcessedItemSchema>
+
+// Processed items response schema
+export const ProcessedItemsResponseSchema = z.object({
+  offers: z.array(ProcessedItemSchema),
+  requests: z.array(ProcessedItemSchema),
+})
+
+export type ProcessedItemsResponse = z.infer<
+  typeof ProcessedItemsResponseSchema
+>
 
 // Query parameters for raw messages API
 export interface RawMessageParams {

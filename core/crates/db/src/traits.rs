@@ -54,6 +54,8 @@ pub trait OfferRepository: Send + Sync {
     async fn count_active(&self) -> Result<i64>;
     /// Count offers by raw message ID (for referential integrity checks)
     async fn count_by_raw_message_id(&self, raw_message_id: Uuid) -> Result<i64>;
+    /// Get offers by raw message ID
+    async fn get_by_raw_message_id(&self, raw_message_id: Uuid) -> Result<Vec<OfferModel>>;
     async fn find_recent_duplicate(
         &self,
         params: FindDuplicateParams<'_>,
@@ -90,6 +92,8 @@ pub trait RequestRepository: Send + Sync {
     async fn count_active(&self) -> Result<i64>;
     /// Count requests by raw message ID (for referential integrity checks)
     async fn count_by_raw_message_id(&self, raw_message_id: Uuid) -> Result<i64>;
+    /// Get requests by raw message ID
+    async fn get_by_raw_message_id(&self, raw_message_id: Uuid) -> Result<Vec<RequestModel>>;
     async fn find_recent_duplicate(
         &self,
         params: FindDuplicateParams<'_>,

@@ -79,6 +79,9 @@ pub struct RawMessageResponse {
     pub group_jid: Option<String>,
     // Computed fields
     pub status: String,
+    // Processed items counts
+    pub offer_count: i64,
+    pub request_count: i64,
 }
 
 impl RawMessageResponse {
@@ -123,6 +126,26 @@ pub struct BulkOperationResponse {
 pub struct BulkOperationFailure {
     pub id: Uuid,
     pub error: String,
+}
+
+/// Processed item (offer or request) from a raw message
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessedItem {
+    pub id: Uuid,
+    pub item_type: String, // "offer" or "request"
+    pub medication: String,
+    pub quantity: Option<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Response for processed items endpoint
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessedItemsResponse {
+    pub offers: Vec<ProcessedItem>,
+    pub requests: Vec<ProcessedItem>,
 }
 
 // =============================================================================
@@ -244,6 +267,128 @@ where
     Ok(Json(ApiResponse {
         success: true,
         data: Some(response),
+        error: None,
+        meta: None,
+    }))
+}
+
+/// Get processed items (offers and requests) for a raw message
+///
+/// GET /api/raw-messages/:id/items
+pub async fn get_raw_message_items<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<ProcessedItemsResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    // Verify the raw message exists
+    let _message = state
+        .raw_message_repo
+        .get_by_id(id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(e.to_string()),
+                    meta: None,
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Raw message not found: {}", id)),
+                    meta: None,
+                }),
+            )
+        })?;
+
+    // Get offers for this raw message
+    let offers = state
+        .offer_repo
+        .get_by_raw_message_id(id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(e.to_string()),
+                    meta: None,
+                }),
+            )
+        })?;
+
+    // Get requests for this raw message
+    let requests = state
+        .request_repo
+        .get_by_raw_message_id(id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(e.to_string()),
+                    meta: None,
+                }),
+            )
+        })?;
+
+    // Convert to response format
+    let offer_items: Vec<ProcessedItem> = offers
+        .into_iter()
+        .map(|o| {
+            let qty = o.quantity.map(|q| {
+                let unit = o.unit.as_deref().unwrap_or("");
+                format!("{} {}", q, unit).trim().to_string()
+            });
+            ProcessedItem {
+                id: o.id,
+                item_type: "offer".to_string(),
+                medication: o.medication,
+                quantity: qty,
+                status: format!("{:?}", o.status),
+                created_at: o.created_at,
+            }
+        })
+        .collect();
+
+    let request_items: Vec<ProcessedItem> = requests
+        .into_iter()
+        .map(|r| {
+            let qty = r.quantity.map(|q| {
+                let unit = r.unit.as_deref().unwrap_or("");
+                format!("{} {}", q, unit).trim().to_string()
+            });
+            ProcessedItem {
+                id: r.id,
+                item_type: "request".to_string(),
+                medication: r.medication,
+                quantity: qty,
+                status: format!("{:?}", r.status),
+                created_at: r.created_at,
+            }
+        })
+        .collect();
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(ProcessedItemsResponse {
+            offers: offer_items,
+            requests: request_items,
+        }),
         error: None,
         meta: None,
     }))
@@ -904,6 +1049,18 @@ where
         }
     };
 
+    // Fetch processed items counts
+    let offer_count = state
+        .offer_repo
+        .count_by_raw_message_id(msg.id)
+        .await
+        .unwrap_or(0);
+    let request_count = state
+        .request_repo
+        .count_by_raw_message_id(msg.id)
+        .await
+        .unwrap_or(0);
+
     let status = RawMessageResponse::compute_status(msg.processed_at, &msg.error);
 
     RawMessageResponse {
@@ -924,6 +1081,8 @@ where
         group_name,
         group_jid,
         status,
+        offer_count,
+        request_count,
     }
 }
 
@@ -1321,6 +1480,8 @@ mod tests {
             group_name: Some("Test Group".to_string()),
             group_jid: Some("456@g.us".to_string()),
             status: "processed".to_string(),
+            offer_count: 2,
+            request_count: 1,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1338,6 +1499,8 @@ mod tests {
         assert!(json.contains("groupId"));
         assert!(json.contains("groupName"));
         assert!(json.contains("groupJid"));
+        assert!(json.contains("offerCount"));
+        assert!(json.contains("requestCount"));
     }
 
     #[test]

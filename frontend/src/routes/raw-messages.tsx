@@ -32,6 +32,7 @@ import {
   type PaginationState,
   type SortField,
 } from '@/components/raw-messages'
+import { ProcessedItemsDialog } from '@/components/raw-messages/processed-items-dialog'
 
 export const Route = createFileRoute('/raw-messages')({
   component: RawMessages,
@@ -61,6 +62,10 @@ function RawMessages() {
     type: 'single' | 'bulk'
     messageId?: string
   }>({ open: false, type: 'single' })
+
+  // Processed items dialog state
+  const [itemsDialogMessage, setItemsDialogMessage] =
+    useState<RawMessage | null>(null)
 
   // Mutation hooks
   const reprocessMutation = useReprocessMessage()
@@ -262,6 +267,11 @@ function RawMessages() {
     setReplyToMessage(message)
   }, [])
 
+  // View processed items handler
+  const handleViewItems = useCallback((message: RawMessage) => {
+    setItemsDialogMessage(message)
+  }, [])
+
   // Bulk action handlers
   const handleBulkReprocess = useCallback(() => {
     bulkReprocessMutation.mutate(selectedIds, {
@@ -381,6 +391,7 @@ function RawMessages() {
                 sortOrder={filters.sortOrder}
                 onSort={handleSort}
                 onViewDetailsClick={setSelectedMessage}
+                onViewItemsClick={handleViewItems}
                 selectedId={selectedMessage?.id}
                 // TanStack Table row selection
                 rowSelection={rowSelection}
@@ -470,6 +481,12 @@ function RawMessages() {
           itemCount={
             deleteDialogState.type === 'bulk' ? selectedCount : undefined
           }
+        />
+
+        {/* Processed Items Dialog */}
+        <ProcessedItemsDialog
+          message={itemsDialogMessage}
+          onClose={() => setItemsDialogMessage(null)}
         />
       </div>
     </DashboardLayout>
