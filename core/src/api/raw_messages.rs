@@ -10,6 +10,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 use super::handlers::{ApiResponse, Meta};
@@ -327,17 +328,62 @@ where
     let (participant_name, participant_jid) =
         match state.participant_repo.get_by_id(msg.participant_id).await {
             Ok(Some(p)) => {
+                debug!(
+                    participant_id = %msg.participant_id,
+                    jid = %p.jid,
+                    "Found participant for raw message"
+                );
                 // Use display_name if available, otherwise push_name
                 let name = p.display_name.or(p.push_name);
                 (name, Some(p.jid))
             }
-            _ => (None, None),
+            Ok(None) => {
+                warn!(
+                    participant_id = %msg.participant_id,
+                    message_id = %msg.id,
+                    "Participant not found for raw message"
+                );
+                (None, None)
+            }
+            Err(e) => {
+                warn!(
+                    participant_id = %msg.participant_id,
+                    message_id = %msg.id,
+                    error = %e,
+                    "Error fetching participant for raw message"
+                );
+                (None, None)
+            }
         };
 
     // Fetch group info
     let (group_name, group_jid) = match state.group_repo.get_by_id(msg.group_id).await {
-        Ok(Some(g)) => (Some(g.name), Some(g.jid)),
-        _ => (None, None),
+        Ok(Some(g)) => {
+            debug!(
+                group_id = %msg.group_id,
+                jid = %g.jid,
+                name = %g.name,
+                "Found group for raw message"
+            );
+            (Some(g.name), Some(g.jid))
+        }
+        Ok(None) => {
+            warn!(
+                group_id = %msg.group_id,
+                message_id = %msg.id,
+                "Group not found for raw message"
+            );
+            (None, None)
+        }
+        Err(e) => {
+            warn!(
+                group_id = %msg.group_id,
+                message_id = %msg.id,
+                error = %e,
+                "Error fetching group for raw message"
+            );
+            (None, None)
+        }
     };
 
     let status = RawMessageResponse::compute_status(msg.processed_at, &msg.error);

@@ -52,6 +52,7 @@ services:
       API_PORT: "8081"
       GRPC_PORT: "50051"
       WS_AUTH_ENABLED: "false"
+      BRIDGE_GRPC_ADDR: "http://bridge:50052"
     ports:
       - "8081:8081" # REST API
       - "50051:50051" # gRPC

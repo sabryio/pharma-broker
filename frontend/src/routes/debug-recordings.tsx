@@ -214,7 +214,7 @@ function ViewModeTabs({
           className={cn(
             'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300',
             activeMode === tab.id
-              ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-lg shadow-teal-500/25'
+              ? 'bg-linear-to-r from-teal-500 to-emerald-500 text-white shadow-lg shadow-teal-500/25'
               : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50',
           )}
         >
@@ -522,13 +522,13 @@ function DebugRecordings() {
 
   return (
     <DashboardLayout>
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
+      <div className="min-h-screen bg-linear-to-br from-background via-background to-secondary/20">
         {/* Header */}
         <div className="sticky top-0 z-40 backdrop-blur-xl bg-background/80 border-b border-border/50">
           <div className="max-w-[1800px] mx-auto px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/30 to-purple-500/30 flex items-center justify-center shadow-lg shadow-violet-500/20">
+                <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-violet-500/30 to-purple-500/30 flex items-center justify-center shadow-lg shadow-violet-500/20">
                   <Layers className="w-7 h-7 text-violet-400" />
                 </div>
                 <div>
@@ -623,7 +623,7 @@ function DebugRecordings() {
 
               {/* Secondary Stats */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-6 rounded-2xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
+                <div className="p-6 rounded-2xl bg-linear-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-foreground">
                       Confidence Distribution
@@ -643,7 +643,7 @@ function DebugRecordings() {
                   </div>
                 </div>
 
-                <div className="p-6 rounded-2xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
+                <div className="p-6 rounded-2xl bg-linear-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-foreground">
                       Outcome Breakdown
@@ -675,7 +675,7 @@ function DebugRecordings() {
                   </div>
                 </div>
 
-                <div className="p-6 rounded-2xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
+                <div className="p-6 rounded-2xl bg-linear-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-foreground">
                       Quick Stats
@@ -719,7 +719,7 @@ function DebugRecordings() {
               </div>
 
               {/* Recent Recordings */}
-              <div className="p-6 rounded-2xl bg-gradient-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
+              <div className="p-6 rounded-2xl bg-linear-to-br from-secondary/50 to-secondary/20 border border-border/50 backdrop-blur-sm">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-foreground">
                     Recent Recordings
@@ -920,7 +920,7 @@ function DebugRecordings() {
                   </p>
                   <button
                     onClick={() => handleViewModeChange('recordings')}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium shadow-lg shadow-teal-500/25 hover:shadow-xl hover:scale-105 transition-all"
+                    className="px-5 py-2.5 rounded-xl bg-linear-to-r from-teal-500 to-emerald-500 text-white font-medium shadow-lg shadow-teal-500/25 hover:shadow-xl hover:scale-105 transition-all"
                   >
                     Browse Recordings
                   </button>

@@ -24,25 +24,27 @@ export const SortOrderSchema = z.enum(['asc', 'desc'])
 
 export type SortOrder = z.infer<typeof SortOrderSchema>
 
-// Raw message schema matching Rust's RawMessageResponse
+// Raw message schema matching Rust's RawMessageResponse (uses camelCase)
 export const RawMessageSchema = z.object({
   id: z.string().uuid(),
-  external_id: z.string().nullable(),
+  externalId: z.string().nullable(),
   content: z.string(),
   timestamp: z.string().datetime({ offset: true }),
-  processed_at: z.string().datetime({ offset: true }).nullable(),
+  processedAt: z.string().datetime({ offset: true }).nullable(),
   error: z.string().nullable(),
-  reply_to_id: z.string().nullable(),
-  reply_to_content: z.string().nullable(),
-  reply_to_sender: z.string().nullable(),
-  created_at: z.string().datetime({ offset: true }),
+  replyToId: z.string().nullable(),
+  replyToContent: z.string().nullable(),
+  replyToSender: z.string().nullable(),
+  createdAt: z.string().datetime({ offset: true }),
   // Denormalized relations
-  participant_id: z.string().uuid(),
-  participant_name: z.string().nullable(),
-  participant_jid: z.string(),
-  group_id: z.string().uuid(),
-  group_name: z.string().nullable(),
-  group_jid: z.string(),
+  participantId: z.string().uuid(),
+  participantName: z.string().nullable(),
+  participantJid: z.string().nullable(),
+  groupId: z.string().uuid(),
+  groupName: z.string().nullable(),
+  groupJid: z.string().nullable(),
+  // Computed fields
+  status: z.string(),
 })
 
 export type RawMessage = z.infer<typeof RawMessageSchema>
