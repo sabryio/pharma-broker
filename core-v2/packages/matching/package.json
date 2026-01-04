@@ -1,0 +1,21 @@
+{
+  "name": "@core-v2/matching",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "dependencies": {
+    "@core-v2/domain": "workspace:*",
+    "@core-v2/db": "workspace:*",
+    "effect": "^3.19.14"
+  },
+  "devDependencies": {
+    "@core-v2/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

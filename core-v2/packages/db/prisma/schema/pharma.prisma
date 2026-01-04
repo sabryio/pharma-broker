@@ -1,0 +1,411 @@
+// PharmaBroker Domain Schema
+// Migrated from Rust SeaORM entities
+
+// ============================================================================
+// Core Business Entities
+// ============================================================================
+
+enum ItemStatus {
+  active
+  matched
+  expired
+  cancelled
+}
+
+enum UrgencyLevel {
+  low
+  medium
+  high
+  critical
+}
+
+enum MatchStatus {
+  pending
+  confirmed
+  rejected
+  cancelled
+  expired
+}
+
+model Offer {
+  id                  String    @id @default(uuid()) @db.Uuid
+  medication          String
+  medicationRaw       String?   @map("medication_raw")
+  quantity            String?
+  price               String?
+  expiry              DateTime?
+  status              ItemStatus @default(active)
+  groupJid            String?   @map("group_jid")
+  senderJid           String?   @map("sender_jid")
+  rawMessageId        String?   @map("raw_message_id") @db.Uuid
+  aiConfidence        Float?    @map("ai_confidence")
+  embedding           Float[]   @default([]) @db.Real
+  confirmedMatchCount Int       @default(0) @map("confirmed_match_count")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  rawMessage          RawMessage? @relation(fields: [rawMessageId], references: [id])
+  group               Group?      @relation(fields: [groupJid], references: [jid])
+  matches             Match[]     @relation("OfferMatches")
+  medicationMapping   MedicationMapping?
+
+  @@index([status])
+  @@index([groupJid])
+  @@index([createdAt])
+  @@map("offers")
+}
+
+model Request {
+  id                  String      @id @default(uuid()) @db.Uuid
+  medication          String
+  medicationRaw       String?     @map("medication_raw")
+  quantity            String?
+  maxPrice            String?     @map("max_price")
+  urgency             UrgencyLevel @default(medium)
+  status              ItemStatus  @default(active)
+  groupJid            String?     @map("group_jid")
+  senderJid           String?     @map("sender_jid")
+  rawMessageId        String?     @map("raw_message_id") @db.Uuid
+  aiConfidence        Float?      @map("ai_confidence")
+  embedding           Float[]     @default([]) @db.Real
+  confirmedMatchCount Int         @default(0) @map("confirmed_match_count")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  rawMessage          RawMessage? @relation(fields: [rawMessageId], references: [id])
+  group               Group?      @relation(fields: [groupJid], references: [jid])
+  matches             Match[]     @relation("RequestMatches")
+  matchQueue          MatchQueue[]
+  medicationMapping   MedicationMapping?
+
+  @@index([status])
+  @@index([groupJid])
+  @@index([createdAt])
+  @@map("requests")
+}
+
+model Match {
+  id            String      @id @default(uuid()) @db.Uuid
+  offerId       String      @map("offer_id") @db.Uuid
+  requestId     String      @map("request_id") @db.Uuid
+  score         Float
+  status        MatchStatus @default(pending)
+  reasoning     String?
+  notes         String?
+  aiStatus      String?     @map("ai_status")
+  aiConfidence  Float?      @map("ai_confidence")
+  aiExplanation String?     @map("ai_explanation")
+  confirmedAt   DateTime?   @map("confirmed_at")
+  confirmedBy   String?     @map("confirmed_by")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  offer         Offer       @relation("OfferMatches", fields: [offerId], references: [id])
+  request       Request     @relation("RequestMatches", fields: [requestId], references: [id])
+  feedback      FeedbackRecord?
+  auditRecord   MatchAuditRecord?
+
+  @@unique([offerId, requestId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("matches")
+}
+
+// ============================================================================
+// WhatsApp Integration Entities
+// ============================================================================
+
+model RawMessage {
+  id            String    @id @default(uuid()) @db.Uuid
+  messageId     String    @map("message_id")
+  groupJid      String    @map("group_jid")
+  senderJid     String    @map("sender_jid")
+  content       String
+  timestamp     DateTime
+  processed     Boolean   @default(false)
+  processedAt   DateTime? @map("processed_at")
+  error         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  group         Group     @relation(fields: [groupJid], references: [jid])
+  offers        Offer[]
+  requests      Request[]
+  reviewQueue   ReviewQueue?
+
+  @@unique([messageId, groupJid])
+  @@index([processed])
+  @@index([timestamp])
+  @@map("raw_messages")
+}
+
+model Group {
+  id            String    @id @default(uuid()) @db.Uuid
+  jid           String    @unique
+  name          String
+  monitored     Boolean   @default(false)
+  messageCount  Int       @default(0) @map("message_count")
+  lastMessageAt DateTime? @map("last_message_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  rawMessages   RawMessage[]
+  offers        Offer[]
+  requests      Request[]
+  participants  ParticipantGroup[]
+
+  @@index([monitored])
+  @@map("groups")
+}
+
+model Participant {
+  id          String    @id @default(uuid()) @db.Uuid
+  jid         String    @unique
+  phone       String?
+  name        String?
+  pushName    String?   @map("push_name")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  groups      ParticipantGroup[]
+
+  @@index([phone])
+  @@map("participants")
+}
+
+model ParticipantGroup {
+  participantId String   @map("participant_id") @db.Uuid
+  groupId       String   @map("group_id") @db.Uuid
+  joinedAt      DateTime @default(now()) @map("joined_at")
+
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  group         Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([participantId, groupId])
+  @@map("participant_groups")
+}
+
+// ============================================================================
+// Learning & Review Entities
+// ============================================================================
+
+enum ReviewStatus {
+  pending
+  approved
+  rejected
+  skipped
+}
+
+model FeedbackRecord {
+  id            String    @id @default(uuid()) @db.Uuid
+  matchId       String    @unique @map("match_id") @db.Uuid
+  decision      String    // "confirmed" | "rejected"
+  originalScore Float     @map("original_score")
+  medicationScore Float?  @map("medication_score")
+  quantityScore Float?    @map("quantity_score")
+  dosageScore   Float?    @map("dosage_score")
+  priceScore    Float?    @map("price_score")
+  recencyScore  Float?    @map("recency_score")
+  aiLogicScore  Float?    @map("ai_logic_score")
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  match         Match     @relation(fields: [matchId], references: [id])
+
+  @@index([decision])
+  @@index([createdAt])
+  @@map("feedback_records")
+}
+
+model ReviewQueue {
+  id            String       @id @default(uuid()) @db.Uuid
+  rawMessageId  String       @unique @map("raw_message_id") @db.Uuid
+  aiResult      Json         @map("ai_result")
+  confidence    Float
+  reason        String
+  status        ReviewStatus @default(pending)
+  reviewedBy    String?      @map("reviewed_by")
+  reviewNotes   String?      @map("review_notes")
+  reviewedAt    DateTime?    @map("reviewed_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  rawMessage    RawMessage   @relation(fields: [rawMessageId], references: [id])
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("review_queue")
+}
+
+model WeightHistory {
+  id              String   @id @default(uuid()) @db.Uuid
+  medication      Float
+  quantity        Float
+  dosage          Float
+  price           Float
+  recency         Float
+  aiLogic         Float    @map("ai_logic")
+  feedbackCount   Int      @map("feedback_count")
+  learningRate    Float    @map("learning_rate")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("weight_history")
+}
+
+// ============================================================================
+// Medication Catalog Entities
+// ============================================================================
+
+enum MedicationStatus {
+  active
+  inactive
+  deprecated
+}
+
+enum CurationStatus {
+  pending
+  approved
+  rejected
+}
+
+model MedicationMaster {
+  id            String           @id @default(uuid()) @db.Uuid
+  name          String           @unique
+  genericName   String?          @map("generic_name")
+  brandNames    String[]         @map("brand_names")
+  category      String?
+  dosageForms   String[]         @map("dosage_forms")
+  strengths     String[]
+  status        MedicationStatus @default(active)
+  embedding     Float[]          @default([]) @db.Real
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  aliases       MedicationAlias[]
+
+  @@index([name])
+  @@map("medication_master")
+}
+
+model MedicationAlias {
+  id            String          @id @default(uuid()) @db.Uuid
+  alias         String          @unique
+  masterId      String?         @map("master_id") @db.Uuid
+  status        CurationStatus  @default(pending)
+  confidence    Float?
+  source        String?         // "ai" | "manual" | "feedback"
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  master        MedicationMaster? @relation(fields: [masterId], references: [id])
+
+  @@index([status])
+  @@index([alias])
+  @@map("medication_aliases")
+}
+
+model MedicationMapping {
+  id            String    @id @default(uuid()) @db.Uuid
+  offerId       String?   @unique @map("offer_id") @db.Uuid
+  requestId     String?   @unique @map("request_id") @db.Uuid
+  rawText       String    @map("raw_text")
+  normalizedText String   @map("normalized_text")
+  masterId      String?   @map("master_id") @db.Uuid
+  aliasId       String?   @map("alias_id") @db.Uuid
+  confidence    Float?
+  embedding     Float[]   @default([]) @db.Real
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  offer         Offer?    @relation(fields: [offerId], references: [id])
+  request       Request?  @relation(fields: [requestId], references: [id])
+
+  @@index([normalizedText])
+  @@map("medication_mappings")
+}
+
+// ============================================================================
+// Audit & Compliance Entities
+// ============================================================================
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id") @db.Uuid
+  action      String
+  actor       String?
+  oldValue    Json?    @map("old_value")
+  newValue    Json?    @map("new_value")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([actor])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model MatchAuditRecord {
+  id              String    @id @default(uuid()) @db.Uuid
+  matchId         String    @unique @map("match_id") @db.Uuid
+  sessionId       String?   @map("session_id")
+  offerSnapshot   Json      @map("offer_snapshot")
+  requestSnapshot Json      @map("request_snapshot")
+  scoreBreakdown  Json      @map("score_breakdown")
+  weightsUsed     Json      @map("weights_used")
+  pipelineStages  Json      @map("pipeline_stages")
+  reviewStatus    String?   @map("review_status")
+  reviewedBy      String?   @map("reviewed_by") @db.Uuid
+  reviewNotes     String?   @map("review_notes")
+  reviewedAt      DateTime? @map("reviewed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  match           Match     @relation(fields: [matchId], references: [id])
+
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("match_audit_records")
+}
+
+// ============================================================================
+// Queue & Configuration Entities
+// ============================================================================
+
+enum QueueStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+model MatchQueue {
+  id          String      @id @default(uuid()) @db.Uuid
+  requestId   String      @map("request_id") @db.Uuid
+  priority    Int         @default(0)
+  status      QueueStatus @default(pending)
+  attempts    Int         @default(0)
+  error       String?
+  startedAt   DateTime?   @map("started_at")
+  completedAt DateTime?   @map("completed_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  request     Request     @relation(fields: [requestId], references: [id])
+
+  @@index([status, priority])
+  @@index([createdAt])
+  @@map("match_queue")
+}
+
+model AutoApproveConfig {
+  id                   String   @id @default(uuid()) @db.Uuid
+  enabled              Boolean  @default(false)
+  confidenceThreshold  Float    @default(0.95) @map("confidence_threshold")
+  categoryThresholds   Json?    @map("category_thresholds")
+  schedule             String?  // cron expression
+  maxDailyApprovals    Int?     @map("max_daily_approvals")
+  updatedBy            String?  @map("updated_by") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("auto_approve_config")
+}

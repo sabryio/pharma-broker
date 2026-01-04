@@ -1,0 +1,24 @@
+{
+  "name": "@core-v2/auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@core-v2/db": "workspace:*",
+    "@core-v2/env": "workspace:*",
+    "better-auth": "catalog:",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@core-v2/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}
