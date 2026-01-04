@@ -259,8 +259,19 @@ impl Client {
                             return Ok(parsed);
                         }
                         Err(e) => {
-                            warn!(attempt, error = %e, "Failed to parse structured output");
-                            last_error = Some(Error::Parse(e));
+                            // Check if this is incomplete JSON (retryable)
+                            if Error::is_incomplete_json(&e) {
+                                warn!(
+                                    attempt,
+                                    error = %e,
+                                    "Incomplete JSON response from model, will retry"
+                                );
+                                last_error = Some(Error::IncompleteJson(e.to_string()));
+                            } else {
+                                warn!(attempt, error = %e, "Failed to parse structured output");
+                                // Non-incomplete parse errors are not retryable
+                                return Err(Error::Parse(e));
+                            }
                         }
                     }
                 }
@@ -401,5 +412,20 @@ mod tests {
         let config = ClientConfig::default();
         assert!(config.base_url.contains("localhost"));
         assert!(config.api_key.is_none());
+    }
+
+    #[test]
+    fn test_incomplete_json_is_retryable() {
+        let err = Error::IncompleteJson("EOF while parsing".to_string());
+        assert!(err.is_retryable(), "IncompleteJson should be retryable");
+    }
+
+    #[test]
+    fn test_parse_error_is_not_retryable() {
+        // Create a real parse error from invalid JSON
+        let parse_err =
+            serde_json::from_str::<serde_json::Value>(r#"{"key": invalid}"#).unwrap_err();
+        let err = Error::Parse(parse_err);
+        assert!(!err.is_retryable(), "Parse error should not be retryable");
     }
 }

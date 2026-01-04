@@ -30,3 +30,6 @@ tracing = "0.1.44"
 
 # Random (for retry jitter)
 rand = "0.9.2"
+
+[dev-dependencies]
+proptest = "1.5"
