@@ -15,9 +15,9 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use colored::Colorize;
-use pharma_core::domain::MedicationMapping;
+use pharma_core::domain::MedicationMaster;
 use pharma_core::repository::{
-    MedicationMappingRepository, SeaOrmMedicationMappingRepo, create_connection,
+    MedicationMasterRepository, SeaOrmMedicationMasterRepo, create_connection,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::Deserialize;
@@ -127,8 +127,8 @@ async fn truncate_tables(db: &DatabaseConnection) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Seed medication mappings
-async fn seed_medications(repo: &SeaOrmMedicationMappingRepo) -> anyhow::Result<(usize, usize)> {
+/// Seed medication master records
+async fn seed_medications(repo: &SeaOrmMedicationMasterRepo) -> anyhow::Result<(usize, usize)> {
     let medications = load_medications_json()?;
 
     println!(
@@ -140,13 +140,11 @@ async fn seed_medications(repo: &SeaOrmMedicationMappingRepo) -> anyhow::Result<
     let mut synonym_count = 0usize;
 
     for (arabic_name, entry) in medications {
-        let mut mapping = MedicationMapping::new(&arabic_name, &entry.english);
-        if !entry.synonyms.is_empty() {
-            synonym_count += entry.synonyms.len();
-            mapping.synonyms = Some(entry.synonyms);
-        }
+        let medication = MedicationMaster::new(&entry.english).with_arabic_name(&arabic_name);
 
-        if let Err(e) = repo.save(&mapping).await {
+        synonym_count += entry.synonyms.len();
+
+        if let Err(e) = repo.save(&medication).await {
             println!("    {} Failed to seed {}: {}", "⚠".yellow(), arabic_name, e);
         } else {
             count += 1;
@@ -248,13 +246,16 @@ async fn main() -> anyhow::Result<()> {
         "{}",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
     );
-    println!("{}", "🌱 Seeding medication mappings...".yellow().bold());
+    println!(
+        "{}",
+        "🌱 Seeding medication master records...".yellow().bold()
+    );
     println!(
         "{}",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
     );
 
-    let repo = SeaOrmMedicationMappingRepo::new(db);
+    let repo = SeaOrmMedicationMasterRepo::new(db);
     let (count, synonym_count) = seed_medications(&repo).await?;
 
     println!();

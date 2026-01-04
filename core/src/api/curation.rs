@@ -133,7 +133,7 @@ pub async fn get_curation_stats<RQ, A, MM>(
 where
     RQ: crate::repository::ReviewQueueRepository + 'static,
     A: crate::repository::AuditLogRepository + 'static,
-    MM: crate::repository::MedicationMappingRepository + 'static,
+    MM: crate::repository::MedicationMasterRepository + 'static,
 {
     let stats = state
         .medication_alias_repo
@@ -169,7 +169,7 @@ pub async fn list_aliases<RQ, A, MM>(
 where
     RQ: crate::repository::ReviewQueueRepository + 'static,
     A: crate::repository::AuditLogRepository + 'static,
-    MM: crate::repository::MedicationMappingRepository + 'static,
+    MM: crate::repository::MedicationMasterRepository + 'static,
 {
     let limit = pagination.limit.unwrap_or(50);
     let offset = pagination.offset.unwrap_or(0);
@@ -230,7 +230,7 @@ pub async fn create_master<RQ, A, MM>(
 where
     RQ: crate::repository::ReviewQueueRepository + 'static,
     A: crate::repository::AuditLogRepository + 'static,
-    MM: crate::repository::MedicationMappingRepository + 'static,
+    MM: crate::repository::MedicationMasterRepository + 'static,
 {
     tracing::info!(">>> create_master called with: {:?}", req);
 
@@ -388,7 +388,7 @@ pub async fn update_master<RQ, A, MM>(
 where
     RQ: crate::repository::ReviewQueueRepository + 'static,
     A: crate::repository::AuditLogRepository + 'static,
-    MM: crate::repository::MedicationMappingRepository + 'static,
+    MM: crate::repository::MedicationMasterRepository + 'static,
 {
     tracing::info!(">>> update_master called for id: {}", master_id);
 
@@ -477,7 +477,7 @@ pub async fn approve_alias<RQ, A, MM>(
 where
     RQ: crate::repository::ReviewQueueRepository + 'static,
     A: crate::repository::AuditLogRepository + 'static,
-    MM: crate::repository::MedicationMappingRepository + 'static,
+    MM: crate::repository::MedicationMasterRepository + 'static,
 {
     if let Some(mut alias) = state
         .medication_alias_repo
@@ -514,7 +514,7 @@ pub async fn link_alias_to_master<RQ, A, MM>(
 where
     RQ: crate::repository::ReviewQueueRepository + 'static,
     A: crate::repository::AuditLogRepository + 'static,
-    MM: crate::repository::MedicationMappingRepository + 'static,
+    MM: crate::repository::MedicationMasterRepository + 'static,
 {
     use crate::repository::MedicationAliasModel;
 
@@ -595,7 +595,7 @@ pub async fn bulk_approve_aliases<RQ, A, MM>(
 where
     RQ: crate::repository::ReviewQueueRepository + 'static,
     A: crate::repository::AuditLogRepository + 'static,
-    MM: crate::repository::MedicationMappingRepository + 'static,
+    MM: crate::repository::MedicationMasterRepository + 'static,
 {
     tracing::info!(
         ">>> bulk_approve_aliases: approving {} aliases to master {}",
@@ -662,7 +662,7 @@ pub async fn get_suggestions<RQ, A, MM>(
 where
     RQ: crate::repository::ReviewQueueRepository + 'static,
     A: crate::repository::AuditLogRepository + 'static,
-    MM: crate::repository::MedicationMappingRepository + 'static,
+    MM: crate::repository::MedicationMasterRepository + 'static,
 {
     let limit = query.limit.unwrap_or(5);
     let mut suggestions = Vec::new();

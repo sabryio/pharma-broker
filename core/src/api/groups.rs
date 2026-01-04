@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::routes::AppState;
 use crate::domain::Group;
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 /// Request body for creating/updating a group
 #[derive(Debug, Deserialize)]
@@ -62,7 +62,7 @@ pub async fn list_groups<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let groups = state
         .group_repo
@@ -87,7 +87,7 @@ pub async fn get_group<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let group = state
         .group_repo
@@ -113,7 +113,7 @@ pub async fn create_group<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Check if group already exists
     if let Ok(Some(_)) = state.group_repo.get_by_jid(&req.jid).await {
@@ -150,7 +150,7 @@ pub async fn update_group<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let existing = state
         .group_repo
@@ -195,7 +195,7 @@ pub async fn delete_group<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let deleted = state
         .group_repo

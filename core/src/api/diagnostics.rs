@@ -6,7 +6,7 @@ use axum::{Json, extract::State};
 use serde::{Deserialize, Serialize};
 
 use super::routes::AppState;
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 // ============================================================================
 // Response Types
@@ -90,7 +90,7 @@ pub async fn get_health<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Note: This endpoint requires direct database access
     // In a real implementation, you'd inject the DatabaseConnection
@@ -110,7 +110,7 @@ pub async fn get_table_stats<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     Json(serde_json::json!({
         "status": "ok",
@@ -127,7 +127,7 @@ pub async fn get_index_stats<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     Json(serde_json::json!({
         "status": "ok",
@@ -144,7 +144,7 @@ pub async fn analyze_queries<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     Json(serde_json::json!({
         "status": "ok",

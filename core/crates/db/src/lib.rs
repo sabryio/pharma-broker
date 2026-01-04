@@ -44,18 +44,15 @@ pub use diagnostics::{DatabaseHealth, DbDiagnostics, IndexStats, QueryPlanAnalys
 /// Re-export common types
 pub mod prelude {
     pub use super::entity::{
-        AuditLog, FeedbackRecord, Group, Match, MatchQueue, MedicationMapping, Offer, RawMessage,
+        AuditLog, FeedbackRecord, Group, Match, MatchQueue, MedicationMaster, Offer, RawMessage,
         Request, ReviewQueue, WeightHistory,
     };
-    pub use super::entity::{
-        GroupJid, MatchId, MedicationMappingId, OfferId, RawMessageId, RequestId, UserJid,
-    };
+    pub use super::entity::{GroupJid, MatchId, OfferId, RawMessageId, RequestId, UserJid};
     pub use super::entity::{ItemStatus, MatchStatus, UrgencyLevel};
     pub use super::feedback_params::{CreateFeedbackParams, FeedbackScores, RecordFeedbackParams};
     pub use super::service::{
         AuditLogService, FeedbackService, GroupService, MatchQueueService, MatchService,
-        MedicationMappingService, OfferService, RawMessageService, RequestService,
-        ReviewQueueService, WeightHistoryService,
+        OfferService, RawMessageService, RequestService, ReviewQueueService, WeightHistoryService,
     };
     pub use sea_orm::{
         ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter,

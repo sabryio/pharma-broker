@@ -14,7 +14,7 @@ use super::routes::AppState;
 use crate::domain::{AuditLog, FeedbackRecord, MatchStatus};
 use crate::metrics;
 use crate::repository::{
-    AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository, UpdateMatchStatusParams,
+    AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository, UpdateMatchStatusParams,
 };
 use crate::ws::{MatchStatusEvent, WsEvent};
 
@@ -111,7 +111,7 @@ pub async fn health_ready<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Check database by counting offers (simple query)
     let db_status = match state.offer_repo.count_active().await {
@@ -168,7 +168,7 @@ pub async fn get_offers<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let offers = state
         .offer_repo
@@ -194,7 +194,7 @@ pub async fn get_requests<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let requests = state
         .request_repo
@@ -220,7 +220,7 @@ pub async fn get_matches<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let matches = state
         .match_repo
@@ -255,7 +255,7 @@ pub async fn confirm_match<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Get the match first
     let match_entity = state
@@ -368,7 +368,7 @@ pub async fn reject_match<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Get the match first for score data
     let match_entity = state
@@ -457,7 +457,7 @@ pub async fn get_stats<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let active_offers = state.offer_repo.count_active().await.unwrap_or(0);
     let active_requests = state.request_repo.count_active().await.unwrap_or(0);

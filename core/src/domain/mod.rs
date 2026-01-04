@@ -15,7 +15,7 @@ pub use pharma_db::entity::match_::MatchStatus;
 pub use pharma_db::entity::match_::Model as Match;
 pub use pharma_db::entity::match_queue::Model as MatchQueueItem;
 pub use pharma_db::entity::match_queue::QueueStatus as MatchQueueStatus;
-pub use pharma_db::entity::medication_mapping::Model as MedicationMapping;
+pub use pharma_db::entity::medication_master::Model as MedicationMaster;
 pub use pharma_db::entity::offer::Model as Offer;
 pub use pharma_db::entity::offer::Status as ItemStatus;
 pub use pharma_db::entity::offer::UrgencyLevel;

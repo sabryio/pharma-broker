@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::routes::AppState;
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 // =============================================================================
 // Request/Response Types
@@ -220,7 +220,7 @@ pub async fn get_performance_analytics<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,

@@ -25,7 +25,7 @@ use crate::matching::{
     AutoApproveConfig, AutoApproveStats, SupervisionAuditEntry, SupervisionAuditFilter,
     SupervisionEventType, SystemStatus,
 };
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 use super::routes::AppState;
 
@@ -284,7 +284,7 @@ pub async fn get_stats<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -311,7 +311,7 @@ pub async fn get_audit<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -347,7 +347,7 @@ pub async fn get_config<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -383,7 +383,7 @@ pub async fn update_config<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -432,7 +432,7 @@ pub async fn override_decision<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -483,7 +483,7 @@ pub async fn undo_approval<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -524,7 +524,7 @@ pub async fn pause_system<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -560,7 +560,7 @@ pub async fn resume_system<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,

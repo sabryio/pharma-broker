@@ -21,7 +21,7 @@ use crate::matching::{
     EnhancedContrastiveDetails, EnhancedPipelineStageRecord, HierarchicalStageDetails,
     MatchAuditRecord, PipelinePerformanceMetrics, PipelineResolutionDetails, ScoringDetails,
 };
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 // =============================================================================
 // Response Types - Requirements 4.1, 4.2, 4.3, 4.4, 4.5
@@ -849,7 +849,7 @@ pub async fn get_pipeline_visualization<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,

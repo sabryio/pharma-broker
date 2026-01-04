@@ -20,9 +20,8 @@ use pharma_core::matching::{
 use pharma_core::metrics::init_metrics;
 use pharma_core::repository::{
     SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
-    SeaOrmMedicationAliasRepo, SeaOrmMedicationMappingRepo, SeaOrmMedicationMasterRepo,
-    SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo, SeaOrmReviewQueueRepo,
-    create_connection,
+    SeaOrmMedicationAliasRepo, SeaOrmMedicationMasterRepo, SeaOrmOfferRepo, SeaOrmRawMessageRepo,
+    SeaOrmRequestRepo, SeaOrmReviewQueueRepo, create_connection,
 };
 use pharma_core::worker::match_processor::{MatchProcessor, MatchProcessorRepos};
 
@@ -102,7 +101,6 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🤖 AI Gateway: {}", gateway_url);
 
     // Create broadcast channel for real-time events
-    let medication_mapping_repo = Arc::new(SeaOrmMedicationMappingRepo::new(db.clone()));
     let (ws_tx, _) = tokio::sync::broadcast::channel(100);
 
     // Track active WebSocket connections
@@ -190,7 +188,6 @@ async fn main() -> anyhow::Result<()> {
         participant_repo: participant_repo.clone(),
         raw_message_repo: raw_message_repo.clone(),
         audit_log_repo: audit_log_repo.clone(),
-        medication_mapping_repo: medication_mapping_repo.clone(),
         medication_master_repo: medication_master_repo.clone(),
         medication_alias_repo: medication_alias_repo.clone(),
         match_queue_repo: match_queue_repo.clone(),
@@ -235,7 +232,6 @@ async fn main() -> anyhow::Result<()> {
         review_queue: review_queue_repo,
         audit_log: audit_log_repo,
         match_queue: match_queue_repo.clone(),
-        medication_mapping: medication_mapping_repo,
         medication_master: medication_master_repo.clone(),
         medication_alias: medication_alias_repo.clone(),
         match_repo: match_repo.clone(),

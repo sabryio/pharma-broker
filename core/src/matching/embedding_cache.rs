@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 
-use crate::domain::MedicationMapping;
+use crate::domain::MedicationMaster;
 
 // =============================================================================
 // Synonym Index
@@ -25,27 +25,29 @@ pub struct SynonymIndex {
 }
 
 impl SynonymIndex {
-    /// Create a new synonym index from medication mappings
-    pub fn new(mappings: &[MedicationMapping]) -> Self {
+    /// Create a new synonym index from medication master records
+    pub fn new(masters: &[MedicationMaster]) -> Self {
         let mut name_to_canonical = HashMap::new();
         let mut canonical_to_synonyms: HashMap<String, HashSet<String>> = HashMap::new();
 
-        for mapping in mappings {
-            let canonical = mapping.english_name.to_lowercase();
+        for master in masters {
+            let canonical = master.canonical_name.to_lowercase();
 
-            // Map Arabic name
-            if !mapping.arabic_name.is_empty() {
-                let arabic_lower = mapping.arabic_name.to_lowercase();
-                name_to_canonical.insert(arabic_lower.clone(), canonical.clone());
-                canonical_to_synonyms
-                    .entry(canonical.clone())
-                    .or_default()
-                    .insert(arabic_lower);
+            // Map Arabic name if present
+            if let Some(ref arabic_name) = master.canonical_name_ar {
+                if !arabic_name.is_empty() {
+                    let arabic_lower = arabic_name.to_lowercase();
+                    name_to_canonical.insert(arabic_lower.clone(), canonical.clone());
+                    canonical_to_synonyms
+                        .entry(canonical.clone())
+                        .or_default()
+                        .insert(arabic_lower);
+                }
             }
 
             // Map English name
-            if !mapping.english_name.is_empty() {
-                let english_lower = mapping.english_name.to_lowercase();
+            if !master.canonical_name.is_empty() {
+                let english_lower = master.canonical_name.to_lowercase();
                 name_to_canonical.insert(english_lower.clone(), canonical.clone());
                 canonical_to_synonyms
                     .entry(canonical.clone())
@@ -53,17 +55,15 @@ impl SynonymIndex {
                     .insert(english_lower);
             }
 
-            // Map all synonyms
-            if let Some(synonyms) = &mapping.synonyms {
-                for synonym in synonyms {
-                    if !synonym.is_empty() {
-                        let syn_lower = synonym.to_lowercase();
-                        name_to_canonical.insert(syn_lower.clone(), canonical.clone());
-                        canonical_to_synonyms
-                            .entry(canonical.clone())
-                            .or_default()
-                            .insert(syn_lower);
-                    }
+            // Map active ingredient as a synonym if present
+            if let Some(ref ingredient) = master.active_ingredient {
+                if !ingredient.is_empty() {
+                    let ingredient_lower = ingredient.to_lowercase();
+                    name_to_canonical.insert(ingredient_lower.clone(), canonical.clone());
+                    canonical_to_synonyms
+                        .entry(canonical.clone())
+                        .or_default()
+                        .insert(ingredient_lower);
                 }
             }
         }
@@ -154,38 +154,43 @@ impl EmbeddingCache {
         }
     }
 
-    /// Refresh the cache from medication mappings
+    /// Refresh the cache from medication master records
     /// Ported from Go: EmbeddingCache.Refresh (embedding.go:32-62)
-    pub fn refresh(&self, mappings: &[MedicationMapping]) {
+    pub fn refresh(&self, masters: &[MedicationMaster]) {
         let mut new_embeddings = HashMap::new();
         let mut count = 0;
 
-        for mapping in mappings {
+        for master in masters {
             // Get embedding as Vec<f32>, skip if none
-            let embedding = match mapping.get_embedding() {
+            let embedding = match master.embedding.as_ref().map(|v| v.to_vec()) {
                 Some(e) if !e.is_empty() => e,
                 _ => continue,
             };
 
-            // Map all known names to this embedding
-            if !mapping.arabic_name.is_empty() {
-                new_embeddings.insert(mapping.arabic_name.to_lowercase(), embedding.clone());
+            // Map canonical name to this embedding
+            if !master.canonical_name.is_empty() {
+                new_embeddings.insert(master.canonical_name.to_lowercase(), embedding.clone());
             }
-            if !mapping.english_name.is_empty() {
-                new_embeddings.insert(mapping.english_name.to_lowercase(), embedding.clone());
-            }
-            if let Some(synonyms) = &mapping.synonyms {
-                for synonym in synonyms {
-                    if !synonym.is_empty() {
-                        new_embeddings.insert(synonym.to_lowercase(), embedding.clone());
-                    }
+
+            // Map Arabic name if present
+            if let Some(ref arabic_name) = master.canonical_name_ar {
+                if !arabic_name.is_empty() {
+                    new_embeddings.insert(arabic_name.to_lowercase(), embedding.clone());
                 }
             }
+
+            // Map active ingredient if present
+            if let Some(ref ingredient) = master.active_ingredient {
+                if !ingredient.is_empty() {
+                    new_embeddings.insert(ingredient.to_lowercase(), embedding.clone());
+                }
+            }
+
             count += 1;
         }
 
         // Build synonym index
-        let synonym_index = SynonymIndex::new(mappings);
+        let synonym_index = SynonymIndex::new(masters);
 
         // Update cache atomically
         *self.embeddings.write().unwrap() = new_embeddings;
@@ -210,7 +215,7 @@ impl EmbeddingCache {
             embedding_keys = embedding_keys,
             synonym_medications = synonym_size,
             synonym_mappings = synonym_mappings,
-            "📊 Refreshed in-memory embeddings and synonym index"
+            "📊 Refreshed in-memory embeddings and synonym index from medication_master"
         );
     }
 
@@ -318,35 +323,59 @@ mod tests {
     use chrono::Utc;
     use uuid::Uuid;
 
-    fn create_test_mappings() -> Vec<MedicationMapping> {
+    fn create_test_masters() -> Vec<MedicationMaster> {
         let now = Utc::now();
         vec![
-            MedicationMapping {
+            MedicationMaster {
                 id: Uuid::new_v4(),
-                arabic_name: "بروفين".to_string(),
-                english_name: "Brufen".to_string(),
-                synonyms: Some(vec!["Ibuprofen".to_string(), "ايبوبروفين".to_string()]),
+                canonical_name: "Brufen".to_string(),
+                canonical_name_ar: Some("بروفين".to_string()),
+                active_ingredient: Some("Ibuprofen".to_string()),
+                strength: Some("400mg".to_string()),
+                dosage_form: None,
+                manufacturer: None,
+                eda_registration: None,
+                therapeutic_class: None,
+                atc_code: None,
+                status: pharma_db::entity::medication_master::MedicationStatus::Active,
                 embedding: Some(pgvector::Vector::from(vec![0.1, 0.2, 0.3])),
                 created_at: now,
                 updated_at: now,
+                created_by: None,
             },
-            MedicationMapping {
+            MedicationMaster {
                 id: Uuid::new_v4(),
-                arabic_name: "بنادول".to_string(),
-                english_name: "Panadol".to_string(),
-                synonyms: Some(vec!["Paracetamol".to_string()]),
+                canonical_name: "Panadol".to_string(),
+                canonical_name_ar: Some("بنادول".to_string()),
+                active_ingredient: Some("Paracetamol".to_string()),
+                strength: Some("500mg".to_string()),
+                dosage_form: None,
+                manufacturer: None,
+                eda_registration: None,
+                therapeutic_class: None,
+                atc_code: None,
+                status: pharma_db::entity::medication_master::MedicationStatus::Active,
                 embedding: Some(pgvector::Vector::from(vec![0.4, 0.5, 0.6])),
                 created_at: now,
                 updated_at: now,
+                created_by: None,
             },
-            MedicationMapping {
+            MedicationMaster {
                 id: Uuid::new_v4(),
-                arabic_name: "أوجمنتين".to_string(),
-                english_name: "Augmentin".to_string(),
-                synonyms: None,
+                canonical_name: "Augmentin".to_string(),
+                canonical_name_ar: Some("أوجمنتين".to_string()),
+                active_ingredient: None,
+                strength: None,
+                dosage_form: None,
+                manufacturer: None,
+                eda_registration: None,
+                therapeutic_class: None,
+                atc_code: None,
+                status: pharma_db::entity::medication_master::MedicationStatus::Active,
                 embedding: None, // No embedding
                 created_at: now,
                 updated_at: now,
+                created_by: None,
             },
         ]
     }
@@ -357,8 +386,8 @@ mod tests {
 
     #[test]
     fn test_synonym_index_creation() {
-        let mappings = create_test_mappings();
-        let index = SynonymIndex::new(&mappings);
+        let masters = create_test_masters();
+        let index = SynonymIndex::new(&masters);
 
         assert_eq!(index.size(), 3); // 3 unique medications
         assert!(index.total_mappings() > 0);
@@ -366,8 +395,8 @@ mod tests {
 
     #[test]
     fn test_are_synonyms_same_term() {
-        let mappings = create_test_mappings();
-        let index = SynonymIndex::new(&mappings);
+        let masters = create_test_masters();
+        let index = SynonymIndex::new(&masters);
 
         assert!(index.are_synonyms("Brufen", "brufen"));
         assert!(index.are_synonyms("بروفين", "بروفين"));
@@ -375,8 +404,8 @@ mod tests {
 
     #[test]
     fn test_are_synonyms_different_names() {
-        let mappings = create_test_mappings();
-        let index = SynonymIndex::new(&mappings);
+        let masters = create_test_masters();
+        let index = SynonymIndex::new(&masters);
 
         // Arabic and English names of same medication
         assert!(index.are_synonyms("بروفين", "Brufen"));
@@ -386,8 +415,8 @@ mod tests {
 
     #[test]
     fn test_are_synonyms_different_medications() {
-        let mappings = create_test_mappings();
-        let index = SynonymIndex::new(&mappings);
+        let masters = create_test_masters();
+        let index = SynonymIndex::new(&masters);
 
         // Different medications should not be synonyms
         assert!(!index.are_synonyms("Brufen", "Panadol"));
@@ -396,8 +425,8 @@ mod tests {
 
     #[test]
     fn test_get_canonical() {
-        let mappings = create_test_mappings();
-        let index = SynonymIndex::new(&mappings);
+        let masters = create_test_masters();
+        let index = SynonymIndex::new(&masters);
 
         assert_eq!(index.get_canonical("بروفين"), Some(&"brufen".to_string()));
         assert_eq!(
@@ -416,8 +445,8 @@ mod tests {
         let cache = EmbeddingCache::new();
         assert!(cache.is_empty());
 
-        let mappings = create_test_mappings();
-        cache.refresh(&mappings);
+        let masters = create_test_masters();
+        cache.refresh(&masters);
 
         assert!(!cache.is_empty());
     }
@@ -425,8 +454,8 @@ mod tests {
     #[test]
     fn test_get_embedding() {
         let cache = EmbeddingCache::new();
-        let mappings = create_test_mappings();
-        cache.refresh(&mappings);
+        let masters = create_test_masters();
+        cache.refresh(&masters);
 
         // Get by Arabic name
         let emb = cache.get_embedding("بروفين");
@@ -437,7 +466,7 @@ mod tests {
         let emb = cache.get_embedding("Brufen");
         assert!(emb.is_some());
 
-        // Get by synonym
+        // Get by active ingredient
         let emb = cache.get_embedding("Ibuprofen");
         assert!(emb.is_some());
 
@@ -453,8 +482,8 @@ mod tests {
     #[test]
     fn test_get_embedding_no_embedding() {
         let cache = EmbeddingCache::new();
-        let mappings = create_test_mappings();
-        cache.refresh(&mappings);
+        let masters = create_test_masters();
+        cache.refresh(&masters);
 
         // Augmentin has no embedding
         let emb = cache.get_embedding("Augmentin");
@@ -464,8 +493,8 @@ mod tests {
     #[test]
     fn test_are_synonyms_via_cache() {
         let cache = EmbeddingCache::new();
-        let mappings = create_test_mappings();
-        cache.refresh(&mappings);
+        let masters = create_test_masters();
+        cache.refresh(&masters);
 
         assert!(cache.are_synonyms("بروفين", "Brufen"));
         assert!(cache.are_synonyms("Brufen", "Ibuprofen"));
@@ -475,8 +504,8 @@ mod tests {
     #[test]
     fn test_get_all_synonyms() {
         let cache = EmbeddingCache::new();
-        let mappings = create_test_mappings();
-        cache.refresh(&mappings);
+        let masters = create_test_masters();
+        cache.refresh(&masters);
 
         let synonyms = cache.get_all_synonyms("Brufen");
         assert!(!synonyms.is_empty());
@@ -487,8 +516,8 @@ mod tests {
     #[test]
     fn test_cache_stats() {
         let cache = EmbeddingCache::new();
-        let mappings = create_test_mappings();
-        cache.refresh(&mappings);
+        let masters = create_test_masters();
+        cache.refresh(&masters);
 
         // Generate some hits and misses
         cache.get_embedding("Brufen"); // Hit
@@ -504,8 +533,8 @@ mod tests {
     #[test]
     fn test_cache_clear() {
         let cache = EmbeddingCache::new();
-        let mappings = create_test_mappings();
-        cache.refresh(&mappings);
+        let masters = create_test_masters();
+        cache.refresh(&masters);
 
         assert!(!cache.is_empty());
 

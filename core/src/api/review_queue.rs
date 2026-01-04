@@ -14,7 +14,7 @@ use uuid::Uuid;
 use super::routes::AppState;
 use crate::domain::{AuditAction, AuditLog, EntityType, ReviewQueueStats, ReviewStatus};
 use crate::repository::{
-    AuditLogRepository, EnrichedReviewItem, MedicationMappingRepository, ReviewQueueRepository,
+    AuditLogRepository, EnrichedReviewItem, MedicationMasterRepository, ReviewQueueRepository,
 };
 
 // ============================================================================
@@ -83,7 +83,7 @@ pub async fn list_review_items<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Use enriched query for pending items (default)
     let items = match pagination.status.as_deref() {
@@ -128,7 +128,7 @@ pub async fn get_review_item<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let item = state
         .review_queue_repo
@@ -155,7 +155,7 @@ pub async fn update_review_status<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Parse status
     let status = parse_status(&req.status)?;
@@ -212,7 +212,7 @@ pub async fn get_review_stats<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let stats = state
         .review_queue_repo

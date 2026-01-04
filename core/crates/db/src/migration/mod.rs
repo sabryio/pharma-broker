@@ -25,6 +25,8 @@ mod m20260103_000016_add_ai_supervision_to_matches;
 mod m20260103_000017_create_supervision_audit_log;
 mod m20260103_000018_create_auto_approve_config;
 mod m20260103_000019_create_medication_pair_cooldowns;
+// Consolidation: Remove medication_mappings (use medication_master as source of truth)
+mod m20260104_000020_drop_medication_mappings;
 
 pub struct Migrator;
 
@@ -54,6 +56,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260103_000017_create_supervision_audit_log::Migration),
             Box::new(m20260103_000018_create_auto_approve_config::Migration),
             Box::new(m20260103_000019_create_medication_pair_cooldowns::Migration),
+            // Consolidation: Remove medication_mappings
+            Box::new(m20260104_000020_drop_medication_mappings::Migration),
         ]
     }
 }

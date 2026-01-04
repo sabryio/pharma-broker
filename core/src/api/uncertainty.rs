@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use super::routes::AppState;
 use crate::matching::{UncertaintyConfig, UncertaintyEstimator, UncertaintyResult, Weights};
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 // =============================================================================
 // Request/Response Types
@@ -137,7 +137,7 @@ pub async fn estimate_uncertainty<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Fetch offer and request using correct method name: get_by_id
     let offer = state
@@ -197,7 +197,7 @@ pub async fn batch_estimate_uncertainty<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Get weights from engine or use defaults
     let weights = if let Some(engine) = &state.matching_engine {
@@ -277,7 +277,7 @@ pub async fn get_uncertainty_status<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let default_config = UncertaintyConfig::from_env();
 
@@ -294,7 +294,7 @@ pub async fn estimate_match_uncertainty<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Fetch the match using get_by_id
     let match_entity = state

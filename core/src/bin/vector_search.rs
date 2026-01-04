@@ -1,6 +1,6 @@
 //! # Vector Similarity Search Playground
 //!
-//! Uses embeddings to find semantically similar medication mappings (RAG).
+//! Uses embeddings to find semantically similar medications (RAG).
 //! Ported from legacy/cmd/playground/vector_search/main.go
 //!
 //! ## Usage
@@ -13,9 +13,9 @@ use std::time::Instant;
 
 use colored::Colorize;
 use pharma_core::ai::{PharmaParser, PharmaParserConfig};
-use pharma_core::domain::MedicationMapping;
+use pharma_core::domain::MedicationMaster;
 use pharma_core::repository::{
-    MedicationMappingRepository, SeaOrmMedicationMappingRepo, create_connection,
+    MedicationMasterRepository, SeaOrmMedicationMasterRepo, create_connection,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -70,8 +70,8 @@ _____________________
 // Similarity Search
 // ============================================================================
 
-struct ScoredMapping {
-    mapping: MedicationMapping,
+struct ScoredMedication {
+    medication: MedicationMaster,
     score: f32,
 }
 
@@ -98,15 +98,15 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 }
 
 fn find_similar(
-    mappings: &[MedicationMapping],
+    medications: &[MedicationMaster],
     query_embedding: &[f32],
     top_k: usize,
-) -> Vec<ScoredMapping> {
-    let mut results: Vec<ScoredMapping> = mappings
+) -> Vec<ScoredMedication> {
+    let mut results: Vec<ScoredMedication> = medications
         .iter()
         .filter_map(|m| {
-            m.get_embedding().map(|emb: Vec<f32>| ScoredMapping {
-                mapping: m.clone(),
+            m.get_embedding().map(|emb: Vec<f32>| ScoredMedication {
+                medication: m.clone(),
                 score: cosine_similarity(query_embedding, &emb),
             })
         })
@@ -150,7 +150,7 @@ async fn main() -> anyhow::Result<()> {
     );
     println!(
         "{}",
-        "║              RAG-based semantic medication mapping search                    ║".green()
+        "║              RAG-based semantic medication search                            ║".green()
     );
     println!(
         "{}",
@@ -168,10 +168,10 @@ async fn main() -> anyhow::Result<()> {
     println!("🗄️  Connecting to database...");
     let db = create_connection(&database_url).await?;
 
-    // Load all medication mappings
-    let repo = SeaOrmMedicationMappingRepo::new(db);
+    // Load all medications
+    let repo = SeaOrmMedicationMasterRepo::new(db);
 
-    let mut all_mappings: Vec<MedicationMapping> = Vec::new();
+    let mut all_medications: Vec<MedicationMaster> = Vec::new();
     let page_size = 1000i64;
     let mut offset = 0i64;
     loop {
@@ -179,13 +179,13 @@ async fn main() -> anyhow::Result<()> {
         if page.is_empty() {
             break;
         }
-        all_mappings.extend(page);
+        all_medications.extend(page);
         offset += page_size;
     }
 
     println!(
-        "📊 Total mappings in DB: {}",
-        all_mappings.len().to_string().yellow()
+        "📊 Total medications in DB: {}",
+        all_medications.len().to_string().yellow()
     );
     println!();
 
@@ -217,7 +217,7 @@ async fn main() -> anyhow::Result<()> {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
     );
 
-    let needs_embedding: Vec<usize> = all_mappings
+    let needs_embedding: Vec<usize> = all_medications
         .iter()
         .enumerate()
         .filter(|(_, m)| m.get_embedding().is_none())
@@ -226,27 +226,32 @@ async fn main() -> anyhow::Result<()> {
 
     if !needs_embedding.is_empty() {
         println!(
-            "  Generating embeddings for {} mappings...",
+            "  Generating embeddings for {} medications...",
             needs_embedding.len().to_string().yellow()
         );
 
-        // Collect Arabic names for batch embedding
-        let arabic_names: Vec<String> = needs_embedding
+        // Collect names for batch embedding
+        let names: Vec<String> = needs_embedding
             .iter()
-            .map(|&i| all_mappings[i].arabic_name.clone())
+            .map(|&i| {
+                all_medications[i]
+                    .canonical_name_ar
+                    .clone()
+                    .unwrap_or_else(|| all_medications[i].canonical_name.clone())
+            })
             .collect();
 
-        let embeddings = parser.embed_batch(&arabic_names).await?;
+        let embeddings = parser.embed_batch(&names).await?;
 
         // Store embeddings
         for (j, emb) in embeddings.into_iter().enumerate() {
             let idx = needs_embedding[j];
-            all_mappings[idx].set_embedding(emb);
-            if let Err(e) = repo.save(&all_mappings[idx]).await {
+            all_medications[idx].set_embedding(emb);
+            if let Err(e) = repo.save(&all_medications[idx]).await {
                 eprintln!(
                     "  {} Failed to save embedding for {}: {}",
                     "⚠".yellow(),
-                    all_mappings[idx].arabic_name,
+                    all_medications[idx].canonical_name,
                     e
                 );
             }
@@ -257,7 +262,7 @@ async fn main() -> anyhow::Result<()> {
             needs_embedding.len()
         );
     } else {
-        println!("  {} All mappings already have embeddings", "✓".green());
+        println!("  {} All medications already have embeddings", "✓".green());
     }
 
     // =========================================================================
@@ -287,21 +292,23 @@ async fn main() -> anyhow::Result<()> {
     println!("  Generating message embedding...");
     let message_embedding = parser.embed(TEST_CONTENT).await?;
 
-    // Find top-K similar mappings
+    // Find top-K similar medications
     let top_k = 10;
-    let similar = find_similar(&all_mappings, &message_embedding, top_k);
+    let similar = find_similar(&all_medications, &message_embedding, top_k);
 
     println!(
-        "Top {} similar mappings (by cosine similarity):",
+        "Top {} similar medications (by cosine similarity):",
         top_k.to_string().green()
     );
     for (i, s) in similar.iter().enumerate() {
+        let ar_name = s.medication.canonical_name_ar.as_deref().unwrap_or("-");
         println!(
-            "  {:2}. [{:.4}] {} => {}",
+            "  {:2}. [{:.4}] {} ({}) => {}",
             i + 1,
             s.score,
-            s.mapping.arabic_name.cyan(),
-            s.mapping.english_name
+            ar_name.cyan(),
+            s.medication.canonical_name,
+            s.medication.strength.as_deref().unwrap_or("-")
         );
     }
 
@@ -325,9 +332,15 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let content_lower = TEST_CONTENT.to_lowercase();
-    let keyword_matches: Vec<&MedicationMapping> = all_mappings
+    let keyword_matches: Vec<&MedicationMaster> = all_medications
         .iter()
-        .filter(|m| content_lower.contains(&m.arabic_name.to_lowercase()))
+        .filter(|m| {
+            content_lower.contains(&m.canonical_name.to_lowercase())
+                || m.canonical_name_ar
+                    .as_ref()
+                    .map(|ar| content_lower.contains(&ar.to_lowercase()))
+                    .unwrap_or(false)
+        })
         .collect();
 
     println!(
@@ -335,18 +348,19 @@ async fn main() -> anyhow::Result<()> {
         keyword_matches.len().to_string().green()
     );
     for m in &keyword_matches {
-        println!("  {} {} => {}", "✓".green(), m.arabic_name, m.english_name);
+        let ar_name = m.canonical_name_ar.as_deref().unwrap_or("-");
+        println!("  {} {} => {}", "✓".green(), ar_name, m.canonical_name);
     }
 
     // Find semantic-only matches
     let keyword_names: std::collections::HashSet<&str> = keyword_matches
         .iter()
-        .map(|m| m.arabic_name.as_str())
+        .map(|m| m.canonical_name.as_str())
         .collect();
 
-    let semantic_only: Vec<&ScoredMapping> = similar
+    let semantic_only: Vec<&ScoredMedication> = similar
         .iter()
-        .filter(|s| !keyword_names.contains(s.mapping.arabic_name.as_str()))
+        .filter(|s| !keyword_names.contains(s.medication.canonical_name.as_str()))
         .collect();
 
     println!();
@@ -355,11 +369,12 @@ async fn main() -> anyhow::Result<()> {
         semantic_only.len().to_string().yellow()
     );
     for s in &semantic_only {
+        let ar_name = s.medication.canonical_name_ar.as_deref().unwrap_or("-");
         println!(
             "  {} {} => {}",
             "+".blue(),
-            s.mapping.arabic_name,
-            s.mapping.english_name
+            ar_name,
+            s.medication.canonical_name
         );
     }
 
@@ -373,7 +388,7 @@ async fn main() -> anyhow::Result<()> {
     );
     println!(
         "{}",
-        "║         🧪 LIVE AI TEST WITH SEMANTIC-FILTERED MAPPINGS                      ║"
+        "║         🧪 LIVE AI TEST WITH SEMANTIC-FILTERED MEDICATIONS                   ║"
             .cyan()
             .bold()
     );
@@ -383,20 +398,20 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Combine keyword + top 5 semantic matches
-    let mut filtered_mappings: Vec<String> = keyword_matches
+    let mut filtered_medications: Vec<String> = keyword_matches
         .iter()
         .map(|m| m.to_prompt_context())
         .collect();
 
     for s in similar.iter().take(5) {
-        if !keyword_names.contains(s.mapping.arabic_name.as_str()) {
-            filtered_mappings.push(s.mapping.to_prompt_context());
+        if !keyword_names.contains(s.medication.canonical_name.as_str()) {
+            filtered_medications.push(s.medication.to_prompt_context());
         }
     }
 
     println!(
-        "Using {} filtered mappings (keyword + top semantic)",
-        filtered_mappings.len().to_string().green()
+        "Using {} filtered medications (keyword + top semantic)",
+        filtered_medications.len().to_string().green()
     );
 
     let start = Instant::now();
@@ -406,15 +421,15 @@ async fn main() -> anyhow::Result<()> {
             Some("Test"),
             "Test",
             None,
-            Some(&filtered_mappings),
+            Some(&filtered_medications),
         )
         .await?;
     let duration = start.elapsed();
 
     println!(
-        "Parsed in {:?} (with {} filtered mappings)",
+        "Parsed in {:?} (with {} filtered medications)",
         duration,
-        filtered_mappings.len()
+        filtered_medications.len()
     );
     println!();
     println!("Results:");

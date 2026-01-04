@@ -153,4 +153,48 @@ impl MedicationMasterRepository for SeaOrmMedicationMasterRepo {
             .map(|c| c as i64)
             .map_err(Error::from)
     }
+
+    async fn get_all(&self, limit: i64, offset: i64) -> Result<Vec<medication_master::Model>> {
+        MedicationMaster::find()
+            .order_by_asc(medication_master::Column::CanonicalName)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&*self.db)
+            .await
+            .map_err(Error::from)
+    }
+
+    async fn find_relevant(
+        &self,
+        content: &str,
+        limit: i64,
+    ) -> Result<Vec<medication_master::Model>> {
+        // Extract potential medication names from content using simple word matching
+        // This is a basic implementation - could be enhanced with NLP
+        let words: Vec<&str> = content.split_whitespace().collect();
+
+        if words.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build a condition that matches any word in the content
+        let mut condition = Condition::any();
+        for word in words.iter().take(20) {
+            // Limit to first 20 words
+            if word.len() >= 3 {
+                // Only match words with 3+ chars
+                let pattern = format!("%{}%", word);
+                condition = condition
+                    .add(medication_master::Column::CanonicalName.like(&pattern))
+                    .add(medication_master::Column::CanonicalNameAr.like(&pattern));
+            }
+        }
+
+        MedicationMaster::find()
+            .filter(condition)
+            .limit(limit as u64)
+            .all(&*self.db)
+            .await
+            .map_err(Error::from)
+    }
 }

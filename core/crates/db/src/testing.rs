@@ -124,7 +124,7 @@ use chrono::Utc;
 use sea_orm::ActiveValue::Set;
 
 use crate::entity::{
-    audit_log, feedback_record, group, match_, match_queue, medication_mapping, offer, raw_message,
+    audit_log, feedback_record, group, match_, match_queue, medication_master, offer, raw_message,
     request, review_queue, weight_history,
 };
 
@@ -334,16 +334,27 @@ pub fn new_test_match_queue(request_id: Uuid) -> match_queue::ActiveModel {
     }
 }
 
-/// Creates a test medication_mapping ActiveModel
-pub fn new_test_medication_mapping(arabic: &str, english: &str) -> medication_mapping::ActiveModel {
+/// Creates a test medication_master ActiveModel
+pub fn new_test_medication_master(
+    canonical_name: &str,
+    arabic_name: &str,
+) -> medication_master::ActiveModel {
     let now = Utc::now();
-    medication_mapping::ActiveModel {
+    medication_master::ActiveModel {
         id: Set(Uuid::new_v4()),
-        arabic_name: Set(arabic.to_string()),
-        english_name: Set(english.to_string()),
-        synonyms: Set(None),
+        canonical_name: Set(canonical_name.to_string()),
+        canonical_name_ar: Set(Some(arabic_name.to_string())),
+        active_ingredient: Set(None),
+        strength: Set(None),
+        dosage_form: Set(None),
+        manufacturer: Set(None),
+        eda_registration: Set(None),
+        therapeutic_class: Set(None),
+        atc_code: Set(None),
+        status: Set(medication_master::MedicationStatus::Active),
         embedding: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
+        created_by: Set(None),
     }
 }

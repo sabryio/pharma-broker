@@ -15,7 +15,7 @@ use uuid::Uuid;
 use super::routes::AppState;
 use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackRecord, MatchStatus};
 use crate::repository::{
-    AuditLogRepository, MedicationAliasModel, MedicationMappingRepository, ReviewQueueRepository,
+    AuditLogRepository, MedicationAliasModel, MedicationMasterRepository, ReviewQueueRepository,
 };
 use crate::ws::{MatchStatusEvent, WsEvent};
 use pharma_db::traits::{MatchReviewItem, MatchReviewStats, OfferSummary, RequestSummary};
@@ -127,7 +127,7 @@ pub async fn list_match_reviews<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Parse status filter if provided
     let status_filter = pagination.status.as_ref().and_then(|s| {
@@ -331,7 +331,7 @@ pub async fn get_match_review<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let m = state
         .match_repo
@@ -492,7 +492,7 @@ pub async fn update_match_review_status<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     tracing::info!(
         match_id = %id,
@@ -776,7 +776,7 @@ pub async fn bulk_update_match_reviews<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let status = parse_action(&req.action)?;
     let mut updated_count = 0;
@@ -954,7 +954,7 @@ pub async fn get_match_review_stats<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let pending = state
         .match_repo
@@ -1013,7 +1013,7 @@ pub async fn re_audit_match<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     tracing::info!(match_id = %id, "Re-auditing match with AI");
 
@@ -1120,7 +1120,7 @@ pub async fn recalculate_confidence<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     tracing::info!(match_id = %id, "Recalculating match confidence");
 
@@ -1257,7 +1257,7 @@ pub async fn update_match_notes<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     tracing::info!(match_id = %id, "Updating match notes");
 
@@ -1311,7 +1311,7 @@ pub async fn undo_match_action<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     tracing::info!(
         match_id = %id,

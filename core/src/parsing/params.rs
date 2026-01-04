@@ -8,7 +8,7 @@ use tokio::sync::broadcast;
 
 use crate::ai::PharmaParser;
 use crate::repository::{
-    AuditLogRepository, GroupRepository, MatchQueueRepository, MedicationMappingRepository,
+    AuditLogRepository, GroupRepository, MatchQueueRepository, MedicationMasterRepository,
     OfferRepository, ParticipantRepository, RawMessageRepository, RequestRepository,
     ReviewQueueRepository,
 };
@@ -61,7 +61,7 @@ pub struct BatchProcessorRepositories {
     /// Request repository for creating requests
     pub request: Arc<dyn RequestRepository>,
     /// Medication mapping repository for RAG context
-    pub medication_mapping: Arc<dyn MedicationMappingRepository>,
+    pub medication_master: Arc<dyn MedicationMasterRepository>,
     /// Review queue repository for low-confidence items
     pub review_queue: Arc<dyn ReviewQueueRepository>,
     /// Group repository for reading group details
@@ -81,7 +81,7 @@ impl BatchProcessorRepositories {
         raw_message: Arc<dyn RawMessageRepository>,
         offer: Arc<dyn OfferRepository>,
         request: Arc<dyn RequestRepository>,
-        medication_mapping: Arc<dyn MedicationMappingRepository>,
+        medication_master: Arc<dyn MedicationMasterRepository>,
         review_queue: Arc<dyn ReviewQueueRepository>,
         group: Arc<dyn GroupRepository>,
         participant: Arc<dyn ParticipantRepository>,
@@ -92,7 +92,7 @@ impl BatchProcessorRepositories {
             raw_message,
             offer,
             request,
-            medication_mapping,
+            medication_master,
             review_queue,
             group,
             participant,

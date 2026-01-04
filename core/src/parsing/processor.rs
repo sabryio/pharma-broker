@@ -17,7 +17,7 @@ use crate::domain::{
     UrgencyLevel,
 };
 use crate::repository::{
-    AuditLogRepository, GroupRepository, MatchQueueRepository, MedicationMappingRepository,
+    AuditLogRepository, GroupRepository, MatchQueueRepository, MedicationMasterRepository,
     OfferRepository, ParticipantRepository, RawMessageRepository, RequestRepository,
     ReviewQueueRepository,
 };
@@ -40,7 +40,7 @@ pub struct BatchProcessor {
     raw_message_repo: Arc<dyn RawMessageRepository>,
     offer_repo: Arc<dyn OfferRepository>,
     request_repo: Arc<dyn RequestRepository>,
-    medication_mapping_repo: Arc<dyn MedicationMappingRepository>,
+    medication_master_repo: Arc<dyn MedicationMasterRepository>,
     review_queue_repo: Arc<dyn ReviewQueueRepository>,
     group_repo: Arc<dyn GroupRepository>,
     participant_repo: Arc<dyn ParticipantRepository>,
@@ -72,7 +72,7 @@ impl BatchProcessor {
             raw_message_repo: repos.raw_message,
             offer_repo: repos.offer,
             request_repo: repos.request,
-            medication_mapping_repo: repos.medication_mapping,
+            medication_master_repo: repos.medication_master,
             review_queue_repo: repos.review_queue,
             group_repo: repos.group,
             participant_repo: repos.participant,
@@ -176,7 +176,7 @@ impl BatchProcessor {
         let mut all_mappings = Vec::new();
         for msg in &messages {
             if let Ok(mappings) = self
-                .medication_mapping_repo
+                .medication_master_repo
                 .find_relevant(&msg.content, 3)
                 .await
             {

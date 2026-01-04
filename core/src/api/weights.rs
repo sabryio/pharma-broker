@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::AuditLog;
 use crate::matching::{ABTestConfig, Weights};
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 use super::routes::AppState;
 
@@ -106,7 +106,7 @@ pub async fn get_weights<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -137,7 +137,7 @@ pub async fn update_weights<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -240,7 +240,7 @@ pub async fn get_scheduler_status<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -272,7 +272,7 @@ pub async fn get_influence<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -302,7 +302,7 @@ pub async fn list_ab_tests<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -338,7 +338,7 @@ pub async fn create_ab_test<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -395,7 +395,7 @@ pub async fn get_ab_test_result<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,
@@ -437,7 +437,7 @@ pub async fn end_ab_test<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = match &state.matching_engine {
         Some(engine) => engine,

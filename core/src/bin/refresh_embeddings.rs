@@ -26,9 +26,9 @@ use std::time::{Duration, Instant};
 
 use colored::Colorize;
 use pharma_core::ai::{PharmaParser, PharmaParserConfig};
-use pharma_core::domain::MedicationMapping;
+use pharma_core::domain::MedicationMaster;
 use pharma_core::repository::{
-    MedicationMappingRepository, SeaOrmMedicationMappingRepo, create_connection,
+    MedicationMasterRepository, SeaOrmMedicationMasterRepo, create_connection,
 };
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -122,7 +122,7 @@ fn classify_error(error: &str) -> EmbeddingError {
 // Seed from JSON
 // ============================================================================
 
-async fn seed_from_json(repo: &SeaOrmMedicationMappingRepo) -> anyhow::Result<usize> {
+async fn seed_from_json(repo: &SeaOrmMedicationMasterRepo) -> anyhow::Result<usize> {
     // Try multiple paths for medications.json
     let paths = [
         MEDICATIONS_JSON,
@@ -156,20 +156,15 @@ async fn seed_from_json(repo: &SeaOrmMedicationMappingRepo) -> anyhow::Result<us
 
     for (arabic_name, entry) in medications {
         // Check if already exists by searching
-        let existing = repo.find_relevant(&arabic_name, 1).await?;
-        let already_exists = existing.iter().any(|m| m.arabic_name == arabic_name);
-
-        if already_exists {
+        let existing = repo.find_by_name(&entry.english).await?;
+        if existing.is_some() {
             skipped += 1;
             continue;
         }
 
-        let mut mapping = MedicationMapping::new(&arabic_name, &entry.english);
-        if !entry.synonyms.is_empty() {
-            mapping.synonyms = Some(entry.synonyms);
-        }
+        let medication = MedicationMaster::new(&entry.english).with_arabic_name(&arabic_name);
 
-        if let Err(e) = repo.save(&mapping).await {
+        if let Err(e) = repo.save(&medication).await {
             eprintln!("    {} Failed to save {}: {}", "⚠".yellow(), arabic_name, e);
         } else {
             created += 1;
@@ -177,7 +172,7 @@ async fn seed_from_json(repo: &SeaOrmMedicationMappingRepo) -> anyhow::Result<us
     }
 
     println!(
-        "  {} Created {} new mappings, skipped {} existing",
+        "  {} Created {} new medications, skipped {} existing",
         "✓".green(),
         created.to_string().green(),
         skipped
@@ -302,7 +297,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("🗄️  Connecting to database...");
     let db = create_connection(&database_url).await?;
-    let repo = SeaOrmMedicationMappingRepo::new(db);
+    let repo = SeaOrmMedicationMasterRepo::new(db);
 
     // Seed from JSON if requested or if database is empty
     let initial_count = repo.count().await?;
@@ -342,16 +337,28 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Get statistics
-    let total_count = repo.count().await?;
-    let needs_embedding_count = repo.count_needing_embeddings().await?;
+    // Get all medications and count those needing embeddings
+    let mut all_medications: Vec<MedicationMaster> = Vec::new();
+    let page_size = 1000i64;
+    let mut offset = 0i64;
+    loop {
+        let page = repo.get_all(page_size, offset).await?;
+        if page.is_empty() {
+            break;
+        }
+        all_medications.extend(page);
+        offset += page_size;
+    }
+
+    let total_count = all_medications.len() as i64;
+    let needs_embedding_count = all_medications
+        .iter()
+        .filter(|m| m.get_embedding().is_none())
+        .count() as i64;
     let has_embedding_count = total_count - needs_embedding_count;
 
     println!();
-    println!(
-        "📊 Total medication mappings: {}",
-        total_count.to_string().yellow()
-    );
+    println!("📊 Total medications: {}", total_count.to_string().yellow());
     println!(
         "  ✓ With embeddings: {}",
         has_embedding_count.to_string().green()
@@ -362,53 +369,31 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Determine what to process
-    let mappings_to_process: Vec<MedicationMapping> = if force_refresh {
+    let medications_to_process: Vec<MedicationMaster> = if force_refresh {
         println!(
             "  {} Force refresh enabled - regenerating ALL embeddings",
             "⚡".yellow()
         );
-        // Load all mappings for force refresh
-        let mut all_mappings = Vec::new();
-        let page_size = 1000i64;
-        let mut offset = 0i64;
-        loop {
-            let page = repo.get_all(page_size, offset).await?;
-            if page.is_empty() {
-                break;
-            }
-            all_mappings.extend(page);
-            offset += page_size;
-        }
-        all_mappings
+        all_medications
     } else {
-        // Delta update: only get mappings without embeddings
-        let mut mappings = Vec::new();
-        let page_size = 1000i64;
-        loop {
-            let page = repo.get_needing_embeddings(page_size).await?;
-            if page.is_empty() {
-                break;
-            }
-            let page_len = page.len();
-            mappings.extend(page);
-            if (page_len as i64) < page_size {
-                break;
-            }
-        }
-        mappings
+        // Delta update: only get medications without embeddings
+        all_medications
+            .into_iter()
+            .filter(|m| m.get_embedding().is_none())
+            .collect()
     };
 
-    let process_count = mappings_to_process.len();
+    let process_count = medications_to_process.len();
 
     if process_count == 0 {
         println!();
-        println!("{} All mappings already have embeddings!", "✓".green());
+        println!("{} All medications already have embeddings!", "✓".green());
         return Ok(());
     }
 
     println!();
     println!(
-        "🎯 Will process {} mappings",
+        "🎯 Will process {} medications",
         process_count.to_string().yellow()
     );
 
@@ -440,11 +425,13 @@ async fn main() -> anyhow::Result<()> {
     let repo = Arc::new(repo);
 
     // Prepare texts for embedding (with truncation for token limits)
-    let texts_and_indices: Vec<(String, usize)> = mappings_to_process
+    // Use Arabic name if available, otherwise canonical name
+    let texts_and_indices: Vec<(String, usize)> = medications_to_process
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let text = truncate_to_token_limit(&m.arabic_name, MAX_TOKEN_LENGTH);
+            let name = m.canonical_name_ar.as_ref().unwrap_or(&m.canonical_name);
+            let text = truncate_to_token_limit(name, MAX_TOKEN_LENGTH);
             (text, i)
         })
         .collect();
@@ -460,7 +447,7 @@ async fn main() -> anyhow::Result<()> {
     let generated_count = Arc::new(AtomicUsize::new(0));
     let error_count = Arc::new(AtomicUsize::new(0));
     let rate_limit_count = Arc::new(AtomicUsize::new(0));
-    let mappings_to_process = Arc::new(Mutex::new(mappings_to_process));
+    let medications_to_process = Arc::new(Mutex::new(medications_to_process));
 
     // Create batches
     let batches: Vec<(usize, Vec<String>, Vec<usize>)> = texts_and_indices
@@ -483,7 +470,7 @@ async fn main() -> anyhow::Result<()> {
     for (batch_start, batch_texts, indices) in batches {
         let parser = Arc::clone(&parser);
         let repo = Arc::clone(&repo);
-        let mappings = Arc::clone(&mappings_to_process);
+        let medications = Arc::clone(&medications_to_process);
         let generated_count = Arc::clone(&generated_count);
         let error_count = Arc::clone(&error_count);
         let rate_limit_count = Arc::clone(&rate_limit_count);
@@ -498,19 +485,19 @@ async fn main() -> anyhow::Result<()> {
                 Ok(embeddings) => {
                     // Process each embedding
                     for (idx, emb) in indices.iter().zip(embeddings.into_iter()) {
-                        // Update mapping with embedding
-                        let mut mapping = {
-                            let m = mappings.lock().await;
+                        // Update medication with embedding
+                        let mut medication = {
+                            let m = medications.lock().await;
                             m[*idx].clone()
                         };
-                        mapping.set_embedding(emb);
+                        medication.set_embedding(emb);
 
                         // Save to database
-                        if let Err(e) = repo.save(&mapping).await {
+                        if let Err(e) = repo.save(&medication).await {
                             eprintln!(
                                 "    {} Failed to save {}: {}",
                                 "⚠".yellow(),
-                                mapping.arabic_name,
+                                medication.canonical_name,
                                 e
                             );
                             error_count.fetch_add(1, Ordering::Relaxed);
@@ -607,17 +594,10 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Final statistics
-    let new_needs_embedding = repo.count_needing_embeddings().await?;
+    let new_total = repo.count().await?;
     println!();
     println!("📊 Final Status:");
-    println!(
-        "  ✓ With embeddings: {}",
-        (total_count - new_needs_embedding).to_string().green()
-    );
-    println!(
-        "  ○ Still need embeddings: {}",
-        new_needs_embedding.to_string().yellow()
-    );
+    println!("  ✓ Total medications: {}", new_total.to_string().green());
 
     println!();
     println!("🔌 Circuit Breaker: {:?}", parser.circuit_state());

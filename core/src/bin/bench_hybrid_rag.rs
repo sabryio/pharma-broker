@@ -13,9 +13,9 @@ use std::time::{Duration, Instant};
 
 use colored::Colorize;
 use pharma_core::ai::{PharmaParser, PharmaParserConfig};
-use pharma_core::domain::{MedicationMapping, RawMessage};
+use pharma_core::domain::{MedicationMaster, RawMessage};
 use pharma_core::repository::{
-    MedicationMappingRepository, SeaOrmMedicationMappingRepo, create_connection,
+    MedicationMasterRepository, SeaOrmMedicationMasterRepo, create_connection,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
@@ -149,26 +149,36 @@ fn estimate_prompt_tokens(
     text_len / 4
 }
 
-/// Filter mappings relevant to the messages (hybrid RAG simulation)
-fn filter_relevant_mappings(
+/// Filter medications relevant to the messages (hybrid RAG simulation)
+fn filter_relevant_medications(
     messages: &[RawMessage],
-    all_mappings: &[MedicationMapping],
+    all_medications: &[MedicationMaster],
 ) -> Vec<String> {
     // Simple keyword-based filtering (similar to Go's hybrid filtering)
     // In production, this would use embeddings/semantic search
     let mut relevant = Vec::new();
     let message_text: String = messages.iter().map(|m| m.content.as_str()).collect();
 
-    for mapping in all_mappings {
+    for medication in all_medications {
         // Check if Arabic name appears in any message
-        if message_text.contains(&mapping.arabic_name) {
-            relevant.push(mapping.to_prompt_context());
+        if let Some(ar_name) = &medication.canonical_name_ar {
+            if message_text.contains(ar_name) {
+                relevant.push(medication.to_prompt_context());
+            }
+        }
+        // Also check canonical name
+        if message_text.contains(&medication.canonical_name) {
+            relevant.push(medication.to_prompt_context());
         }
     }
 
+    // Deduplicate
+    relevant.sort();
+    relevant.dedup();
+
     // If no exact matches, include top N by similarity (fallback)
     if relevant.is_empty() {
-        relevant = all_mappings
+        relevant = all_medications
             .iter()
             .take(messages.len() * 10)
             .map(|m| m.to_prompt_context())
@@ -205,7 +215,7 @@ async fn main() -> anyhow::Result<()> {
     );
     println!(
         "{}",
-        "║              Measuring performance impact of filtered vs full mappings       ║".green()
+        "║              Measuring performance impact of filtered vs full medications    ║".green()
     );
     println!(
         "{}",
@@ -223,16 +233,16 @@ async fn main() -> anyhow::Result<()> {
     println!("🗄️  Connecting to database...");
     let db = create_connection(&database_url).await?;
 
-    // Load all medication mappings
-    let repo = SeaOrmMedicationMappingRepo::new(db);
+    // Load all medications
+    let repo = SeaOrmMedicationMasterRepo::new(db);
     let count = repo.count().await?;
     println!(
-        "📊 Total mappings in database: {}",
+        "📊 Total medications in database: {}",
         count.to_string().yellow()
     );
 
-    // Fetch all mappings (paginated)
-    let mut all_mappings: Vec<MedicationMapping> = Vec::new();
+    // Fetch all medications (paginated)
+    let mut all_medications: Vec<MedicationMaster> = Vec::new();
     let page_size = 1000i64;
     let mut offset = 0i64;
     loop {
@@ -240,14 +250,17 @@ async fn main() -> anyhow::Result<()> {
         if page.is_empty() {
             break;
         }
-        all_mappings.extend(page);
+        all_medications.extend(page);
         offset += page_size;
     }
 
     // Create full mappings list for prompts
-    let full_mappings: Vec<String> = all_mappings.iter().map(|m| m.to_prompt_context()).collect();
+    let full_mappings: Vec<String> = all_medications
+        .iter()
+        .map(|m| m.to_prompt_context())
+        .collect();
 
-    println!("   Loaded {} mappings", all_mappings.len());
+    println!("   Loaded {} medications", all_medications.len());
 
     // Create AI parser
     let ai_url = env::var("AI_BASE_URL")
@@ -307,10 +320,10 @@ async fn main() -> anyhow::Result<()> {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".dimmed()
     );
 
-    // Filter mappings relevant to test messages
-    let filtered_mappings = filter_relevant_mappings(&test_messages, &all_mappings);
+    // Filter medications relevant to test messages
+    let filtered_mappings = filter_relevant_medications(&test_messages, &all_medications);
     println!(
-        "  Filtered to {} relevant mappings",
+        "  Filtered to {} relevant medications",
         filtered_mappings.len().to_string().green()
     );
 

@@ -19,7 +19,7 @@ use crate::params::{
 };
 
 // Re-export ID newtypes for consumers
-pub use crate::entity::{GroupJid, MatchId, MedicationMappingId, OfferId, RawMessageId, RequestId};
+pub use crate::entity::{GroupJid, MatchId, OfferId, RawMessageId, RequestId};
 
 // Re-export entity types for consumers
 pub use crate::entity::audit_log::Model as AuditLogModel;
@@ -31,7 +31,6 @@ pub use crate::entity::match_queue::Model as MatchQueueModel;
 pub use crate::entity::match_queue::QueueStatus;
 pub use crate::entity::medication_alias::CurationStatus;
 pub use crate::entity::medication_alias::Model as MedicationAliasModel;
-pub use crate::entity::medication_mapping::Model as MedicationMappingModel;
 pub use crate::entity::medication_master::MedicationStatus;
 pub use crate::entity::medication_master::Model as MedicationMasterModel;
 pub use crate::entity::offer::Model as OfferModel;
@@ -348,24 +347,6 @@ pub struct ReviewQueueStats {
     pub skipped: i64,
 }
 
-/// Medication mapping repository trait
-#[async_trait]
-pub trait MedicationMappingRepository: Send + Sync {
-    async fn save(&self, mapping: &MedicationMappingModel) -> Result<MedicationMappingModel>;
-    async fn find_relevant(&self, query: &str, limit: i64) -> Result<Vec<MedicationMappingModel>>;
-    async fn find_similar(
-        &self,
-        embedding: &[f32],
-        limit: i64,
-    ) -> Result<Vec<MedicationMappingModel>>;
-    async fn get_all(&self, limit: i64, offset: i64) -> Result<Vec<MedicationMappingModel>>;
-    async fn count(&self) -> Result<i64>;
-    /// Get mappings that need embeddings (embedding is NULL)
-    async fn get_needing_embeddings(&self, limit: i64) -> Result<Vec<MedicationMappingModel>>;
-    /// Count mappings that need embeddings
-    async fn count_needing_embeddings(&self) -> Result<i64>;
-}
-
 /// Audit log repository trait
 #[async_trait]
 pub trait AuditLogRepository: Send + Sync {
@@ -431,6 +412,10 @@ pub trait MedicationMasterRepository: Send + Sync {
     async fn get_by_id(&self, id: Uuid) -> Result<Option<MedicationMasterModel>>;
     async fn find_by_name(&self, name: &str) -> Result<Option<MedicationMasterModel>>;
     async fn search(&self, name: &str, limit: i64) -> Result<Vec<MedicationMasterModel>>;
+    /// Get all medication masters with pagination
+    async fn get_all(&self, limit: i64, offset: i64) -> Result<Vec<MedicationMasterModel>>;
+    /// Find relevant medications for RAG context
+    async fn find_relevant(&self, content: &str, limit: i64) -> Result<Vec<MedicationMasterModel>>;
     /// Fuzzy search using trigram similarity (pg_trgm)
     async fn search_fuzzy(
         &self,

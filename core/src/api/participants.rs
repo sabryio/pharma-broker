@@ -11,7 +11,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use super::routes::AppState;
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 use pharma_db::traits::ParticipantStats;
 
 // ============================================================================
@@ -42,7 +42,7 @@ pub async fn get_participant_stats<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Get participant info
     let participant = state
@@ -82,7 +82,7 @@ pub async fn get_participant_by_jid<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Get participant by JID
     let participant = state

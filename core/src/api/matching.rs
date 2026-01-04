@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use super::reparse::ItemType;
 use super::routes::AppState;
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 // ============================================================================
 // Request/Response Types
@@ -48,7 +48,7 @@ pub async fn rematch_item<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     tracing::info!(
         item_id = %req.item_id,

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use super::routes::AppState;
 use crate::matching::EmbeddingCacheStatsSnapshot;
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 // =============================================================================
 // Response Types
@@ -62,7 +62,7 @@ pub async fn get_cache_stats<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -85,7 +85,7 @@ pub async fn refresh_cache<RQ, A, MM>(State(state): State<AppState<RQ, A, MM>>) 
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -95,21 +95,23 @@ where
             .into_response();
     };
 
-    // Fetch all mappings from repository (use large limit to get all)
-    match state.medication_mapping_repo.get_all(100_000, 0).await {
-        Ok(mappings) => {
-            engine.refresh_embedding_cache(&mappings);
+    // Fetch all medication masters from repository (use large limit to get all)
+    match state.medication_master_repo.search("", 100_000).await {
+        Ok(masters) => {
+            engine.refresh_embedding_cache(&masters);
 
             Json(serde_json::json!({
-                "message": "Embedding cache refreshed",
-                "mappings_loaded": mappings.len(),
+                "message": "Embedding cache refreshed from medication_master",
+                "masters_loaded": masters.len(),
                 "stats": engine.get_embedding_cache_stats()
             }))
             .into_response()
         }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": format!("Failed to fetch mappings: {}", e)})),
+            Json(
+                serde_json::json!({"error": format!("Failed to fetch medication masters: {}", e)}),
+            ),
         )
             .into_response(),
     }
@@ -120,7 +122,7 @@ pub async fn clear_cache<RQ, A, MM>(State(state): State<AppState<RQ, A, MM>>) ->
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -146,7 +148,7 @@ pub async fn lookup_term<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -176,7 +178,7 @@ pub async fn check_synonyms<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -205,7 +207,7 @@ pub async fn get_embedding<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (

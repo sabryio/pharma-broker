@@ -43,7 +43,7 @@ use pharma_core::parsing::{
 use pharma_core::repository::{
     GroupRepository, MatchRepository, OfferRepository, RawMessageRepository, RequestRepository,
     SeaOrmAuditLogRepo, SeaOrmGroupRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo,
-    SeaOrmMedicationMappingRepo, SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo,
+    SeaOrmMedicationMasterRepo, SeaOrmOfferRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo,
     SeaOrmReviewQueueRepo, create_connection,
 };
 use pharma_core::ws::WsEvent;
@@ -381,7 +381,7 @@ async fn main() -> anyhow::Result<()> {
     let match_repo = Arc::new(SeaOrmMatchRepo::new(db.clone()));
     let group_repo = Arc::new(SeaOrmGroupRepo::new(db.clone()));
     let participant_repo = Arc::new(SeaOrmParticipantRepo::new(db.clone()));
-    let medication_mapping_repo = Arc::new(SeaOrmMedicationMappingRepo::new(db.clone()));
+    let medication_master_repo = Arc::new(SeaOrmMedicationMasterRepo::new(db.clone()));
     let review_queue_repo = Arc::new(SeaOrmReviewQueueRepo::new(db.clone()));
     let audit_log_repo = Arc::new(SeaOrmAuditLogRepo::new(db.clone()));
     let match_queue_repo = Arc::new(SeaOrmMatchQueueRepo::new(db.clone()));
@@ -482,7 +482,7 @@ async fn main() -> anyhow::Result<()> {
             raw_message: raw_message_repo.clone(),
             offer: offer_repo.clone(),
             request: request_repo.clone(),
-            medication_mapping: medication_mapping_repo,
+            medication_master: medication_master_repo,
             review_queue: review_queue_repo,
             audit_log: audit_log_repo,
             match_queue: match_queue_repo,

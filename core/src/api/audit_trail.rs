@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use super::routes::AppState;
 use crate::matching::{AuditEntry, AuditTrailConfig};
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 // =============================================================================
 // Request/Response Types
@@ -65,7 +65,7 @@ pub async fn get_audit_trail<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -92,7 +92,7 @@ pub async fn update_audit_trail<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -132,7 +132,7 @@ pub async fn toggle_audit_trail<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -158,7 +158,7 @@ pub async fn get_match_history<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -193,7 +193,7 @@ pub async fn get_recent_actions<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (

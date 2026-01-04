@@ -17,7 +17,6 @@ pub mod match_;
 pub mod match_audit_record;
 pub mod match_queue;
 pub mod medication_alias;
-pub mod medication_mapping;
 pub mod medication_master;
 pub mod offer;
 pub mod participant;
@@ -36,7 +35,6 @@ pub use match_::Entity as Match;
 pub use match_audit_record::Entity as MatchAuditRecord;
 pub use match_queue::Entity as MatchQueue;
 pub use medication_alias::Entity as MedicationAlias;
-pub use medication_mapping::Entity as MedicationMapping;
 pub use medication_master::Entity as MedicationMaster;
 pub use offer::Entity as Offer;
 pub use participant::Entity as Participant;
@@ -48,6 +46,6 @@ pub use weight_history::Entity as WeightHistory;
 
 // Re-export common types for convenience
 pub use common::{ItemStatus, MatchStatus, UrgencyLevel};
-pub use ids::{GroupJid, MatchId, MedicationMappingId, OfferId, RawMessageId, RequestId, UserJid};
+pub use ids::{GroupJid, MatchId, OfferId, RawMessageId, RequestId, UserJid};
 pub use medication_alias::CurationStatus;
 pub use medication_master::MedicationStatus;

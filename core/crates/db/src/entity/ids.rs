@@ -158,11 +158,6 @@ define_entity_id!(
     RawMessageId
 );
 
-define_entity_id!(
-    /// Unique identifier for a MedicationMapping entity
-    MedicationMappingId
-);
-
 // =============================================================================
 // WhatsApp-specific IDs
 // =============================================================================

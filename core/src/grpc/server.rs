@@ -32,7 +32,7 @@ use crate::matching::MatchingEngine;
 use crate::matching::MedicationResolver;
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, FindDuplicateParams, GroupRepository,
-    MatchQueueRepository, MatchRepository, MedicationMappingRepository, OfferRepository,
+    MatchQueueRepository, MatchRepository, MedicationMasterRepository, OfferRepository,
     ParticipantRepository, RawMessageRepository, RequestRepository, ReviewQueueRepository,
     SemanticDuplicateParams,
 };
@@ -59,7 +59,7 @@ where
     pub review_queue_repo: Arc<RQ>,
     pub audit_log_repo: Arc<A>,
     pub match_queue_repo: Arc<MQ>,
-    pub medication_mapping_repo: Arc<dyn MedicationMappingRepository + Send + Sync>,
+    pub medication_master_repo: Arc<dyn MedicationMasterRepository + Send + Sync>,
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
     pub ai_client: Arc<PharmaParser>,
     pub ws_tx: broadcast::Sender<WsEvent>,
@@ -96,7 +96,7 @@ where
             review_queue_repo: repos.review_queue,
             audit_log_repo: repos.audit_log,
             match_queue_repo: repos.match_queue,
-            medication_mapping_repo: repos.medication_mapping,
+            medication_master_repo: repos.medication_master,
             match_repo: repos.match_repo,
             ai_client: deps.ai_client,
             ws_tx: deps.ws_tx,
@@ -353,7 +353,7 @@ where
         let audit_log_repo = self.audit_log_repo.clone();
         let auto_action = self.auto_action.clone();
         let match_queue_repo = self.match_queue_repo.clone();
-        let medication_mapping_repo = self.medication_mapping_repo.clone();
+        let medication_master_repo = self.medication_master_repo.clone();
         let medication_resolver = self.medication_resolver.clone();
 
         tokio::spawn(async move {
@@ -361,7 +361,7 @@ where
 
             // Step 5a: Fetch medication mappings (RAG-Lite)
             let mappings_vec: Vec<String> =
-                match medication_mapping_repo.find_relevant(&content, 5).await {
+                match medication_master_repo.find_relevant(&content, 5).await {
                     Ok(m) => m.into_iter().map(|map| map.to_prompt_context()).collect(),
                     Err(e) => {
                         tracing::warn!(error = %e, "Failed to fetch medication mappings");

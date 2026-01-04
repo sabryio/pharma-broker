@@ -35,7 +35,7 @@ use uuid::Uuid;
 
 use crate::api::routes::AppState;
 use crate::domain::{Match, Offer, Request};
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 /// Payload for match status change events
 #[derive(Debug, Clone, Serialize)]
 pub struct MatchStatusEvent {
@@ -181,7 +181,7 @@ pub async fn ws_handler<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let auth_config = WsAuthConfig::from_env();
 
@@ -241,7 +241,7 @@ async fn handle_socket<RQ, A, MM>(
 ) where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Increment connection count
     state.active_connections.fetch_add(1, Ordering::SeqCst);

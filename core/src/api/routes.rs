@@ -23,9 +23,8 @@ use crate::ai::PharmaParser;
 use crate::matching::{AliasLearner, MatchingEngine};
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
-    MedicationAliasRepository, MedicationMappingRepository, MedicationMasterRepository,
-    OfferRepository, ParticipantRepository, RawMessageRepository, RequestRepository,
-    ReviewQueueRepository,
+    MedicationAliasRepository, MedicationMasterRepository, OfferRepository, ParticipantRepository,
+    RawMessageRepository, RequestRepository, ReviewQueueRepository,
 };
 use crate::ws::{self, WsEvent};
 
@@ -34,7 +33,7 @@ pub struct AppState<RQ, A, MM>
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     pub offer_repo: Arc<dyn OfferRepository + Send + Sync>,
     pub request_repo: Arc<dyn RequestRepository + Send + Sync>,
@@ -45,8 +44,7 @@ where
     pub raw_message_repo: Arc<dyn RawMessageRepository + Send + Sync>,
     pub review_queue_repo: Arc<RQ>,
     pub audit_log_repo: Arc<A>,
-    pub medication_mapping_repo: Arc<MM>,
-    pub medication_master_repo: Arc<dyn MedicationMasterRepository + Send + Sync>,
+    pub medication_master_repo: Arc<MM>,
     pub medication_alias_repo: Arc<dyn MedicationAliasRepository + Send + Sync>,
     pub match_queue_repo: Arc<dyn MatchQueueRepository + Send + Sync>,
     pub matching_engine: Option<Arc<MatchingEngine>>,
@@ -61,7 +59,7 @@ impl<RQ, A, MM> Clone for AppState<RQ, A, MM>
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     fn clone(&self) -> Self {
         Self {
@@ -74,7 +72,6 @@ where
             raw_message_repo: self.raw_message_repo.clone(),
             review_queue_repo: self.review_queue_repo.clone(),
             audit_log_repo: self.audit_log_repo.clone(),
-            medication_mapping_repo: self.medication_mapping_repo.clone(),
             medication_master_repo: self.medication_master_repo.clone(),
             medication_alias_repo: self.medication_alias_repo.clone(),
             match_queue_repo: self.match_queue_repo.clone(),
@@ -93,7 +90,7 @@ pub fn create_router<RQ, A, MM>(state: AppState<RQ, A, MM>) -> Router
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     Router::new()
         // Health checks
@@ -487,7 +484,7 @@ async fn metrics_handler<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     if let Some(handle) = &state.metrics_handle {
         handle.render()

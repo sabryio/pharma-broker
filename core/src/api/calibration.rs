@@ -10,7 +10,7 @@ use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 
 use crate::matching::{CalibrationConfig, CalibrationReport};
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 use super::routes::AppState;
 
@@ -82,7 +82,7 @@ pub async fn get_calibration<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -106,7 +106,7 @@ pub async fn update_calibration<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -151,7 +151,7 @@ pub async fn reset_calibration<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -176,7 +176,7 @@ pub async fn toggle_calibration<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -206,7 +206,7 @@ pub async fn update_smoothing<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -241,7 +241,7 @@ pub async fn calibrate_score<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,

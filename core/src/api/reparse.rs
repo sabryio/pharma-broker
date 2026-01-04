@@ -10,7 +10,7 @@ use uuid::Uuid;
 use super::routes::AppState;
 use crate::ai::{Intent, ParsedItem};
 use crate::domain::{AuditAction, AuditLog, EntityType};
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 use crate::ws::WsEvent;
 
 // ============================================================================
@@ -80,7 +80,7 @@ pub async fn reparse_item<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Get the raw message content based on item type
     let (raw_message_id, previous_medication, group_id, participant_id) = match req.item_type {

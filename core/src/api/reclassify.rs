@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use super::routes::AppState;
 use crate::domain::{AuditAction, AuditLog, EntityType};
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 use crate::ws::WsEvent;
 use pharma_db::entity::common::ItemStatus;
 use pharma_db::entity::offer::Model as OfferModel;
@@ -99,7 +99,7 @@ pub async fn reclassify_item<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Validate that source and target types are different
     if req.source_type == req.target_type {
@@ -173,7 +173,7 @@ pub async fn get_item<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     match item_type.to_lowercase().as_str() {
         "offer" => {
@@ -215,7 +215,7 @@ async fn reclassify_offer_to_request<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Get the original offer
     let offer = state
@@ -294,7 +294,7 @@ async fn reclassify_request_to_offer<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     // Get the original request
     let request = state

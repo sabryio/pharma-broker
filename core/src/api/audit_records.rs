@@ -21,7 +21,7 @@ use crate::matching::{
     AuditRecorderStatsSnapshot, ClientMetadata, FrontendAuditRecord, MatchAuditRecord,
     ReplayContext,
 };
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 // =============================================================================
 // Request/Response Types
@@ -147,7 +147,7 @@ pub async fn list_audit_records<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -197,7 +197,7 @@ pub async fn get_audit_record<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -235,7 +235,7 @@ pub async fn update_audit_review<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -270,7 +270,7 @@ pub async fn get_audit_recorder_status<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -306,7 +306,7 @@ pub async fn get_session_records<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let engine = state.matching_engine.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,

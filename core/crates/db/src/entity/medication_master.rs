@@ -2,6 +2,7 @@
 //!
 //! Part of the Medication Curation System (Phase 1)
 
+use pgvector::Vector as PgVector;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -128,5 +129,34 @@ impl Model {
             Some(s) => format!("{} {}", self.canonical_name, s),
             None => self.canonical_name.clone(),
         }
+    }
+
+    /// Get embedding as Vec<f32>
+    pub fn get_embedding(&self) -> Option<Vec<f32>> {
+        self.embedding.as_ref().map(|e| e.as_slice().to_vec())
+    }
+
+    /// Set embedding from Vec<f32>
+    pub fn set_embedding(&mut self, embedding: Vec<f32>) {
+        self.embedding = Some(pgvector::Vector::from(embedding));
+    }
+
+    /// Convert to prompt context string for AI parsing
+    pub fn to_prompt_context(&self) -> String {
+        let mut parts = vec![self.canonical_name.clone()];
+
+        if let Some(ar) = &self.canonical_name_ar {
+            parts.push(format!("({})", ar));
+        }
+
+        if let Some(strength) = &self.strength {
+            parts.push(format!("[{}]", strength));
+        }
+
+        if let Some(ingredient) = &self.active_ingredient {
+            parts.push(format!("- {}", ingredient));
+        }
+
+        parts.join(" ")
     }
 }

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::routes::AppState;
 use crate::matching::{MatchFilterConfig, MatchFilterStatsSnapshot};
-use crate::repository::{AuditLogRepository, MedicationMappingRepository, ReviewQueueRepository};
+use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 
 // =============================================================================
 // Response Types
@@ -42,7 +42,7 @@ pub async fn get_match_filter<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -68,7 +68,7 @@ pub async fn update_match_filter<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -108,7 +108,7 @@ pub async fn toggle_stale_filter<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -134,7 +134,7 @@ pub async fn toggle_same_sender<RQ, A, MM>(
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (
@@ -157,7 +157,7 @@ pub async fn reset_stats<RQ, A, MM>(State(state): State<AppState<RQ, A, MM>>) ->
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
-    MM: MedicationMappingRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
 {
     let Some(engine) = &state.matching_engine else {
         return (

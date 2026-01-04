@@ -54,7 +54,7 @@ pub struct SchedulerStats {
     pub last_run: Option<DateTime<Utc>>,
     pub last_status: JobStatus,
 }
-use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackStats, MedicationMapping};
+use crate::domain::{AuditAction, AuditLog, EntityType, FeedbackStats, MedicationMaster};
 use crate::domain::{Match as MatchEntity, Offer, Request};
 use crate::notify::MatchNotifier;
 
@@ -1258,12 +1258,12 @@ impl MatchingEngine {
     // Embedding Cache (Medication Embeddings)
     // =========================================================================
 
-    /// Refresh the embedding cache from medication mappings
-    pub fn refresh_embedding_cache(&self, mappings: &[MedicationMapping]) {
-        self.embedding_cache.refresh(mappings);
+    /// Refresh the embedding cache from medication master records
+    pub fn refresh_embedding_cache(&self, masters: &[MedicationMaster]) {
+        self.embedding_cache.refresh(masters);
         tracing::info!(
-            count = mappings.len(),
-            "Refreshed embedding cache from medication mappings"
+            count = masters.len(),
+            "Refreshed embedding cache from medication_master"
         );
     }
 
@@ -2099,17 +2099,25 @@ mod tests {
 
         assert!(engine.is_embedding_cache_empty());
 
-        let mappings = vec![MedicationMapping {
+        let masters = vec![MedicationMaster {
             id: Uuid::new_v4(),
-            arabic_name: "بروفين".to_string(),
-            english_name: "Brufen".to_string(),
-            synonyms: Some(vec!["Ibuprofen".to_string()]),
+            canonical_name: "Brufen".to_string(),
+            canonical_name_ar: Some("بروفين".to_string()),
+            active_ingredient: Some("Ibuprofen".to_string()),
+            strength: Some("400mg".to_string()),
+            dosage_form: None,
+            manufacturer: None,
+            eda_registration: None,
+            therapeutic_class: None,
+            atc_code: None,
+            status: pharma_db::entity::medication_master::MedicationStatus::Active,
             embedding: Some(pgvector::Vector::from(vec![0.1, 0.2, 0.3])),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            created_by: None,
         }];
 
-        engine.refresh_embedding_cache(&mappings);
+        engine.refresh_embedding_cache(&masters);
 
         assert!(!engine.is_embedding_cache_empty());
 
