@@ -1269,12 +1269,11 @@ pub fn parse_root_array_scale(
         let (spans, used_parallel_indexer) = iter_root_object_pair_spans(data, s0, e0, opt, false);
         let elements = spans.len();
 
-        if let Some(keys) = opt.scale_target_keys.as_ref() {
-            if !keys.is_empty() {
-                if let Some((v, plan)) = try_nested_target_split(data, &spans, keys, opt) {
-                    return Ok((v, plan));
-                }
-            }
+        if let Some(keys) = opt.scale_target_keys.as_ref()
+            && !keys.is_empty()
+            && let Some((v, plan)) = try_nested_target_split(data, &spans, keys, opt)
+        {
+            return Ok((v, plan));
         }
 
         let mut structural: usize = 0;

@@ -404,8 +404,7 @@ mod tests {
         let mut depth_brace: i64 = 0;
         let mut depth_bracket: i64 = 1;
 
-        for pos in (start + 1)..(end - 1) {
-            let ch = data[pos];
+        for (pos, &ch) in data.iter().enumerate().take(end - 1).skip(start + 1) {
             if in_string {
                 if escape {
                     escape = false;
@@ -441,8 +440,7 @@ mod tests {
         let mut depth_brace: i64 = 1;
         let mut depth_bracket: i64 = 0;
 
-        for pos in (start + 1)..(end - 1) {
-            let ch = data[pos];
+        for (pos, &ch) in data.iter().enumerate().take(end - 1).skip(start + 1) {
             if in_string {
                 if escape {
                     escape = false;

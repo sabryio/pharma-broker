@@ -78,10 +78,10 @@ pub fn schema_match_score(value: &JsonValue, schema: Option<&JsonValue>) -> Opti
         let mut good = 0usize;
         for (k, t) in types.iter() {
             checks += 1;
-            if let Some((_, v2)) = obj.iter().find(|(kk, _)| kk == k) {
-                if type_ok(v2, t) {
-                    good += 1;
-                }
+            if let Some((_, v2)) = obj.iter().find(|(kk, _)| kk == k)
+                && type_ok(v2, t)
+            {
+                good += 1;
             }
         }
         if checks == 0 {

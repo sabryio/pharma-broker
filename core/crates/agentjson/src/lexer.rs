@@ -45,13 +45,12 @@ fn read_string(bytes: &[u8], mut i: usize, quote: u8) -> (Token, usize) {
                 b'u' => {
                     if i + 4 < bytes.len() {
                         let hex = &bytes[i + 1..i + 5];
-                        if let Ok(hs) = std::str::from_utf8(hex) {
-                            if let Ok(v) = u16::from_str_radix(hs, 16) {
-                                if let Some(c) = char::from_u32(v as u32) {
-                                    out.push(c);
-                                    i += 4;
-                                }
-                            }
+                        if let Ok(hs) = std::str::from_utf8(hex)
+                            && let Ok(v) = u16::from_str_radix(hs, 16)
+                            && let Some(c) = char::from_u32(v as u32)
+                        {
+                            out.push(c);
+                            i += 4;
                         }
                     }
                 }

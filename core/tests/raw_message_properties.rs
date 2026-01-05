@@ -1765,6 +1765,7 @@ proptest! {
 #[derive(Debug, Clone)]
 struct BatchProcessorTestMessage {
     id: Uuid,
+    #[allow(unused)]
     content: String,
     processed_at: Option<DateTime<Utc>>,
     error: Option<String>,
@@ -1789,6 +1790,7 @@ impl BatchProcessorTestMessage {
         }
     }
 
+    #[allow(unused)]
     fn new_with_error(content: String) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -1829,6 +1831,7 @@ impl TestBatchProcessor {
     }
 
     /// Get unprocessed messages (simulates get_unprocessed repository method)
+    #[allow(unused)]
     fn get_unprocessed(&self, limit: usize) -> Vec<&BatchProcessorTestMessage> {
         self.messages
             .iter()
@@ -1871,6 +1874,7 @@ impl TestBatchProcessor {
 }
 
 /// Generate a random message content
+#[allow(unused)]
 fn arb_batch_content() -> impl Strategy<Value = String> {
     prop::string::string_regex("[a-zA-Z0-9 ]{10,100}")
         .unwrap()
@@ -1879,12 +1883,14 @@ fn arb_batch_content() -> impl Strategy<Value = String> {
 
 /// Generate a random processing state for batch processor tests
 #[derive(Debug, Clone, Copy)]
+#[allow(unused)]
 enum BatchMessageState {
     Unprocessed,
     Processed,
     Error,
 }
 
+#[allow(unused)]
 fn arb_batch_message_state() -> impl Strategy<Value = BatchMessageState> {
     prop_oneof![
         Just(BatchMessageState::Unprocessed),

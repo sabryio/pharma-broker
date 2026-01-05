@@ -441,21 +441,21 @@ fn consume_value_primitive(state: State, token: &Token, opt: &RepairOptions) -> 
             "undefined" => Some("null"),
             _ => None,
         };
-        if opt.allow_python_literals {
-            if let Some(mapped) = mapped {
-                let mut s2 = append_out(state, mapped);
-                s2 = advance(s2, 1);
-                s2 = complete_value_in_current_context(s2);
-                if !matches!(low.as_str(), "true" | "false" | "null") {
-                    s2 = add_repair(
-                        s2,
-                        RepairSpec::new("map_python_literal", COST_PY_LITERAL_MAP)
-                            .span((token.start, token.end))
-                            .note(format!("{v} -> {mapped}")),
-                    );
-                }
-                return Some(s2);
+        if opt.allow_python_literals
+            && let Some(mapped) = mapped
+        {
+            let mut s2 = append_out(state, mapped);
+            s2 = advance(s2, 1);
+            s2 = complete_value_in_current_context(s2);
+            if !matches!(low.as_str(), "true" | "false" | "null") {
+                s2 = add_repair(
+                    s2,
+                    RepairSpec::new("map_python_literal", COST_PY_LITERAL_MAP)
+                        .span((token.start, token.end))
+                        .note(format!("{v} -> {mapped}")),
+                );
             }
+            return Some(s2);
         }
 
         if opt.allow_unquoted_values {
@@ -695,29 +695,29 @@ fn repair_close_one_container_at_eof(state: State, token: &Token) -> Option<Stat
     let mut top = state.stack.last().cloned()?;
     let mut s = state;
 
-    if top.typ == ContainerType::Object && top.expect == Expect::KeyOrEnd {
-        if let Some(mut popped) = pop_trailing_comma(s.clone()) {
-            popped = set_top_expect(popped, Expect::CommaOrEnd);
-            popped = add_repair(
-                popped,
-                RepairSpec::new("remove_trailing_comma", COST_REMOVE_TRAILING_COMMA)
-                    .at(token.start),
-            );
-            s = popped;
-            top = s.stack.last().cloned()?;
-        }
+    if top.typ == ContainerType::Object
+        && top.expect == Expect::KeyOrEnd
+        && let Some(mut popped) = pop_trailing_comma(s.clone())
+    {
+        popped = set_top_expect(popped, Expect::CommaOrEnd);
+        popped = add_repair(
+            popped,
+            RepairSpec::new("remove_trailing_comma", COST_REMOVE_TRAILING_COMMA).at(token.start),
+        );
+        s = popped;
+        top = s.stack.last().cloned()?;
     }
-    if top.typ == ContainerType::Array && top.expect == Expect::ValueOrEnd {
-        if let Some(mut popped) = pop_trailing_comma(s.clone()) {
-            popped = set_top_expect(popped, Expect::CommaOrEnd);
-            popped = add_repair(
-                popped,
-                RepairSpec::new("remove_trailing_comma", COST_REMOVE_TRAILING_COMMA)
-                    .at(token.start),
-            );
-            s = popped;
-            top = s.stack.last().cloned()?;
-        }
+    if top.typ == ContainerType::Array
+        && top.expect == Expect::ValueOrEnd
+        && let Some(mut popped) = pop_trailing_comma(s.clone())
+    {
+        popped = set_top_expect(popped, Expect::CommaOrEnd);
+        popped = add_repair(
+            popped,
+            RepairSpec::new("remove_trailing_comma", COST_REMOVE_TRAILING_COMMA).at(token.start),
+        );
+        s = popped;
+        top = s.stack.last().cloned()?;
     }
 
     let closer = if top.typ == ContainerType::Object {
@@ -774,29 +774,28 @@ fn expand_repairs(
     if opt.partial_ok {
         let mut allow_truncate = true;
         // Avoid truncating at an IDENT that is very likely a real (unquoted) key: IDENT followed by ':'.
-        if token.typ == TokenType::Ident {
-            if let Some(top) = top(&state) {
-                if top.typ == ContainerType::Object && top.expect == Expect::KeyOrEnd {
-                    if let Some(nt) = next_token {
-                        if nt.typ == TokenType::Punct && nt.value == ":" {
-                            allow_truncate = false;
-                        }
-                    }
-                }
-            }
+        if token.typ == TokenType::Ident
+            && let Some(top) = top(&state)
+            && top.typ == ContainerType::Object
+            && top.expect == Expect::KeyOrEnd
+            && let Some(nt) = next_token
+            && nt.typ == TokenType::Punct
+            && nt.value == ":"
+        {
+            allow_truncate = false;
         }
-        if allow_truncate {
-            if let Some(s) = repair_truncate_suffix(state.clone(), token, text_len, eof_index) {
-                out.push(s);
-            }
+        if allow_truncate
+            && let Some(s) = repair_truncate_suffix(state.clone(), token, text_len, eof_index)
+        {
+            out.push(s);
         }
     }
 
     // Last resort: only if we haven't found a better idea.
-    if out.is_empty() {
-        if let Some(s) = repair_delete_unexpected(state, token, opt) {
-            out.push(s);
-        }
+    if out.is_empty()
+        && let Some(s) = repair_delete_unexpected(state, token, opt)
+    {
+        out.push(s);
     }
 
     out

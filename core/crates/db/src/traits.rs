@@ -176,6 +176,14 @@ pub trait RawMessageRepository: Send + Sync {
     /// Get a raw message by its ID
     async fn get_by_id(&self, id: Uuid) -> Result<Option<RawMessageModel>>;
     async fn get_unprocessed(&self, limit: i64) -> Result<Vec<RawMessageModel>>;
+    /// Get messages that need processing (unprocessed OR failed but eligible for retry)
+    /// Excludes permanently failed messages and respects backoff period
+    async fn get_pending_processing(
+        &self,
+        limit: i64,
+        backoff_seconds: i64,
+        permanent_error_prefix: &str,
+    ) -> Result<Vec<RawMessageModel>>;
     /// Mark a message as processed
     async fn mark_processed(&self, id: Uuid, error: Option<&str>) -> Result<RawMessageModel>;
     /// Reset a message for reprocessing by clearing processed_at and error

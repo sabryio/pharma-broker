@@ -228,16 +228,16 @@ fn parse_string(input: &str, bytes: &[u8], i: &mut usize) -> Result<String, Json
                             && bytes[*i + 1] == b'u'
                         {
                             let hex2 = &bytes[*i + 2..*i + 6];
-                            if let Some(code2) = parse_hex4(hex2) {
-                                if (0xDC00..=0xDFFF).contains(&code2) {
-                                    *i += 6;
-                                    let full = 0x10000
-                                        + (((code - 0xD800) as u32) << 10)
-                                        + ((code2 - 0xDC00) as u32);
-                                    if let Some(ch) = char::from_u32(full) {
-                                        out.push(ch);
-                                        continue;
-                                    }
+                            if let Some(code2) = parse_hex4(hex2)
+                                && (0xDC00..=0xDFFF).contains(&code2)
+                            {
+                                *i += 6;
+                                let full = 0x10000
+                                    + (((code - 0xD800) as u32) << 10)
+                                    + ((code2 - 0xDC00) as u32);
+                                if let Some(ch) = char::from_u32(full) {
+                                    out.push(ch);
+                                    continue;
                                 }
                             }
                         }

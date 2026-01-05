@@ -101,6 +101,38 @@ impl RawMessageRepository for SeaOrmRawMessageRepo {
             .map_err(Error::from)
     }
 
+    async fn get_pending_processing(
+        &self,
+        limit: i64,
+        backoff_seconds: i64,
+        permanent_error_prefix: &str,
+    ) -> Result<Vec<raw_message::Model>> {
+        let backoff_threshold = Utc::now() - chrono::Duration::seconds(backoff_seconds);
+
+        // Get messages that are either:
+        // 1. Never processed (processed_at IS NULL)
+        // 2. Failed but eligible for retry (has error, processed_at older than backoff, not permanent)
+        RawMessage::find()
+            .filter(
+                // Unprocessed messages
+                raw_message::Column::ProcessedAt.is_null().or(
+                    // OR failed messages eligible for retry
+                    raw_message::Column::Error
+                        .is_not_null()
+                        .and(raw_message::Column::ProcessedAt.lt(backoff_threshold))
+                        .and(
+                            raw_message::Column::Error
+                                .not_like(format!("{}%", permanent_error_prefix)),
+                        ),
+                ),
+            )
+            .order_by_asc(raw_message::Column::Timestamp)
+            .limit(limit as u64)
+            .all(&*self.db)
+            .await
+            .map_err(Error::from)
+    }
+
     async fn mark_processed(&self, id: Uuid, error: Option<&str>) -> Result<raw_message::Model> {
         let msg = RawMessage::find_by_id(id)
             .one(&*self.db)

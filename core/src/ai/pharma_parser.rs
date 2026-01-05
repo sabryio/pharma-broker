@@ -23,25 +23,46 @@ use super::token_batcher::{BatchMessage, TokenBatchConfig, TokenBatcher};
 // Context Size Constants
 // =============================================================================
 
-/// Default maximum context size for the model
-/// Set to usize::MAX (unlimited) - let the model handle its own limits
-/// and rely on graceful error handling + chunking when context is exceeded
-const DEFAULT_MAX_CONTEXT_TOKENS: usize = usize::MAX;
+/// Default maximum context size for the model (intelligent default)
+/// Most local LLMs have 4K-8K context windows. We use 6K as a safe default
+/// that works with most models while leaving room for response.
+const DEFAULT_MAX_CONTEXT_TOKENS: usize = 6000;
 
 /// Reserved tokens for AI response output
-/// Set to 0 (unlimited) - let the model handle its own limits
-const RESPONSE_RESERVED_TOKENS: usize = 0;
+/// Reserve 2000 tokens for the model's JSON response
+const RESPONSE_RESERVED_TOKENS: usize = 2000;
 
 /// Maximum lines per message chunk (matching legacy DefaultMaxMessageLines)
 const MAX_MESSAGE_LINES: usize = 20;
 
-/// Get maximum context tokens from environment or default (unlimited)
-/// Set AI_MAX_CONTEXT_TOKENS env var to limit, or leave unset for unlimited
+/// Safety margin for token estimation (10% buffer for estimation errors)
+const TOKEN_ESTIMATION_SAFETY_MARGIN: f64 = 0.10;
+
+/// Maximum recursion depth for chunking to prevent infinite loops
+const MAX_CHUNK_RECURSION_DEPTH: usize = 5;
+
+/// Error prefix for permanent context failures (used for backoff detection)
+pub const CONTEXT_EXCEEDED_PERMANENT_PREFIX: &str = "[PERMANENT] Context size exceeded";
+
+/// Get maximum context tokens from environment or intelligent default
+/// Set AI_MAX_CONTEXT_TOKENS env var to override, or leave unset for auto-detection
 fn get_max_context_tokens() -> usize {
     std::env::var("AI_MAX_CONTEXT_TOKENS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_MAX_CONTEXT_TOKENS)
+}
+
+/// Calculate available tokens for content after accounting for overhead
+fn calculate_available_tokens(overhead_tokens: usize) -> usize {
+    let max_context = get_max_context_tokens();
+    let safety_buffer = (max_context as f64 * TOKEN_ESTIMATION_SAFETY_MARGIN) as usize;
+
+    max_context
+        .saturating_sub(overhead_tokens)
+        .saturating_sub(RESPONSE_RESERVED_TOKENS)
+        .saturating_sub(safety_buffer)
+        .max(512) // Minimum viable content size
 }
 
 /// Cached system prompt token count (computed once, reused)
@@ -97,7 +118,19 @@ impl ParseError {
         match self {
             ParseError::CircuitOpen => false,
             ParseError::Client(e) => e.is_retryable(),
-            ParseError::Parse(_) => false,
+            ParseError::Parse(msg) => {
+                // Permanent context failures are not retryable
+                !msg.starts_with(CONTEXT_EXCEEDED_PERMANENT_PREFIX)
+            }
+        }
+    }
+
+    /// Check if this is a permanent failure that should not be retried
+    pub fn is_permanent_failure(&self) -> bool {
+        match self {
+            ParseError::Parse(msg) => msg.starts_with(CONTEXT_EXCEEDED_PERMANENT_PREFIX),
+            ParseError::Client(e) => e.is_context_error(),
+            _ => false,
         }
     }
 }
@@ -163,11 +196,7 @@ impl PharmaParser {
         let overhead =
             Self::estimate_tokens(&enhanced_system_prompt) + Self::estimate_tokens(&prompt_shell);
 
-        let max_context = get_max_context_tokens();
-        let available = max_context
-            .saturating_sub(overhead)
-            .saturating_sub(RESPONSE_RESERVED_TOKENS)
-            .max(512);
+        let available = calculate_available_tokens(overhead);
 
         // Check if content needs to be split due to context limits
         let content_tokens = Self::estimate_tokens(&processed_content);
@@ -185,12 +214,12 @@ impl PharmaParser {
                 content_tokens = content_tokens,
                 available = available,
                 overhead = overhead,
-                max_context = max_context,
+                max_context = get_max_context_tokens(),
                 content = %preview,
                 "Message exceeds dynamic context limit, splitting into chunks"
             );
             return self
-                .parse_chunked(content, sender_name, group_name, reply_to, mappings)
+                .parse_chunked_with_depth(content, sender_name, group_name, reply_to, mappings, 0)
                 .await;
         }
 
@@ -269,7 +298,14 @@ impl PharmaParser {
                 {
                     warn!("Context exceeded during single parse, attempting half-chunk split");
                     return self
-                        .parse_chunked(content, sender_name, group_name, reply_to, mappings)
+                        .parse_chunked_with_depth(
+                            content,
+                            sender_name,
+                            group_name,
+                            reply_to,
+                            mappings,
+                            0,
+                        )
                         .await;
                 }
 
@@ -282,19 +318,37 @@ impl PharmaParser {
 
     /// Parse a large message by splitting into chunks
     /// Uses enhanced prompts from feedback loop for each chunk
-    async fn parse_chunked(
+    /// Tracks recursion depth to prevent infinite loops and mark permanent failures
+    async fn parse_chunked_with_depth(
         &self,
         content: &str,
         sender_name: Option<&str>,
         group_name: &str,
         reply_to: Option<&str>,
         mappings: Option<&[String]>,
+        depth: usize,
     ) -> Result<Vec<ParsedItem>, ParseError> {
-        let chunks = Self::split_content_into_chunks(content);
+        // Check recursion depth to prevent infinite loops
+        if depth >= MAX_CHUNK_RECURSION_DEPTH {
+            error!(
+                depth = depth,
+                max_depth = MAX_CHUNK_RECURSION_DEPTH,
+                content_len = content.len(),
+                "Maximum chunk recursion depth exceeded - marking as permanent failure"
+            );
+            return Err(ParseError::Parse(format!(
+                "{}: Maximum chunking depth ({}) exceeded. Content may be too complex or model context too small.",
+                CONTEXT_EXCEEDED_PERMANENT_PREFIX, MAX_CHUNK_RECURSION_DEPTH
+            )));
+        }
+
+        let chunks = Self::split_content_into_chunks_smart(content, depth);
         info!(
             chunks = chunks.len(),
-            "Split large message into {} chunks",
-            chunks.len()
+            depth = depth,
+            "Split large message into {} chunks (depth {})",
+            chunks.len(),
+            depth
         );
 
         // Get learned medication mappings from feedback loop (once for all chunks)
@@ -363,6 +417,7 @@ impl PharmaParser {
 
         let mut all_items = Vec::new();
         let mut errors = Vec::new();
+        let mut permanent_failure = false;
 
         for (idx, chunk, result) in results {
             match result {
@@ -373,16 +428,19 @@ impl PharmaParser {
                         info!(
                             chunk = idx + 1,
                             items = items_count,
+                            depth = depth,
                             "Chunk parsed successfully (parallel)"
                         );
                     } else {
-                        debug!(chunk = idx + 1, "Chunk parsed successfully (no items)");
+                        debug!(
+                            chunk = idx + 1,
+                            depth = depth,
+                            "Chunk parsed successfully (no items)"
+                        );
                     }
                     all_items.extend(parse_result.items);
                 }
                 Err(e) => {
-                    // Even in chunked mode, a single chunk might be too big if estimation was slightly off
-                    // or if system prompt + mapping grew too much.
                     // Check for context error (either direct API error or wrapped in RetryExhausted)
                     let is_context_error = match &e {
                         ClientError::Api { status, message } => {
@@ -394,37 +452,72 @@ impl PharmaParser {
                             last_error.contains("Context size has been exceeded")
                                 || last_error.contains("context_length_exceeded")
                         }
+                        ClientError::ContextExceeded(_) => true,
                         _ => false,
                     };
 
                     if is_context_error {
                         warn!(
                             chunk = idx + 1,
+                            depth = depth,
+                            next_depth = depth + 1,
                             "Chunk still too large, attempting sub-split"
                         );
-                        // Sub-split this specific chunk (sequentially for safety)
-                        if let Ok(sub_items) = Box::pin(self.parse_chunked(
+
+                        // Sub-split this specific chunk with increased depth
+                        match Box::pin(self.parse_chunked_with_depth(
                             &chunk,
                             sender_name,
                             group_name,
                             reply_to,
                             mappings,
+                            depth + 1,
                         ))
                         .await
                         {
-                            all_items.extend(sub_items);
-                            continue;
+                            Ok(sub_items) => {
+                                all_items.extend(sub_items);
+                                continue;
+                            }
+                            Err(ParseError::Parse(ref msg))
+                                if msg.starts_with(CONTEXT_EXCEEDED_PERMANENT_PREFIX) =>
+                            {
+                                // Permanent failure from sub-chunk - propagate up
+                                error!(
+                                    chunk = idx + 1,
+                                    depth = depth,
+                                    "Sub-chunk hit permanent failure limit"
+                                );
+                                permanent_failure = true;
+                                errors.push(msg.clone());
+                            }
+                            Err(sub_err) => {
+                                errors.push(format!(
+                                    "Chunk {} sub-split failed: {}",
+                                    idx + 1,
+                                    sub_err
+                                ));
+                            }
                         }
+                    } else {
+                        self.circuit_breaker.record_failure();
+                        error!(chunk = idx + 1, depth = depth, error = %e, "Chunk parsing failed");
+                        errors.push(format!("Chunk {}: {}", idx + 1, e));
                     }
-
-                    self.circuit_breaker.record_failure();
-                    error!(chunk = idx + 1, error = %e, "Chunk parsing failed");
-                    errors.push(format!("Chunk {}: {}", idx + 1, e));
                 }
             }
         }
 
-        // If all chunks failed, return error
+        // If we hit a permanent failure, propagate it
+        if permanent_failure && all_items.is_empty() {
+            return Err(ParseError::Parse(format!(
+                "{}: All chunks failed after maximum recursion. Errors: {}",
+                CONTEXT_EXCEEDED_PERMANENT_PREFIX,
+                errors.join("; ")
+            )));
+        }
+
+        // If all chunks failed (but not permanent), return error
         if all_items.is_empty() && !errors.is_empty() {
             return Err(ParseError::Parse(errors.join("; ")));
         }
@@ -432,9 +525,24 @@ impl PharmaParser {
         info!(
             total_items = all_items.len(),
             chunks = chunks.len(),
+            depth = depth,
             "Merged results from all chunks"
         );
         Ok(all_items)
+    }
+
+    /// Legacy wrapper for backward compatibility
+    #[allow(dead_code)]
+    async fn parse_chunked(
+        &self,
+        content: &str,
+        sender_name: Option<&str>,
+        group_name: &str,
+        reply_to: Option<&str>,
+        mappings: Option<&[String]>,
+    ) -> Result<Vec<ParsedItem>, ParseError> {
+        self.parse_chunked_with_depth(content, sender_name, group_name, reply_to, mappings, 0)
+            .await
     }
 
     /// Estimate token count for text using o200k_base
@@ -445,34 +553,56 @@ impl PharmaParser {
     }
 
     /// Split content into chunks that fit within context limits
-    fn split_content_into_chunks(content: &str) -> Vec<String> {
+    /// Uses depth to progressively reduce chunk sizes on retry
+    fn split_content_into_chunks_smart(content: &str, depth: usize) -> Vec<String> {
+        // Reduce max lines per chunk as depth increases (more aggressive splitting)
+        let max_lines = MAX_MESSAGE_LINES.saturating_sub(depth * 5).max(3);
+
         let lines: Vec<&str> = content.lines().collect();
 
-        // If few lines, split by character count instead
-        if lines.len() <= MAX_MESSAGE_LINES {
-            return Self::split_by_tokens(content);
+        // If few lines, split by token count instead
+        if lines.len() <= max_lines {
+            return Self::split_by_tokens_smart(content, depth);
         }
 
-        // Split by lines (matching legacy behavior)
+        // Split by lines with depth-adjusted chunk size
         let mut chunks = Vec::new();
-        for chunk_lines in lines.chunks(MAX_MESSAGE_LINES) {
+        for chunk_lines in lines.chunks(max_lines) {
             chunks.push(chunk_lines.join("\n"));
         }
         chunks
     }
 
-    /// Split content by estimated token count
-    fn split_by_tokens(content: &str) -> Vec<String> {
-        // Estimate available tokens based on current SYSTEM_PROMPT size
-        // Using a conservative overhead estimate for chunking
-        let system_tokens = Self::estimate_tokens(SYSTEM_PROMPT) + 500; // base + extra slack
-        let max_context = get_max_context_tokens();
-        let available = max_context
-            .saturating_sub(system_tokens)
-            .saturating_sub(RESPONSE_RESERVED_TOKENS)
-            .max(512);
+    /// Split content into chunks that fit within context limits (legacy)
+    #[allow(dead_code)]
+    fn split_content_into_chunks(content: &str) -> Vec<String> {
+        Self::split_content_into_chunks_smart(content, 0)
+    }
 
-        let max_chars = available * 4; // ~4 chars per token fallback still useful for rough estimate
+    /// Split content by estimated token count with depth-aware sizing
+    fn split_by_tokens_smart(content: &str, depth: usize) -> Vec<String> {
+        // Calculate available tokens based on current overhead
+        let system_tokens = get_cached_system_prompt_tokens();
+        let overhead = system_tokens + 500; // base + extra slack for user prompt
+        let base_available = calculate_available_tokens(overhead);
+
+        // Reduce available tokens as depth increases (more conservative)
+        let depth_factor = 1.0 / (1.0 + depth as f64 * 0.5); // 1.0, 0.67, 0.5, 0.4, ...
+        let available = ((base_available as f64) * depth_factor) as usize;
+        let available = available.max(256); // Minimum viable chunk
+
+        // Estimate chars per token (conservative: ~3 chars per token for mixed content)
+        let chars_per_token = 3;
+        let max_chars = available * chars_per_token;
+
+        debug!(
+            depth = depth,
+            base_available = base_available,
+            adjusted_available = available,
+            max_chars = max_chars,
+            content_len = content.len(),
+            "Calculating chunk size for token-based split"
+        );
 
         if content.len() <= max_chars {
             return vec![content.to_string()];
@@ -489,17 +619,33 @@ impl PharmaParser {
                 content[start..end]
                     .rfind('\n')
                     .or_else(|| content[start..end].rfind(' '))
+                    .or_else(|| content[start..end].rfind('،')) // Arabic comma
+                    .or_else(|| content[start..end].rfind('،')) // Arabic semicolon
                     .map(|pos| start + pos + 1)
                     .unwrap_or(end)
             } else {
                 end
             };
 
-            chunks.push(content[start..actual_end].to_string());
+            let chunk = content[start..actual_end].trim();
+            if !chunk.is_empty() {
+                chunks.push(chunk.to_string());
+            }
             start = actual_end;
         }
 
+        // Ensure we have at least one chunk
+        if chunks.is_empty() && !content.is_empty() {
+            chunks.push(content.to_string());
+        }
+
         chunks
+    }
+
+    /// Split content by estimated token count (legacy)
+    #[allow(dead_code)]
+    fn split_by_tokens(content: &str) -> Vec<String> {
+        Self::split_by_tokens_smart(content, 0)
     }
 
     /// Parse a batch of messages using token-aware batching

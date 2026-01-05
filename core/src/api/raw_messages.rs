@@ -622,13 +622,11 @@ where
                         chrono::Duration::minutes(10),
                     ))
                     .await
-            {
-                if semantic_dups
+                && semantic_dups
                     .iter()
                     .any(|o| o.participant_id == message.participant_id)
-                {
-                    is_duplicate = true;
-                }
+            {
+                is_duplicate = true;
             }
 
             if is_duplicate {
@@ -689,13 +687,11 @@ where
                         chrono::Duration::minutes(10),
                     ))
                     .await
-            {
-                if semantic_dups
+                && semantic_dups
                     .iter()
                     .any(|r| r.participant_id == message.participant_id)
-                {
-                    is_duplicate = true;
-                }
+            {
+                is_duplicate = true;
             }
 
             if is_duplicate {
@@ -709,10 +705,9 @@ where
                 requests_created += 1;
 
                 // Enqueue non-duplicate requests for matching
-                if !is_duplicate {
-                    if let Err(e) = state.match_queue_repo.enqueue(request.id, 0).await {
-                        warn!(error = %e, request_id = %request.id, "Failed to enqueue request for matching");
-                    }
+                if !is_duplicate && let Err(e) = state.match_queue_repo.enqueue(request.id, 0).await
+                {
+                    warn!(error = %e, request_id = %request.id, "Failed to enqueue request for matching");
                 }
             }
         }
@@ -1223,13 +1218,11 @@ where
                         chrono::Duration::minutes(10),
                     ))
                     .await
-            {
-                if semantic_dups
+                && semantic_dups
                     .iter()
                     .any(|o| o.participant_id == message.participant_id)
-                {
-                    is_duplicate = true;
-                }
+            {
+                is_duplicate = true;
             }
 
             if is_duplicate {
@@ -1290,13 +1283,11 @@ where
                         chrono::Duration::minutes(10),
                     ))
                     .await
-            {
-                if semantic_dups
+                && semantic_dups
                     .iter()
                     .any(|r| r.participant_id == message.participant_id)
-                {
-                    is_duplicate = true;
-                }
+            {
+                is_duplicate = true;
             }
 
             if is_duplicate {
@@ -1310,10 +1301,9 @@ where
                 requests_created += 1;
 
                 // Enqueue non-duplicate requests for matching
-                if !is_duplicate {
-                    if let Err(e) = state.match_queue_repo.enqueue(request.id, 0).await {
-                        warn!(error = %e, request_id = %request.id, "Failed to enqueue request for matching");
-                    }
+                if !is_duplicate && let Err(e) = state.match_queue_repo.enqueue(request.id, 0).await
+                {
+                    warn!(error = %e, request_id = %request.id, "Failed to enqueue request for matching");
                 }
             }
         }
