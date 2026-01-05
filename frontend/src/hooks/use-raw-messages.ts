@@ -16,7 +16,11 @@ import {
 } from '@/api/raw-messages'
 import type { BulkOperationResult } from '@/api/raw-messages'
 import { queryKeys } from './query-keys'
-import type { RawMessage, RawMessageParams } from '@/schema/raw-message'
+import type {
+  RawMessage,
+  RawMessageParams,
+  ReprocessResponse,
+} from '@/schema/raw-message'
 import type { ApiResponse } from '@/schema/api'
 
 /**
@@ -79,6 +83,7 @@ export function useRawMessage(id: string | undefined) {
 
 /**
  * Hook to reprocess a single raw message
+ * Triggers AI parsing inline and returns result with item counts
  * Includes optimistic update to show "processing" status
  */
 export function useReprocessMessage() {
@@ -97,7 +102,7 @@ export function useReprocessMessage() {
         queryKey: queryKeys.rawMessages.lists(),
       })
 
-      // Optimistically update the message status to "unprocessed" (queued for reprocessing)
+      // Optimistically update the message status to "unprocessed" (being reprocessed)
       queryClient.setQueriesData(
         { queryKey: queryKeys.rawMessages.lists() },
         (
@@ -121,6 +126,26 @@ export function useReprocessMessage() {
       )
 
       return { previousLists }
+    },
+
+    // On success, update with the actual response data
+    onSuccess: (response, id) => {
+      if (response.success && response.data) {
+        const { message } = response.data
+        // Update the message in the cache with the actual response
+        queryClient.setQueriesData(
+          { queryKey: queryKeys.rawMessages.lists() },
+          (
+            old: ApiResponse<RawMessage[]> | undefined,
+          ): ApiResponse<RawMessage[]> | undefined => {
+            if (!old?.data) return old
+            return {
+              ...old,
+              data: old.data.map((msg) => (msg.id === id ? message : msg)),
+            }
+          },
+        )
+      }
     },
 
     // Rollback on error
@@ -436,3 +461,4 @@ export function useBulkMarkProcessed() {
 
 // Re-export types for convenience
 export type { BulkOperationResult }
+export type { ReprocessResponse }

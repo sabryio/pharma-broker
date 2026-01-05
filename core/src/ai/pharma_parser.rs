@@ -20,20 +20,23 @@ use super::pharma_types::{ParseResult, ParsedItem};
 use super::token_batcher::{BatchMessage, TokenBatchConfig, TokenBatcher};
 
 // =============================================================================
-// Context Size Constants (matching legacy)
+// Context Size Constants
 // =============================================================================
 
-/// Default maximum context size for the model (conservative estimate)
-/// Most local models have 8K-32K context, we use 4K as safe default for local llama.cpp/Ollama
-const DEFAULT_MAX_CONTEXT_TOKENS: usize = 4096;
+/// Default maximum context size for the model
+/// Set to usize::MAX (unlimited) - let the model handle its own limits
+/// and rely on graceful error handling + chunking when context is exceeded
+const DEFAULT_MAX_CONTEXT_TOKENS: usize = usize::MAX;
 
 /// Reserved tokens for AI response output
-const RESPONSE_RESERVED_TOKENS: usize = 1000;
+/// Set to 0 (unlimited) - let the model handle its own limits
+const RESPONSE_RESERVED_TOKENS: usize = 0;
 
 /// Maximum lines per message chunk (matching legacy DefaultMaxMessageLines)
 const MAX_MESSAGE_LINES: usize = 20;
 
-/// Get maximum context tokens from environment or default
+/// Get maximum context tokens from environment or default (unlimited)
+/// Set AI_MAX_CONTEXT_TOKENS env var to limit, or leave unset for unlimited
 fn get_max_context_tokens() -> usize {
     std::env::var("AI_MAX_CONTEXT_TOKENS")
         .ok()

@@ -85,3 +85,13 @@ export interface RawMessageParams {
   start_date?: string
   end_date?: string
 }
+
+// Reprocess response schema matching Rust's ReprocessResponse
+export const ReprocessResponseSchema = z.object({
+  message: RawMessageSchema,
+  offersCreated: z.number(),
+  requestsCreated: z.number(),
+  parsingError: z.string().nullable(),
+})
+
+export type ReprocessResponse = z.infer<typeof ReprocessResponseSchema>

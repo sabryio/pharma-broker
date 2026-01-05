@@ -1,6 +1,10 @@
 import apiClient from './client'
 import type { ApiResponse } from '@/schema/api'
-import type { RawMessage, RawMessageParams } from '@/schema/raw-message'
+import type {
+  RawMessage,
+  RawMessageParams,
+  ReprocessResponse,
+} from '@/schema/raw-message'
 
 // =============================================================================
 // Types for Bulk Operations
@@ -79,12 +83,12 @@ export async function getRawMessage(
 
 /**
  * Reprocess a single raw message through the parsing pipeline
- * Resets the message status so it will be picked up by the batch processor
+ * Triggers AI parsing inline and returns the result with item counts
  */
 export async function reprocessMessage(
   id: string,
-): Promise<ApiResponse<RawMessage>> {
-  const response = await apiClient.post<ApiResponse<RawMessage>>(
+): Promise<ApiResponse<ReprocessResponse>> {
+  const response = await apiClient.post<ApiResponse<ReprocessResponse>>(
     `/api/raw-messages/${id}/reprocess`,
   )
 

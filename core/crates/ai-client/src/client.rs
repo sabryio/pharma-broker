@@ -253,19 +253,56 @@ impl Client {
                         .and_then(|c| c.message.content.as_ref())
                         .ok_or(Error::EmptyResponse)?;
 
+                    // First try strict JSON parsing
                     match serde_json::from_str::<T>(content) {
                         Ok(parsed) => {
                             info!(attempt, "Structured output parsed successfully");
                             return Ok(parsed);
                         }
                         Err(e) => {
-                            // Check if this is incomplete JSON (retryable)
+                            // Check if this is incomplete JSON (retryable after repair attempt)
                             if Error::is_incomplete_json(&e) {
                                 warn!(
                                     attempt,
                                     error = %e,
-                                    "Incomplete JSON response from model, will retry"
+                                    "Incomplete JSON response from model, attempting repair"
                                 );
+
+                                // Try to repair the truncated JSON using agentjson
+                                let repair_opts = json_prob_parser::types::RepairOptions::default();
+                                let repair_result = json_prob_parser::parse(content, &repair_opts);
+
+                                if let Some(repaired_json) = repair_result
+                                    .best()
+                                    .and_then(|b| b.normalized_json.as_ref())
+                                {
+                                    debug!(
+                                        original_len = content.len(),
+                                        repaired_len = repaired_json.len(),
+                                        repair_status = %repair_result.status,
+                                        "JSON repair attempted"
+                                    );
+
+                                    // Try parsing the repaired JSON
+                                    match serde_json::from_str::<T>(repaired_json) {
+                                        Ok(parsed) => {
+                                            info!(
+                                                attempt,
+                                                repair_status = %repair_result.status,
+                                                "Structured output parsed after JSON repair"
+                                            );
+                                            return Ok(parsed);
+                                        }
+                                        Err(repair_parse_err) => {
+                                            warn!(
+                                                attempt,
+                                                error = %repair_parse_err,
+                                                "JSON repair did not produce valid output, will retry"
+                                            );
+                                        }
+                                    }
+                                }
+
                                 last_error = Some(Error::IncompleteJson(e.to_string()));
                             } else {
                                 warn!(attempt, error = %e, "Failed to parse structured output");
@@ -327,6 +364,13 @@ impl Client {
         if !response.status().is_success() {
             let status = response.status().as_u16();
             let message = response.text().await.unwrap_or_default();
+
+            // Check for context exceeded error and return specific error type
+            if status == 500 && Error::is_context_exceeded(&message) {
+                warn!(status, "Context size exceeded - input too large for model");
+                return Err(Error::ContextExceeded(message));
+            }
+
             return Err(Error::Api { status, message });
         }
 

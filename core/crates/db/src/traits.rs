@@ -178,6 +178,8 @@ pub trait RawMessageRepository: Send + Sync {
     async fn get_unprocessed(&self, limit: i64) -> Result<Vec<RawMessageModel>>;
     /// Mark a message as processed
     async fn mark_processed(&self, id: Uuid, error: Option<&str>) -> Result<RawMessageModel>;
+    /// Reset a message for reprocessing by clearing processed_at and error
+    async fn reset_for_reprocessing(&self, id: Uuid) -> Result<RawMessageModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
     /// Delete a raw message by its ID
     async fn delete_by_id(&self, id: Uuid) -> Result<bool>;

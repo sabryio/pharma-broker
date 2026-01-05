@@ -40,17 +40,31 @@ impl Default for BatchConfig {
 
 impl BatchConfig {
     /// Create from environment variables
+    ///
+    /// Supports both PARSING_* (legacy) and BATCH_PROCESSOR_* (new) environment variables.
+    /// BATCH_PROCESSOR_* takes precedence if set.
+    /// Requirements: 6.5
     pub fn from_env() -> Self {
         Self {
-            batch_size: std::env::var("PARSING_BATCH_SIZE")
+            batch_size: std::env::var("BATCH_PROCESSOR_BATCH_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())
+                .or_else(|| {
+                    std::env::var("PARSING_BATCH_SIZE")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                })
                 .unwrap_or(10),
             batch_timeout: Duration::from_secs(
-                std::env::var("PARSING_BATCH_TIMEOUT_SECS")
+                std::env::var("BATCH_PROCESSOR_TIMEOUT_SECS")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(5),
+                    .or_else(|| {
+                        std::env::var("PARSING_BATCH_TIMEOUT_SECS")
+                            .ok()
+                            .and_then(|v| v.parse().ok())
+                    })
+                    .unwrap_or(30),
             ),
             worker_count: std::env::var("PARSING_WORKERS")
                 .ok()

@@ -21,6 +21,10 @@ use pharma_core::matching::{
     MedicationResolverConfig, PersistentAuditConfig, PersistentAuditRecorder,
 };
 use pharma_core::metrics::init_metrics;
+use pharma_core::parsing::{
+    BatchConfig, BatchProcessor, BatchProcessorConfig, BatchProcessorDeps,
+    BatchProcessorRepositories, MultiPassConfig,
+};
 use pharma_core::repository::{
     SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo, SeaOrmMatchAuditRecordRepo,
     SeaOrmMatchQueueRepo, SeaOrmMatchRepo, SeaOrmMedicationAliasRepo, SeaOrmMedicationMasterRepo,
@@ -29,6 +33,7 @@ use pharma_core::repository::{
 };
 use pharma_core::worker::auto_approve_worker::{AutoApproveWorker, AutoApproveWorkerRepos};
 use pharma_core::worker::match_processor::{MatchProcessor, MatchProcessorRepos};
+use pharma_core::worker::unprocessed_poller::{UnprocessedPoller, UnprocessedPollerConfig};
 
 /// Initialize tracing subscriber with optional tokio-console support
 fn init_tracing() {
@@ -217,6 +222,73 @@ async fn main() -> anyhow::Result<()> {
     let janitor_handle = tokio::spawn(async move {
         janitor.run(rx_janitor).await;
     });
+
+    // Initialize and start BatchProcessor and UnprocessedPoller (message parsing workers)
+    // Requirements: 6.1, 6.2, 6.3, 6.4, 7.1, 7.2
+    let rx_batch_processor = worker_shutdown_rx.clone();
+    let rx_unprocessed_poller = worker_shutdown_rx.clone();
+
+    // Create BatchProcessor configuration from environment
+    let batch_config = BatchConfig::from_env();
+    let multi_pass_config = MultiPassConfig::from_env();
+    let batch_processor_config = BatchProcessorConfig::new(batch_config.clone(), multi_pass_config);
+
+    // Create BatchProcessor repositories
+    let batch_processor_repos = BatchProcessorRepositories::new(
+        raw_message_repo.clone(),
+        offer_repo.clone(),
+        request_repo.clone(),
+        medication_master_repo.clone(),
+        review_queue_repo.clone(),
+        group_repo.clone(),
+        participant_repo.clone(),
+        audit_log_repo.clone(),
+        match_queue_repo.clone(),
+    );
+
+    // Create BatchProcessor dependencies
+    let batch_processor_deps = BatchProcessorDeps::new(ai_client.clone(), ws_tx.clone());
+
+    // Create and start BatchProcessor
+    let batch_processor = BatchProcessor::new(
+        batch_processor_config,
+        batch_processor_repos,
+        batch_processor_deps,
+    );
+    let batch_processor_tx = batch_processor.sender();
+
+    let batch_processor_handle = tokio::spawn(async move {
+        batch_processor.run(rx_batch_processor).await;
+    });
+    tracing::info!(
+        batch_size = batch_config.batch_size,
+        timeout_secs = batch_config.batch_timeout.as_secs(),
+        "📦 BatchProcessor started"
+    );
+
+    // Create and start UnprocessedPoller
+    let poller_config = UnprocessedPollerConfig::from_env();
+    let unprocessed_poller = UnprocessedPoller::new(
+        poller_config.clone(),
+        raw_message_repo.clone(),
+        batch_processor_tx,
+    );
+
+    let unprocessed_poller_handle = tokio::spawn(async move {
+        unprocessed_poller.run(rx_unprocessed_poller).await;
+    });
+
+    if poller_config.enabled {
+        tracing::info!(
+            poll_interval_secs = poller_config.poll_interval.as_secs(),
+            batch_size = poller_config.batch_size,
+            "📬 UnprocessedPoller started"
+        );
+    } else {
+        tracing::info!(
+            "📬 UnprocessedPoller disabled (set BATCH_PROCESSOR_ENABLED=true to enable)"
+        );
+    }
 
     // Create alias learner for automated alias learning from confirmations
     let alias_learner = Arc::new(AliasLearner::from_env());
@@ -443,6 +515,20 @@ async fn main() -> anyhow::Result<()> {
                         Ok(Ok(())) => tracing::info!("✅ AutoApproveWorker stopped gracefully"),
                         Ok(Err(e)) => tracing::warn!("⚠️ AutoApproveWorker task panicked: {}", e),
                         Err(_) => tracing::warn!("⚠️ AutoApproveWorker drain timed out after {:?}", drain_timeout),
+                    }
+                },
+                async {
+                    match tokio::time::timeout(drain_timeout, batch_processor_handle).await {
+                        Ok(Ok(())) => tracing::info!("✅ BatchProcessor stopped gracefully"),
+                        Ok(Err(e)) => tracing::warn!("⚠️ BatchProcessor task panicked: {}", e),
+                        Err(_) => tracing::warn!("⚠️ BatchProcessor drain timed out after {:?}", drain_timeout),
+                    }
+                },
+                async {
+                    match tokio::time::timeout(drain_timeout, unprocessed_poller_handle).await {
+                        Ok(Ok(())) => tracing::info!("✅ UnprocessedPoller stopped gracefully"),
+                        Ok(Err(e)) => tracing::warn!("⚠️ UnprocessedPoller task panicked: {}", e),
+                        Err(_) => tracing::warn!("⚠️ UnprocessedPoller drain timed out after {:?}", drain_timeout),
                     }
                 }
             );

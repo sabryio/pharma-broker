@@ -1,0 +1,21 @@
+[package]
+name = "agentjson-core"
+version = "0.1.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Core Rust library for probabilistic JSON repair"
+
+[lib]
+name = "json_prob_parser"
+path = "src/lib.rs"
+
+[[bin]]
+name = "agentjson"
+path = "src/bin/agentjson.rs"
+
+[[bin]]
+name = "json-prob-parser"
+path = "src/bin/json-prob-parser.rs"
+
+[dependencies]
+memmap2 = "0.9"

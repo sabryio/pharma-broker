@@ -113,6 +113,18 @@ impl RawMessageRepository for SeaOrmRawMessageRepo {
         active.update(&*self.db).await.map_err(Error::from)
     }
 
+    async fn reset_for_reprocessing(&self, id: Uuid) -> Result<raw_message::Model> {
+        let msg = RawMessage::find_by_id(id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("RawMessage not found: {}", id)))?;
+
+        let mut active: raw_message::ActiveModel = msg.into();
+        active.processed_at = Set(None);
+        active.error = Set(None);
+        active.update(&*self.db).await.map_err(Error::from)
+    }
+
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64> {
         let result = RawMessage::delete_many()
             .filter(raw_message::Column::ProcessedAt.is_not_null())

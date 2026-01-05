@@ -9,13 +9,21 @@ use axum::{
     http::StatusCode,
 };
 use chrono::{DateTime, Utc};
+use pgvector::Vector as PgVector;
+use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use super::handlers::{ApiResponse, Meta};
 use super::routes::AppState;
-use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
+use crate::ai::UrgencyLevel as AiUrgencyLevel;
+use crate::domain::{ItemStatus, Offer, Request as RequestEntity, UrgencyLevel};
+use crate::repository::{
+    AuditLogRepository, FindDuplicateParams, MedicationMasterRepository, ReviewQueueRepository,
+    SemanticDuplicateParams,
+};
 
 // =============================================================================
 // Query Parameters
@@ -146,6 +154,16 @@ pub struct ProcessedItem {
 pub struct ProcessedItemsResponse {
     pub offers: Vec<ProcessedItem>,
     pub requests: Vec<ProcessedItem>,
+}
+
+/// Response for reprocess operation with AI parsing results
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReprocessResponse {
+    pub message: RawMessageResponse,
+    pub offers_created: i32,
+    pub requests_created: i32,
+    pub parsing_error: Option<String>,
 }
 
 // =============================================================================
@@ -400,14 +418,14 @@ where
 pub async fn reprocess_raw_message<RQ, A, MM>(
     State(state): State<AppState<RQ, A, MM>>,
     Path(id): Path<Uuid>,
-) -> Result<Json<ApiResponse<RawMessageResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+) -> Result<Json<ApiResponse<ReprocessResponse>>, (StatusCode, Json<ApiResponse<()>>)>
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
     MM: MedicationMasterRepository + 'static,
 {
-    // Check if message exists
-    let _message = state
+    // Check if message exists and get its data
+    let message = state
         .raw_message_repo
         .get_by_id(id)
         .await
@@ -434,13 +452,12 @@ where
             )
         })?;
 
-    info!(message_id = %id, "Reprocessing raw message");
+    info!(message_id = %id, "Reprocessing raw message with inline AI parsing");
 
     // Reset the message status by clearing processed_at and error
-    // The message will be picked up by the batch processor
-    let updated = state
+    let reset_message = state
         .raw_message_repo
-        .mark_processed(id, None)
+        .reset_for_reprocessing(id)
         .await
         .map_err(|e| {
             (
@@ -454,11 +471,282 @@ where
             )
         })?;
 
-    let response = enrich_message(&state, updated).await;
+    // Fetch participant and group info for AI parsing context
+    let participant = state
+        .participant_repo
+        .get_by_id(message.participant_id)
+        .await
+        .ok()
+        .flatten();
+    let group = state
+        .group_repo
+        .get_by_id(message.group_id)
+        .await
+        .ok()
+        .flatten();
+
+    let sender_name = participant.as_ref().and_then(|p| p.push_name.clone());
+    let group_name = group.as_ref().map(|g| g.name.clone()).unwrap_or_default();
+
+    // Fetch medication mappings (RAG-Lite)
+    let mappings_vec: Vec<String> = match state
+        .medication_master_repo
+        .find_relevant(&message.content, 5)
+        .await
+    {
+        Ok(m) => m.into_iter().map(|map| map.to_prompt_context()).collect(),
+        Err(e) => {
+            warn!(error = %e, "Failed to fetch medication mappings");
+            Vec::new()
+        }
+    };
+    let mappings_opt = if mappings_vec.is_empty() {
+        None
+    } else {
+        Some(mappings_vec.as_slice())
+    };
+
+    // Call AI parser
+    let parsed_items = match state
+        .ai_client
+        .parse(
+            &message.content,
+            sender_name.as_deref(),
+            &group_name,
+            message.reply_to_content.as_deref(),
+            mappings_opt,
+        )
+        .await
+    {
+        Ok(items) => items,
+        Err(e) => {
+            error!(error = %e, message_id = %id, "AI parsing failed during reprocess");
+            // Mark message with error
+            let _ = state
+                .raw_message_repo
+                .mark_processed(id, Some(&e.to_string()))
+                .await;
+
+            let updated = state.raw_message_repo.get_by_id(id).await.ok().flatten();
+            let response_msg = if let Some(msg) = updated {
+                enrich_message(&state, msg).await
+            } else {
+                enrich_message(&state, reset_message).await
+            };
+
+            return Ok(Json(ApiResponse {
+                success: true,
+                data: Some(ReprocessResponse {
+                    message: response_msg,
+                    offers_created: 0,
+                    requests_created: 0,
+                    parsing_error: Some(e.to_string()),
+                }),
+                error: None,
+                meta: None,
+            }));
+        }
+    };
+
+    // Create Offer/Request entities from parsed items
+    let mut offers_created = 0i32;
+    let mut requests_created = 0i32;
+
+    // Batch generate embeddings for items
+    let medications: Vec<String> = parsed_items
+        .iter()
+        .map(|item| item.medication.clone())
+        .collect();
+    let embeddings_map: std::collections::HashMap<String, Vec<f32>> = if !medications.is_empty() {
+        match state.ai_client.embed_batch(&medications).await {
+            Ok(embs) => medications.into_iter().zip(embs).collect(),
+            Err(e) => {
+                warn!(error = %e, "Failed to batch generate embeddings");
+                std::collections::HashMap::new()
+            }
+        }
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    for item in parsed_items {
+        let content_embedding = embeddings_map.get(&item.medication).cloned();
+
+        if item.item_type == crate::ai::Intent::Offer {
+            let offer = Offer {
+                id: Uuid::new_v4(),
+                raw_message_id: id,
+                participant_id: message.participant_id,
+                group_id: message.group_id,
+                medication: item.medication.clone(),
+                medication_raw: item.medication_raw.clone(),
+                quantity: Decimal::from_f64(item.quantity),
+                unit: item.unit.clone(),
+                price: Decimal::from_f64(item.price),
+                currency: Some("EGP".to_string()),
+                expiry_date: None,
+                batch_number: None,
+                notes: item.notes.clone(),
+                status: ItemStatus::Active,
+                content_embedding: content_embedding.clone().map(PgVector::from),
+                urgency_level: convert_urgency_level(item.urgency_level),
+                expiry_info: item.expiry.clone(),
+                ai_confidence: item.ai_confidence,
+                master_medication_id: None,
+                medication_curated: false,
+                confirmed_match_count: 0,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            };
+
+            // Check for duplicates
+            let mut offer = offer;
+            let mut is_duplicate = false;
+
+            if let Ok(Some(_existing)) = state
+                .offer_repo
+                .find_recent_duplicate(FindDuplicateParams::new(
+                    message.participant_id,
+                    &offer.medication,
+                    chrono::Duration::minutes(10),
+                ))
+                .await
+            {
+                is_duplicate = true;
+            } else if let Some(emb) = &offer.content_embedding
+                && let Ok(semantic_dups) = state
+                    .offer_repo
+                    .find_semantic_duplicates(SemanticDuplicateParams::new(
+                        emb.as_slice(),
+                        0.95,
+                        chrono::Duration::minutes(10),
+                    ))
+                    .await
+            {
+                if semantic_dups
+                    .iter()
+                    .any(|o| o.participant_id == message.participant_id)
+                {
+                    is_duplicate = true;
+                }
+            }
+
+            if is_duplicate {
+                offer.status = ItemStatus::Duplicate;
+            }
+
+            if let Err(e) = state.offer_repo.save(&offer).await {
+                error!(error = %e, offer_id = %offer.id, "Failed to save offer during reprocess");
+            } else {
+                info!(offer_id = %offer.id, medication = %offer.medication, "💊 Offer created during reprocess");
+                offers_created += 1;
+            }
+        } else if item.item_type == crate::ai::Intent::Request {
+            let request = RequestEntity {
+                id: Uuid::new_v4(),
+                raw_message_id: id,
+                participant_id: message.participant_id,
+                group_id: message.group_id,
+                medication: item.medication.clone(),
+                medication_raw: item.medication_raw.clone(),
+                quantity: Decimal::from_f64(item.quantity),
+                unit: item.unit.clone(),
+                max_price: Decimal::from_f64(item.max_price),
+                currency: Some("EGP".to_string()),
+                urgency_level: convert_urgency_level(item.urgency_level),
+                expiry_requirement: item.expiry.clone(),
+                ai_confidence: item.ai_confidence,
+                notes: item.notes.clone(),
+                status: ItemStatus::Active,
+                content_embedding: content_embedding.clone().map(PgVector::from),
+                master_medication_id: None,
+                medication_curated: false,
+                confirmed_match_count: 0,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            };
+
+            // Check for duplicates
+            let mut request = request;
+            let mut is_duplicate = false;
+
+            if let Ok(Some(_existing)) = state
+                .request_repo
+                .find_recent_duplicate(FindDuplicateParams::new(
+                    message.participant_id,
+                    &request.medication,
+                    chrono::Duration::minutes(10),
+                ))
+                .await
+            {
+                is_duplicate = true;
+            } else if let Some(emb) = &request.content_embedding
+                && let Ok(semantic_dups) = state
+                    .request_repo
+                    .find_semantic_duplicates(SemanticDuplicateParams::new(
+                        emb.as_slice(),
+                        0.95,
+                        chrono::Duration::minutes(10),
+                    ))
+                    .await
+            {
+                if semantic_dups
+                    .iter()
+                    .any(|r| r.participant_id == message.participant_id)
+                {
+                    is_duplicate = true;
+                }
+            }
+
+            if is_duplicate {
+                request.status = ItemStatus::Duplicate;
+            }
+
+            if let Err(e) = state.request_repo.save(&request).await {
+                error!(error = %e, request_id = %request.id, "Failed to save request during reprocess");
+            } else {
+                info!(request_id = %request.id, medication = %request.medication, "❓ Request created during reprocess");
+                requests_created += 1;
+
+                // Enqueue non-duplicate requests for matching
+                if !is_duplicate {
+                    if let Err(e) = state.match_queue_repo.enqueue(request.id, 0).await {
+                        warn!(error = %e, request_id = %request.id, "Failed to enqueue request for matching");
+                    }
+                }
+            }
+        }
+    }
+
+    // Mark message as processed (success)
+    let _ = state.raw_message_repo.mark_processed(id, None).await;
+
+    // Get the final updated message
+    let final_message = state
+        .raw_message_repo
+        .get_by_id(id)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(reset_message);
+
+    let response_msg = enrich_message(&state, final_message).await;
+
+    info!(
+        message_id = %id,
+        offers_created = offers_created,
+        requests_created = requests_created,
+        "✅ Reprocessing complete"
+    );
 
     Ok(Json(ApiResponse {
         success: true,
-        data: Some(response),
+        data: Some(ReprocessResponse {
+            message: response_msg,
+            offers_created,
+            requests_created,
+            parsing_error: None,
+        }),
         error: None,
         meta: None,
     }))
@@ -654,13 +942,38 @@ where
 // Bulk Operation Handlers
 // =============================================================================
 
-/// Bulk reprocess raw messages
+/// Response for bulk reprocess operation with per-message results
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkReprocessResponse {
+    pub results: Vec<BulkReprocessResult>,
+    pub total_succeeded: i32,
+    pub total_failed: i32,
+    pub total_offers_created: i32,
+    pub total_requests_created: i32,
+}
+
+/// Individual result for bulk reprocess operation
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkReprocessResult {
+    pub id: Uuid,
+    pub success: bool,
+    pub offers_created: i32,
+    pub requests_created: i32,
+    pub error: Option<String>,
+}
+
+/// Bulk reprocess raw messages with inline AI parsing
 ///
 /// POST /api/raw-messages/bulk/reprocess
+///
+/// For each message: reset, parse, create items, mark processed.
+/// Continues processing on individual failures.
 pub async fn bulk_reprocess_raw_messages<RQ, A, MM>(
     State(state): State<AppState<RQ, A, MM>>,
     Json(req): Json<BulkOperationRequest>,
-) -> Result<Json<ApiResponse<BulkOperationResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+) -> Result<Json<ApiResponse<BulkReprocessResponse>>, (StatusCode, Json<ApiResponse<()>>)>
 where
     RQ: ReviewQueueRepository + 'static,
     A: AuditLogRepository + 'static,
@@ -678,45 +991,351 @@ where
         ));
     }
 
-    info!(count = req.ids.len(), "Bulk reprocessing raw messages");
+    info!(
+        count = req.ids.len(),
+        "Bulk reprocessing raw messages with AI parsing"
+    );
 
-    let mut succeeded = Vec::new();
-    let mut failed = Vec::new();
+    let mut results = Vec::with_capacity(req.ids.len());
+    let mut total_succeeded = 0i32;
+    let mut total_failed = 0i32;
+    let mut total_offers_created = 0i32;
+    let mut total_requests_created = 0i32;
 
     for id in req.ids {
-        // Check if message exists
-        match state.raw_message_repo.get_by_id(id).await {
-            Ok(Some(_)) => {
-                // Mark for reprocessing
-                match state.raw_message_repo.mark_processed(id, None).await {
-                    Ok(_) => succeeded.push(id),
-                    Err(e) => failed.push(BulkOperationFailure {
-                        id,
-                        error: e.to_string(),
-                    }),
+        let result = process_single_message_for_bulk(&state, id).await;
+
+        if result.success {
+            total_succeeded += 1;
+            total_offers_created += result.offers_created;
+            total_requests_created += result.requests_created;
+        } else {
+            total_failed += 1;
+        }
+
+        results.push(result);
+    }
+
+    info!(
+        total_succeeded = total_succeeded,
+        total_failed = total_failed,
+        total_offers_created = total_offers_created,
+        total_requests_created = total_requests_created,
+        "✅ Bulk reprocessing complete"
+    );
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(BulkReprocessResponse {
+            results,
+            total_succeeded,
+            total_failed,
+            total_offers_created,
+            total_requests_created,
+        }),
+        error: None,
+        meta: None,
+    }))
+}
+
+/// Process a single message for bulk reprocessing
+/// Returns a BulkReprocessResult with success/failure status
+async fn process_single_message_for_bulk<RQ, A, MM>(
+    state: &AppState<RQ, A, MM>,
+    id: Uuid,
+) -> BulkReprocessResult
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    // Get the message
+    let message = match state.raw_message_repo.get_by_id(id).await {
+        Ok(Some(msg)) => msg,
+        Ok(None) => {
+            return BulkReprocessResult {
+                id,
+                success: false,
+                offers_created: 0,
+                requests_created: 0,
+                error: Some("Message not found".to_string()),
+            };
+        }
+        Err(e) => {
+            return BulkReprocessResult {
+                id,
+                success: false,
+                offers_created: 0,
+                requests_created: 0,
+                error: Some(format!("Failed to fetch message: {}", e)),
+            };
+        }
+    };
+
+    // Reset the message status
+    if let Err(e) = state.raw_message_repo.reset_for_reprocessing(id).await {
+        return BulkReprocessResult {
+            id,
+            success: false,
+            offers_created: 0,
+            requests_created: 0,
+            error: Some(format!("Failed to reset message: {}", e)),
+        };
+    }
+
+    // Fetch participant and group info for AI parsing context
+    let participant = state
+        .participant_repo
+        .get_by_id(message.participant_id)
+        .await
+        .ok()
+        .flatten();
+    let group = state
+        .group_repo
+        .get_by_id(message.group_id)
+        .await
+        .ok()
+        .flatten();
+
+    let sender_name = participant.as_ref().and_then(|p| p.push_name.clone());
+    let group_name = group.as_ref().map(|g| g.name.clone()).unwrap_or_default();
+
+    // Fetch medication mappings (RAG-Lite)
+    let mappings_vec: Vec<String> = match state
+        .medication_master_repo
+        .find_relevant(&message.content, 5)
+        .await
+    {
+        Ok(m) => m.into_iter().map(|map| map.to_prompt_context()).collect(),
+        Err(e) => {
+            warn!(error = %e, message_id = %id, "Failed to fetch medication mappings");
+            Vec::new()
+        }
+    };
+    let mappings_opt = if mappings_vec.is_empty() {
+        None
+    } else {
+        Some(mappings_vec.as_slice())
+    };
+
+    // Call AI parser
+    let parsed_items = match state
+        .ai_client
+        .parse(
+            &message.content,
+            sender_name.as_deref(),
+            &group_name,
+            message.reply_to_content.as_deref(),
+            mappings_opt,
+        )
+        .await
+    {
+        Ok(items) => items,
+        Err(e) => {
+            error!(error = %e, message_id = %id, "AI parsing failed during bulk reprocess");
+            // Mark message with error
+            let _ = state
+                .raw_message_repo
+                .mark_processed(id, Some(&e.to_string()))
+                .await;
+
+            return BulkReprocessResult {
+                id,
+                success: true, // Operation succeeded, but parsing failed
+                offers_created: 0,
+                requests_created: 0,
+                error: Some(format!("AI parsing failed: {}", e)),
+            };
+        }
+    };
+
+    // Create Offer/Request entities from parsed items
+    let mut offers_created = 0i32;
+    let mut requests_created = 0i32;
+
+    // Batch generate embeddings for items
+    let medications: Vec<String> = parsed_items
+        .iter()
+        .map(|item| item.medication.clone())
+        .collect();
+    let embeddings_map: std::collections::HashMap<String, Vec<f32>> = if !medications.is_empty() {
+        match state.ai_client.embed_batch(&medications).await {
+            Ok(embs) => medications.into_iter().zip(embs).collect(),
+            Err(e) => {
+                warn!(error = %e, message_id = %id, "Failed to batch generate embeddings");
+                std::collections::HashMap::new()
+            }
+        }
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    for item in parsed_items {
+        let content_embedding = embeddings_map.get(&item.medication).cloned();
+
+        if item.item_type == crate::ai::Intent::Offer {
+            let offer = Offer {
+                id: Uuid::new_v4(),
+                raw_message_id: id,
+                participant_id: message.participant_id,
+                group_id: message.group_id,
+                medication: item.medication.clone(),
+                medication_raw: item.medication_raw.clone(),
+                quantity: Decimal::from_f64(item.quantity),
+                unit: item.unit.clone(),
+                price: Decimal::from_f64(item.price),
+                currency: Some("EGP".to_string()),
+                expiry_date: None,
+                batch_number: None,
+                notes: item.notes.clone(),
+                status: ItemStatus::Active,
+                content_embedding: content_embedding.clone().map(PgVector::from),
+                urgency_level: convert_urgency_level(item.urgency_level),
+                expiry_info: item.expiry.clone(),
+                ai_confidence: item.ai_confidence,
+                master_medication_id: None,
+                medication_curated: false,
+                confirmed_match_count: 0,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            };
+
+            // Check for duplicates
+            let mut offer = offer;
+            let mut is_duplicate = false;
+
+            if let Ok(Some(_existing)) = state
+                .offer_repo
+                .find_recent_duplicate(FindDuplicateParams::new(
+                    message.participant_id,
+                    &offer.medication,
+                    chrono::Duration::minutes(10),
+                ))
+                .await
+            {
+                is_duplicate = true;
+            } else if let Some(emb) = &offer.content_embedding
+                && let Ok(semantic_dups) = state
+                    .offer_repo
+                    .find_semantic_duplicates(SemanticDuplicateParams::new(
+                        emb.as_slice(),
+                        0.95,
+                        chrono::Duration::minutes(10),
+                    ))
+                    .await
+            {
+                if semantic_dups
+                    .iter()
+                    .any(|o| o.participant_id == message.participant_id)
+                {
+                    is_duplicate = true;
                 }
             }
-            Ok(None) => {
-                failed.push(BulkOperationFailure {
-                    id,
-                    error: "Message not found".to_string(),
-                });
+
+            if is_duplicate {
+                offer.status = ItemStatus::Duplicate;
             }
-            Err(e) => {
-                failed.push(BulkOperationFailure {
-                    id,
-                    error: e.to_string(),
-                });
+
+            if let Err(e) = state.offer_repo.save(&offer).await {
+                error!(error = %e, offer_id = %offer.id, message_id = %id, "Failed to save offer during bulk reprocess");
+            } else {
+                debug!(offer_id = %offer.id, medication = %offer.medication, message_id = %id, "💊 Offer created during bulk reprocess");
+                offers_created += 1;
+            }
+        } else if item.item_type == crate::ai::Intent::Request {
+            let request = RequestEntity {
+                id: Uuid::new_v4(),
+                raw_message_id: id,
+                participant_id: message.participant_id,
+                group_id: message.group_id,
+                medication: item.medication.clone(),
+                medication_raw: item.medication_raw.clone(),
+                quantity: Decimal::from_f64(item.quantity),
+                unit: item.unit.clone(),
+                max_price: Decimal::from_f64(item.max_price),
+                currency: Some("EGP".to_string()),
+                urgency_level: convert_urgency_level(item.urgency_level),
+                expiry_requirement: item.expiry.clone(),
+                ai_confidence: item.ai_confidence,
+                notes: item.notes.clone(),
+                status: ItemStatus::Active,
+                content_embedding: content_embedding.clone().map(PgVector::from),
+                master_medication_id: None,
+                medication_curated: false,
+                confirmed_match_count: 0,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            };
+
+            // Check for duplicates
+            let mut request = request;
+            let mut is_duplicate = false;
+
+            if let Ok(Some(_existing)) = state
+                .request_repo
+                .find_recent_duplicate(FindDuplicateParams::new(
+                    message.participant_id,
+                    &request.medication,
+                    chrono::Duration::minutes(10),
+                ))
+                .await
+            {
+                is_duplicate = true;
+            } else if let Some(emb) = &request.content_embedding
+                && let Ok(semantic_dups) = state
+                    .request_repo
+                    .find_semantic_duplicates(SemanticDuplicateParams::new(
+                        emb.as_slice(),
+                        0.95,
+                        chrono::Duration::minutes(10),
+                    ))
+                    .await
+            {
+                if semantic_dups
+                    .iter()
+                    .any(|r| r.participant_id == message.participant_id)
+                {
+                    is_duplicate = true;
+                }
+            }
+
+            if is_duplicate {
+                request.status = ItemStatus::Duplicate;
+            }
+
+            if let Err(e) = state.request_repo.save(&request).await {
+                error!(error = %e, request_id = %request.id, message_id = %id, "Failed to save request during bulk reprocess");
+            } else {
+                debug!(request_id = %request.id, medication = %request.medication, message_id = %id, "❓ Request created during bulk reprocess");
+                requests_created += 1;
+
+                // Enqueue non-duplicate requests for matching
+                if !is_duplicate {
+                    if let Err(e) = state.match_queue_repo.enqueue(request.id, 0).await {
+                        warn!(error = %e, request_id = %request.id, "Failed to enqueue request for matching");
+                    }
+                }
             }
         }
     }
 
-    Ok(Json(ApiResponse {
+    // Mark message as processed (success)
+    let _ = state.raw_message_repo.mark_processed(id, None).await;
+
+    debug!(
+        message_id = %id,
+        offers_created = offers_created,
+        requests_created = requests_created,
+        "Message reprocessed successfully"
+    );
+
+    BulkReprocessResult {
+        id,
         success: true,
-        data: Some(BulkOperationResponse { succeeded, failed }),
+        offers_created,
+        requests_created,
         error: None,
-        meta: None,
-    }))
+    }
 }
 
 /// Bulk delete raw messages
@@ -883,6 +1502,16 @@ where
 // =============================================================================
 // Helper Functions
 // =============================================================================
+
+/// Convert AI UrgencyLevel to domain UrgencyLevel
+fn convert_urgency_level(ai_level: AiUrgencyLevel) -> UrgencyLevel {
+    match ai_level {
+        AiUrgencyLevel::Normal => UrgencyLevel::Normal,
+        AiUrgencyLevel::Soon => UrgencyLevel::Soon,
+        AiUrgencyLevel::Urgent => UrgencyLevel::Urgent,
+        AiUrgencyLevel::Critical => UrgencyLevel::Critical,
+    }
+}
 
 /// Validate query parameters
 fn validate_params(params: &RawMessageQueryParams) -> Result<(), String> {

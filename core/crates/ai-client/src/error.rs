@@ -36,6 +36,10 @@ pub enum Error {
     /// Incomplete JSON response (truncated output from model)
     #[error("Incomplete JSON response: {0}")]
     IncompleteJson(String),
+
+    /// Context size exceeded - input too large for model
+    #[error("Context size exceeded: {0}")]
+    ContextExceeded(String),
 }
 
 impl Error {
@@ -48,17 +52,44 @@ impl Error {
         msg.contains("eof while parsing") || msg.contains("unexpected end of input")
     }
 
+    /// Check if an API error message indicates context size exceeded
+    pub fn is_context_exceeded(message: &str) -> bool {
+        let msg = message.to_lowercase();
+        msg.contains("context size has been exceeded")
+            || msg.contains("context_length_exceeded")
+            || msg.contains("maximum context length")
+            || msg.contains("token limit exceeded")
+            || msg.contains("input too long")
+    }
+
+    /// Check if this error is a context size exceeded error
+    pub fn is_context_error(&self) -> bool {
+        match self {
+            Error::Api { status, message } => *status == 500 && Self::is_context_exceeded(message),
+            Error::ContextExceeded(_) => true,
+            Error::RetryExhausted { last_error, .. } => Self::is_context_exceeded(last_error),
+            _ => false,
+        }
+    }
+
     /// Check if this error is retryable
     pub fn is_retryable(&self) -> bool {
         match self {
             Error::Network(_) => true,
-            Error::Api { status, .. } => *status >= 500 || *status == 429,
+            Error::Api { status, message } => {
+                // Context exceeded is NOT retryable with same input
+                if *status == 500 && Self::is_context_exceeded(message) {
+                    return false;
+                }
+                *status >= 500 || *status == 429
+            }
             Error::Parse(_) => false,
             Error::IncompleteJson(_) => true,
             Error::Schema(_) => false,
             Error::RetryExhausted { .. } => false,
             Error::CircuitOpen => false,
             Error::EmptyResponse => true,
+            Error::ContextExceeded(_) => false, // Not retryable with same input
         }
     }
 }
