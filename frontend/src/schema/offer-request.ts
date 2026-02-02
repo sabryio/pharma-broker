@@ -10,10 +10,30 @@ export const OfferStatusSchema = z.enum([
 
 export type OfferStatus = z.infer<typeof OfferStatusSchema>
 
-// Urgency level enum matching Rust's UrgencyLevel
-export const UrgencyLevelSchema = z.enum(['Normal', 'Urgent', 'Critical'])
+// Urgency level enum - supports both legacy (Normal, Urgent, Critical) and new (normal, soon, urgent, critical)
+export const UrgencyLevelSchema = z.enum([
+  'Normal',
+  'Soon',
+  'Urgent',
+  'Critical',
+  'normal',
+  'soon',
+  'urgent',
+  'critical',
+])
 
 export type UrgencyLevel = z.infer<typeof UrgencyLevelSchema>
+
+// Normalize urgency level to lowercase for consistency
+export const normalizeUrgencyLevel = (level: UrgencyLevel): string => {
+  return level.toLowerCase()
+}
+
+// Get display name for urgency level
+export const urgencyLevelDisplay = (level: UrgencyLevel): string => {
+  const normalized = normalizeUrgencyLevel(level)
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
 
 // Offer schema matching Rust's Offer entity
 export const OfferSchema = z.object({

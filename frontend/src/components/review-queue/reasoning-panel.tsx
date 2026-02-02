@@ -35,9 +35,7 @@ interface ScoreFactor {
 interface ReasoningPanelProps {
   confidence: number
   reasoning: string | null
-  aiStatus?: string | null
   aiConfidence?: number | null
-  aiExplanation?: string | null
   issues: string[]
   className?: string
 }
@@ -169,9 +167,7 @@ function ScoreBar({
 export function ReasoningPanel({
   confidence,
   reasoning,
-  aiStatus,
   aiConfidence,
-  aiExplanation,
   issues,
   className,
 }: ReasoningPanelProps) {
@@ -207,18 +203,6 @@ export function ReasoningPanel({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {aiStatus && (
-            <span
-              className={cn(
-                'px-2 py-0.5 rounded-full text-[10px] font-medium',
-                aiStatus === 'Approved' && 'bg-emerald/20 text-emerald',
-                aiStatus === 'Flagged' && 'bg-amber/20 text-amber',
-                aiStatus === 'Rejected' && 'bg-red-400/20 text-red-400',
-              )}
-            >
-              AI {aiStatus}
-            </span>
-          )}
           {isExpanded ? (
             <ChevronUp className="w-4 h-4 text-muted-foreground" />
           ) : (
@@ -296,7 +280,7 @@ export function ReasoningPanel({
           </div>
 
           {/* AI Reasoning */}
-          {(reasoning || aiExplanation) && (
+          {reasoning && (
             <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/20">
               <div className="flex items-start gap-2">
                 <Sparkles className="w-4 h-4 text-violet-400 mt-0.5 shrink-0" />
@@ -305,7 +289,7 @@ export function ReasoningPanel({
                     AI Analysis
                   </h5>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    {aiExplanation || reasoning}
+                    {reasoning}
                   </p>
                   {aiConfidence && (
                     <div className="mt-2 flex items-center gap-2">

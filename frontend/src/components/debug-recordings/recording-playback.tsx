@@ -135,16 +135,12 @@ function SnapshotCard({
         </div>
       </div>
 
-      {/* AI Status */}
-      {snapshot.aiStatus && (
+      {/* AI Confidence */}
+      {snapshot.aiConfidence && (
         <div className="flex items-center gap-2 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 mb-4">
           <Sparkles className="w-4 h-4 text-violet-400" />
           <span className="text-sm text-violet-300">
-            AI: {snapshot.aiStatus} (
-            {snapshot.aiConfidence
-              ? `${(snapshot.aiConfidence * 100).toFixed(0)}%`
-              : 'N/A'}
-            )
+            AI Confidence: {(snapshot.aiConfidence * 100).toFixed(0)}%
           </span>
         </div>
       )}

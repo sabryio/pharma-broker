@@ -2,20 +2,18 @@
 // Beautiful carousel for navigating through related matches
 
 import { useCallback, useState } from 'react'
-import { useQueryClient, useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
 import {
+  Activity,
+  ArrowLeftRight,
+  Calculator,
   ChevronLeft,
   ChevronRight,
-  Layers,
-  ArrowLeftRight,
-  Sparkles,
-  Calculator,
   GitCompare,
-  Activity,
+  Layers,
+  Sparkles,
 } from 'lucide-react'
-import type { OfferWithMatches, RequestWithMatches } from './types'
 import { ReviewCard } from './review-card'
 import { MatchConfidenceMeter } from './match-confidence-meter'
 import { MatchComparison } from './match-comparison'
@@ -23,10 +21,12 @@ import { ReasoningPanel } from './reasoning-panel'
 import { CurationDialog } from './curation-dialog'
 import { SenderProfile } from './sender-profile'
 import { NotesPanel } from './notes-panel'
-import { ReclassifyDialog } from '@/components/ui/reclassify-dialog'
+import type { OfferWithMatches, RequestWithMatches } from './types'
+import type { ItemType } from '@/api/offers'
+import { cn } from '@/lib/utils'
 import { ReparseDialog } from '@/components/ui/reparse-dialog'
 import { UncertaintyIndicator } from '@/components/debug-recordings'
-import type { ItemType } from '@/api/offers'
+import { ReclassifyDialog } from '@/components/ui/reclassify-dialog'
 import { rematchItem } from '@/api/matching'
 import { reAuditMatch, recalculateConfidence } from '@/api/match-reviews'
 
@@ -141,7 +141,7 @@ export function RelatedMatchCarousel({
     mutationFn: reAuditMatch,
     onSuccess: (data) => {
       toast.success('AI Re-audit completed', {
-        description: `Status: ${data.aiStatus} (${data.aiConfidence ? Math.round(data.aiConfidence * 100) : 0}% confidence)`,
+        description: `Confidence: ${data.aiConfidence ? Math.round(data.aiConfidence * 100) : 0}%`,
       })
       // Invalidate queries to refresh the match reviews
       queryClient.invalidateQueries({ queryKey: ['match-reviews'] })
@@ -604,16 +604,7 @@ export function RelatedMatchCarousel({
                 }}
                 onReclassify={handleReclassify}
                 onReparse={handleReparse}
-                aiStatus={
-                  currentMatch.aiStatus as
-                    | 'Approved'
-                    | 'Flagged'
-                    | 'Rejected'
-                    | null
-                    | undefined
-                }
                 aiConfidence={currentMatch.aiConfidence}
-                aiExplanation={currentMatch.aiExplanation}
               />
             ) : (
               <ReviewCard
@@ -625,16 +616,7 @@ export function RelatedMatchCarousel({
                 }}
                 onReclassify={handleReclassify}
                 onReparse={handleReparse}
-                aiStatus={
-                  currentMatch.aiStatus as
-                    | 'Approved'
-                    | 'Flagged'
-                    | 'Rejected'
-                    | null
-                    | undefined
-                }
                 aiConfidence={currentMatch.aiConfidence}
-                aiExplanation={currentMatch.aiExplanation}
               />
             )}
             {/* Carousel indicator badge */}
@@ -706,10 +688,8 @@ export function RelatedMatchCarousel({
         <div className="mt-6">
           <ReasoningPanel
             confidence={currentMatch.confidence}
-            reasoning={null}
-            aiStatus={currentMatch.aiStatus}
-            aiConfidence={currentMatch.aiConfidence}
-            aiExplanation={currentMatch.aiExplanation}
+            reasoning={currentMatch.reasoning ?? null}
+            aiConfidence={currentMatch.aiConfidence ?? null}
             issues={issues}
           />
         </div>
@@ -761,7 +741,7 @@ export function RelatedMatchCarousel({
         <div className="mt-4">
           <NotesPanel
             matchId={currentMatch.matchId}
-            initialNotes={currentMatch.notes}
+            initialNotes={currentMatch.reasoning}
           />
         </div>
       </div>

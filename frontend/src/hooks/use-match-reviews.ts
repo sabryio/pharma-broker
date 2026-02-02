@@ -112,7 +112,7 @@ export function useUpdateMatchReviewStatus() {
       return updateMatchReviewStatus(id, {
         action,
         reviewed_by: userId,
-        notes,
+        reasoning: notes,
       })
     },
 

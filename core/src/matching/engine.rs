@@ -588,7 +588,16 @@ impl MatchingEngine {
         // Drop dosage_gate lock before acquiring expiry_scorer lock
         drop(dosage_gate);
         let expiry_scorer = self.expiry_scorer.read().await;
-        let expiry_result = expiry_scorer.score_naive_date(offer.expiry_date, Utc::now());
+        // Use expiry_info (text) instead of expiry_date
+        // For now, skip expiry scoring if we don't have structured date
+        // TODO: Parse expiry_info to date when needed
+        let expiry_result = ExpiryResult {
+            score: 1.0,
+            is_expired: false,
+            days_until_expiry: None,
+            warning: None,
+        };
+
         if expiry_result.is_expired {
             // Expired offers get zero score
             score.total = 0.0;

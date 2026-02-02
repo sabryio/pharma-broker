@@ -76,9 +76,7 @@ export const RecordingSnapshotSchema = z.object({
     maxPrice: z.string().nullable().optional(),
   }),
   confidence: z.number(),
-  aiStatus: z.string().nullable(),
   aiConfidence: z.number().nullable(),
-  aiExplanation: z.string().nullable(),
   issues: z.array(z.string()),
   reasoning: z.string().nullable().optional(),
   adjustments: z.object({

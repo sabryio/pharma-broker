@@ -274,7 +274,9 @@ impl PharmaParser {
         match result {
             Ok(parse_result) => {
                 self.circuit_breaker.record_success();
-                let items_count = parse_result.items.len();
+                // Convert new format to legacy format for backward compatibility
+                let items = parse_result.to_legacy_items();
+                let items_count = items.len();
                 if items_count > 0 {
                     info!(
                         items = items_count,
@@ -284,7 +286,7 @@ impl PharmaParser {
                 } else {
                     debug!("AI parsing complete (no items found)");
                 }
-                Ok(parse_result.items)
+                Ok(items)
             }
             Err(e) => {
                 // Handle context exceeded error with recursive split (Half-Chunk Retry)
@@ -423,7 +425,9 @@ impl PharmaParser {
             match result {
                 Ok(parse_result) => {
                     self.circuit_breaker.record_success();
-                    let items_count = parse_result.items.len();
+                    // Convert new format to legacy format
+                    let items = parse_result.to_legacy_items();
+                    let items_count = items.len();
                     if items_count > 0 {
                         info!(
                             chunk = idx + 1,
@@ -438,7 +442,7 @@ impl PharmaParser {
                             "Chunk parsed successfully (no items)"
                         );
                     }
-                    all_items.extend(parse_result.items);
+                    all_items.extend(items);
                 }
                 Err(e) => {
                     // Check for context error (either direct API error or wrapped in RetryExhausted)

@@ -42,8 +42,6 @@ pub struct MatchStatusEvent {
     pub match_id: Uuid,
     pub user_id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub notes: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
 

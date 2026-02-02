@@ -241,8 +241,6 @@ where
 #[derive(Debug, Deserialize)]
 pub struct ConfirmRequest {
     pub matched_by: Uuid,
-    #[serde(default)]
-    pub notes: String,
 }
 
 /// Confirm a pending match
@@ -272,7 +270,6 @@ where
             id,
             MatchStatus::Confirmed,
             req.matched_by,
-            &req.notes,
         ))
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -321,11 +318,6 @@ where
     let ws_event = WsEvent::MatchConfirmed(MatchStatusEvent {
         match_id: id,
         user_id: req.matched_by,
-        notes: if req.notes.is_empty() {
-            None
-        } else {
-            Some(req.notes.clone())
-        },
         reason: None,
     });
     if let Err(e) = state.ws_tx.send(ws_event) {
@@ -385,7 +377,6 @@ where
             id,
             MatchStatus::Rejected,
             req.matched_by,
-            &req.reason,
         ))
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -413,7 +404,6 @@ where
     let ws_event = WsEvent::MatchRejected(MatchStatusEvent {
         match_id: id,
         user_id: req.matched_by,
-        notes: None,
         reason: if req.reason.is_empty() {
             None
         } else {

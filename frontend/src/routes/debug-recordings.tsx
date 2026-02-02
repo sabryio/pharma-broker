@@ -135,7 +135,6 @@ function convertAuditToRecording(audit: FrontendAuditRecord): MatchRecording {
           reasoning: audit.resolutionStage,
           issues: [],
           confirmedAt: null,
-          notes: null,
         },
         offer: {
           id: audit.matchId,
@@ -152,9 +151,7 @@ function convertAuditToRecording(audit: FrontendAuditRecord): MatchRecording {
           maxPrice: null,
         },
         confidence: audit.finalScore * 100,
-        aiStatus: audit.aiInvolved ? 'completed' : null,
         aiConfidence: audit.aiInvolved ? audit.finalScore * 100 : null,
-        aiExplanation: null,
         issues: [],
         reasoning: audit.resolutionStage,
         adjustments: {

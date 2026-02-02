@@ -2,22 +2,22 @@
 // Displays full match details with offer and request information
 
 import {
-  X,
+  AlertTriangle,
+  Brain,
+  Calendar,
   CheckCircle,
-  XCircle,
+  Clock,
+  DollarSign,
+  FileText,
   Package,
   User,
   Users,
-  Calendar,
-  DollarSign,
-  AlertTriangle,
-  Brain,
-  FileText,
-  Clock,
+  X,
+  XCircle,
 } from 'lucide-react'
+import { getConfidenceColor, getStatusColor } from './match-card'
 import type { MatchReviewItem } from '@/schema/match-review'
 import { cn } from '@/lib/utils'
-import { getConfidenceColor, getStatusColor } from './match-card'
 
 interface MatchDetailProps {
   match: MatchReviewItem
@@ -235,9 +235,7 @@ export function MatchDetail({
         </div>
 
         {/* AI Analysis Section */}
-        {(match.reasoning ||
-          match.issues.length > 0 ||
-          match.aiExplanation) && (
+        {(match.reasoning || match.issues.length > 0) && (
           <div className="space-y-4 pt-4 border-t border-border">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
@@ -259,53 +257,18 @@ export function MatchDetail({
                 </div>
               )}
 
-              {/* AI Explanation */}
-              {match.aiExplanation && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    AI Explanation:
-                  </p>
-                  <p className="text-sm text-foreground">
-                    {match.aiExplanation}
-                  </p>
-                </div>
-              )}
-
-              {/* AI Status & Confidence */}
-              {(match.aiStatus || match.aiConfidence !== null) && (
-                <div className="flex items-center gap-4">
-                  {match.aiStatus && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        AI Status:
-                      </span>
-                      <span
-                        className={cn(
-                          'px-2 py-0.5 rounded text-xs',
-                          match.aiStatus === 'approved'
-                            ? 'bg-emerald/10 text-emerald border border-emerald/30'
-                            : match.aiStatus === 'rejected'
-                              ? 'bg-red-400/10 text-red-400 border border-red-400/30'
-                              : 'bg-amber/10 text-amber border border-amber/30',
-                        )}
-                      >
-                        {match.aiStatus}
-                      </span>
-                    </div>
-                  )}
-                  {match.aiConfidence !== null &&
-                    match.aiConfidence !== undefined && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          AI Confidence:
-                        </span>
-                        <span className="text-sm font-medium text-foreground">
-                          {Math.round(match.aiConfidence)}%
-                        </span>
-                      </div>
-                    )}
-                </div>
-              )}
+              {/* AI Confidence */}
+              {match.aiConfidence !== null &&
+                match.aiConfidence !== undefined && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      AI Confidence:
+                    </span>
+                    <span className="text-sm font-medium text-foreground">
+                      {Math.round(match.aiConfidence)}%
+                    </span>
+                  </div>
+                )}
 
               {/* Issues */}
               {match.issues.length > 0 && (
@@ -346,10 +309,10 @@ export function MatchDetail({
               </span>
             </div>
           )}
-          {match.notes && (
+          {match.reasoning && (
             <div>
-              <span>Notes: </span>
-              <span className="text-foreground">{match.notes}</span>
+              <span>Reasoning: </span>
+              <span className="text-foreground">{match.reasoning}</span>
             </div>
           )}
         </div>

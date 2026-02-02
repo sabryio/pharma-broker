@@ -87,11 +87,7 @@ impl MatchService {
     }
 
     /// Reject a match
-    pub async fn reject(
-        db: &DatabaseConnection,
-        id: Uuid,
-        notes: Option<&str>,
-    ) -> Result<match_::Model> {
+    pub async fn reject(db: &DatabaseConnection, id: Uuid) -> Result<match_::Model> {
         let m = Match::find_by_id(id)
             .one(db)
             .await?
@@ -99,9 +95,6 @@ impl MatchService {
 
         let mut active: match_::ActiveModel = m.into();
         active.status = Set(MatchStatus::Rejected);
-        if let Some(n) = notes {
-            active.notes = Set(Some(n.to_string()));
-        }
         active.update(db).await.map_err(Error::from)
     }
 

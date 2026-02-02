@@ -86,17 +86,9 @@ export function createMockMatchReviewItem(
     createdAt: faker.date.recent().toISOString(),
     confirmedAt:
       faker.helpers.maybe(() => faker.date.recent().toISOString()) ?? null,
-    notes: faker.helpers.maybe(() => faker.lorem.sentence()) ?? null,
-    aiStatus: faker.helpers.arrayElement([
-      'approved',
-      'rejected',
-      'uncertain',
-      null,
-    ]),
     aiConfidence: faker.helpers.maybe(() =>
       faker.number.float({ min: 0.5, max: 1 }),
     ),
-    aiExplanation: faker.helpers.maybe(() => faker.lorem.paragraph()),
     ...overrides,
   }
 }

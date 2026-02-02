@@ -242,19 +242,17 @@ export function MatchCard({
             </div>
 
             {/* AI Reasoning */}
-            {(match.reasoning ||
-              match.issues.length > 0 ||
-              match.aiExplanation) && (
+            {(match.reasoning || match.issues.length > 0) && (
               <div className="space-y-2">
                 <h4 className="text-sm font-medium text-foreground">
                   AI Analysis
                 </h4>
-                {match.aiExplanation && (
+                {match.reasoning && (
                   <div className="p-3 rounded-lg bg-violet-400/10 border border-violet-400/20">
                     <div className="flex items-center gap-2 mb-1">
                       <Bot className="w-4 h-4 text-violet-400" />
                       <span className="text-xs font-medium text-violet-400">
-                        AI Explanation
+                        AI Reasoning
                         {match.aiConfidence !== null &&
                           match.aiConfidence !== undefined && (
                             <span className="ml-2 text-muted-foreground">
@@ -265,14 +263,9 @@ export function MatchCard({
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {match.aiExplanation}
+                      {match.reasoning}
                     </p>
                   </div>
-                )}
-                {match.reasoning && !match.aiExplanation && (
-                  <p className="text-xs text-muted-foreground">
-                    {match.reasoning}
-                  </p>
                 )}
                 {match.issues.length > 0 && (
                   <div className="flex flex-wrap gap-2">

@@ -316,7 +316,6 @@ where
         unit: request.unit.clone(),
         price: request.max_price, // Request max_price becomes offer price
         currency: request.currency.clone(),
-        expiry_date: None,
         batch_number: None,
         notes: Some(format!(
             "Reclassified from request {}. {}",

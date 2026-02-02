@@ -87,7 +87,6 @@ impl MatchNotifier for WebSocketNotifier {
         self.broadcast(WsEvent::MatchConfirmed(crate::ws::MatchStatusEvent {
             match_id,
             user_id: Uuid::nil(), // System user represented as nil UUID
-            notes: Some(format!("Auto-confirmed with score {:.2}", score)),
             reason: None,
         }));
 

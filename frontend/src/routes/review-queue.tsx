@@ -128,11 +128,16 @@ export default function ReviewQueue() {
       )
     }
 
-    // AI status filter
+    // Status filter (replacing aiStatus filter)
     if (filters.aiStatusFilter !== 'all') {
       result = result.filter((item) => {
-        if (filters.aiStatusFilter === 'pending') return !item.aiStatus
-        return item.aiStatus?.toLowerCase() === filters.aiStatusFilter
+        if (filters.aiStatusFilter === 'pending')
+          return item.status === 'PENDING'
+        if (filters.aiStatusFilter === 'approved')
+          return item.status === 'CONFIRMED'
+        if (filters.aiStatusFilter === 'rejected')
+          return item.status === 'REJECTED'
+        return true
       })
     }
 

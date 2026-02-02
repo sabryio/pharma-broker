@@ -22,11 +22,11 @@ pub struct Model {
     pub status: MatchStatus,
     pub created_at: DateTimeUtc,
     pub confirmed_at: Option<DateTimeUtc>,
-    pub notes: Option<String>,
-    pub ai_status: Option<String>,
+    // REMOVED: notes (redundant with reasoning)
+    // REMOVED: ai_status (redundant with status + matched_by)
     #[sea_orm(column_type = "Double", nullable)]
     pub ai_confidence: Option<f64>,
-    pub ai_explanation: Option<String>,
+    // REMOVED: ai_explanation (redundant with reasoning)
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -80,10 +80,10 @@ impl Default for Model {
             status: MatchStatus::Pending,
             created_at: Utc::now(),
             confirmed_at: None,
-            notes: None,
-            ai_status: None,
+            // REMOVED: notes
+            // REMOVED: ai_status
             ai_confidence: None,
-            ai_explanation: None,
+            // REMOVED: ai_explanation
         }
     }
 }

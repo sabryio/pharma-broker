@@ -16,26 +16,30 @@ use serde::{Deserialize, Serialize};
 /// This version includes `JsonSchema` for AI structured output.
 /// Use `to_db_urgency()` to convert to the database entity version.
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "lowercase")]
 pub enum UrgencyLevel {
     /// Normal priority - no urgency indicated
     #[default]
+    #[serde(rename = "normal")]
     Normal,
     /// Moderate urgency - needed soon
+    #[serde(rename = "soon")]
     Soon,
     /// High urgency - needed urgently
+    #[serde(rename = "urgent")]
     Urgent,
     /// Critical urgency - immediate need
+    #[serde(rename = "critical")]
     Critical,
 }
 
 impl UrgencyLevel {
     pub fn as_str(&self) -> &'static str {
         match self {
-            UrgencyLevel::Normal => "NORMAL",
-            UrgencyLevel::Soon => "SOON",
-            UrgencyLevel::Urgent => "URGENT",
-            UrgencyLevel::Critical => "CRITICAL",
+            UrgencyLevel::Normal => "normal",
+            UrgencyLevel::Soon => "soon",
+            UrgencyLevel::Urgent => "urgent",
+            UrgencyLevel::Critical => "critical",
         }
     }
 
@@ -102,7 +106,82 @@ impl From<pharma_db::entity::common::UrgencyLevel> for UrgencyLevel {
     }
 }
 
-/// A parsed medication item from AI
+/// Intent enumeration
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Intent {
+    #[default]
+    #[serde(rename = "offer")]
+    Offer,
+    #[serde(rename = "request")]
+    Request,
+}
+
+impl fmt::Display for Intent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Intent {
+    /// Get string representation for backward compatibility
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Intent::Offer => "offer",
+            Intent::Request => "request",
+        }
+    }
+}
+
+/// A medication entry from the new prompt structure
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Medication {
+    /// Exact medication name from message (preserves original language)
+    pub name: String,
+
+    /// Dosage/strength (e.g., "36", "1mg", "150") - can be null
+    #[serde(default)]
+    pub concentration: Option<String>,
+
+    /// Physical form (امبول, فايل, اقراص, etc.) - can be null
+    #[serde(default)]
+    pub form: Option<String>,
+
+    /// Expiration date (MM/YY format or description) - can be null
+    #[serde(default)]
+    pub expiry: Option<String>,
+
+    /// AI confidence score (0.0 to 1.0)
+    pub confidence: f64,
+
+    /// Extraction accuracy explanation
+    pub reason: String,
+}
+
+/// AI parse result - the new structured output schema
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ParseResult {
+    /// Intent: "offer" or "request"
+    pub intent: Intent,
+
+    /// Urgency level: "critical", "urgent", "soon", or "normal"
+    pub urgency: UrgencyLevel,
+
+    /// Brief explanation including urgency assessment
+    pub reason: String,
+
+    /// List of extracted medications
+    pub medications: Vec<Medication>,
+}
+
+// =============================================================================
+// Legacy Support - ParsedItem for backward compatibility
+// =============================================================================
+
+/// A parsed medication item from AI (LEGACY - for backward compatibility)
+///
+/// This structure is maintained for compatibility with existing code.
+/// New code should use ParseResult with Medication entries.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ParsedItem {
     /// Item type: "OFFER" or "REQUEST"
@@ -152,36 +231,44 @@ pub struct ParsedItem {
     pub notes: Option<String>,
 }
 
-/// Intent enumeration
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum Intent {
-    #[default]
-    Offer,
-    Request,
-}
+impl ParsedItem {
+    /// Convert from new Medication format to legacy ParsedItem
+    pub fn from_medication(med: &Medication, intent: Intent, urgency: UrgencyLevel) -> Self {
+        // Build medication name with concentration if present
+        let medication = if let Some(conc) = &med.concentration {
+            format!("{} {}", med.name, conc)
+        } else {
+            med.name.clone()
+        };
 
-impl fmt::Display for Intent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
+        // Build notes from form if present
+        let notes = med.form.clone();
 
-impl Intent {
-    /// Get string representation for backward compatibility
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Intent::Offer => "OFFER",
-            Intent::Request => "REQUEST",
+        Self {
+            item_type: intent,
+            medication,
+            medication_raw: med.name.clone(),
+            ai_confidence: med.confidence,
+            quantity: 0.0,
+            unit: med.form.clone(),
+            price: 0.0,
+            max_price: 0.0,
+            urgent: urgency.is_urgent(),
+            urgency_level: urgency,
+            expiry: med.expiry.clone(),
+            notes,
         }
     }
 }
 
-/// AI parse result - the structured output schema
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
-pub struct ParseResult {
-    /// List of parsed medication items
-    pub items: Vec<ParsedItem>,
+impl ParseResult {
+    /// Convert to legacy format (Vec<ParsedItem>) for backward compatibility
+    pub fn to_legacy_items(&self) -> Vec<ParsedItem> {
+        self.medications
+            .iter()
+            .map(|med| ParsedItem::from_medication(med, self.intent, self.urgency))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -195,42 +282,42 @@ mod tests {
     }
 
     #[test]
-    fn test_item_type_serialization() {
+    fn test_intent_serialization() {
         let offer = Intent::Offer;
         let json = serde_json::to_string(&offer).unwrap();
-        assert_eq!(json, "\"OFFER\"");
+        assert_eq!(json, "\"offer\"");
 
         let request = Intent::Request;
         let json = serde_json::to_string(&request).unwrap();
-        assert_eq!(json, "\"REQUEST\"");
+        assert_eq!(json, "\"request\"");
     }
 
     #[test]
     fn test_urgency_level_serialization() {
         assert_eq!(
             serde_json::to_string(&UrgencyLevel::Normal).unwrap(),
-            "\"NORMAL\""
+            "\"normal\""
         );
         assert_eq!(
             serde_json::to_string(&UrgencyLevel::Soon).unwrap(),
-            "\"SOON\""
+            "\"soon\""
         );
         assert_eq!(
             serde_json::to_string(&UrgencyLevel::Urgent).unwrap(),
-            "\"URGENT\""
+            "\"urgent\""
         );
         assert_eq!(
             serde_json::to_string(&UrgencyLevel::Critical).unwrap(),
-            "\"CRITICAL\""
+            "\"critical\""
         );
     }
 
     #[test]
     fn test_urgency_level_deserialization() {
-        let normal: UrgencyLevel = serde_json::from_str("\"NORMAL\"").unwrap();
+        let normal: UrgencyLevel = serde_json::from_str("\"normal\"").unwrap();
         assert_eq!(normal, UrgencyLevel::Normal);
 
-        let urgent: UrgencyLevel = serde_json::from_str("\"URGENT\"").unwrap();
+        let urgent: UrgencyLevel = serde_json::from_str("\"urgent\"").unwrap();
         assert_eq!(urgent, UrgencyLevel::Urgent);
     }
 
@@ -258,43 +345,75 @@ mod tests {
 
     #[test]
     fn test_urgency_level_display() {
-        assert_eq!(format!("{}", UrgencyLevel::Normal), "NORMAL");
-        assert_eq!(format!("{}", UrgencyLevel::Critical), "CRITICAL");
+        assert_eq!(format!("{}", UrgencyLevel::Normal), "normal");
+        assert_eq!(format!("{}", UrgencyLevel::Critical), "critical");
     }
 
     #[test]
-    fn test_parsed_item_with_urgency() {
+    fn test_new_parse_result() {
         let json = r#"{
-            "type": "REQUEST",
-            "medication": "Ozempic 1mg",
-            "medication_raw": "Ozempic 1mg",
-            "ai_confidence": 0.95,
-            "urgent": true,
-            "urgency_level": "CRITICAL",
-            "expiry": "2025-06"
+            "intent": "request",
+            "urgency": "critical",
+            "reason": "Emergency request for insulin",
+            "medications": [
+                {
+                    "name": "Ozempic",
+                    "concentration": "1mg",
+                    "form": "امبول",
+                    "expiry": "10/27",
+                    "confidence": 0.95,
+                    "reason": "Clear extraction from message"
+                }
+            ]
         }"#;
 
-        let item: ParsedItem = serde_json::from_str(json).unwrap();
-        assert_eq!(item.item_type, Intent::Request);
-        assert!(item.urgent);
-        assert_eq!(item.urgency_level, UrgencyLevel::Critical);
-        assert_eq!(item.expiry, Some("2025-06".to_string()));
+        let result: ParseResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.intent, Intent::Request);
+        assert_eq!(result.urgency, UrgencyLevel::Critical);
+        assert_eq!(result.medications.len(), 1);
+        assert_eq!(result.medications[0].name, "Ozempic");
+        assert_eq!(result.medications[0].concentration, Some("1mg".to_string()));
     }
 
     #[test]
-    fn test_parsed_item_defaults() {
-        let json = r#"{
-            "type": "OFFER",
-            "medication": "Aspirin",
-            "medication_raw": "اسبرين"
-        }"#;
+    fn test_legacy_conversion() {
+        let med = Medication {
+            name: "كونسرتا".to_string(),
+            concentration: Some("36".to_string()),
+            form: Some("اقراص".to_string()),
+            expiry: None,
+            confidence: 0.9,
+            reason: "Extracted correctly".to_string(),
+        };
 
-        let item: ParsedItem = serde_json::from_str(json).unwrap();
+        let item = ParsedItem::from_medication(&med, Intent::Offer, UrgencyLevel::Normal);
+        assert_eq!(item.medication, "كونسرتا 36");
+        assert_eq!(item.medication_raw, "كونسرتا");
+        assert_eq!(item.item_type, Intent::Offer);
         assert!(!item.urgent);
-        assert_eq!(item.urgency_level, UrgencyLevel::Normal);
-        assert_eq!(item.expiry, None);
-        assert_eq!(item.quantity, 0.0);
-        assert_eq!(item.price, 0.0);
+    }
+
+    #[test]
+    fn test_parse_result_to_legacy() {
+        let result = ParseResult {
+            intent: Intent::Request,
+            urgency: UrgencyLevel::Urgent,
+            reason: "Urgent request".to_string(),
+            medications: vec![Medication {
+                name: "Aspirin".to_string(),
+                concentration: Some("100mg".to_string()),
+                form: Some("tablets".to_string()),
+                expiry: None,
+                confidence: 0.95,
+                reason: "Clear".to_string(),
+            }],
+        };
+
+        let items = result.to_legacy_items();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].medication, "Aspirin 100mg");
+        assert!(items[0].urgent);
+        assert_eq!(items[0].urgency_level, UrgencyLevel::Urgent);
     }
 
     #[test]

@@ -55,10 +55,10 @@ export const MatchReviewItemSchema = z.object({
   request: RequestSummarySchema,
   createdAt: z.string(),
   confirmedAt: z.string().nullable(),
-  notes: z.string().nullable(),
-  aiStatus: z.string().nullable().optional(),
+  // REMOVED: notes (merged into reasoning)
+  // REMOVED: aiStatus (use status + matched_by instead)
   aiConfidence: z.number().nullable().optional(),
-  aiExplanation: z.string().nullable().optional(),
+  // REMOVED: aiExplanation (merged into reasoning)
   aiAutoApproved: z.boolean().nullable().optional(),
   aiApprovedAt: z.string().nullable().optional(),
 })
@@ -81,7 +81,7 @@ export const MatchReviewStatsSchema = z.object({
 export const UpdateMatchReviewRequestSchema = z.object({
   action: z.enum(['approved', 'rejected']),
   reviewed_by: z.uuid(),
-  notes: z.string().optional(),
+  reasoning: z.string().optional(), // Renamed from notes to reasoning
 })
 
 export const UpdateMatchReviewResponseSchema = z.object({

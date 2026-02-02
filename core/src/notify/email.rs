@@ -257,10 +257,10 @@ mod tests {
             status: MatchStatus::Pending,
             created_at: Utc::now(),
             confirmed_at: None,
-            notes: None,
-            ai_status: None,
+            // REMOVED: notes (use reasoning instead)
+            // REMOVED: ai_status (use status + matched_by instead)
             ai_confidence: None,
-            ai_explanation: None,
+            // REMOVED: ai_explanation (merged into reasoning)
         }
     }
 

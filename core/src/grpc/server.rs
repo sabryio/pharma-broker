@@ -497,7 +497,7 @@ where
                                 unit: item.unit.clone(),
                                 price: Decimal::from_f64(item.price),
                                 currency: Some("EGP".to_string()),
-                                expiry_date: None,
+                                // expiry_date removed - use expiry_info instead
                                 batch_number: None,
                                 notes: item.notes.clone(),
                                 status: ItemStatus::Active,

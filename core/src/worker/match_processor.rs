@@ -258,10 +258,10 @@ impl MatchProcessor {
                     status,
                     created_at: Utc::now(),
                     confirmed_at,
-                    notes: None,
-                    ai_status: review.as_ref().map(|r| format!("{:?}", r.status)),
+                    // REMOVED: notes (use reasoning instead)
+                    // REMOVED: ai_status (use status + matched_by instead)
                     ai_confidence: review.as_ref().map(|r| r.confidence as f64),
-                    ai_explanation: review.as_ref().map(|r| r.explanation.clone()),
+                    // REMOVED: ai_explanation (merged into reasoning)
                 };
 
                 if let Err(e) = self.repos.match_repo.save(&match_entity).await {

@@ -128,9 +128,6 @@ impl MatchRepository for SeaOrmMatchRepo {
         if !params.matched_by.is_empty() {
             active.matched_by = Set(Some(params.matched_by.to_string()));
         }
-        if !params.notes.is_empty() {
-            active.notes = Set(Some(params.notes.to_string()));
-        }
         if params.status == MatchStatus::Confirmed || params.status == MatchStatus::Rejected {
             active.confirmed_at = Set(Some(Utc::now()));
         }
@@ -145,22 +142,14 @@ impl MatchRepository for SeaOrmMatchRepo {
         Ok(result)
     }
 
-    async fn update_ai_review(
-        &self,
-        id: Uuid,
-        ai_status: &str,
-        ai_confidence: f64,
-        ai_explanation: &str,
-    ) -> Result<match_::Model> {
+    async fn update_ai_review(&self, id: Uuid, ai_confidence: f64) -> Result<match_::Model> {
         let m = Match::find_by_id(id)
             .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Match not found: {}", id)))?;
 
         let mut active: match_::ActiveModel = m.into();
-        active.ai_status = Set(Some(ai_status.to_string()));
         active.ai_confidence = Set(Some(ai_confidence));
-        active.ai_explanation = Set(Some(ai_explanation.to_string()));
 
         active.update(&*self.db).await.map_err(Error::from)
     }
@@ -178,14 +167,14 @@ impl MatchRepository for SeaOrmMatchRepo {
         active.update(&*self.db).await.map_err(Error::from)
     }
 
-    async fn update_notes(&self, id: Uuid, notes: &str) -> Result<match_::Model> {
+    async fn update_reasoning(&self, id: Uuid, reasoning: &str) -> Result<match_::Model> {
         let m = Match::find_by_id(id)
             .one(&*self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("Match not found: {}", id)))?;
 
         let mut active: match_::ActiveModel = m.into();
-        active.notes = Set(Some(notes.to_string()));
+        active.reasoning = Set(Some(reasoning.to_string()));
 
         active.update(&*self.db).await.map_err(Error::from)
     }
@@ -419,12 +408,11 @@ mod tests {
         assert_eq!(m.status, MatchStatus::Pending);
 
         let updated = repo
-            .update_status(UpdateMatchStatusParams {
-                id: &m.id,
-                status: MatchStatus::Confirmed,
-                matched_by: "USER",
-                notes: "Test confirmation",
-            })
+            .update_status(UpdateMatchStatusParams::new(
+                m.id,
+                MatchStatus::Confirmed,
+                "USER",
+            ))
             .await
             .expect("UpdateStatus");
 

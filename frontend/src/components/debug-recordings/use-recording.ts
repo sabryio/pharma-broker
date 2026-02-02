@@ -4,13 +4,13 @@
 import { useCallback, useRef, useState } from 'react'
 import type { MatchReviewItem } from '@/schema/match-review'
 import type {
+  AdjustmentSettings,
   MatchRecording,
   MatchRecordingSnapshot,
   RecordingEvent,
   RecordingMetadata,
   ScoreBreakdown,
   WeightConfig,
-  AdjustmentSettings,
 } from './types'
 
 const generateId = () =>
@@ -134,7 +134,7 @@ export function useRecording(
             const oldest = Array.from(next.entries()).sort(
               ([, a], [, b]) => a.startedAt.getTime() - b.startedAt.getTime(),
             )[0]
-            if (oldest) next.delete(oldest[0])
+            next.delete(oldest[0])
           }
           next.set(matchId, {
             id: matchId,
@@ -232,9 +232,7 @@ export function useRecording(
           offer: matchReview.offer,
           request: matchReview.request,
           confidence: matchReview.confidence,
-          aiStatus: matchReview.aiStatus ?? null,
           aiConfidence: matchReview.aiConfidence ?? null,
-          aiExplanation: matchReview.aiExplanation ?? null,
           issues: matchReview.issues,
           reasoning: matchReview.reasoning,
           adjustments: { ...adjustments },

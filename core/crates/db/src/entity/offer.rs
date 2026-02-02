@@ -24,7 +24,7 @@ pub struct Model {
     #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
     pub price: Option<Decimal>,
     pub currency: Option<String>,
-    pub expiry_date: Option<Date>,
+    // expiry_date removed - redundant with expiry_info
     pub batch_number: Option<String>,
     pub notes: Option<String>,
     pub status: Status,
@@ -109,7 +109,7 @@ impl Default for Model {
             unit: None,
             price: None,
             currency: None,
-            expiry_date: None,
+            // expiry_date removed
             batch_number: None,
             notes: None,
             status: Status::Active,
@@ -325,7 +325,6 @@ impl OfferBuilder {
             unit: self.unit,
             price: self.price,
             currency: self.currency,
-            expiry_date: self.expiry_date,
             batch_number: self.batch_number,
             notes: self.notes,
             status: Status::Active,

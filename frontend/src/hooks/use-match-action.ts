@@ -214,7 +214,7 @@ export function useMatchAction(
         await updateMatchReviewStatus(matchId, {
           action,
           reviewed_by: userId,
-          notes,
+          reasoning: notes,
         })
 
         // Record action in Redux

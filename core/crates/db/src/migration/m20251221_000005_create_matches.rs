@@ -41,11 +41,11 @@ impl MigrationTrait for Migration {
                             .default(Expr::current_timestamp()),
                     )
                     .col(ColumnDef::new(Matches::ConfirmedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(Matches::Notes).text())
+                    // REMOVED: Notes (redundant with Reasoning)
+                    // REMOVED: AiStatus (redundant with Status + MatchedBy)
                     // AI Matching fields
-                    .col(ColumnDef::new(Matches::AiStatus).string_len(20))
                     .col(ColumnDef::new(Matches::AiConfidence).double())
-                    .col(ColumnDef::new(Matches::AiExplanation).text())
+                    // REMOVED: AiExplanation (redundant with Reasoning)
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_matches_offer")
@@ -134,9 +134,9 @@ pub enum Matches {
     Status,
     CreatedAt,
     ConfirmedAt,
-    Notes,
+    // REMOVED: Notes (redundant with Reasoning)
+    // REMOVED: AiStatus (redundant with Status + MatchedBy)
     // AI Matching fields
-    AiStatus,
     AiConfidence,
-    AiExplanation,
+    // REMOVED: AiExplanation (redundant with Reasoning)
 }

@@ -102,9 +102,7 @@ export interface MatchRecordingSnapshot {
     maxPrice?: string | null
   }
   confidence: number
-  aiStatus: string | null
   aiConfidence: number | null
-  aiExplanation: string | null
   issues: string[]
   reasoning?: string | null
   adjustments: AdjustmentSettings

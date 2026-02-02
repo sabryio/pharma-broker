@@ -100,20 +100,19 @@ function GalleryCard({
             </div>
           </div>
 
-          {/* AI Status */}
-          {review.aiStatus && (
+          {/* Status Badge - Show match status instead of removed aiStatus */}
+          {review.status && review.status !== 'PENDING' && (
             <div
               className={cn(
                 'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
-                review.aiStatus === 'Approved' &&
+                review.status === 'CONFIRMED' &&
                   'bg-emerald-500/20 text-emerald-400',
-                review.aiStatus === 'Flagged' &&
-                  'bg-amber-500/20 text-amber-400',
-                review.aiStatus === 'Rejected' && 'bg-red-500/20 text-red-400',
+                review.status === 'REJECTED' && 'bg-red-500/20 text-red-400',
+                review.status === 'EXPIRED' && 'bg-amber-500/20 text-amber-400',
               )}
             >
               <Sparkles className="w-3 h-3" />
-              {review.aiStatus}
+              {review.status}
             </div>
           )}
         </div>
@@ -293,7 +292,8 @@ export function EnhancedBulkGrid({
       case 'low':
         return reviews.filter((r) => r.confidence < 50)
       case 'ai-flagged':
-        return reviews.filter((r) => r.aiStatus === 'Flagged')
+        // Filter by low confidence as proxy for flagged items
+        return reviews.filter((r) => r.confidence < 60)
       default:
         return reviews
     }

@@ -7,7 +7,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use chrono::{Datelike, Utc};
+use chrono::Utc;
 use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -51,7 +51,7 @@ pub struct MatchReviewListResponse {
 pub struct UpdateMatchReviewRequest {
     pub action: String,
     pub reviewed_by: Uuid,
-    pub notes: Option<String>,
+    pub reasoning: Option<String>, // Renamed from notes to reasoning
 }
 
 #[derive(Debug, Serialize)]
@@ -82,9 +82,10 @@ pub struct BulkUpdateResponse {
 pub struct ReAuditResponse {
     pub success: bool,
     pub match_id: Uuid,
-    pub ai_status: Option<String>,
+    // REMOVED: ai_status (use status + matched_by instead)
     pub ai_confidence: Option<f64>,
-    pub ai_explanation: Option<String>,
+    // ai_explanation merged into reasoning
+    pub reasoning: Option<String>,
     pub suggested_action: Option<String>,
 }
 
@@ -103,7 +104,7 @@ pub struct RecalculateConfidenceResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateNotesRequest {
-    pub notes: String,
+    pub reasoning: String, // Renamed from notes to reasoning
 }
 
 #[derive(Debug, Serialize)]
@@ -111,7 +112,7 @@ pub struct UpdateNotesRequest {
 pub struct UpdateNotesResponse {
     pub success: bool,
     pub id: Uuid,
-    pub notes: String,
+    pub reasoning: String, // Renamed from notes to reasoning
 }
 
 // ============================================================================
@@ -256,9 +257,7 @@ where
                 .price
                 .and_then(|p| p.to_f64())
                 .map(|p| format!("{:.0} {}", p, offer.currency.as_deref().unwrap_or("EGP"))),
-            expiry: offer
-                .expiry_date
-                .map(|d| format!("{:02}/{}", d.month(), d.year())),
+            expiry: offer.expiry_info.clone(), // Use expiry_info text field instead of expiry_date
             master_id: offer_curation.as_ref().and_then(|a| a.master_medication_id),
             medication_alias_id: offer_curation.as_ref().map(|a| a.id),
             curation_status: offer_curation.map(|a| format!("{:?}", a.curation_status)),
@@ -307,10 +306,10 @@ where
             request: request_summary,
             created_at: m.created_at,
             confirmed_at: m.confirmed_at,
-            notes: m.notes,
-            ai_status: m.ai_status,
+            // REMOVED: notes (merged into reasoning)
+            // REMOVED: ai_status (use status + matched_by instead)
             ai_confidence: m.ai_confidence,
-            ai_explanation: m.ai_explanation,
+            // REMOVED: ai_explanation (merged into reasoning)
         });
     }
 
@@ -424,9 +423,7 @@ where
             .price
             .and_then(|p| p.to_f64())
             .map(|p| format!("{:.0} {}", p, offer.currency.as_deref().unwrap_or("EGP"))),
-        expiry: offer
-            .expiry_date
-            .map(|d| format!("{:02}/{}", d.month(), d.year())),
+        expiry: offer.expiry_info.clone(), // Use expiry_info text field instead of expiry_date
         master_id: offer_curation.as_ref().and_then(|a| a.master_medication_id),
         medication_alias_id: offer_curation.as_ref().map(|a| a.id),
         curation_status: offer_curation.map(|a| format!("{:?}", a.curation_status)),
@@ -475,10 +472,10 @@ where
         request: request_summary,
         created_at: m.created_at,
         confirmed_at: m.confirmed_at,
-        notes: m.notes,
-        ai_status: m.ai_status,
+        // REMOVED: notes (merged into reasoning)
+        // REMOVED: ai_status (use status + matched_by instead)
         ai_confidence: m.ai_confidence,
-        ai_explanation: m.ai_explanation,
+        // REMOVED: ai_explanation (merged into reasoning)
     }))
 }
 
@@ -542,12 +539,7 @@ where
         ">>> [DEBUG] Found match entity"
     );
 
-    let params = crate::repository::UpdateMatchStatusParams::new(
-        id,
-        status,
-        req.reviewed_by,
-        req.notes.as_deref().unwrap_or(""),
-    );
+    let params = crate::repository::UpdateMatchStatusParams::new(id, status, req.reviewed_by);
 
     tracing::info!(">>> [DEBUG] Calling match_repo.update_status");
     state.match_repo.update_status(params).await.map_err(|e| {
@@ -684,7 +676,6 @@ where
         let ws_event = WsEvent::MatchConfirmed(MatchStatusEvent {
             match_id: id,
             user_id: req.reviewed_by,
-            notes: req.notes.clone(),
             reason: None,
         });
         if let Err(e) = state.ws_tx.send(ws_event) {
@@ -728,7 +719,6 @@ where
         let ws_event = WsEvent::MatchRejected(MatchStatusEvent {
             match_id: id,
             user_id: req.reviewed_by,
-            notes: req.notes.clone(),
             reason: Some("Rejected by reviewer".to_string()),
         });
         if let Err(e) = state.ws_tx.send(ws_event) {
@@ -745,7 +735,7 @@ where
     let audit_log = AuditLog::new(audit_action, EntityType::Match, id, req.reviewed_by)
         .with_details(serde_json::json!({
             "action": req.action,
-            "notes": req.notes
+            "reasoning": req.reasoning
         }));
 
     if let Err(e) = state.audit_log_repo.save(&audit_log).await {
@@ -788,8 +778,7 @@ where
             _ => continue,
         };
 
-        let params =
-            crate::repository::UpdateMatchStatusParams::new(*id, status, req.reviewed_by, "");
+        let params = crate::repository::UpdateMatchStatusParams::new(*id, status, req.reviewed_by);
 
         if state.match_repo.update_status(params).await.is_ok() {
             updated_count += 1;
@@ -1076,23 +1065,17 @@ where
 
     // Update the match with new AI results
     // We need to update the match entity with the new AI results
-    let ai_status = format!("{:?}", review_result.status);
     let ai_confidence = review_result.confidence as f64;
     let ai_explanation = review_result.explanation.clone();
 
-    // Update match in database with new AI results
-    if let Err(e) = state
-        .match_repo
-        .update_ai_review(id, &ai_status, ai_confidence, &ai_explanation)
-        .await
-    {
+    // Update match in database with new AI results (only confidence, explanation goes into reasoning)
+    if let Err(e) = state.match_repo.update_ai_review(id, ai_confidence).await {
         tracing::warn!(error = %e, match_id = %id, "Failed to update match with AI review results");
     }
 
     // Create audit log
     let audit_log = AuditLog::system(AuditAction::MatchReAudited, EntityType::Match, id)
         .with_details(serde_json::json!({
-            "ai_status": ai_status,
             "ai_confidence": ai_confidence,
             "ai_explanation": ai_explanation
         }));
@@ -1104,9 +1087,8 @@ where
     Ok(Json(ReAuditResponse {
         success: true,
         match_id: id,
-        ai_status: Some(ai_status),
         ai_confidence: Some(ai_confidence),
-        ai_explanation: Some(ai_explanation),
+        reasoning: Some(ai_explanation), // ai_explanation merged into reasoning
         suggested_action: review_result.suggested_action,
     }))
 }
@@ -1264,20 +1246,20 @@ where
     // Update notes
     let updated = state
         .match_repo
-        .update_notes(id, &req.notes)
+        .update_reasoning(id, &req.reasoning)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     tracing::info!(
         match_id = %id,
-        notes_length = req.notes.len(),
-        "Match notes updated"
+        reasoning_length = req.reasoning.len(),
+        "Match reasoning updated"
     );
 
     Ok(Json(UpdateNotesResponse {
         success: true,
         id,
-        notes: updated.notes.unwrap_or_default(),
+        reasoning: updated.reasoning.unwrap_or_default(),
     }))
 }
 
@@ -1396,12 +1378,8 @@ where
     }
 
     // Revert status to PENDING
-    let params = crate::repository::UpdateMatchStatusParams::new(
-        id,
-        MatchStatus::Pending,
-        req.user_id,
-        "Undone by user",
-    );
+    let params =
+        crate::repository::UpdateMatchStatusParams::new(id, MatchStatus::Pending, req.user_id);
 
     state.match_repo.update_status(params).await.map_err(|e| {
         tracing::error!(error = %e, "Failed to revert match status during undo");
@@ -1425,7 +1403,6 @@ where
     let ws_event = WsEvent::MatchUndone(MatchStatusEvent {
         match_id: id,
         user_id: req.user_id,
-        notes: Some("Action undone".to_string()),
         reason: Some(format!("Undone from {:?}", match_entity.status)),
     });
     if let Err(e) = state.ws_tx.send(ws_event) {

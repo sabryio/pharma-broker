@@ -38,7 +38,7 @@ pub use token_batcher::{
 // New direct AI client
 pub use pharma_parser::{BatchParseResult, ParseError, PharmaParser, PharmaParserConfig};
 pub use pharma_prompts::{SYSTEM_PROMPT, build_user_prompt_with_mappings};
-pub use pharma_types::{Intent, ParseResult, ParsedItem, UrgencyLevel};
+pub use pharma_types::{Intent, Medication, ParseResult, ParsedItem, UrgencyLevel};
 
 // Re-export ai-client crate for advanced usage
 pub use ai_client::{Client as GenericClient, ClientConfig, generate_schema};

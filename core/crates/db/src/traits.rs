@@ -141,17 +141,11 @@ pub trait MatchRepository: Send + Sync {
     async fn save(&self, m: &MatchModel) -> Result<MatchModel>;
     async fn update_status(&self, params: UpdateMatchStatusParams) -> Result<MatchModel>;
     /// Update AI review results for a match
-    async fn update_ai_review(
-        &self,
-        id: Uuid,
-        ai_status: &str,
-        ai_confidence: f64,
-        ai_explanation: &str,
-    ) -> Result<MatchModel>;
+    async fn update_ai_review(&self, id: Uuid, ai_confidence: f64) -> Result<MatchModel>;
     /// Update match score and reasoning
     async fn update_score(&self, id: Uuid, score: f64, reasoning: &str) -> Result<MatchModel>;
-    /// Update match notes
-    async fn update_notes(&self, id: Uuid, notes: &str) -> Result<MatchModel>;
+    /// Update match reasoning (renamed from update_notes)
+    async fn update_reasoning(&self, id: Uuid, reasoning: &str) -> Result<MatchModel>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
     /// Cancel all pending matches that reference a specific offer (used when reclassifying)
     async fn cancel_matches_for_offer(&self, offer_id: Uuid) -> Result<u64>;
@@ -582,10 +576,10 @@ pub struct MatchReviewItem {
     pub request: RequestSummary,
     pub created_at: DateTime<Utc>,
     pub confirmed_at: Option<DateTime<Utc>>,
-    pub notes: Option<String>,
-    pub ai_status: Option<String>,
+    // REMOVED: notes (merged into reasoning)
+    // REMOVED: ai_status (use status + matched_by instead)
     pub ai_confidence: Option<f64>,
-    pub ai_explanation: Option<String>,
+    // REMOVED: ai_explanation (merged into reasoning)
 }
 
 /// Match review statistics

@@ -133,13 +133,9 @@ const snapshotArb = fc.record({
   offer: offerArb,
   request: requestArb,
   confidence: fc.float({ min: 0, max: 1, noNaN: true }),
-  aiStatus: fc.option(fc.constantFrom('approved', 'rejected', 'uncertain'), {
-    nil: null,
-  }),
   aiConfidence: fc.option(fc.float({ min: 0, max: 1, noNaN: true }), {
     nil: null,
   }),
-  aiExplanation: fc.option(fc.string({ maxLength: 500 }), { nil: null }),
   issues: fc.array(fc.string({ maxLength: 100 }), { maxLength: 5 }),
   reasoning: fc.option(fc.string({ maxLength: 200 }), { nil: null }),
   adjustments: adjustmentSettingsArb,
@@ -211,7 +207,7 @@ describe('Recording Export/Import', () => {
 
             expect(restoredSnapshot.id).toBe(original.id)
             expect(restoredSnapshot.confidence).toBe(original.confidence)
-            expect(restoredSnapshot.aiStatus).toBe(original.aiStatus)
+            expect(restoredSnapshot.aiConfidence).toBe(original.aiConfidence)
             expect(restoredSnapshot.event.type).toBe(original.event.type)
             expect(restoredSnapshot.event.label).toBe(original.event.label)
             expect(restoredSnapshot.offer.id).toBe(original.offer.id)

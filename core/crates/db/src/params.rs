@@ -18,8 +18,6 @@ pub struct UpdateMatchStatusParams {
     pub status: MatchStatus,
     /// Who performed the match (operator ID or "AUTO")
     pub matched_by: String,
-    /// Optional notes about the status change
-    pub notes: String,
 }
 
 impl UpdateMatchStatusParams {
@@ -27,13 +25,11 @@ impl UpdateMatchStatusParams {
         id: Uuid,
         status: MatchStatus,
         matched_by: impl Into<String>,
-        notes: impl Into<String>,
     ) -> Self {
         Self {
             id,
             status,
             matched_by: matched_by.into(),
-            notes: notes.into(),
         }
     }
 
@@ -43,7 +39,6 @@ impl UpdateMatchStatusParams {
             id,
             status: MatchStatus::Confirmed,
             matched_by: "AUTO".to_string(),
-            notes: "Auto-confirmed by matching engine".to_string(),
         }
     }
 }

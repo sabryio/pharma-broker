@@ -46,7 +46,7 @@ impl MigrationTrait for Migration {
                             .string_len(10)
                             .default("EGP"),
                     )
-                    .col(ColumnDef::new(Offers::ExpiryDate).date())
+                    // REMOVED: expiry_date (redundant with expiry_info)
                     .col(ColumnDef::new(Offers::BatchNumber).string_len(50))
                     .col(ColumnDef::new(Offers::Notes).text())
                     .col(
@@ -67,6 +67,14 @@ impl MigrationTrait for Migration {
                             .double()
                             .not_null()
                             .default(0.0),
+                    )
+                    // Medication curation support
+                    .col(ColumnDef::new(Offers::MasterMedicationId).uuid())
+                    .col(
+                        ColumnDef::new(Offers::MedicationCurated)
+                            .boolean()
+                            .not_null()
+                            .default(false),
                     )
                     // Many-to-many matching support
                     .col(
@@ -107,6 +115,13 @@ impl MigrationTrait for Migration {
                             .from(Offers::Table, Offers::GroupId)
                             .to(Groups::Table, Groups::Id)
                             .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_offers_master_medication")
+                            .from(Offers::Table, Offers::MasterMedicationId)
+                            .to(Alias::new("medication_master"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::SetNull),
                     )
                     .to_owned(),
             )
@@ -187,6 +202,28 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_offers_master_medication_id")
+                    .table(Offers::Table)
+                    .col(Offers::MasterMedicationId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_offers_medication_curated")
+                    .table(Offers::Table)
+                    .col(Offers::MedicationCurated)
+                    .to_owned(),
+            )
+            .await?;
+
         // GIN index for trigram similarity search on medication names
         manager
             .get_connection()
@@ -234,13 +271,16 @@ pub enum Offers {
     Unit,
     Price,
     Currency,
-    ExpiryDate,
+    // ExpiryDate removed - redundant with ExpiryInfo
     BatchNumber,
     Notes,
     Status,
     UrgencyLevel,
     ExpiryInfo,
     AiConfidence,
+    // Medication curation support
+    MasterMedicationId,
+    MedicationCurated,
     // Many-to-many matching support
     ConfirmedMatchCount,
     // ContentEmbedding is added via raw SQL for vector type support

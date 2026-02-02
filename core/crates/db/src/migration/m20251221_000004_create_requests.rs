@@ -53,6 +53,14 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0.0),
                     )
+                    // Medication curation support
+                    .col(ColumnDef::new(Requests::MasterMedicationId).uuid())
+                    .col(
+                        ColumnDef::new(Requests::MedicationCurated)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
                     // Many-to-many matching support
                     .col(
                         ColumnDef::new(Requests::ConfirmedMatchCount)
@@ -99,6 +107,13 @@ impl MigrationTrait for Migration {
                             .from(Requests::Table, Requests::GroupId)
                             .to(Groups::Table, Groups::Id)
                             .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_requests_master_medication")
+                            .from(Requests::Table, Requests::MasterMedicationId)
+                            .to(Alias::new("medication_master"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::SetNull),
                     )
                     .to_owned(),
             )
@@ -179,6 +194,28 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_requests_master_medication_id")
+                    .table(Requests::Table)
+                    .col(Requests::MasterMedicationId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_requests_medication_curated")
+                    .table(Requests::Table)
+                    .col(Requests::MedicationCurated)
+                    .to_owned(),
+            )
+            .await?;
+
         // GIN index for trigram similarity search on medication names
         manager
             .get_connection()
@@ -229,6 +266,9 @@ pub enum Requests {
     UrgencyLevel,
     ExpiryRequirement,
     AiConfidence,
+    // Medication curation support
+    MasterMedicationId,
+    MedicationCurated,
     // Many-to-many matching support
     ConfirmedMatchCount,
     Notes,

@@ -1590,7 +1590,7 @@ impl AutoApproveProcessor {
         // Get AI confidence (use existing or evaluate)
         let ai_confidence = match_entity.ai_confidence.unwrap_or(0.0);
         let ai_explanation = match_entity
-            .ai_explanation
+            .reasoning // Use reasoning field instead of ai_explanation
             .clone()
             .unwrap_or_else(|| "No AI explanation available".to_string());
 
