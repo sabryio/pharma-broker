@@ -14,7 +14,7 @@ grpc:
 # WhatsApp client configuration
 whatsapp:
   store_path: "./data/whatsapp.db"
-  qr_retries: 5
+  qr_retries: 0 # 0 = unlimited retries
   qr_timeout: 60s
   qr_terminal: true
   operator_jid: "201021347532@s.whatsapp.net"
