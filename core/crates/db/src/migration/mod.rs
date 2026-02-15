@@ -34,6 +34,10 @@ impl MigratorTrait for Migrator {
             Box::new(m20251221_000001_create_groups::Migration),
             Box::new(m20251231_000012_create_participants::Migration),
             Box::new(m20251221_000002_create_raw_messages::Migration),
+            // Medication Curation System (Phase 1) - MUST come before offers/requests
+            Box::new(m20251231_000013_create_medication_master::Migration),
+            Box::new(m20251231_000014_create_medication_aliases::Migration),
+            // Now we can create offers and requests that reference medication_master
             Box::new(m20251221_000003_create_offers::Migration),
             Box::new(m20251221_000004_create_requests::Migration),
             Box::new(m20251221_000005_create_matches::Migration),
@@ -42,9 +46,6 @@ impl MigratorTrait for Migrator {
             Box::new(m20251221_000009_create_audit_logs::Migration),
             Box::new(m20251221_000010_create_feedback_records::Migration),
             Box::new(m20251221_000011_create_weight_history::Migration),
-            // Medication Curation System (Phase 1)
-            Box::new(m20251231_000013_create_medication_master::Migration),
-            Box::new(m20251231_000014_create_medication_aliases::Migration),
             // Match Audit Trail (Phase 2)
             Box::new(m20260102_000015_create_match_audit_records::Migration),
             // AI Supervised Auto-Approve (Phase 3)

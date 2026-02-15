@@ -11,18 +11,6 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Enable pgvector extension
-        manager
-            .get_connection()
-            .execute_unprepared("CREATE EXTENSION IF NOT EXISTS vector")
-            .await?;
-
-        // Enable pg_trgm extension for trigram search
-        manager
-            .get_connection()
-            .execute_unprepared("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-            .await?;
-
         manager
             .create_table(
                 Table::create()

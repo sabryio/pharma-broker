@@ -275,6 +275,19 @@ tasks:
     cmds:
       - docker compose exec postgres psql -U postgres -d pharmabroker -f /docker-entrypoint-initdb.d/001_initial_schema.sql
 
+  db:fresh:
+    desc: Fresh database - stop services, remove volumes, rebuild core, and restart
+    cmds:
+      - docker compose down
+      - cmd: docker volume rm pharmabroker_postgres_data 2>$null
+        platforms: [windows]
+        ignore_error: true
+      - cmd: docker volume rm pharmabroker_postgres_data 2>/dev/null || true
+        platforms: [linux, darwin]
+        ignore_error: true
+      - docker compose build core
+      - docker compose up -d
+
   # ============================================================================
   # Health Checks
   # ============================================================================

@@ -11,6 +11,18 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // Enable pgvector extension (must be done before creating vector columns)
+        manager
+            .get_connection()
+            .execute_unprepared("CREATE EXTENSION IF NOT EXISTS vector")
+            .await?;
+
+        // Enable pg_trgm extension for trigram search
+        manager
+            .get_connection()
+            .execute_unprepared("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+            .await?;
+
         // Create medication_master table
         manager
             .create_table(
@@ -120,103 +132,10 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Integrate logic from m20251231_000015: Add columns to offers and requests
-
-        // --- OFFERS ---
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Alias::new("offers"))
-                    .add_column(
-                        ColumnDef::new(Alias::new("master_medication_id"))
-                            .uuid()
-                            .null(),
-                    )
-                    .add_column(
-                        ColumnDef::new(Alias::new("medication_curated"))
-                            .boolean()
-                            .not_null()
-                            .default(false),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-
-        manager.get_connection().execute_unprepared(
-            "ALTER TABLE offers ADD CONSTRAINT fk_offers_master_medication 
-             FOREIGN KEY (master_medication_id) REFERENCES medication_master(id) ON DELETE SET NULL"
-        ).await?;
-
-        manager.get_connection().execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx_offers_master_med ON offers(master_medication_id) WHERE master_medication_id IS NOT NULL"
-        ).await?;
-
-        // --- REQUESTS ---
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Alias::new("requests"))
-                    .add_column(
-                        ColumnDef::new(Alias::new("master_medication_id"))
-                            .uuid()
-                            .null(),
-                    )
-                    .add_column(
-                        ColumnDef::new(Alias::new("medication_curated"))
-                            .boolean()
-                            .not_null()
-                            .default(false),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-
-        manager.get_connection().execute_unprepared(
-            "ALTER TABLE requests ADD CONSTRAINT fk_requests_master_medication 
-             FOREIGN KEY (master_medication_id) REFERENCES medication_master(id) ON DELETE SET NULL"
-        ).await?;
-
-        manager.get_connection().execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx_requests_master_med ON requests(master_medication_id) WHERE master_medication_id IS NOT NULL"
-        ).await?;
-
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Drop FKs and Columns first
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "ALTER TABLE offers DROP CONSTRAINT IF EXISTS fk_offers_master_medication",
-            )
-            .await?;
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "ALTER TABLE requests DROP CONSTRAINT IF EXISTS fk_requests_master_medication",
-            )
-            .await?;
-
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Alias::new("offers"))
-                    .drop_column(Alias::new("master_medication_id"))
-                    .drop_column(Alias::new("medication_curated"))
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Alias::new("requests"))
-                    .drop_column(Alias::new("master_medication_id"))
-                    .drop_column(Alias::new("medication_curated"))
-                    .to_owned(),
-            )
-            .await?;
-
         manager
             .drop_table(Table::drop().table(MedicationMaster::Table).to_owned())
             .await
