@@ -54,7 +54,7 @@ services:
       WS_AUTH_ENABLED: "false"
       BRIDGE_GRPC_ADDR: "http://bridge:50052"
     ports:
-      - "8081:8081" # REST API
+      - "8082:8081" # REST API (changed from 8081 to avoid conflict)
       - "50051:50051" # gRPC
     # volumes:
     #   # DEV ONLY: Mount local binary for hot reload
@@ -118,7 +118,7 @@ services:
     environment:
       TZ: Africa/Cairo
       # API endpoint for the frontend to connect to core
-      VITE_API_URL: http://localhost:8081
+      VITE_API_URL: http://localhost:8082
     ports:
       - "3000:3000"
     volumes:
@@ -159,7 +159,7 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
       - grafana_data:/var/lib/grafana
     ports:
-      - "3001:3000"
+      - "3002:3000"
     depends_on:
       - prometheus
     networks:

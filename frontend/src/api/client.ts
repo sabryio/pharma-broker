@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 // API base URL - uses Vite env var or falls back to localhost
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8082'
 
 // Create axios instance with default config
 export const apiClient = axios.create({

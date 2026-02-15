@@ -215,7 +215,7 @@ function Offers() {
                 {error?.message || 'Failed to load offers'}
               </p>
               <p className="text-xs text-muted-foreground">
-                Make sure the backend is running on port 8081
+                Make sure the backend is running on port 8082
               </p>
             </div>
           ) : offers.length === 0 ? (

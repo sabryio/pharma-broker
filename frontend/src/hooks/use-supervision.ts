@@ -177,7 +177,7 @@ export function useResumeSystem() {
 // Requirements: 3.1, 3.3
 // =============================================================================
 
-const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
+const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8082'
 const INITIAL_RECONNECT_DELAY = 1000
 const MAX_RECONNECT_DELAY = 30000
 const MAX_FEED_ITEMS = 50

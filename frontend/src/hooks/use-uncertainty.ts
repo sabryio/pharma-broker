@@ -4,7 +4,7 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { queryKeys } from './query-keys'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8081'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8082'
 
 // =============================================================================
 // Response Transformation (snake_case -> camelCase)
