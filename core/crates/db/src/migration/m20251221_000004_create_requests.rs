@@ -31,8 +31,8 @@ impl MigrationTrait for Migration {
                             .string_len(200)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Requests::MedicationRaw).string_len(500))
-                    .col(ColumnDef::new(Requests::Unit).string_len(20))
+                    .col(ColumnDef::new(Requests::Form).string_len(50))
+                    .col(ColumnDef::new(Requests::Concentration).string_len(50))
                     .col(
                         ColumnDef::new(Requests::UrgencyLevel)
                             .string_len(20)
@@ -61,7 +61,6 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
-                    .col(ColumnDef::new(Requests::Notes).text())
                     .col(
                         ColumnDef::new(Requests::Status)
                             .string_len(20)
@@ -217,14 +216,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // GIN index for trigram search on medication_raw
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "CREATE INDEX IF NOT EXISTS idx_requests_medication_raw_trgm ON requests USING gin (medication_raw gin_trgm_ops)",
-            )
-            .await?;
-
         // HNSW index for vector similarity search (cosine distance)
         manager
             .get_connection()
@@ -251,8 +242,8 @@ pub enum Requests {
     ParticipantId,
     GroupId,
     Medication,
-    MedicationRaw,
-    Unit,
+    Form,
+    Concentration,
     UrgencyLevel,
     ExpiryRequirement,
     AiConfidence,
@@ -261,7 +252,6 @@ pub enum Requests {
     MedicationCurated,
     // Many-to-many matching support
     ConfirmedMatchCount,
-    Notes,
     Status,
     // ContentEmbedding is added via raw SQL for vector type support
     CreatedAt,

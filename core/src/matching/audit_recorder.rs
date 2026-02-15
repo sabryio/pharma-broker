@@ -1081,7 +1081,6 @@ mod tests {
         Offer {
             id: Uuid::new_v4(),
             medication: "Test Product".to_string(),
-            medication_raw: "تست".to_string(),
             ..Default::default()
         }
     }
@@ -1090,7 +1089,6 @@ mod tests {
         Request {
             id: Uuid::new_v4(),
             medication: "Test Product".to_string(),
-            medication_raw: "تست".to_string(),
             ..Default::default()
         }
     }

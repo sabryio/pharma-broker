@@ -147,9 +147,9 @@ Keep explanations focused ONLY on name comparison."#;
             Scoring engine score: {:.1}%\n\n\
             Provide detailed match analysis in the specified JSON format.",
             offer.medication,
-            offer.medication_raw,
+            offer.medication,
             request.medication,
-            request.medication_raw,
+            request.medication,
             score * 100.0
         );
 
@@ -163,3 +163,4 @@ Keep explanations focused ONLY on name comparison."#;
             .await
     }
 }
+

@@ -490,10 +490,8 @@ where
                                 participant_id: participant.id,
                                 group_id: group.id,
                                 medication: med.name.clone(),
-                                medication_raw: med.name.clone(),
-                                unit: med.form.clone(),
-                                batch_number: None,
-                                notes: None,
+                                form: med.form.clone(),
+                                concentration: med.concentration.clone(),
                                 status: ItemStatus::Active,
                                 content_embedding: content_embedding.clone().map(PgVector::from),
                                 urgency_level: convert_urgency_level(parse_result.urgency),
@@ -574,12 +572,11 @@ where
                                 participant_id: participant.id,
                                 group_id: group.id,
                                 medication: med.name.clone(),
-                                medication_raw: med.name.clone(),
-                                unit: med.form.clone(),
+                                form: med.form.clone(),
+                                concentration: med.concentration.clone(),
                                 urgency_level: convert_urgency_level(parse_result.urgency),
                                 expiry_requirement: med.expiry.clone(),
                                 ai_confidence: med.confidence,
-                                notes: None,
                                 status: ItemStatus::Active,
                                 content_embedding: content_embedding.clone().map(PgVector::from),
                                 master_medication_id,
@@ -870,3 +867,4 @@ where
         .serve_with_shutdown(addr, shutdown)
         .await
 }
+

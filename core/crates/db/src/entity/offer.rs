@@ -17,11 +17,8 @@ pub struct Model {
     pub participant_id: Uuid,
     pub group_id: Uuid,
     pub medication: String,
-    pub medication_raw: String,
-    pub unit: Option<String>,
-    // expiry_date removed - redundant with expiry_info
-    pub batch_number: Option<String>,
-    pub notes: Option<String>,
+    pub form: Option<String>,
+    pub concentration: Option<String>,
     pub status: Status,
     pub urgency_level: UrgencyLevel,
     pub expiry_info: Option<String>,
@@ -99,11 +96,8 @@ impl Default for Model {
             participant_id: Uuid::nil(),
             group_id: Uuid::nil(),
             medication: String::new(),
-            medication_raw: String::new(),
-            unit: None,
-            // expiry_date removed
-            batch_number: None,
-            notes: None,
+            form: None,
+            concentration: None,
             status: Status::Active,
             urgency_level: UrgencyLevel::Normal,
             expiry_info: None,
@@ -139,8 +133,8 @@ impl Model {
 /// # Example
 /// ```ignore
 /// let offer = OfferBuilder::new("msg-123", "Aspirin 100mg", "+201234567890", "group@g.us")
-///     .quantity(10.0)
-///     .price(50.0)
+///     .form("امبول")
+///     .concentration("100mg")
 ///     .urgency_level(UrgencyLevel::Urgent)
 ///     .build();
 /// ```
@@ -151,13 +145,10 @@ pub struct OfferBuilder {
     participant_id: Uuid,
     group_id: Uuid,
     // Optional fields
-    medication_raw: Option<String>,
-    unit: Option<String>,
-    expiry_date: Option<Date>,
-    batch_number: Option<String>,
-    notes: Option<String>,
-    urgency_level: UrgencyLevel,
+    form: Option<String>,
+    concentration: Option<String>,
     expiry_info: Option<String>,
+    urgency_level: UrgencyLevel,
     ai_confidence: f64,
     content_embedding: Option<PgVector>,
 }
@@ -173,48 +164,33 @@ impl OfferBuilder {
         let medication = medication.into();
         Self {
             raw_message_id,
-            medication: medication.clone(),
+            medication,
             participant_id,
             group_id,
-            medication_raw: Some(medication),
-            unit: None,
-            expiry_date: None,
-            batch_number: None,
-            notes: None,
-            urgency_level: UrgencyLevel::Normal,
+            form: None,
+            concentration: None,
             expiry_info: None,
+            urgency_level: UrgencyLevel::Normal,
             ai_confidence: 0.0,
             content_embedding: None,
         }
     }
 
-    /// Set the original medication text
-    pub fn medication_raw(mut self, raw: impl Into<String>) -> Self {
-        self.medication_raw = Some(raw.into());
+    /// Set the form (physical form like امبول, فايل, etc.)
+    pub fn form(mut self, form: impl Into<String>) -> Self {
+        self.form = Some(form.into());
         self
     }
 
-    /// Set the unit
-    pub fn unit(mut self, unit: impl Into<String>) -> Self {
-        self.unit = Some(unit.into());
+    /// Set the concentration (dosage/strength like 1mg, 150, etc.)
+    pub fn concentration(mut self, concentration: impl Into<String>) -> Self {
+        self.concentration = Some(concentration.into());
         self
     }
 
-    /// Set the expiry date
-    pub fn expiry_date(mut self, date: Date) -> Self {
-        self.expiry_date = Some(date);
-        self
-    }
-
-    /// Set the batch number
-    pub fn batch_number(mut self, batch: impl Into<String>) -> Self {
-        self.batch_number = Some(batch.into());
-        self
-    }
-
-    /// Set notes
-    pub fn notes(mut self, notes: impl Into<String>) -> Self {
-        self.notes = Some(notes.into());
+    /// Set expiry info text
+    pub fn expiry_info(mut self, info: impl Into<String>) -> Self {
+        self.expiry_info = Some(info.into());
         self
     }
 
@@ -227,12 +203,6 @@ impl OfferBuilder {
     /// Set as urgent (shorthand for urgency_level(Urgent))
     pub fn urgent(mut self) -> Self {
         self.urgency_level = UrgencyLevel::Urgent;
-        self
-    }
-
-    /// Set expiry info text
-    pub fn expiry_info(mut self, info: impl Into<String>) -> Self {
-        self.expiry_info = Some(info.into());
         self
     }
 
@@ -258,11 +228,9 @@ impl OfferBuilder {
             raw_message_id: self.raw_message_id,
             participant_id: self.participant_id,
             group_id: self.group_id,
-            medication: self.medication.clone(),
-            medication_raw: self.medication_raw.unwrap_or(self.medication),
-            unit: self.unit,
-            batch_number: self.batch_number,
-            notes: self.notes,
+            medication: self.medication,
+            form: self.form,
+            concentration: self.concentration,
             status: Status::Active,
             urgency_level: self.urgency_level,
             expiry_info: self.expiry_info,

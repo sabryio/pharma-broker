@@ -232,16 +232,11 @@ where
         participant_id: offer.participant_id,
         group_id: offer.group_id,
         medication: offer.medication.clone(),
-        medication_raw: offer.medication_raw.clone(),
-        unit: offer.unit.clone(),
+        form: offer.form.clone(),
+        concentration: offer.concentration.clone(),
         urgency_level: offer.urgency_level,
         expiry_requirement: offer.expiry_info.clone(),
         ai_confidence: offer.ai_confidence,
-        notes: Some(format!(
-            "Reclassified from offer {}. {}",
-            offer.id,
-            req.notes.as_deref().unwrap_or("")
-        )),
         status: ItemStatus::Active,
         content_embedding: offer.content_embedding.clone(),
         master_medication_id: offer.master_medication_id,
@@ -308,14 +303,8 @@ where
         participant_id: request.participant_id,
         group_id: request.group_id,
         medication: request.medication.clone(),
-        medication_raw: request.medication_raw.clone(),
-        unit: request.unit.clone(),
-        batch_number: None,
-        notes: Some(format!(
-            "Reclassified from request {}. {}",
-            request.id,
-            req.notes.as_deref().unwrap_or("")
-        )),
+        form: request.form.clone(),
+        concentration: request.concentration.clone(),
         status: ItemStatus::Active,
         urgency_level: request.urgency_level,
         expiry_info: request.expiry_requirement.clone(),
@@ -365,7 +354,7 @@ fn offer_to_summary(offer: &OfferModel) -> ItemSummary {
         id: offer.id,
         item_type: ItemType::Offer,
         medication: offer.medication.clone(),
-        medication_raw: offer.medication_raw.clone(),
+        medication_raw: offer.medication.clone(),
         quantity: None, // Removed from schema
         price: None,    // Removed from schema
         status: format!("{:?}", offer.status),
@@ -378,10 +367,11 @@ fn request_to_summary(request: &RequestModel) -> ItemSummary {
         id: request.id,
         item_type: ItemType::Request,
         medication: request.medication.clone(),
-        medication_raw: request.medication_raw.clone(),
+        medication_raw: request.medication.clone(),
         quantity: None, // Removed from schema
         price: None,    // Removed from schema
         status: format!("{:?}", request.status),
         created_at: request.created_at.to_rfc3339(),
     }
 }
+

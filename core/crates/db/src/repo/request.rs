@@ -143,7 +143,7 @@ impl RequestRepository for SeaOrmRequestRepo {
         &self,
         id: Uuid,
         medication: &str,
-        medication_raw: &str,
+        _medication_raw: &str,
         ai_confidence: Option<f64>,
     ) -> Result<request::Model> {
         let request = Request::find_by_id(id)
@@ -153,7 +153,6 @@ impl RequestRepository for SeaOrmRequestRepo {
 
         let mut active: request::ActiveModel = request.into();
         active.medication = Set(medication.to_string());
-        active.medication_raw = Set(medication_raw.to_string());
         active.medication_curated = Set(true);
         if let Some(conf) = ai_confidence {
             active.ai_confidence = Set(conf);

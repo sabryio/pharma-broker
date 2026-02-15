@@ -384,21 +384,13 @@ impl BatchProcessor {
         }
 
         // Batch generate embeddings for all medications
-        // IMPORTANT: Strip dosage from medication names before embedding to prevent false positives
-        // e.g., "Kozentex 150" and "Gonapure 150" would have similar embeddings due to "150"
-        // but they are completely different medications
+        // IMPORTANT: Use ONLY medication name for embedding (no concentration)
+        // to prevent false positives like "Kozentex 150" matching "Gonapure 150"
         let medications_for_embedding: Vec<String> = final_result
             .result
             .medications
             .iter()
-            .map(|med| {
-                let full_name = if let Some(conc) = &med.concentration {
-                    format!("{} {}", med.name, conc)
-                } else {
-                    med.name.clone()
-                };
-                crate::matching::arabic::normalize_for_matching(&full_name)
-            })
+            .map(|med| crate::matching::arabic::normalize_for_matching(&med.name))
             .collect();
         let embeddings = if !medications_for_embedding.is_empty() {
             match self.ai_client.embed_batch(&medications_for_embedding).await {
@@ -445,26 +437,16 @@ impl BatchProcessor {
         urgency: crate::ai::UrgencyLevel,
         embedding: Option<Vec<f32>>,
     ) {
-        // Build medication name with concentration
-        let medication = if let Some(conc) = &med.concentration {
-            format!("{} {}", med.name, conc)
-        } else {
-            med.name.clone()
-        };
-
         match intent {
             crate::ai::Intent::Offer => {
                 let offer = Offer {
                     id: uuid::Uuid::new_v4(),
                     raw_message_id: msg.id,
-                    medication: medication.clone(),
-                    medication_raw: med.name.clone(),
-                    unit: med.form.clone(),
-                    // expiry_date removed - use expiry_info instead
-                    batch_number: None,
+                    medication: med.name.clone(),
+                    form: med.form.clone(),
+                    concentration: med.concentration.clone(),
                     participant_id: msg.participant_id,
                     group_id: msg.group_id,
-                    notes: med.form.clone(),
                     status: ItemStatus::Active,
                     content_embedding: embedding.clone().map(PgVector::from),
                     urgency_level: urgency.to_db_urgency(),
@@ -504,12 +486,11 @@ impl BatchProcessor {
                 let request = Request {
                     id: uuid::Uuid::new_v4(),
                     raw_message_id: msg.id,
-                    medication: medication.clone(),
-                    medication_raw: med.name.clone(),
-                    unit: med.form.clone(),
+                    medication: med.name.clone(),
+                    form: med.form.clone(),
+                    concentration: med.concentration.clone(),
                     participant_id: msg.participant_id,
                     group_id: msg.group_id,
-                    notes: med.form.clone(),
                     urgency_level: urgency.to_db_urgency(),
                     expiry_requirement: med.expiry.clone(),
                     ai_confidence: med.confidence,

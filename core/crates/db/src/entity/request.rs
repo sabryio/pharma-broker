@@ -17,12 +17,11 @@ pub struct Model {
     pub participant_id: Uuid,
     pub group_id: Uuid,
     pub medication: String,
-    pub medication_raw: String,
-    pub unit: Option<String>,
+    pub form: Option<String>,
+    pub concentration: Option<String>,
     pub urgency_level: UrgencyLevel,
     pub expiry_requirement: Option<String>,
     pub ai_confidence: f64,
-    pub notes: Option<String>,
     pub status: Status,
     pub content_embedding: Option<PgVector>, // Vector(768) for semantic search
     pub master_medication_id: Option<Uuid>,  // FK to medication_master for deterministic matching
@@ -97,12 +96,11 @@ impl Default for Model {
             participant_id: Uuid::nil(),
             group_id: Uuid::nil(),
             medication: String::new(),
-            medication_raw: String::new(),
-            unit: None,
+            form: None,
+            concentration: None,
             urgency_level: UrgencyLevel::Normal,
             expiry_requirement: None,
             ai_confidence: 0.0,
-            notes: None,
             status: Status::Active,
             content_embedding: None,
             master_medication_id: None,
@@ -135,8 +133,8 @@ impl Model {
 /// # Example
 /// ```ignore
 /// let request = RequestBuilder::new("msg-123", "Ozempic 1mg", "+201234567890", "group@g.us")
-///     .quantity(2.0)
-///     .max_price(2000.0)
+///     .form("امبول")
+///     .concentration("1mg")
 ///     .urgency_level(UrgencyLevel::Critical)
 ///     .build();
 /// ```
@@ -147,12 +145,11 @@ pub struct RequestBuilder {
     participant_id: Uuid,
     group_id: Uuid,
     // Optional fields
-    medication_raw: Option<String>,
-    unit: Option<String>,
+    form: Option<String>,
+    concentration: Option<String>,
     urgency_level: UrgencyLevel,
     expiry_requirement: Option<String>,
     ai_confidence: f64,
-    notes: Option<String>,
 }
 
 impl RequestBuilder {
@@ -166,27 +163,26 @@ impl RequestBuilder {
         let medication = medication.into();
         Self {
             raw_message_id,
-            medication: medication.clone(),
+            medication,
             participant_id,
             group_id,
-            medication_raw: Some(medication),
-            unit: None,
+            form: None,
+            concentration: None,
             urgency_level: UrgencyLevel::Normal,
             expiry_requirement: None,
             ai_confidence: 0.0,
-            notes: None,
         }
     }
 
-    /// Set the original medication text
-    pub fn medication_raw(mut self, raw: impl Into<String>) -> Self {
-        self.medication_raw = Some(raw.into());
+    /// Set the form (physical form like امبول, فايل, etc.)
+    pub fn form(mut self, form: impl Into<String>) -> Self {
+        self.form = Some(form.into());
         self
     }
 
-    /// Set the unit
-    pub fn unit(mut self, unit: impl Into<String>) -> Self {
-        self.unit = Some(unit.into());
+    /// Set the concentration (dosage/strength like 1mg, 150, etc.)
+    pub fn concentration(mut self, concentration: impl Into<String>) -> Self {
+        self.concentration = Some(concentration.into());
         self
     }
 
@@ -220,12 +216,6 @@ impl RequestBuilder {
         self
     }
 
-    /// Set notes
-    pub fn notes(mut self, notes: impl Into<String>) -> Self {
-        self.notes = Some(notes.into());
-        self
-    }
-
     /// Build the Request entity
     pub fn build(self) -> Model {
         use chrono::Utc;
@@ -236,13 +226,12 @@ impl RequestBuilder {
             raw_message_id: self.raw_message_id,
             participant_id: self.participant_id,
             group_id: self.group_id,
-            medication: self.medication.clone(),
-            medication_raw: self.medication_raw.unwrap_or(self.medication),
-            unit: self.unit,
+            medication: self.medication,
+            form: self.form,
+            concentration: self.concentration,
             urgency_level: self.urgency_level,
             expiry_requirement: self.expiry_requirement,
             ai_confidence: self.ai_confidence,
-            notes: self.notes,
             status: Status::Active,
             content_embedding: None,
             master_medication_id: None,
@@ -277,10 +266,8 @@ mod tests {
         let part_id = Uuid::new_v4();
         let group_id = Uuid::new_v4();
         let request = RequestBuilder::new(msg_id, "Ozempic 1mg", part_id, group_id)
-            .unit("boxes")
             .urgency_level(UrgencyLevel::Urgent)
             .ai_confidence(0.9)
-            .notes("Urgent request")
             .build();
 
         assert_eq!(request.medication, "Ozempic 1mg");

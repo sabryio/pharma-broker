@@ -444,7 +444,7 @@ async fn main() -> anyhow::Result<()> {
             i,
             type_icon,
             item.medication.green(),
-            item.medication_raw.dimmed(),
+            item.medication.dimmed(),
             format!("{:?}", item.item_type).cyan()
         );
     }
@@ -459,3 +459,4 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+

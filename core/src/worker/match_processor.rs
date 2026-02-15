@@ -195,8 +195,8 @@ impl MatchProcessor {
                     let fuzzy_sim = crate::matching::medication_similarity_with_raw(
                         &offer.medication,
                         &request.medication,
-                        Some(&offer.medication_raw),
-                        Some(&request.medication_raw),
+                        Some(&offer.medication),
+                        Some(&request.medication),
                     );
 
                     // If embedding similarity is high but fuzzy/raw similarity is low,
@@ -207,8 +207,8 @@ impl MatchProcessor {
                             request_id = %request.id,
                             offer_med = %offer.medication,
                             request_med = %request.medication,
-                            offer_raw = %offer.medication_raw,
-                            request_raw = %request.medication_raw,
+                            offer_raw = %offer.medication,
+                            request_raw = %request.medication,
                             embedding_sim = %embedding_sim,
                             fuzzy_sim = %fuzzy_sim,
                             "High embedding similarity but low fuzzy/raw similarity - using fuzzy score"
@@ -331,13 +331,11 @@ mod tests {
             participant_id: Uuid::new_v4(),
             group_id: Uuid::new_v4(),
             medication: "Test Med".to_string(),
-            medication_raw: "Test Med Raw".to_string(),
-            unit: None,
-
+            form: None,
+            concentration: None,
             urgency_level: crate::domain::UrgencyLevel::Normal,
             expiry_requirement: None,
             ai_confidence: 0.9,
-            notes: None,
             status: ItemStatus::Duplicate, // DUPLICATE status
             content_embedding: None,
             master_medication_id: None,
@@ -365,12 +363,11 @@ mod tests {
             participant_id: Uuid::new_v4(),
             group_id: Uuid::new_v4(),
             medication: "Test Med".to_string(),
-            medication_raw: "Test Med Raw".to_string(),
-            unit: None,
+            form: None,
+            concentration: None,
             urgency_level: crate::domain::UrgencyLevel::Normal,
             expiry_requirement: None,
             ai_confidence: 0.9,
-            notes: None,
             status: ItemStatus::Active, // ACTIVE status
             content_embedding: None,
             master_medication_id: None,
@@ -397,12 +394,11 @@ mod tests {
             participant_id: Uuid::new_v4(),
             group_id: Uuid::new_v4(),
             medication: "Test Med".to_string(),
-            medication_raw: "Test Med Raw".to_string(),
-            unit: None,
+            form: None,
+            concentration: None,
             urgency_level: crate::domain::UrgencyLevel::Normal,
             expiry_requirement: None,
             ai_confidence: 0.9,
-            notes: None,
             status: ItemStatus::Matched, // MATCHED status
             content_embedding: None,
             master_medication_id: None,

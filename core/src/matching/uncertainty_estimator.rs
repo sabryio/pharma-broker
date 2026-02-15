@@ -469,7 +469,6 @@ mod tests {
         Offer {
             id: uuid::Uuid::new_v4(),
             medication: "Aspirin 100mg".to_string(),
-            medication_raw: "اسبرين 100".to_string(),
             ..Default::default()
         }
     }
@@ -478,7 +477,6 @@ mod tests {
         Request {
             id: uuid::Uuid::new_v4(),
             medication: "Aspirin 100mg".to_string(),
-            medication_raw: "اسبرين 100".to_string(),
             ..Default::default()
         }
     }
@@ -578,3 +576,4 @@ mod tests {
         }
     }
 }
+

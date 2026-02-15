@@ -211,7 +211,6 @@ pub struct ExtractionFeedback {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIExtraction {
     pub medication: Option<String>,
-    pub medication_raw: Option<String>,
     pub item_type: Option<String>,
     pub quantity: Option<f64>,
     pub price: Option<f64>,
@@ -222,7 +221,6 @@ pub struct AIExtraction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorrectExtraction {
     pub medication: String,
-    pub medication_raw: String,
     pub item_type: String,
     pub quantity: f64,
     pub price: f64,
@@ -360,7 +358,7 @@ impl LLMFeedbackLoop {
             "items": [{
                 "type": feedback.correct_extraction.item_type,
                 "medication": feedback.correct_extraction.medication,
-                "medication_raw": feedback.correct_extraction.medication_raw,
+                "medication_raw": feedback.correct_extraction.medication,
                 "quantity": feedback.correct_extraction.quantity,
                 "price": feedback.correct_extraction.price,
                 "ai_confidence": feedback.ai_extraction.confidence
@@ -389,7 +387,7 @@ impl LLMFeedbackLoop {
             "items": [{
                 "type": feedback.correct_extraction.item_type,
                 "medication": feedback.correct_extraction.medication,
-                "medication_raw": feedback.correct_extraction.medication_raw,
+                "medication_raw": feedback.correct_extraction.medication,
                 "quantity": feedback.correct_extraction.quantity,
                 "price": feedback.correct_extraction.price
             }]
@@ -947,7 +945,6 @@ mod tests {
             message_content: "متوفر بروفين".to_string(),
             ai_extraction: AIExtraction {
                 medication: Some("Brofen".to_string()),
-                medication_raw: Some("بروفين".to_string()),
                 item_type: Some("OFFER".to_string()),
                 quantity: Some(1.0),
                 price: Some(100.0),
@@ -955,7 +952,6 @@ mod tests {
             },
             correct_extraction: CorrectExtraction {
                 medication: "Brufen".to_string(),
-                medication_raw: "بروفين".to_string(),
                 item_type: "OFFER".to_string(),
                 quantity: 1.0,
                 price: 100.0,
@@ -1072,7 +1068,6 @@ mod tests {
             message_content: "متوفر اوجمنتين 1 جم".to_string(),
             ai_extraction: AIExtraction {
                 medication: Some("Augmentin 1g".to_string()),
-                medication_raw: Some("اوجمنتين 1 جم".to_string()),
                 item_type: Some("OFFER".to_string()),
                 quantity: Some(1.0),
                 price: Some(300.0),
@@ -1080,7 +1075,6 @@ mod tests {
             },
             correct_extraction: CorrectExtraction {
                 medication: "Augmentin 1g".to_string(),
-                medication_raw: "اوجمنتين 1 جم".to_string(),
                 item_type: "OFFER".to_string(),
                 quantity: 1.0,
                 price: 300.0,

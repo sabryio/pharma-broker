@@ -758,7 +758,6 @@ impl PharmaParser {
             message_content: data.message_content,
             ai_extraction: AIExtraction {
                 medication: Some(data.medication.clone()),
-                medication_raw: Some(data.medication_raw.clone()),
                 item_type: Some(data.item_type.clone()),
                 quantity: Some(data.quantity),
                 price: Some(data.price),
@@ -766,7 +765,6 @@ impl PharmaParser {
             },
             correct_extraction: CorrectExtraction {
                 medication: data.medication,
-                medication_raw: data.medication_raw,
                 item_type: data.item_type,
                 quantity: data.quantity,
                 price: data.price,
@@ -785,7 +783,6 @@ impl PharmaParser {
             message_content: data.message_content,
             ai_extraction: AIExtraction {
                 medication: Some(data.ai_medication),
-                medication_raw: Some(data.medication_raw.clone()),
                 item_type: Some(data.item_type.clone()),
                 quantity: Some(data.quantity),
                 price: Some(data.price),
@@ -793,7 +790,6 @@ impl PharmaParser {
             },
             correct_extraction: CorrectExtraction {
                 medication: data.correct_medication,
-                medication_raw: data.medication_raw,
                 item_type: data.item_type,
                 quantity: data.quantity,
                 price: data.price,
@@ -812,7 +808,6 @@ impl PharmaParser {
             message_content: data.message_content,
             ai_extraction: AIExtraction {
                 medication: None,
-                medication_raw: None,
                 item_type: None,
                 quantity: None,
                 price: None,
@@ -820,7 +815,6 @@ impl PharmaParser {
             },
             correct_extraction: CorrectExtraction {
                 medication: data.medication,
-                medication_raw: data.medication_raw,
                 item_type: data.item_type,
                 quantity: data.quantity,
                 price: data.price,
@@ -845,7 +839,6 @@ impl PharmaParser {
             message_content: message_content.to_string(),
             ai_extraction: AIExtraction {
                 medication: Some(ai_medication.to_string()),
-                medication_raw: None,
                 item_type: Some("OFFER".to_string()),
                 quantity: Some(1.0),
                 price: None,
@@ -853,7 +846,6 @@ impl PharmaParser {
             },
             correct_extraction: CorrectExtraction {
                 medication: String::new(),
-                medication_raw: String::new(),
                 item_type: String::new(),
                 quantity: 0.0,
                 price: 0.0,
@@ -964,7 +956,6 @@ mod tests {
             message_id: "msg-1".to_string(),
             message_content: "متوفر اوجمنتين 1 جم".to_string(),
             medication: "Augmentin 1g".to_string(),
-            medication_raw: "اوجمنتين 1 جم".to_string(),
             item_type: "OFFER".to_string(),
             quantity: 1.0,
             price: 300.0,
@@ -985,7 +976,6 @@ mod tests {
             message_content: "متوفر بروفين".to_string(),
             ai_medication: "Brofen".to_string(), // AI got it wrong
             correct_medication: "Brufen".to_string(), // Correct name
-            medication_raw: "بروفين".to_string(),
             item_type: "OFFER".to_string(),
             quantity: 1.0,
             price: 100.0,
@@ -1005,7 +995,6 @@ mod tests {
             message_id: "msg-1".to_string(),
             message_content: "محتاج فلاجيل".to_string(),
             medication: "Flagyl".to_string(),
-            medication_raw: "فلاجيل".to_string(),
             item_type: "REQUEST".to_string(),
             quantity: 1.0,
             price: 0.0,
@@ -1076,7 +1065,6 @@ mod tests {
             message_id: "msg-1".to_string(),
             message_content: "متوفر دواء".to_string(),
             medication: "Medicine".to_string(),
-            medication_raw: "دواء".to_string(),
             item_type: "OFFER".to_string(),
             quantity: 1.0,
             price: 100.0,
@@ -1100,7 +1088,6 @@ mod tests {
             message_content: "Test".to_string(),
             ai_medication: "Wrong".to_string(),
             correct_medication: "Correct".to_string(),
-            medication_raw: "raw".to_string(),
             item_type: "OFFER".to_string(),
             quantity: 1.0,
             price: 100.0,
@@ -1123,7 +1110,6 @@ mod tests {
             message_id: "msg-1".to_string(),
             message_content: "Test".to_string(),
             medication: "Med".to_string(),
-            medication_raw: "raw".to_string(),
             item_type: "OFFER".to_string(),
             quantity: 1.0,
             price: 100.0,
@@ -1133,7 +1119,6 @@ mod tests {
             message_content: "Test".to_string(),
             ai_medication: "Wrong".to_string(),
             correct_medication: "Correct".to_string(),
-            medication_raw: "raw".to_string(),
             item_type: "OFFER".to_string(),
             quantity: 1.0,
             price: 100.0,
@@ -1210,7 +1195,6 @@ mod tests {
                 message_id: format!("msg-{}", i),
                 message_content: "Test".to_string(),
                 medication: "Med".to_string(),
-                medication_raw: "raw".to_string(),
                 item_type: "OFFER".to_string(),
                 quantity: 1.0,
                 price: 100.0,
@@ -1223,7 +1207,6 @@ mod tests {
                 message_content: "Test".to_string(),
                 ai_medication: "Wrong".to_string(),
                 correct_medication: "Correct".to_string(),
-                medication_raw: "raw".to_string(),
                 item_type: "OFFER".to_string(),
                 quantity: 1.0,
                 price: 100.0,
@@ -1260,3 +1243,5 @@ mod tests {
         assert_eq!(stats.total_batches, 0);
     }
 }
+
+

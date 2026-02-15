@@ -25,11 +25,8 @@ impl MigrationTrait for Migration {
                             .string_len(200)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Offers::MedicationRaw).string_len(500))
-                    .col(ColumnDef::new(Offers::Unit).string_len(20))
-                    // REMOVED: expiry_date (redundant with expiry_info)
-                    .col(ColumnDef::new(Offers::BatchNumber).string_len(50))
-                    .col(ColumnDef::new(Offers::Notes).text())
+                    .col(ColumnDef::new(Offers::Form).string_len(50))
+                    .col(ColumnDef::new(Offers::Concentration).string_len(50))
                     .col(
                         ColumnDef::new(Offers::Status)
                             .string_len(20)
@@ -213,14 +210,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // GIN index for trigram search on medication_raw
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "CREATE INDEX IF NOT EXISTS idx_offers_medication_raw_trgm ON offers USING gin (medication_raw gin_trgm_ops)",
-            )
-            .await?;
-
         // HNSW index for vector similarity search (cosine distance)
         manager
             .get_connection()
@@ -247,11 +236,8 @@ pub enum Offers {
     ParticipantId,
     GroupId,
     Medication,
-    MedicationRaw,
-    Unit,
-    // ExpiryDate removed - redundant with ExpiryInfo
-    BatchNumber,
-    Notes,
+    Form,
+    Concentration,
     Status,
     UrgencyLevel,
     ExpiryInfo,

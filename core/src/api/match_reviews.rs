@@ -224,12 +224,12 @@ where
 
         // Fetch curation metadata
         tracing::debug!(
-            ">>> match_reviews: looking up offer alias for medication_raw: '{}'",
-            &offer.medication_raw
+            ">>> match_reviews: looking up offer alias for medication: '{}'",
+            &offer.medication
         );
         let offer_curation = state
             .medication_alias_repo
-            .get_by_name(&offer.medication_raw)
+            .get_by_name(&offer.medication)
             .await
             .ok()
             .flatten();
@@ -241,7 +241,7 @@ where
         let offer_summary = OfferSummary {
             id: offer.id,
             product: offer.medication.clone(),
-            medication_raw: Some(offer.medication_raw.clone()),
+            medication_raw: Some(offer.medication.clone()),
             source: format!("Offer #{}", &offer.id.to_string()[..8]),
             source_group: offer_group.map(|g| g.name),
             sender_name: offer_participant
@@ -259,7 +259,7 @@ where
 
         let request_curation = state
             .medication_alias_repo
-            .get_by_name(&request.medication_raw)
+            .get_by_name(&request.medication)
             .await
             .ok()
             .flatten();
@@ -267,7 +267,7 @@ where
         let request_summary = RequestSummary {
             id: request.id,
             product: request.medication.clone(),
-            medication_raw: Some(request.medication_raw.clone()),
+            medication_raw: Some(request.medication.clone()),
             source: format!("Request #{}", &request.id.to_string()[..8]),
             source_group: request_group.map(|g| g.name),
             sender_name: request_participant
@@ -389,7 +389,7 @@ where
     // Fetch curation metadata
     let offer_curation = state
         .medication_alias_repo
-        .get_by_name(&offer.medication_raw)
+        .get_by_name(&offer.medication)
         .await
         .ok()
         .flatten();
@@ -397,7 +397,7 @@ where
     let offer_summary = OfferSummary {
         id: offer.id,
         product: offer.medication.clone(),
-        medication_raw: Some(offer.medication_raw.clone()),
+        medication_raw: Some(offer.medication.clone()),
         source: format!("Offer #{}", &offer.id.to_string()[..8]),
         source_group: offer_group.map(|g| g.name),
         sender_name: offer_participant
@@ -415,7 +415,7 @@ where
 
     let request_curation = state
         .medication_alias_repo
-        .get_by_name(&request.medication_raw)
+        .get_by_name(&request.medication)
         .await
         .ok()
         .flatten();
@@ -423,7 +423,7 @@ where
     let request_summary = RequestSummary {
         id: request.id,
         product: request.medication.clone(),
-        medication_raw: Some(request.medication_raw.clone()),
+        medication_raw: Some(request.medication.clone()),
         source: format!("Request #{}", &request.id.to_string()[..8]),
         source_group: request_group.map(|g| g.name),
         sender_name: request_participant
@@ -543,7 +543,7 @@ where
     let offer_curation = if let Some(ref o) = offer {
         state
             .medication_alias_repo
-            .get_by_name(&o.medication_raw)
+            .get_by_name(&o.medication)
             .await
             .ok()
             .flatten()
@@ -553,7 +553,7 @@ where
     let request_curation = if let Some(ref r) = request {
         state
             .medication_alias_repo
-            .get_by_name(&r.medication_raw)
+            .get_by_name(&r.medication)
             .await
             .ok()
             .flatten()
@@ -593,8 +593,8 @@ where
             if let Some(learn_result) = state.alias_learner.learn_from_confirmation(
                 id,
                 match_entity.score,
-                &o.medication_raw,
-                &r.medication_raw,
+                &o.medication,
+                &r.medication,
                 offer_master_id,
                 request_master_id,
             ) {
@@ -667,11 +667,11 @@ where
         if let (Some(o), Some(r)) = (&offer, &request) {
             state
                 .alias_learner
-                .learn_from_rejection(&o.medication_raw, &r.medication_raw);
+                .learn_from_rejection(&o.medication, &r.medication);
             tracing::debug!(
                 match_id = %id,
-                offer_medication = %o.medication_raw,
-                request_medication = %r.medication_raw,
+                offer_medication = %o.medication,
+                request_medication = %r.medication,
                 "Alias learner notified of rejection"
             );
         }
@@ -798,13 +798,13 @@ where
                 if let (Some(o), Some(r)) = (&offer, &request) {
                     let offer_curation = state
                         .medication_alias_repo
-                        .get_by_name(&o.medication_raw)
+                        .get_by_name(&o.medication)
                         .await
                         .ok()
                         .flatten();
                     let request_curation = state
                         .medication_alias_repo
-                        .get_by_name(&r.medication_raw)
+                        .get_by_name(&r.medication)
                         .await
                         .ok()
                         .flatten();
@@ -818,8 +818,8 @@ where
                     if let Some(learn_result) = state.alias_learner.learn_from_confirmation(
                         *id,
                         match_entity.score,
-                        &o.medication_raw,
-                        &r.medication_raw,
+                        &o.medication,
+                        &r.medication,
                         offer_master_id,
                         request_master_id,
                     ) && learn_result.alias_created
@@ -852,7 +852,7 @@ where
                 if let (Some(o), Some(r)) = (&offer, &request) {
                     state
                         .alias_learner
-                        .learn_from_rejection(&o.medication_raw, &r.medication_raw);
+                        .learn_from_rejection(&o.medication, &r.medication);
                 }
 
                 let feedback = FeedbackRecord::new(
@@ -1114,14 +1114,14 @@ where
     let medication_sim =
         crate::matching::medication_similarity(&offer.medication, &request.medication);
     let raw_sim =
-        crate::matching::medication_similarity(&offer.medication_raw, &request.medication_raw);
+        crate::matching::medication_similarity(&offer.medication, &request.medication);
 
     // Calculate combined similarity using raw text validation
     let combined_sim = crate::matching::medication_similarity_with_raw(
         &offer.medication,
         &request.medication,
-        Some(&offer.medication_raw),
-        Some(&request.medication_raw),
+        Some(&offer.medication),
+        Some(&request.medication),
     );
 
     // Calculate embedding similarity if available

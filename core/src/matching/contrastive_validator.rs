@@ -667,8 +667,8 @@ impl ContrastiveValidator {
         medication_similarity_with_raw(
             &offer.medication,
             &request.medication,
-            Some(&offer.medication_raw),
-            Some(&request.medication_raw),
+            Some(&offer.medication),
+            Some(&request.medication),
         )
     }
 
@@ -866,3 +866,4 @@ mod tests {
         assert!(!validator.has_hard_negatives());
     }
 }
+

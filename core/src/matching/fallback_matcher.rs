@@ -140,8 +140,8 @@ impl FallbackMatcher {
         request: &RequestModel,
     ) -> FallbackMatchResult {
         // Stage 1: Resolve both to master medications
-        let offer_resolution = self.resolver.resolve(&offer.medication_raw).await;
-        let request_resolution = self.resolver.resolve(&request.medication_raw).await;
+        let offer_resolution = self.resolver.resolve(&offer.medication).await;
+        let request_resolution = self.resolver.resolve(&request.medication).await;
 
         // If both resolve to the same master, it's a high-confidence match
         if let (Some(offer_master), Some(request_master)) = (
@@ -164,8 +164,8 @@ impl FallbackMatcher {
         }
 
         // Stage 2: Direct string comparison
-        let offer_normalized = normalize_for_matching(&offer.medication_raw);
-        let request_normalized = normalize_for_matching(&request.medication_raw);
+        let offer_normalized = normalize_for_matching(&offer.medication);
+        let request_normalized = normalize_for_matching(&request.medication);
 
         // Exact match
         if offer_normalized == request_normalized {
@@ -181,7 +181,7 @@ impl FallbackMatcher {
 
         // Stage 3: Fuzzy string similarity
         let medication_sim = self.calculate_similarity(&offer_normalized, &request_normalized);
-        let raw_sim = self.calculate_similarity(&offer.medication_raw, &request.medication_raw);
+        let raw_sim = self.calculate_similarity(&offer.medication, &request.medication);
 
         // Combined score with weights
         let combined_score =
@@ -423,3 +423,4 @@ mod tests {
         assert!(!FallbackStrategy::RejectAll.allows_matching());
     }
 }
+
