@@ -4,17 +4,14 @@
 //! Ported from legacy/parsing/processor.go
 
 use pgvector::Vector as PgVector;
-use rust_decimal::Decimal;
-use rust_decimal::prelude::FromPrimitive;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, mpsc, watch};
 use tokio::time::interval;
 use tracing::{error, info, warn};
 
-use crate::ai::{ParsedItem, PharmaParser};
+use crate::ai::PharmaParser;
 use crate::domain::{
     AuditAction, AuditLog, EntityType, ItemStatus, Offer, RawMessage, Request, ReviewQueueItem,
-    UrgencyLevel,
 };
 use crate::repository::{
     AuditLogRepository, GroupRepository, MatchQueueRepository, MedicationMasterRepository,
@@ -281,14 +278,24 @@ impl BatchProcessor {
         }
 
         // Handle no items
-        if result.items.is_empty() {
+        if result.result.medications.is_empty() {
             info!(msg_id = %msg.id, "No items extracted");
             let _ = self.raw_message_repo.mark_processed(msg.id, None).await;
             return;
         }
 
-        // Calculate average confidence
-        let avg_confidence = self.calculate_avg_confidence(&result.items);
+        // Calculate average confidence from medications
+        let avg_confidence = if !result.result.medications.is_empty() {
+            result
+                .result
+                .medications
+                .iter()
+                .map(|m| m.confidence)
+                .sum::<f64>()
+                / result.result.medications.len() as f64
+        } else {
+            0.0
+        };
 
         // Check if needs Pass 2 retry
         let final_result = if result.pass == ParsePass::Strict
@@ -307,19 +314,29 @@ impl BatchProcessor {
                 .await;
 
             if let Some(pass2_result) = pass2_results.into_iter().next() {
-                let pass2_confidence = self.calculate_avg_confidence(&pass2_result.items);
+                let pass2_confidence = if !pass2_result.result.medications.is_empty() {
+                    pass2_result
+                        .result
+                        .medications
+                        .iter()
+                        .map(|m| m.confidence)
+                        .sum::<f64>()
+                        / pass2_result.result.medications.len() as f64
+                } else {
+                    0.0
+                };
 
                 // Use Pass 2 result if it has better confidence or more items
                 if pass2_confidence > avg_confidence
-                    || (pass2_result.items.len() > result.items.len()
+                    || (pass2_result.result.medications.len() > result.result.medications.len()
                         && pass2_confidence >= self.multi_pass_config.relaxed_min_confidence)
                 {
                     info!(
                         msg_id = %msg.id,
                         pass1_confidence = avg_confidence,
                         pass2_confidence,
-                        pass1_items = result.items.len(),
-                        pass2_items = pass2_result.items.len(),
+                        pass1_items = result.result.medications.len(),
+                        pass2_items = pass2_result.result.medications.len(),
                         "Using Pass 2 results (better confidence or more items)"
                     );
                     let mut stats = self.stats.write().await;
@@ -341,13 +358,23 @@ impl BatchProcessor {
             result
         };
 
-        let final_confidence = self.calculate_avg_confidence(&final_result.items);
+        let final_confidence = if !final_result.result.medications.is_empty() {
+            final_result
+                .result
+                .medications
+                .iter()
+                .map(|m| m.confidence)
+                .sum::<f64>()
+                / final_result.result.medications.len() as f64
+        } else {
+            0.0
+        };
 
         // Check if needs review queue
         if self.multi_pass_config.needs_review(final_confidence) {
             let review_item = ReviewQueueItem::for_low_confidence(
                 msg.id,
-                serde_json::to_value(&final_result.items).unwrap_or_default(),
+                serde_json::to_value(&final_result.result).unwrap_or_default(),
                 final_confidence,
                 "low_confidence",
             );
@@ -356,14 +383,22 @@ impl BatchProcessor {
             }
         }
 
-        // Batch generate embeddings for all items
+        // Batch generate embeddings for all medications
         // IMPORTANT: Strip dosage from medication names before embedding to prevent false positives
         // e.g., "Kozentex 150" and "Gonapure 150" would have similar embeddings due to "150"
         // but they are completely different medications
         let medications_for_embedding: Vec<String> = final_result
-            .items
+            .result
+            .medications
             .iter()
-            .map(|i| crate::matching::arabic::normalize_for_matching(&i.medication))
+            .map(|med| {
+                let full_name = if let Some(conc) = &med.concentration {
+                    format!("{} {}", med.name, conc)
+                } else {
+                    med.name.clone()
+                };
+                crate::matching::arabic::normalize_for_matching(&full_name)
+            })
             .collect();
         let embeddings = if !medications_for_embedding.is_empty() {
             match self.ai_client.embed_batch(&medications_for_embedding).await {
@@ -378,13 +413,22 @@ impl BatchProcessor {
         };
 
         // Create offers and requests with pre-generated embeddings
-        for (item, embedding) in final_result.items.into_iter().zip(embeddings.into_iter()) {
+        // Capture intent and urgency before moving medications
+        let intent = final_result.result.intent;
+        let urgency = final_result.result.urgency;
+
+        for (med, embedding) in final_result
+            .result
+            .medications
+            .into_iter()
+            .zip(embeddings.into_iter())
+        {
             let emb = if embedding.is_empty() {
                 None
             } else {
                 Some(embedding)
             };
-            self.create_entity_from_item_with_embedding(msg, &item, emb)
+            self.create_entity_from_medication(msg, &med, intent, urgency, emb)
                 .await;
         }
 
@@ -392,34 +436,40 @@ impl BatchProcessor {
         let _ = self.raw_message_repo.mark_processed(msg.id, None).await;
     }
 
-    /// Create offer or request from parsed item with pre-generated embedding
-    async fn create_entity_from_item_with_embedding(
+    /// Create offer or request from parsed medication with pre-generated embedding
+    async fn create_entity_from_medication(
         &self,
         msg: &RawMessage,
-        item: &ParsedItem,
+        med: &crate::ai::Medication,
+        intent: crate::ai::Intent,
+        urgency: crate::ai::UrgencyLevel,
         embedding: Option<Vec<f32>>,
     ) {
-        match item.item_type.as_str() {
-            "OFFER" | "BOTH" => {
+        // Build medication name with concentration
+        let medication = if let Some(conc) = &med.concentration {
+            format!("{} {}", med.name, conc)
+        } else {
+            med.name.clone()
+        };
+
+        match intent {
+            crate::ai::Intent::Offer => {
                 let offer = Offer {
                     id: uuid::Uuid::new_v4(),
                     raw_message_id: msg.id,
-                    medication: item.medication.clone(),
-                    medication_raw: item.medication.clone(),
-                    quantity: Decimal::from_f64(item.quantity),
-                    unit: item.unit.clone(),
-                    price: Decimal::from_f64(item.price),
-                    currency: Some("EGP".to_string()),
+                    medication: medication.clone(),
+                    medication_raw: med.name.clone(),
+                    unit: med.form.clone(),
                     // expiry_date removed - use expiry_info instead
                     batch_number: None,
                     participant_id: msg.participant_id,
                     group_id: msg.group_id,
-                    notes: item.notes.clone(),
+                    notes: med.form.clone(),
                     status: ItemStatus::Active,
                     content_embedding: embedding.clone().map(PgVector::from),
-                    urgency_level: UrgencyLevel::from_bool(item.urgent),
-                    expiry_info: item.expiry.clone(),
-                    ai_confidence: item.ai_confidence,
+                    urgency_level: urgency.to_db_urgency(),
+                    expiry_info: med.expiry.clone(),
+                    ai_confidence: med.confidence,
                     master_medication_id: None,
                     medication_curated: false,
                     confirmed_match_count: 0,
@@ -450,26 +500,19 @@ impl BatchProcessor {
                     stats.items_extracted += 1;
                 }
             }
-            _ => {}
-        }
-
-        match item.item_type.as_str() {
-            "REQUEST" | "BOTH" => {
+            crate::ai::Intent::Request => {
                 let request = Request {
                     id: uuid::Uuid::new_v4(),
                     raw_message_id: msg.id,
-                    medication: item.medication.clone(),
-                    medication_raw: item.medication.clone(),
-                    quantity: Decimal::from_f64(item.quantity),
-                    unit: item.unit.clone(),
-                    max_price: Decimal::from_f64(item.max_price),
-                    currency: Some("EGP".to_string()),
+                    medication: medication.clone(),
+                    medication_raw: med.name.clone(),
+                    unit: med.form.clone(),
                     participant_id: msg.participant_id,
                     group_id: msg.group_id,
-                    notes: item.notes.clone(),
-                    urgency_level: UrgencyLevel::from_bool(item.urgent),
-                    expiry_requirement: item.expiry.clone(),
-                    ai_confidence: item.ai_confidence,
+                    notes: med.form.clone(),
+                    urgency_level: urgency.to_db_urgency(),
+                    expiry_requirement: med.expiry.clone(),
+                    ai_confidence: med.confidence,
                     status: ItemStatus::Active,
                     content_embedding: embedding.map(PgVector::from),
                     master_medication_id: None,
@@ -500,16 +543,6 @@ impl BatchProcessor {
                     stats.items_extracted += 1;
                 }
             }
-            _ => {}
         }
-    }
-
-    /// Calculate average AI confidence across items
-    fn calculate_avg_confidence(&self, items: &[ParsedItem]) -> f64 {
-        if items.is_empty() {
-            return 0.0;
-        }
-        let sum: f64 = items.iter().map(|i| i.ai_confidence).sum();
-        sum / items.len() as f64
     }
 }

@@ -67,30 +67,6 @@ function Requests() {
           <span className="font-medium text-foreground">{info.getValue()}</span>
         ),
       }),
-      columnHelper.accessor('quantity', {
-        header: 'Quantity Requested',
-        cell: (info) => {
-          const qty = info.getValue()
-          const unit = info.row.original.unit
-          return (
-            <span className="text-muted-foreground">
-              {qty ? `${qty} ${unit || 'units'}` : '-'}
-            </span>
-          )
-        },
-      }),
-      columnHelper.accessor('max_price', {
-        header: 'Max Price',
-        cell: (info) => {
-          const price = info.getValue()
-          const currency = info.row.original.currency || 'EGP'
-          return (
-            <span className="font-medium text-amber">
-              {price ? `${price} ${currency}` : '-'}
-            </span>
-          )
-        },
-      }),
       columnHelper.accessor('confirmed_match_count', {
         header: 'Matches',
         cell: (info) => (

@@ -41,19 +41,15 @@ impl std::error::Error for WeightError {}
 /// Updated with new factors: expiry and supplier (Requirements 8.1)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Weights {
-    /// Medication name similarity weight (default: 0.60)
+    /// Medication name similarity weight (default: 0.70)
     pub medication: f64,
-    /// Dosage match weight - increased for safety (default: 0.15)
+    /// Dosage match weight - increased for safety (default: 0.20)
     pub dosage: f64,
-    /// Quantity fulfillment weight (default: 0.05)
-    pub quantity: f64,
-    /// Price within budget weight (default: 0.05)
-    pub price: f64,
-    /// Recency/freshness weight - reduced (default: 0.05)
+    /// Recency/freshness weight (default: 0.05)
     pub recency: f64,
-    /// Expiry date validation weight (default: 0.05) - NEW
+    /// Expiry date validation weight (default: 0.05)
     pub expiry: f64,
-    /// Supplier reliability weight (default: 0.05) - NEW
+    /// Supplier reliability weight (default: 0.0, reserved for future)
     pub supplier: f64,
     /// AI logic score weight (default: 0.0, disabled)
     pub ai_logic: f64,
@@ -61,18 +57,15 @@ pub struct Weights {
 
 impl Default for Weights {
     fn default() -> Self {
-        // Updated weights per Requirements 8.1:
-        // medication (60%), dosage (15%), quantity (5%), price (5%),
-        // recency (5%), expiry (5%), supplier (5%)
+        // Updated weights without quantity/price:
+        // medication (70%), dosage (20%), recency (5%), expiry (5%)
         Self {
-            medication: 0.60, // Reduced from 0.75 to accommodate new factors
-            dosage: 0.15,     // Increased from 0.05 for safety
-            quantity: 0.05,   // Unchanged
-            price: 0.05,      // Unchanged
-            recency: 0.05,    // Reduced from 0.10
-            expiry: 0.05,     // NEW: expiry date validation
-            supplier: 0.05,   // NEW: supplier reliability (reserved)
-            ai_logic: 0.0,    // Disabled by default
+            medication: 0.70,
+            dosage: 0.20,
+            recency: 0.05,
+            expiry: 0.05,
+            supplier: 0.0,
+            ai_logic: 0.0,
         }
     }
 }
@@ -80,19 +73,10 @@ impl Default for Weights {
 impl Weights {
     /// Calculate the sum of all weights
     pub fn sum(&self) -> f64 {
-        self.medication
-            + self.dosage
-            + self.quantity
-            + self.price
-            + self.recency
-            + self.expiry
-            + self.supplier
-            + self.ai_logic
+        self.medication + self.dosage + self.recency + self.expiry + self.supplier + self.ai_logic
     }
 
     /// Validate that weights sum to 1.0 and none are negative
-    /// Returns error if weights don't sum to 1.0 (within tolerance) or any weight is negative
-    /// Requirements: 8.3
     pub fn validate(&self) -> Result<(), WeightError> {
         // Check for negative weights
         if self.medication < 0.0 {
@@ -105,18 +89,6 @@ impl Weights {
             return Err(WeightError::NegativeWeight {
                 field: "dosage".to_string(),
                 value: self.dosage,
-            });
-        }
-        if self.quantity < 0.0 {
-            return Err(WeightError::NegativeWeight {
-                field: "quantity".to_string(),
-                value: self.quantity,
-            });
-        }
-        if self.price < 0.0 {
-            return Err(WeightError::NegativeWeight {
-                field: "price".to_string(),
-                value: self.price,
             });
         }
         if self.recency < 0.0 {
@@ -163,8 +135,6 @@ impl Weights {
         if sum > 0.0 && (sum - 1.0).abs() > WEIGHT_SUM_TOLERANCE {
             self.medication /= sum;
             self.dosage /= sum;
-            self.quantity /= sum;
-            self.price /= sum;
             self.recency /= sum;
             self.expiry /= sum;
             self.supplier /= sum;
@@ -225,11 +195,9 @@ mod tests {
         let weights = Weights {
             medication: 0.5,
             dosage: 0.1,
-            quantity: 0.1,
-            price: 0.1,
             recency: 0.1,
             expiry: 0.05,
-            supplier: 0.1, // Changed from 0.05 to make sum = 1.05
+            supplier: 0.3, // Sum = 1.05
             ai_logic: 0.0,
         };
         let result = weights.validate();
@@ -246,13 +214,11 @@ mod tests {
     fn test_validate_negative_weight() {
         let weights = Weights {
             medication: -0.1,
-            dosage: 0.15,
-            quantity: 0.05,
-            price: 0.05,
+            dosage: 0.20,
             recency: 0.05,
             expiry: 0.05,
-            supplier: 0.05,
-            ai_logic: 0.7,
+            supplier: 0.0,
+            ai_logic: 0.8,
         };
         let result = weights.validate();
         assert!(result.is_err());
@@ -269,12 +235,10 @@ mod tests {
         let mut weights = Weights {
             medication: 0.6,
             dosage: 0.15,
-            quantity: 0.05,
-            price: 0.05,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.05,
-            ai_logic: 0.1, // Sum = 1.1
+            ai_logic: 0.2, // Sum = 1.1
         };
         weights.normalize();
         let sum = weights.sum();
@@ -290,12 +254,10 @@ mod tests {
         let weights = Weights {
             medication: 0.6,
             dosage: 0.15,
-            quantity: 0.05,
-            price: 0.05,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.05,
-            ai_logic: 0.1, // Sum = 1.1
+            ai_logic: 0.2, // Sum = 1.1
         };
         let normalized = weights.normalized();
         // Original should be unchanged
@@ -307,13 +269,11 @@ mod tests {
     #[test]
     fn test_new_default_weight_values() {
         let weights = Weights::default();
-        assert!((weights.medication - 0.60).abs() < 0.001);
-        assert!((weights.dosage - 0.15).abs() < 0.001);
-        assert!((weights.quantity - 0.05).abs() < 0.001);
-        assert!((weights.price - 0.05).abs() < 0.001);
+        assert!((weights.medication - 0.70).abs() < 0.001);
+        assert!((weights.dosage - 0.20).abs() < 0.001);
         assert!((weights.recency - 0.05).abs() < 0.001);
         assert!((weights.expiry - 0.05).abs() < 0.001);
-        assert!((weights.supplier - 0.05).abs() < 0.001);
+        assert!((weights.supplier - 0.0).abs() < 0.001);
         assert!((weights.ai_logic - 0.0).abs() < 0.001);
     }
 }

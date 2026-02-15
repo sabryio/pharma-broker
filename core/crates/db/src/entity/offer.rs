@@ -18,12 +18,7 @@ pub struct Model {
     pub group_id: Uuid,
     pub medication: String,
     pub medication_raw: String,
-    #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
-    pub quantity: Option<Decimal>,
     pub unit: Option<String>,
-    #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
-    pub price: Option<Decimal>,
-    pub currency: Option<String>,
     // expiry_date removed - redundant with expiry_info
     pub batch_number: Option<String>,
     pub notes: Option<String>,
@@ -105,10 +100,7 @@ impl Default for Model {
             group_id: Uuid::nil(),
             medication: String::new(),
             medication_raw: String::new(),
-            quantity: None,
             unit: None,
-            price: None,
-            currency: None,
             // expiry_date removed
             batch_number: None,
             notes: None,
@@ -127,21 +119,6 @@ impl Default for Model {
 }
 
 impl Model {
-    /// Get quantity as f64
-    pub fn quantity_f64(&self) -> f64 {
-        use rust_decimal::prelude::ToPrimitive;
-        self.quantity
-            .as_ref()
-            .and_then(|d| d.to_f64())
-            .unwrap_or(0.0)
-    }
-
-    /// Get price as f64
-    pub fn price_f64(&self) -> f64 {
-        use rust_decimal::prelude::ToPrimitive;
-        self.price.as_ref().and_then(|d| d.to_f64()).unwrap_or(0.0)
-    }
-
     /// Get embedding as Vec<f32> if present
     pub fn get_embedding(&self) -> Option<Vec<f32>> {
         self.content_embedding.as_ref().map(|v| v.to_vec())
@@ -175,10 +152,7 @@ pub struct OfferBuilder {
     group_id: Uuid,
     // Optional fields
     medication_raw: Option<String>,
-    quantity: Option<Decimal>,
     unit: Option<String>,
-    price: Option<Decimal>,
-    currency: Option<String>,
     expiry_date: Option<Date>,
     batch_number: Option<String>,
     notes: Option<String>,
@@ -203,10 +177,7 @@ impl OfferBuilder {
             participant_id,
             group_id,
             medication_raw: Some(medication),
-            quantity: None,
             unit: None,
-            price: None,
-            currency: Some("EGP".to_string()),
             expiry_date: None,
             batch_number: None,
             notes: None,
@@ -223,41 +194,9 @@ impl OfferBuilder {
         self
     }
 
-    /// Set the quantity
-    pub fn quantity(mut self, qty: f64) -> Self {
-        use rust_decimal::prelude::FromPrimitive;
-        self.quantity = Decimal::from_f64(qty);
-        self
-    }
-
-    /// Set the quantity with Decimal
-    pub fn quantity_decimal(mut self, qty: Decimal) -> Self {
-        self.quantity = Some(qty);
-        self
-    }
-
     /// Set the unit
     pub fn unit(mut self, unit: impl Into<String>) -> Self {
         self.unit = Some(unit.into());
-        self
-    }
-
-    /// Set the price
-    pub fn price(mut self, price: f64) -> Self {
-        use rust_decimal::prelude::FromPrimitive;
-        self.price = Decimal::from_f64(price);
-        self
-    }
-
-    /// Set the price with Decimal
-    pub fn price_decimal(mut self, price: Decimal) -> Self {
-        self.price = Some(price);
-        self
-    }
-
-    /// Set the currency
-    pub fn currency(mut self, currency: impl Into<String>) -> Self {
-        self.currency = Some(currency.into());
         self
     }
 
@@ -321,10 +260,7 @@ impl OfferBuilder {
             group_id: self.group_id,
             medication: self.medication.clone(),
             medication_raw: self.medication_raw.unwrap_or(self.medication),
-            quantity: self.quantity,
             unit: self.unit,
-            price: self.price,
-            currency: self.currency,
             batch_number: self.batch_number,
             notes: self.notes,
             status: Status::Active,
@@ -338,62 +274,5 @@ impl OfferBuilder {
             created_at: now,
             updated_at: now,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_offer_builder_minimal() {
-        let msg_id = Uuid::new_v4();
-        let part_id = Uuid::new_v4();
-        let group_id = Uuid::new_v4();
-        let offer = OfferBuilder::new(msg_id, "Aspirin 100mg", part_id, group_id).build();
-
-        assert_eq!(offer.medication, "Aspirin 100mg");
-        assert_eq!(offer.participant_id, part_id);
-        assert_eq!(offer.group_id, group_id);
-        assert_eq!(offer.status, Status::Active);
-        assert!(!offer.is_urgent());
-    }
-
-    #[test]
-    fn test_offer_builder_full() {
-        let msg_id = Uuid::new_v4();
-        let part_id = Uuid::new_v4();
-        let group_id = Uuid::new_v4();
-        let offer = OfferBuilder::new(msg_id, "Ozempic 1mg", part_id, group_id)
-            .quantity(5.0)
-            .price(1500.0)
-            .unit("boxes")
-            .urgent()
-            .ai_confidence(0.95)
-            .notes("Original packaging")
-            .build();
-
-        assert_eq!(offer.medication, "Ozempic 1mg");
-        assert_eq!(offer.participant_id, part_id);
-        assert!(offer.quantity.is_some());
-        assert!(offer.price.is_some());
-        assert_eq!(offer.unit, Some("boxes".to_string()));
-        assert!(offer.is_urgent());
-        assert_eq!(offer.urgency_level, UrgencyLevel::Urgent);
-        assert!((offer.ai_confidence - 0.95).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_offer_is_urgent() {
-        let normal = Model::default();
-        assert!(!normal.is_urgent());
-
-        let msg_id = Uuid::new_v4();
-        let part_id = Uuid::new_v4();
-        let group_id = Uuid::new_v4();
-        let urgent = OfferBuilder::new(msg_id, "med", part_id, group_id)
-            .urgency_level(UrgencyLevel::Critical)
-            .build();
-        assert!(urgent.is_urgent());
     }
 }

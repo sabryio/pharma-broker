@@ -233,10 +233,7 @@ where
         group_id: offer.group_id,
         medication: offer.medication.clone(),
         medication_raw: offer.medication_raw.clone(),
-        quantity: offer.quantity,
         unit: offer.unit.clone(),
-        max_price: offer.price, // Offer price becomes max_price for request
-        currency: offer.currency.clone(),
         urgency_level: offer.urgency_level,
         expiry_requirement: offer.expiry_info.clone(),
         ai_confidence: offer.ai_confidence,
@@ -312,10 +309,7 @@ where
         group_id: request.group_id,
         medication: request.medication.clone(),
         medication_raw: request.medication_raw.clone(),
-        quantity: request.quantity,
         unit: request.unit.clone(),
-        price: request.max_price, // Request max_price becomes offer price
-        currency: request.currency.clone(),
         batch_number: None,
         notes: Some(format!(
             "Reclassified from request {}. {}",
@@ -367,52 +361,26 @@ where
 }
 
 fn offer_to_summary(offer: &OfferModel) -> ItemSummary {
-    use rust_decimal::prelude::ToPrimitive;
     ItemSummary {
         id: offer.id,
         item_type: ItemType::Offer,
         medication: offer.medication.clone(),
         medication_raw: offer.medication_raw.clone(),
-        quantity: offer.quantity.map(|q| {
-            format!(
-                "{} {}",
-                q.to_f64().unwrap_or(0.0),
-                offer.unit.as_deref().unwrap_or("units")
-            )
-        }),
-        price: offer.price.map(|p| {
-            format!(
-                "{:.0} {}",
-                p.to_f64().unwrap_or(0.0),
-                offer.currency.as_deref().unwrap_or("EGP")
-            )
-        }),
+        quantity: None, // Removed from schema
+        price: None,    // Removed from schema
         status: format!("{:?}", offer.status),
         created_at: offer.created_at.to_rfc3339(),
     }
 }
 
 fn request_to_summary(request: &RequestModel) -> ItemSummary {
-    use rust_decimal::prelude::ToPrimitive;
     ItemSummary {
         id: request.id,
         item_type: ItemType::Request,
         medication: request.medication.clone(),
         medication_raw: request.medication_raw.clone(),
-        quantity: request.quantity.map(|q| {
-            format!(
-                "{} {}",
-                q.to_f64().unwrap_or(0.0),
-                request.unit.as_deref().unwrap_or("units")
-            )
-        }),
-        price: request.max_price.map(|p| {
-            format!(
-                "{:.0} {}",
-                p.to_f64().unwrap_or(0.0),
-                request.currency.as_deref().unwrap_or("EGP")
-            )
-        }),
+        quantity: None, // Removed from schema
+        price: None,    // Removed from schema
         status: format!("{:?}", request.status),
         created_at: request.created_at.to_rfc3339(),
     }

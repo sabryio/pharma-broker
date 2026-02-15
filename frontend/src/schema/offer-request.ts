@@ -43,10 +43,7 @@ export const OfferSchema = z.object({
   group_id: z.string().uuid(),
   medication: z.string(),
   medication_raw: z.string(),
-  quantity: z.string().nullable(), // Decimal comes as string from Rust
   unit: z.string().nullable(),
-  price: z.string().nullable(), // Decimal comes as string from Rust
-  currency: z.string().nullable(),
   expiry_date: z.string().nullable(),
   batch_number: z.string().nullable(),
   notes: z.string().nullable(),
@@ -90,10 +87,7 @@ export const RequestSchema = z.object({
   group_id: z.string().uuid(),
   medication: z.string(),
   medication_raw: z.string(),
-  quantity: z.string().nullable(), // Decimal comes as string from Rust
   unit: z.string().nullable(),
-  max_price: z.string().nullable(), // Decimal comes as string from Rust
-  currency: z.string().nullable(),
   urgency_level: UrgencyLevelSchema,
   expiry_requirement: z.string().nullable(),
   ai_confidence: z.number(),

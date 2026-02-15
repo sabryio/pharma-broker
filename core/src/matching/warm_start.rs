@@ -33,13 +33,11 @@ impl Default for WarmStartConfig {
     fn default() -> Self {
         Self {
             prior_weights: Weights {
-                medication: 0.55, // Medication match is DOMINANT even in cold start
-                dosage: 0.10, // Reduced: was causing false positives (e.g., "12.5mg" matching unrelated meds)
-                quantity: 0.10,
-                price: 0.10,
+                medication: 0.70, // Medication match is DOMINANT even in cold start
+                dosage: 0.20,     // Increased for safety
                 recency: 0.05,
                 expiry: 0.05,
-                supplier: 0.05,
+                supplier: 0.0,
                 ai_logic: 0.0,
             },
             prior_strength: 50,           // Equivalent to 50 samples
@@ -112,9 +110,6 @@ impl WarmStartManager {
                 + prior_weight * config.prior_weights.medication,
             dosage: data_weight * learned_weights.dosage
                 + prior_weight * config.prior_weights.dosage,
-            quantity: data_weight * learned_weights.quantity
-                + prior_weight * config.prior_weights.quantity,
-            price: data_weight * learned_weights.price + prior_weight * config.prior_weights.price,
             recency: data_weight * learned_weights.recency
                 + prior_weight * config.prior_weights.recency,
             expiry: data_weight * learned_weights.expiry
@@ -348,7 +343,7 @@ mod tests {
     fn test_default_warm_start_config() {
         let config = WarmStartConfig::default();
 
-        assert!((config.prior_weights.medication - 0.55).abs() < 0.001);
+        assert!((config.prior_weights.medication - 0.70).abs() < 0.001);
         assert_eq!(config.prior_strength, 50);
         assert_eq!(config.decay_half_life, 14);
         assert_eq!(config.min_samples_for_learning, 20);
@@ -361,12 +356,10 @@ mod tests {
 
         let learned = Weights {
             medication: 0.50,
-            dosage: 0.20,
-            quantity: 0.10,
-            price: 0.10,
-            recency: 0.05,
-            expiry: 0.025,
-            supplier: 0.025,
+            dosage: 0.30,
+            recency: 0.10,
+            expiry: 0.10,
+            supplier: 0.0,
             ai_logic: 0.0,
         };
 
@@ -374,7 +367,7 @@ mod tests {
         let effective = manager.get_effective_weights(&learned, 10);
 
         // Should return prior weights
-        assert!((effective.medication - 0.55).abs() < 0.001);
+        assert!((effective.medication - 0.70).abs() < 0.001);
     }
 
     #[test]
@@ -383,22 +376,19 @@ mod tests {
 
         let learned = Weights {
             medication: 0.50,
-            dosage: 0.20,
-            quantity: 0.10,
-            price: 0.10,
-            recency: 0.05,
-            expiry: 0.025,
-            supplier: 0.025,
+            dosage: 0.30,
+            recency: 0.10,
+            expiry: 0.10,
+            supplier: 0.0,
             ai_logic: 0.0,
         };
 
         // With 100 samples, should blend with prior
         let effective = manager.get_effective_weights(&learned, 100);
 
-        // Should be between prior (0.55) and learned (0.50)
-        // Since prior is now higher, learned pulls it down
+        // Should be between prior (0.70) and learned (0.50)
         assert!(effective.medication > 0.50);
-        assert!(effective.medication < 0.55);
+        assert!(effective.medication < 0.70);
     }
 
     #[test]
@@ -411,12 +401,10 @@ mod tests {
 
         let learned = Weights {
             medication: 0.50,
-            dosage: 0.20,
-            quantity: 0.10,
-            price: 0.10,
-            recency: 0.05,
-            expiry: 0.025,
-            supplier: 0.025,
+            dosage: 0.30,
+            recency: 0.10,
+            expiry: 0.10,
+            supplier: 0.0,
             ai_logic: 0.0,
         };
 

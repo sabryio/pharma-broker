@@ -18,12 +18,7 @@ pub struct Model {
     pub group_id: Uuid,
     pub medication: String,
     pub medication_raw: String,
-    #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
-    pub quantity: Option<Decimal>,
     pub unit: Option<String>,
-    #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
-    pub max_price: Option<Decimal>,
-    pub currency: Option<String>,
     pub urgency_level: UrgencyLevel,
     pub expiry_requirement: Option<String>,
     pub ai_confidence: f64,
@@ -103,10 +98,7 @@ impl Default for Model {
             group_id: Uuid::nil(),
             medication: String::new(),
             medication_raw: String::new(),
-            quantity: None,
             unit: None,
-            max_price: None,
-            currency: None,
             urgency_level: UrgencyLevel::Normal,
             expiry_requirement: None,
             ai_confidence: 0.0,
@@ -123,24 +115,6 @@ impl Default for Model {
 }
 
 impl Model {
-    /// Get quantity as f64
-    pub fn quantity_f64(&self) -> f64 {
-        use rust_decimal::prelude::ToPrimitive;
-        self.quantity
-            .as_ref()
-            .and_then(|d| d.to_f64())
-            .unwrap_or(0.0)
-    }
-
-    /// Get max_price as f64
-    pub fn max_price_f64(&self) -> f64 {
-        use rust_decimal::prelude::ToPrimitive;
-        self.max_price
-            .as_ref()
-            .and_then(|d| d.to_f64())
-            .unwrap_or(0.0)
-    }
-
     /// Get embedding as Vec<f32> if present
     pub fn get_embedding(&self) -> Option<Vec<f32>> {
         self.content_embedding.as_ref().map(|v| v.to_vec())
@@ -174,10 +148,7 @@ pub struct RequestBuilder {
     group_id: Uuid,
     // Optional fields
     medication_raw: Option<String>,
-    quantity: Option<Decimal>,
     unit: Option<String>,
-    max_price: Option<Decimal>,
-    currency: Option<String>,
     urgency_level: UrgencyLevel,
     expiry_requirement: Option<String>,
     ai_confidence: f64,
@@ -199,10 +170,7 @@ impl RequestBuilder {
             participant_id,
             group_id,
             medication_raw: Some(medication),
-            quantity: None,
             unit: None,
-            max_price: None,
-            currency: Some("EGP".to_string()),
             urgency_level: UrgencyLevel::Normal,
             expiry_requirement: None,
             ai_confidence: 0.0,
@@ -216,41 +184,9 @@ impl RequestBuilder {
         self
     }
 
-    /// Set the quantity
-    pub fn quantity(mut self, qty: f64) -> Self {
-        use rust_decimal::prelude::FromPrimitive;
-        self.quantity = Decimal::from_f64(qty);
-        self
-    }
-
-    /// Set the quantity with Decimal
-    pub fn quantity_decimal(mut self, qty: Decimal) -> Self {
-        self.quantity = Some(qty);
-        self
-    }
-
     /// Set the unit
     pub fn unit(mut self, unit: impl Into<String>) -> Self {
         self.unit = Some(unit.into());
-        self
-    }
-
-    /// Set the maximum price
-    pub fn max_price(mut self, price: f64) -> Self {
-        use rust_decimal::prelude::FromPrimitive;
-        self.max_price = Decimal::from_f64(price);
-        self
-    }
-
-    /// Set the maximum price with Decimal
-    pub fn max_price_decimal(mut self, price: Decimal) -> Self {
-        self.max_price = Some(price);
-        self
-    }
-
-    /// Set the currency
-    pub fn currency(mut self, currency: impl Into<String>) -> Self {
-        self.currency = Some(currency.into());
         self
     }
 
@@ -302,10 +238,7 @@ impl RequestBuilder {
             group_id: self.group_id,
             medication: self.medication.clone(),
             medication_raw: self.medication_raw.unwrap_or(self.medication),
-            quantity: self.quantity,
             unit: self.unit,
-            max_price: self.max_price,
-            currency: self.currency,
             urgency_level: self.urgency_level,
             expiry_requirement: self.expiry_requirement,
             ai_confidence: self.ai_confidence,
@@ -344,8 +277,6 @@ mod tests {
         let part_id = Uuid::new_v4();
         let group_id = Uuid::new_v4();
         let request = RequestBuilder::new(msg_id, "Ozempic 1mg", part_id, group_id)
-            .quantity(2.0)
-            .max_price(2000.0)
             .unit("boxes")
             .urgency_level(UrgencyLevel::Urgent)
             .ai_confidence(0.9)
@@ -354,8 +285,6 @@ mod tests {
 
         assert_eq!(request.medication, "Ozempic 1mg");
         assert_eq!(request.participant_id, part_id);
-        assert!(request.quantity.is_some());
-        assert!(request.max_price.is_some());
         assert_eq!(request.urgency_level, UrgencyLevel::Urgent);
         assert!((request.ai_confidence - 0.9).abs() < 0.001);
     }

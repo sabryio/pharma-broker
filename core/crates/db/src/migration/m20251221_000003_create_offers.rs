@@ -26,14 +26,7 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(Offers::MedicationRaw).string_len(500))
-                    .col(ColumnDef::new(Offers::Quantity).decimal_len(10, 2))
                     .col(ColumnDef::new(Offers::Unit).string_len(20))
-                    .col(ColumnDef::new(Offers::Price).decimal_len(10, 2))
-                    .col(
-                        ColumnDef::new(Offers::Currency)
-                            .string_len(10)
-                            .default("EGP"),
-                    )
                     // REMOVED: expiry_date (redundant with expiry_info)
                     .col(ColumnDef::new(Offers::BatchNumber).string_len(50))
                     .col(ColumnDef::new(Offers::Notes).text())
@@ -255,10 +248,7 @@ pub enum Offers {
     GroupId,
     Medication,
     MedicationRaw,
-    Quantity,
     Unit,
-    Price,
-    Currency,
     // ExpiryDate removed - redundant with ExpiryInfo
     BatchNumber,
     Notes,

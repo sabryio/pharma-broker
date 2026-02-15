@@ -16,7 +16,7 @@ use super::feedback_loop::{
     FeedbackType, FewShotExample, LLMFeedbackLoop, MedicationCorrection,
 };
 use super::pharma_prompts::{SYSTEM_PROMPT, build_user_prompt_with_mappings};
-use super::pharma_types::{ParseResult, ParsedItem};
+use super::pharma_types::ParseResult;
 use super::token_batcher::{BatchMessage, TokenBatchConfig, TokenBatcher};
 
 // =============================================================================
@@ -169,7 +169,7 @@ impl PharmaParser {
         group_name: &str,
         reply_to: Option<&str>,
         mappings: Option<&[String]>,
-    ) -> Result<Vec<ParsedItem>, ParseError> {
+    ) -> Result<ParseResult, ParseError> {
         // Check circuit breaker
         if !self.circuit_breaker.allow_request() {
             warn!("Circuit breaker open, rejecting request");
@@ -274,9 +274,7 @@ impl PharmaParser {
         match result {
             Ok(parse_result) => {
                 self.circuit_breaker.record_success();
-                // Convert new format to legacy format for backward compatibility
-                let items = parse_result.to_legacy_items();
-                let items_count = items.len();
+                let items_count = parse_result.medications.len();
                 if items_count > 0 {
                     info!(
                         items = items_count,
@@ -286,7 +284,7 @@ impl PharmaParser {
                 } else {
                     debug!("AI parsing complete (no items found)");
                 }
-                Ok(items)
+                Ok(parse_result)
             }
             Err(e) => {
                 // Handle context exceeded error with recursive split (Half-Chunk Retry)
@@ -329,7 +327,7 @@ impl PharmaParser {
         reply_to: Option<&str>,
         mappings: Option<&[String]>,
         depth: usize,
-    ) -> Result<Vec<ParsedItem>, ParseError> {
+    ) -> Result<ParseResult, ParseError> {
         // Check recursion depth to prevent infinite loops
         if depth >= MAX_CHUNK_RECURSION_DEPTH {
             error!(
@@ -417,7 +415,10 @@ impl PharmaParser {
         // Execute all chunks in parallel
         let results = join_all(chunk_futures).await;
 
-        let mut all_items = Vec::new();
+        let mut all_medications = Vec::new();
+        let mut first_intent = None;
+        let mut first_urgency = None;
+        let mut first_reason = None;
         let mut errors = Vec::new();
         let mut permanent_failure = false;
 
@@ -425,9 +426,15 @@ impl PharmaParser {
             match result {
                 Ok(parse_result) => {
                     self.circuit_breaker.record_success();
-                    // Convert new format to legacy format
-                    let items = parse_result.to_legacy_items();
-                    let items_count = items.len();
+
+                    // Capture first chunk's metadata
+                    if first_intent.is_none() {
+                        first_intent = Some(parse_result.intent);
+                        first_urgency = Some(parse_result.urgency);
+                        first_reason = Some(parse_result.reason.clone());
+                    }
+
+                    let items_count = parse_result.medications.len();
                     if items_count > 0 {
                         info!(
                             chunk = idx + 1,
@@ -442,7 +449,7 @@ impl PharmaParser {
                             "Chunk parsed successfully (no items)"
                         );
                     }
-                    all_items.extend(items);
+                    all_medications.extend(parse_result.medications);
                 }
                 Err(e) => {
                     // Check for context error (either direct API error or wrapped in RetryExhausted)
@@ -479,8 +486,8 @@ impl PharmaParser {
                         ))
                         .await
                         {
-                            Ok(sub_items) => {
-                                all_items.extend(sub_items);
+                            Ok(sub_result) => {
+                                all_medications.extend(sub_result.medications);
                                 continue;
                             }
                             Err(ParseError::Parse(ref msg))
@@ -513,7 +520,7 @@ impl PharmaParser {
         }
 
         // If we hit a permanent failure, propagate it
-        if permanent_failure && all_items.is_empty() {
+        if permanent_failure && all_medications.is_empty() {
             return Err(ParseError::Parse(format!(
                 "{}: All chunks failed after maximum recursion. Errors: {}",
                 CONTEXT_EXCEEDED_PERMANENT_PREFIX,
@@ -522,17 +529,24 @@ impl PharmaParser {
         }
 
         // If all chunks failed (but not permanent), return error
-        if all_items.is_empty() && !errors.is_empty() {
+        if all_medications.is_empty() && !errors.is_empty() {
             return Err(ParseError::Parse(errors.join("; ")));
         }
 
         info!(
-            total_items = all_items.len(),
+            total_items = all_medications.len(),
             chunks = chunks.len(),
             depth = depth,
             "Merged results from all chunks"
         );
-        Ok(all_items)
+
+        // Build merged ParseResult
+        Ok(ParseResult {
+            intent: first_intent.unwrap_or(crate::ai::Intent::Offer),
+            urgency: first_urgency.unwrap_or(crate::ai::UrgencyLevel::Normal),
+            reason: first_reason.unwrap_or_else(|| "Merged from chunks".to_string()),
+            medications: all_medications,
+        })
     }
 
     /// Legacy wrapper for backward compatibility
@@ -544,7 +558,7 @@ impl PharmaParser {
         group_name: &str,
         reply_to: Option<&str>,
         mappings: Option<&[String]>,
-    ) -> Result<Vec<ParsedItem>, ParseError> {
+    ) -> Result<ParseResult, ParseError> {
         self.parse_chunked_with_depth(content, sender_name, group_name, reply_to, mappings, 0)
             .await
     }
@@ -915,7 +929,7 @@ impl PharmaParser {
 /// Result for a single message in a batch
 pub struct BatchParseResult {
     pub message_id: String,
-    pub result: Result<Vec<ParsedItem>, ParseError>,
+    pub result: Result<ParseResult, ParseError>,
 }
 
 #[cfg(test)]

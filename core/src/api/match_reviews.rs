@@ -8,7 +8,6 @@ use axum::{
     http::StatusCode,
 };
 use chrono::Utc;
-use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -250,14 +249,9 @@ where
                 .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
             sender_jid: offer_participant.map(|p| p.jid),
             raw_message: offer_raw_message.map(|m| m.content),
-            quantity: offer
-                .quantity
-                .map(|q| format!("{} {}", q, offer.unit.as_deref().unwrap_or("units"))),
-            price: offer
-                .price
-                .and_then(|p| p.to_f64())
-                .map(|p| format!("{:.0} {}", p, offer.currency.as_deref().unwrap_or("EGP"))),
-            expiry: offer.expiry_info.clone(), // Use expiry_info text field instead of expiry_date
+            quantity: None, // Removed: quantity no longer tracked
+            price: None,    // Removed: price no longer tracked
+            expiry: offer.expiry_info.clone(),
             master_id: offer_curation.as_ref().and_then(|a| a.master_medication_id),
             medication_alias_id: offer_curation.as_ref().map(|a| a.id),
             curation_status: offer_curation.map(|a| format!("{:?}", a.curation_status)),
@@ -281,13 +275,8 @@ where
                 .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
             sender_jid: request_participant.map(|p| p.jid),
             raw_message: request_raw_message.map(|m| m.content),
-            quantity: request
-                .quantity
-                .map(|q| format!("{} {}", q, request.unit.as_deref().unwrap_or("units"))),
-            max_price: request
-                .max_price
-                .and_then(|p| p.to_f64())
-                .map(|p| format!("{:.0} {}", p, request.currency.as_deref().unwrap_or("EGP"))),
+            quantity: None,  // Removed: quantity no longer tracked
+            max_price: None, // Removed: max_price no longer tracked
             urgency: format!("{:?}", request.urgency_level),
             master_id: request_curation
                 .as_ref()
@@ -416,14 +405,9 @@ where
             .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
         sender_jid: offer_participant.map(|p| p.jid),
         raw_message: offer_raw_message.map(|m| m.content),
-        quantity: offer
-            .quantity
-            .map(|q| format!("{} {}", q, offer.unit.as_deref().unwrap_or("units"))),
-        price: offer
-            .price
-            .and_then(|p| p.to_f64())
-            .map(|p| format!("{:.0} {}", p, offer.currency.as_deref().unwrap_or("EGP"))),
-        expiry: offer.expiry_info.clone(), // Use expiry_info text field instead of expiry_date
+        quantity: None, // Removed: quantity no longer tracked
+        price: None,    // Removed: price no longer tracked
+        expiry: offer.expiry_info.clone(),
         master_id: offer_curation.as_ref().and_then(|a| a.master_medication_id),
         medication_alias_id: offer_curation.as_ref().map(|a| a.id),
         curation_status: offer_curation.map(|a| format!("{:?}", a.curation_status)),
@@ -447,13 +431,8 @@ where
             .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
         sender_jid: request_participant.map(|p| p.jid),
         raw_message: request_raw_message.map(|m| m.content),
-        quantity: request
-            .quantity
-            .map(|q| format!("{} {}", q, request.unit.as_deref().unwrap_or("units"))),
-        max_price: request
-            .max_price
-            .and_then(|p| p.to_f64())
-            .map(|p| format!("{:.0} {}", p, request.currency.as_deref().unwrap_or("EGP"))),
+        quantity: None,  // Removed: quantity no longer tracked
+        max_price: None, // Removed: max_price no longer tracked
         urgency: format!("{:?}", request.urgency_level),
         master_id: request_curation
             .as_ref()

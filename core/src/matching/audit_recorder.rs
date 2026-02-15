@@ -1076,15 +1076,12 @@ impl From<&MatchAuditRecord> for FrontendAuditRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_decimal::Decimal;
 
     fn create_test_offer() -> Offer {
         Offer {
             id: Uuid::new_v4(),
             medication: "Test Product".to_string(),
             medication_raw: "تست".to_string(),
-            quantity: Some(Decimal::new(10, 0)),
-            price: Some(Decimal::new(100, 0)),
             ..Default::default()
         }
     }
@@ -1094,8 +1091,6 @@ mod tests {
             id: Uuid::new_v4(),
             medication: "Test Product".to_string(),
             medication_raw: "تست".to_string(),
-            quantity: Some(Decimal::new(10, 0)),
-            max_price: Some(Decimal::new(150, 0)),
             ..Default::default()
         }
     }
@@ -1107,7 +1102,7 @@ mod tests {
         let offer = create_test_offer();
         let request = create_test_request();
         let weights = NormalizedWeights::default();
-        let breakdown = ScoreBreakdown::new(&weights, 0.9, 0.8, 0.7, 0.6, 0.5);
+        let breakdown = ScoreBreakdown::new(&weights, 0.9, 0.8, 0.7, 0.6);
 
         let builder = AuditRecordBuilder::new(Uuid::new_v4(), offer, request, weights);
         let record = builder.build(&breakdown);
@@ -1143,7 +1138,7 @@ mod tests {
         let offer = create_test_offer();
         let request = create_test_request();
         let weights = NormalizedWeights::default();
-        let breakdown = ScoreBreakdown::new(&weights, 0.9, 0.8, 0.7, 0.6, 0.5);
+        let breakdown = ScoreBreakdown::new(&weights, 0.9, 0.8, 0.7, 0.6);
 
         let builder = AuditRecordBuilder::new(Uuid::new_v4(), offer, request, weights);
         let record = builder.build(&breakdown);
@@ -1165,7 +1160,7 @@ mod tests {
         let weights = NormalizedWeights::default();
 
         // Low score - should be filtered
-        let breakdown = ScoreBreakdown::new(&weights, 0.5, 0.5, 0.5, 0.5, 0.5);
+        let breakdown = ScoreBreakdown::new(&weights, 0.5, 0.5, 0.5, 0.5);
         let builder = AuditRecordBuilder::new(
             Uuid::new_v4(),
             offer.clone(),
@@ -1176,7 +1171,7 @@ mod tests {
         assert!(!recorder.record(record));
 
         // High score - should be recorded
-        let breakdown = ScoreBreakdown::new(&weights, 0.9, 0.9, 0.9, 0.9, 0.9);
+        let breakdown = ScoreBreakdown::new(&weights, 0.9, 0.9, 0.9, 0.9);
         let builder = AuditRecordBuilder::new(Uuid::new_v4(), offer, request, weights);
         let record = builder.build(&breakdown);
         assert!(recorder.record(record));

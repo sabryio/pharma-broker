@@ -37,16 +37,16 @@ impl ParseJob {
 #[derive(Debug, Clone)]
 pub struct ParseJobResult {
     pub message_id: Uuid,
-    pub items: Vec<crate::ai::ParsedItem>,
+    pub result: crate::ai::ParseResult,
     pub error: Option<String>,
     pub pass: ParsePass,
 }
 
 impl ParseJobResult {
-    pub fn success(message_id: Uuid, items: Vec<crate::ai::ParsedItem>, pass: ParsePass) -> Self {
+    pub fn success(message_id: Uuid, result: crate::ai::ParseResult, pass: ParsePass) -> Self {
         Self {
             message_id,
-            items,
+            result,
             error: None,
             pass,
         }
@@ -55,7 +55,12 @@ impl ParseJobResult {
     pub fn error(message_id: Uuid, error: String) -> Self {
         Self {
             message_id,
-            items: vec![],
+            result: crate::ai::ParseResult {
+                intent: crate::ai::Intent::Offer,
+                urgency: crate::ai::UrgencyLevel::Normal,
+                reason: String::new(),
+                medications: vec![],
+            },
             error: Some(error),
             pass: ParsePass::Strict,
         }
@@ -98,7 +103,16 @@ mod tests {
 
     #[test]
     fn test_parse_result_success() {
-        let result = ParseJobResult::success(Uuid::new_v4(), vec![], ParsePass::Strict);
+        let result = ParseJobResult::success(
+            Uuid::new_v4(),
+            crate::ai::ParseResult {
+                intent: crate::ai::Intent::Offer,
+                urgency: crate::ai::UrgencyLevel::Normal,
+                reason: String::new(),
+                medications: vec![],
+            },
+            ParsePass::Strict,
+        );
         assert!(result.error.is_none());
         assert_eq!(result.pass, ParsePass::Strict);
     }
@@ -108,7 +122,7 @@ mod tests {
         let result = ParseJobResult::error(Uuid::new_v4(), "AI failed".to_string());
         assert!(result.error.is_some());
         assert_eq!(result.error.unwrap(), "AI failed");
-        assert!(result.items.is_empty());
+        assert!(result.result.medications.is_empty());
     }
 
     #[test]

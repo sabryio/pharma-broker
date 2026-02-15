@@ -28,8 +28,6 @@ pub enum MedicationCategory {
 pub struct MatchScore {
     pub medication_score: f64,
     pub dosage_score: f64,
-    pub quantity_score: f64,
-    pub price_score: f64,
     pub recency_score: f64,
     pub ai_logic_score: f64,
     pub total: f64,
@@ -46,9 +44,6 @@ pub struct Scorer {
     decay_type: RwLock<DecayType>,
     min_medication_score: RwLock<f64>,
     medication_gate_enabled: RwLock<bool>,
-    /// Minimum quantity fulfillment ratio (default: 0.5)
-    /// Requirements: 4.1, 4.4
-    min_quantity_fulfillment: RwLock<f64>,
     /// Category-specific half-life overrides
     /// Requirements: 6.4
     category_half_lives: RwLock<HashMap<MedicationCategory, f64>>,
@@ -76,78 +71,8 @@ impl Scorer {
             decay_type: RwLock::new(DecayType::Exponential),
             min_medication_score: RwLock::new(0.7), // Raised from 0.5 to reduce false positives
             medication_gate_enabled: RwLock::new(true),
-            min_quantity_fulfillment: RwLock::new(0.5), // 50% minimum (Requirements 4.1)
             category_half_lives: RwLock::new(category_half_lives),
         }
-    }
-
-    /// Calculate quantity score with minimum fulfillment threshold
-    /// Ported from Go: Scorer.QuantityScore (scorer.go:65-95)
-    /// Updated per Requirements 4.1, 4.2, 4.3, 4.4
-    pub fn quantity_score(&self, offer_qty: f64, request_qty: f64) -> f64 {
-        // Handle edge cases
-        if request_qty <= 0.0 {
-            return 1.0; // Any quantity satisfies no/negative request
-        }
-        if offer_qty <= 0.0 {
-            return 0.0; // No offer quantity = no match
-        }
-
-        let ratio = offer_qty / request_qty;
-        let min_fulfillment = *self.min_quantity_fulfillment.read().unwrap();
-
-        // Requirements 4.1: Return 0.0 when ratio < min_quantity_fulfillment (default 0.5)
-        if ratio < min_fulfillment {
-            return 0.0;
-        }
-
-        // Requirements 4.3: Cap at 1.0 when offer exceeds request
-        if ratio >= 1.0 {
-            return 1.0;
-        }
-
-        // Requirements 4.2: Proportional score between min_fulfillment and 1.0
-        // Map [min_fulfillment, 1.0] to [min_fulfillment, 1.0] (linear)
-        ratio
-    }
-
-    /// Set minimum quantity fulfillment threshold
-    /// Requirements: 4.4
-    pub fn set_min_quantity_fulfillment(&self, threshold: f64) {
-        *self.min_quantity_fulfillment.write().unwrap() = threshold.clamp(0.0, 1.0);
-    }
-
-    /// Get minimum quantity fulfillment threshold
-    pub fn get_min_quantity_fulfillment(&self) -> f64 {
-        *self.min_quantity_fulfillment.read().unwrap()
-    }
-
-    /// Calculate price score
-    /// Ported from Go: Scorer.PriceScore (scorer.go:97-139)
-    pub fn price_score(&self, offer_price: f64, max_price: f64) -> f64 {
-        // No max price set
-        if max_price <= 0.0 {
-            return if offer_price <= 0.0 { 1.0 } else { 0.95 };
-        }
-
-        // No offer price
-        if offer_price <= 0.0 {
-            return 0.85; // Unknown price with budget
-        }
-
-        let ratio = offer_price / max_price;
-        let tolerance = 0.05; // 5% tolerance
-
-        // Within budget including tolerance
-        if ratio <= 1.0 + tolerance {
-            return 1.0;
-        }
-
-        // Over budget - linear decay
-        let over_ratio = (ratio - (1.0 + tolerance)) / 1.0; // Decay over 100% above tolerance
-        let score = 1.0 - over_ratio;
-
-        score.max(0.0)
     }
 
     /// Calculate recency score with exponential decay
@@ -275,8 +200,6 @@ impl Scorer {
             return MatchScore {
                 medication_score,
                 dosage_score: 0.0,
-                quantity_score: 0.0,
-                price_score: 0.0,
                 recency_score: 0.0,
                 ai_logic_score: 0.0,
                 total: 0.0,
@@ -292,8 +215,6 @@ impl Scorer {
         let weights = self.weights.read().unwrap();
         let ai_logic_score = ai_logic_score.unwrap_or(0.0);
 
-        let qty_score = self.quantity_score(offer.quantity_f64(), request.quantity_f64());
-        let price_score = self.price_score(offer.price_f64(), request.max_price_f64());
         let recency_score = self.recency_score(offer.created_at);
 
         // Real dosage comparison - ported from Go: Scorer.DosageScore (scorer.go:189-207)
@@ -307,8 +228,6 @@ impl Scorer {
 
         let total = medication_score * weights.medication
             + dosage_score * weights.dosage
-            + qty_score * weights.quantity
-            + price_score * weights.price
             + recency_score * weights.recency
             + ai_logic_score * weights.ai_logic;
 
@@ -316,11 +235,9 @@ impl Scorer {
         let confidence = self.get_confidence_band(total);
 
         let breakdown = format!(
-            "Med:{:.0}% Dos:{:.0}% Qty:{:.0}% Price:{:.0}% Rec:{:.0}% AI:{:.0}%",
+            "Med:{:.0}% Dos:{:.0}% Rec:{:.0}% AI:{:.0}%",
             medication_score * 100.0,
             dosage_score * 100.0,
-            qty_score * 100.0,
-            price_score * 100.0,
             recency_score * 100.0,
             ai_logic_score * 100.0
         );
@@ -328,8 +245,6 @@ impl Scorer {
         MatchScore {
             medication_score,
             dosage_score,
-            quantity_score: qty_score,
-            price_score,
             recency_score,
             ai_logic_score,
             total,
@@ -365,72 +280,7 @@ mod tests {
     use rstest::rstest;
 
     // Ported from Go: TestQuantityScore (scorer_test.go:11-53)
-    // Updated for new minimum fulfillment threshold (0.5)
-    #[rstest]
-    #[case(10.0, 10.0, 1.0)] // exact match
-    #[case(20.0, 10.0, 1.0)] // offer exceeds request (capped at 1.0)
-    #[case(100.0, 10.0, 1.0)] // large surplus (capped at 1.0)
-    #[case(9.0, 10.0, 0.9)] // 90% fulfillment
-    #[case(9.5, 10.0, 0.95)] // 95% fulfillment
-    #[case(8.0, 10.0, 0.8)] // 80% partial
-    #[case(5.0, 10.0, 0.5)] // 50% - at threshold
-    #[case(4.9, 10.0, 0.0)] // 49% - below threshold, returns 0.0
-    #[case(2.5, 10.0, 0.0)] // 25% - below threshold, returns 0.0
-    #[case(10.0, 0.0, 1.0)] // zero request
-    #[case(0.0, 10.0, 0.0)] // zero offer
-    #[case(0.0, 0.0, 1.0)] // both zero
-    fn test_quantity_score(#[case] offer: f64, #[case] request: f64, #[case] expected: f64) {
-        let scorer = Scorer::default();
-        let result = scorer.quantity_score(offer, request);
-        assert!(
-            (result - expected).abs() < 0.01,
-            "got {} expected {}",
-            result,
-            expected
-        );
-    }
-
-    #[test]
-    fn test_quantity_score_configurable_threshold() {
-        let scorer = Scorer::default();
-
-        // Default threshold is 0.5
-        assert!((scorer.get_min_quantity_fulfillment() - 0.5).abs() < 0.001);
-
-        // 40% should fail with default threshold
-        assert!((scorer.quantity_score(4.0, 10.0) - 0.0).abs() < 0.01);
-
-        // Change threshold to 0.3
-        scorer.set_min_quantity_fulfillment(0.3);
-        assert!((scorer.get_min_quantity_fulfillment() - 0.3).abs() < 0.001);
-
-        // Now 40% should pass
-        assert!((scorer.quantity_score(4.0, 10.0) - 0.4).abs() < 0.01);
-
-        // But 25% should still fail
-        assert!((scorer.quantity_score(2.5, 10.0) - 0.0).abs() < 0.01);
-    }
-
-    // Ported from Go: TestPriceScore (scorer_test.go:56-100)
-    #[rstest]
-    #[case(50.0, 100.0, 1.0)] // well within budget
-    #[case(100.0, 100.0, 1.0)] // at exact budget
-    #[case(95.0, 100.0, 1.0)] // 95% of budget
-    #[case(105.0, 100.0, 1.0)] // 105% (within tolerance)
-    #[case(110.0, 100.0, 0.95)] // 110% over
-    #[case(0.0, 0.0, 1.0)] // no prices
-    #[case(500.0, 0.0, 0.95)] // no max, offer has price
-    #[case(0.0, 100.0, 0.85)] // has max, no offer price
-    fn test_price_score(#[case] offer: f64, #[case] max: f64, #[case] expected: f64) {
-        let scorer = Scorer::default();
-        let result = scorer.price_score(offer, max);
-        assert!(
-            (result - expected).abs() < 0.02,
-            "got {} expected {}",
-            result,
-            expected
-        );
-    }
+    // REMOVED: Quantity scoring no longer used
 
     // Ported from Go: TestGetConfidenceBand (scorer_test.go:158-187)
     #[rstest]
@@ -452,20 +302,18 @@ mod tests {
     fn test_update_weights() {
         let scorer = Scorer::default();
         let new_weights = Weights {
-            medication: 0.6,
-            dosage: 0.1,
-            quantity: 0.1,
-            price: 0.05,
+            medication: 0.70,
+            dosage: 0.20,
             recency: 0.05,
             expiry: 0.05,
-            supplier: 0.05,
+            supplier: 0.0,
             ai_logic: 0.0,
         };
 
         scorer.update_weights(new_weights.clone());
         let got = scorer.get_weights();
 
-        assert!((got.medication - 0.6).abs() < 0.001);
+        assert!((got.medication - 0.70).abs() < 0.001);
     }
 
     #[test]

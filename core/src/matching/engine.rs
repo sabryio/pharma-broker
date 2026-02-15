@@ -439,8 +439,6 @@ impl MatchingEngine {
         let score_breakdown = serde_json::json!({
             "medication_score": score.medication_score,
             "dosage_score": score.dosage_score,
-            "quantity_score": score.quantity_score,
-            "price_score": score.price_score,
             "recency_score": score.recency_score,
             "ai_logic_score": score.ai_logic_score,
             "total": score.total,
@@ -453,8 +451,6 @@ impl MatchingEngine {
         let weights_snapshot = serde_json::json!({
             "medication": weights.medication,
             "dosage": weights.dosage,
-            "quantity": weights.quantity,
-            "price": weights.price,
             "recency": weights.recency,
             "expiry": weights.expiry,
             "supplier": weights.supplier,
@@ -534,8 +530,6 @@ impl MatchingEngine {
                     total: 0.0,
                     medication_score,
                     dosage_score: 0.0,
-                    quantity_score: 0.0,
-                    price_score: 0.0,
                     recency_score: 0.0,
                     ai_logic_score: 0.0,
                     confidence: crate::domain::ConfidenceBand::None,
@@ -980,8 +974,6 @@ impl MatchingEngine {
         tracing::info!(
             medication = format!("{:.2}", weights.medication),
             dosage = format!("{:.2}", weights.dosage),
-            quantity = format!("{:.2}", weights.quantity),
-            price = format!("{:.2}", weights.price),
             recency = format!("{:.2}", weights.recency),
             reason = reason,
             "Applied new weights"
@@ -2175,8 +2167,6 @@ impl MatchingEngine {
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, Utc};
-    use rust_decimal::Decimal;
-    use rust_decimal::prelude::FromPrimitive;
     use uuid::Uuid;
 
     use super::*;
@@ -2196,16 +2186,13 @@ mod tests {
 
         let offer = Offer {
             medication: "Aspirin 100mg".to_string(),
-            quantity: Decimal::from_f64(100.0),
-            price: Decimal::from_f64(50.0),
+
             created_at: Utc::now(),
             ..Default::default()
         };
 
         let request = Request {
             medication: "Aspirin 100mg".to_string(),
-            quantity: Decimal::from_f64(100.0),
-            max_price: Decimal::from_f64(60.0),
             ..Default::default()
         };
 
@@ -2238,8 +2225,6 @@ mod tests {
             test_weights: Weights {
                 medication: 0.50,
                 dosage: 0.20,
-                quantity: 0.10,
-                price: 0.05,
                 recency: 0.05,
                 expiry: 0.05,
                 supplier: 0.05,
@@ -2290,8 +2275,6 @@ mod tests {
             weights: Weights {
                 medication: 0.50,
                 dosage: 0.20,
-                quantity: 0.10,
-                price: 0.05,
                 recency: 0.05,
                 expiry: 0.05,
                 supplier: 0.05,
@@ -2512,16 +2495,12 @@ mod tests {
         // Score a match - should include historical bonus
         let offer = Offer {
             medication: "Brufen".to_string(),
-            quantity: Decimal::from_f64(100.0),
-            price: Decimal::from_f64(50.0),
             created_at: Utc::now(),
             ..Default::default()
         };
 
         let request = Request {
             medication: "Ibuprofen".to_string(),
-            quantity: Decimal::from_f64(100.0),
-            max_price: Decimal::from_f64(60.0),
             ..Default::default()
         };
 

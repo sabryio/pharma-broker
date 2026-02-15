@@ -972,16 +972,12 @@ mod tests {
     use super::*;
     use chrono::Duration;
     use rstest::rstest;
-    use rust_decimal::Decimal;
-    use rust_decimal::prelude::FromPrimitive;
     use uuid::Uuid;
 
     fn create_test_offer(medication: &str, created_at: DateTime<Utc>) -> Offer {
         Offer {
             id: Uuid::new_v4(),
             medication: medication.to_string(),
-            quantity: Decimal::from_f64(100.0),
-            price: Decimal::from_f64(50.0),
             created_at,
             ..Default::default()
         }
@@ -991,8 +987,6 @@ mod tests {
         Request {
             id: Uuid::new_v4(),
             medication: medication.to_string(),
-            quantity: Decimal::from_f64(100.0),
-            max_price: Decimal::from_f64(60.0),
             ..Default::default()
         }
     }

@@ -664,8 +664,6 @@ mod tests {
             test_weights: Weights {
                 medication: 0.50,
                 dosage: 0.20,
-                quantity: 0.10,
-                price: 0.05,
                 recency: 0.05,
                 expiry: 0.05,
                 supplier: 0.05,
@@ -783,8 +781,6 @@ mod tests {
         let base = Weights {
             medication: 0.40,
             dosage: 0.20,
-            quantity: 0.15,
-            price: 0.10,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.05,

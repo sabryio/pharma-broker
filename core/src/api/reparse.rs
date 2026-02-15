@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::routes::AppState;
-use crate::ai::{Intent, ParsedItem};
+use crate::ai::Intent;
 use crate::domain::{AuditAction, AuditLog, EntityType};
 use crate::repository::{AuditLogRepository, MedicationMasterRepository, ReviewQueueRepository};
 use crate::ws::WsEvent;
@@ -162,80 +162,73 @@ where
             )
         })?;
 
-    // Find the matching item in the parse result
-    // Heuristic-based matching to find the specific item the user is trying to re-parse
+    // Find the matching medication in the parse result
+    // Heuristic-based matching to find the specific medication the user is trying to re-parse
     let target_intent = match req.item_type {
         ItemType::Offer => Intent::Offer,
         ItemType::Request => Intent::Request,
     };
 
-    let parsed_item = if parse_result.len() == 1 {
-        // Only one item returned, assume it's the one
-        parse_result.into_iter().next().unwrap()
+    // Check if the intent matches
+    if parse_result.intent != target_intent {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!(
+                "AI identified intent as {:?}, but expected {:?}",
+                parse_result.intent, target_intent
+            ),
+        ));
+    }
+
+    let parsed_medication = if parse_result.medications.len() == 1 {
+        // Only one medication returned, assume it's the one
+        parse_result.medications.into_iter().next().unwrap()
+    } else if parse_result.medications.is_empty() {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "AI did not identify any medications in the message".to_string(),
+        ));
     } else {
-        // Multiple items returned, find the best match
-        let items: Vec<ParsedItem> = parse_result
+        // Multiple medications returned. Use heuristics to find the best match.
+        let hint_lower = req.hint.as_ref().map(|h| h.to_lowercase());
+        let correction_lower = req.correction.as_ref().map(|c| c.to_lowercase());
+        let prev_lower = previous_medication.to_lowercase();
+
+        parse_result
+            .medications
             .into_iter()
-            .filter(|item| item.item_type == target_intent)
-            .collect();
+            .max_by_key(|med| {
+                let name = med.name.to_lowercase();
+                let mut score = 0;
 
-        if items.is_empty() {
-            return Err((
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "AI did not identify any matching item type in the message".to_string(),
-            ));
-        }
+                // Priority 1: Exact match with hint
+                if let Some(hint) = &hint_lower
+                    && (name.contains(hint) || hint.contains(&name))
+                {
+                    score += 100;
+                }
 
-        if items.len() == 1 {
-            items.into_iter().next().unwrap()
-        } else {
-            // Multiple items of the same type. Use heuristics.
-            let hint_lower = req.hint.as_ref().map(|h| h.to_lowercase());
-            let correction_lower = req.correction.as_ref().map(|c| c.to_lowercase());
-            let prev_lower = previous_medication.to_lowercase();
+                // Priority 2: Contains correction keywords
+                if let Some(correction) = &correction_lower
+                    && (name.contains(correction) || correction.contains(&name))
+                {
+                    score += 50;
+                }
 
-            items
-                .into_iter()
-                .max_by_key(|item| {
-                    let med = item.medication.to_lowercase();
-                    let raw = item.medication_raw.to_lowercase();
+                // Priority 3: Similarity to previous medication
+                // (useful if correction didn't change the name but something else like expiry)
+                if name.contains(&prev_lower) || prev_lower.contains(&name) {
+                    score += 20;
+                }
 
-                    let mut score = 0;
-
-                    // Priority 1: Exact match with hint
-                    if let Some(hint) = &hint_lower
-                        && (med.contains(hint) || hint.contains(&med))
-                    {
-                        score += 100;
-                    }
-
-                    // Priority 2: Contains correction keywords
-                    if let Some(correction) = &correction_lower
-                        && (med.contains(correction) || correction.contains(&med))
-                    {
-                        score += 50;
-                    }
-
-                    // Priority 3: Similarity to previous medication
-                    // (useful if correction didn't change the name but something else like expiry)
-                    if med.contains(&prev_lower) || prev_lower.contains(&med) {
-                        score += 20;
-                    }
-
-                    // Priority 4: raw text match
-                    if raw.contains(&prev_lower) || prev_lower.contains(&raw) {
-                        score += 10;
-                    }
-
-                    score
-                })
-                .unwrap()
-        }
+                score
+            })
+            .unwrap()
     };
 
     // Update the item with new medication info
-    let new_medication = parsed_item.medication.clone();
-    let ai_confidence = parsed_item.ai_confidence;
+    let new_medication = parsed_medication.name.clone();
+    let ai_confidence = parsed_medication.confidence;
 
     match req.item_type {
         ItemType::Offer => {
@@ -243,9 +236,9 @@ where
                 .offer_repo
                 .update_medication(
                     req.item_id,
-                    &parsed_item.medication,
-                    &parsed_item.medication_raw,
-                    Some(parsed_item.ai_confidence),
+                    &parsed_medication.name,
+                    &parsed_medication.name,
+                    Some(parsed_medication.confidence),
                 )
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -264,9 +257,9 @@ where
                 .request_repo
                 .update_medication(
                     req.item_id,
-                    &parsed_item.medication,
-                    &parsed_item.medication_raw,
-                    Some(parsed_item.ai_confidence),
+                    &parsed_medication.name,
+                    &parsed_medication.name,
+                    Some(parsed_medication.confidence),
                 )
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

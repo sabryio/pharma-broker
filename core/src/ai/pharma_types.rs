@@ -133,7 +133,7 @@ impl Intent {
     }
 }
 
-/// A medication entry from the new prompt structure
+/// A medication entry from the AI parse result
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Medication {
     /// Exact medication name from message (preserves original language)
@@ -158,7 +158,7 @@ pub struct Medication {
     pub reason: String,
 }
 
-/// AI parse result - the new structured output schema
+/// AI parse result - structured output schema
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ParseResult {
     /// Intent: "offer" or "request"
@@ -172,103 +172,6 @@ pub struct ParseResult {
 
     /// List of extracted medications
     pub medications: Vec<Medication>,
-}
-
-// =============================================================================
-// Legacy Support - ParsedItem for backward compatibility
-// =============================================================================
-
-/// A parsed medication item from AI (LEGACY - for backward compatibility)
-///
-/// This structure is maintained for compatibility with existing code.
-/// New code should use ParseResult with Medication entries.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ParsedItem {
-    /// Item type: "OFFER" or "REQUEST"
-    #[serde(rename = "type")]
-    pub item_type: Intent,
-
-    /// Canonical English medication name with dosage
-    pub medication: String,
-
-    /// Original text from the message
-    pub medication_raw: String,
-
-    /// AI confidence score (0.0 to 1.0)
-    #[serde(default)]
-    pub ai_confidence: f64,
-
-    /// Quantity of items
-    #[serde(default)]
-    pub quantity: f64,
-
-    /// Unit (boxes, strips, ampoules, etc.)
-    #[serde(default)]
-    pub unit: Option<String>,
-
-    /// Price per unit
-    #[serde(default)]
-    pub price: f64,
-
-    /// Maximum price (for requests)
-    #[serde(default)]
-    pub max_price: f64,
-
-    /// Urgency flag (backward compatible)
-    #[serde(default)]
-    pub urgent: bool,
-
-    /// Urgency level (more granular)
-    #[serde(default)]
-    pub urgency_level: UrgencyLevel,
-
-    /// Expiry date if mentioned (YYYY-MM format or description)
-    #[serde(default)]
-    pub expiry: Option<String>,
-
-    /// Additional notes
-    #[serde(default)]
-    pub notes: Option<String>,
-}
-
-impl ParsedItem {
-    /// Convert from new Medication format to legacy ParsedItem
-    pub fn from_medication(med: &Medication, intent: Intent, urgency: UrgencyLevel) -> Self {
-        // Build medication name with concentration if present
-        let medication = if let Some(conc) = &med.concentration {
-            format!("{} {}", med.name, conc)
-        } else {
-            med.name.clone()
-        };
-
-        // Build notes from form if present
-        let notes = med.form.clone();
-
-        Self {
-            item_type: intent,
-            medication,
-            medication_raw: med.name.clone(),
-            ai_confidence: med.confidence,
-            quantity: 0.0,
-            unit: med.form.clone(),
-            price: 0.0,
-            max_price: 0.0,
-            urgent: urgency.is_urgent(),
-            urgency_level: urgency,
-            expiry: med.expiry.clone(),
-            notes,
-        }
-    }
-}
-
-impl ParseResult {
-    /// Convert to legacy format (Vec<ParsedItem>) for backward compatibility
-    pub fn to_legacy_items(&self) -> Vec<ParsedItem> {
-        self.medications
-            .iter()
-            .map(|med| ParsedItem::from_medication(med, self.intent, self.urgency))
-            .collect()
-    }
 }
 
 #[cfg(test)]
@@ -373,47 +276,6 @@ mod tests {
         assert_eq!(result.medications.len(), 1);
         assert_eq!(result.medications[0].name, "Ozempic");
         assert_eq!(result.medications[0].concentration, Some("1mg".to_string()));
-    }
-
-    #[test]
-    fn test_legacy_conversion() {
-        let med = Medication {
-            name: "كونسرتا".to_string(),
-            concentration: Some("36".to_string()),
-            form: Some("اقراص".to_string()),
-            expiry: None,
-            confidence: 0.9,
-            reason: "Extracted correctly".to_string(),
-        };
-
-        let item = ParsedItem::from_medication(&med, Intent::Offer, UrgencyLevel::Normal);
-        assert_eq!(item.medication, "كونسرتا 36");
-        assert_eq!(item.medication_raw, "كونسرتا");
-        assert_eq!(item.item_type, Intent::Offer);
-        assert!(!item.urgent);
-    }
-
-    #[test]
-    fn test_parse_result_to_legacy() {
-        let result = ParseResult {
-            intent: Intent::Request,
-            urgency: UrgencyLevel::Urgent,
-            reason: "Urgent request".to_string(),
-            medications: vec![Medication {
-                name: "Aspirin".to_string(),
-                concentration: Some("100mg".to_string()),
-                form: Some("tablets".to_string()),
-                expiry: None,
-                confidence: 0.95,
-                reason: "Clear".to_string(),
-            }],
-        };
-
-        let items = result.to_legacy_items();
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].medication, "Aspirin 100mg");
-        assert!(items[0].urgent);
-        assert_eq!(items[0].urgency_level, UrgencyLevel::Urgent);
     }
 
     #[test]

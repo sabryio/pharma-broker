@@ -191,9 +191,8 @@ impl Mul<Weight> for f64 {
 pub struct NormalizedWeights {
     pub medication: Weight,
     pub dosage: Weight,
-    pub quantity: Weight,
-    pub price: Weight,
     pub recency: Weight,
+    pub expiry: Weight,
 }
 
 impl NormalizedWeights {
@@ -204,11 +203,10 @@ impl NormalizedWeights {
     pub fn new(
         medication: f64,
         dosage: f64,
-        quantity: f64,
-        price: f64,
         recency: f64,
+        expiry: f64,
     ) -> Result<Self, WeightError> {
-        let sum = medication + dosage + quantity + price + recency;
+        let sum = medication + dosage + recency + expiry;
         if (sum - 1.0).abs() > Self::SUM_TOLERANCE {
             return Err(WeightError::InvalidSum { actual: sum });
         }
@@ -222,17 +220,13 @@ impl NormalizedWeights {
                 field: "dosage",
                 value: dosage,
             })?,
-            quantity: Weight::new(quantity).ok_or(WeightError::OutOfRange {
-                field: "quantity",
-                value: quantity,
-            })?,
-            price: Weight::new(price).ok_or(WeightError::OutOfRange {
-                field: "price",
-                value: price,
-            })?,
             recency: Weight::new(recency).ok_or(WeightError::OutOfRange {
                 field: "recency",
                 value: recency,
+            })?,
+            expiry: Weight::new(expiry).ok_or(WeightError::OutOfRange {
+                field: "expiry",
+                value: expiry,
             })?,
         })
     }
@@ -241,22 +235,15 @@ impl NormalizedWeights {
     pub fn from_unnormalized(
         medication: f64,
         dosage: f64,
-        quantity: f64,
-        price: f64,
         recency: f64,
+        expiry: f64,
     ) -> Result<Self, WeightError> {
-        let sum = medication + dosage + quantity + price + recency;
+        let sum = medication + dosage + recency + expiry;
         if sum == 0.0 {
             return Err(WeightError::ZeroSum);
         }
 
-        Self::new(
-            medication / sum,
-            dosage / sum,
-            quantity / sum,
-            price / sum,
-            recency / sum,
-        )
+        Self::new(medication / sum, dosage / sum, recency / sum, expiry / sum)
     }
 
     /// Calculate weighted score from component scores
@@ -264,29 +251,26 @@ impl NormalizedWeights {
         &self,
         medication_score: f64,
         dosage_score: f64,
-        quantity_score: f64,
-        price_score: f64,
         recency_score: f64,
+        expiry_score: f64,
     ) -> ConfidenceScore {
         let total = self.medication * medication_score
             + self.dosage * dosage_score
-            + self.quantity * quantity_score
-            + self.price * price_score
-            + self.recency * recency_score;
+            + self.recency * recency_score
+            + self.expiry * expiry_score;
 
         ConfidenceScore::new_clamped(total)
     }
 }
 
 impl Default for NormalizedWeights {
-    /// Default weights matching the legacy configuration
+    /// Default weights matching the new configuration
     fn default() -> Self {
         Self {
-            medication: Weight::new(0.75).unwrap(),
-            dosage: Weight::new(0.05).unwrap(),
-            quantity: Weight::new(0.05).unwrap(),
-            price: Weight::new(0.05).unwrap(),
-            recency: Weight::new(0.10).unwrap(),
+            medication: Weight::new(0.70).unwrap(),
+            dosage: Weight::new(0.20).unwrap(),
+            recency: Weight::new(0.05).unwrap(),
+            expiry: Weight::new(0.05).unwrap(),
         }
     }
 }
@@ -319,9 +303,8 @@ pub enum WeightError {
 pub struct ScoreBreakdown {
     pub medication: ComponentScore,
     pub dosage: ComponentScore,
-    pub quantity: ComponentScore,
-    pub price: ComponentScore,
     pub recency: ComponentScore,
+    pub expiry: ComponentScore,
     pub total: ConfidenceScore,
 }
 
@@ -352,28 +335,24 @@ impl ScoreBreakdown {
         weights: &NormalizedWeights,
         medication_score: f64,
         dosage_score: f64,
-        quantity_score: f64,
-        price_score: f64,
         recency_score: f64,
+        expiry_score: f64,
     ) -> Self {
         let medication = ComponentScore::new(medication_score, weights.medication);
         let dosage = ComponentScore::new(dosage_score, weights.dosage);
-        let quantity = ComponentScore::new(quantity_score, weights.quantity);
-        let price = ComponentScore::new(price_score, weights.price);
         let recency = ComponentScore::new(recency_score, weights.recency);
+        let expiry = ComponentScore::new(expiry_score, weights.expiry);
 
         let total_value = medication.contribution
             + dosage.contribution
-            + quantity.contribution
-            + price.contribution
-            + recency.contribution;
+            + recency.contribution
+            + expiry.contribution;
 
         Self {
             medication,
             dosage,
-            quantity,
-            price,
             recency,
+            expiry,
             total: ConfidenceScore::new_clamped(total_value),
         }
     }
@@ -381,12 +360,11 @@ impl ScoreBreakdown {
     /// Format as a human-readable breakdown string
     pub fn format_breakdown(&self) -> String {
         format!(
-            "Med:{:.0}% Dos:{:.0}% Qty:{:.0}% Price:{:.0}% Rec:{:.0}%",
+            "Med:{:.0}% Dos:{:.0}% Rec:{:.0}% Exp:{:.0}%",
             self.medication.score * 100.0,
             self.dosage.score * 100.0,
-            self.quantity.score * 100.0,
-            self.price.score * 100.0,
-            self.recency.score * 100.0
+            self.recency.score * 100.0,
+            self.expiry.score * 100.0
         )
     }
 }
@@ -449,31 +427,30 @@ mod tests {
 
     #[test]
     fn test_normalized_weights_valid() {
-        let weights = NormalizedWeights::new(0.75, 0.05, 0.05, 0.05, 0.10);
+        let weights = NormalizedWeights::new(0.70, 0.20, 0.05, 0.05);
         assert!(weights.is_ok());
     }
 
     #[test]
     fn test_normalized_weights_invalid_sum() {
-        let weights = NormalizedWeights::new(0.5, 0.5, 0.5, 0.5, 0.5);
+        let weights = NormalizedWeights::new(0.5, 0.5, 0.5, 0.5);
         assert!(matches!(weights, Err(WeightError::InvalidSum { .. })));
     }
 
     #[test]
     fn test_normalized_weights_from_unnormalized() {
-        let weights = NormalizedWeights::from_unnormalized(3.0, 1.0, 1.0, 1.0, 2.0).unwrap();
+        let weights = NormalizedWeights::from_unnormalized(7.0, 2.0, 0.5, 0.5).unwrap();
         let sum = weights.medication.value()
             + weights.dosage.value()
-            + weights.quantity.value()
-            + weights.price.value()
-            + weights.recency.value();
+            + weights.recency.value()
+            + weights.expiry.value();
         assert!((sum - 1.0).abs() < 0.001);
     }
 
     #[test]
     fn test_normalized_weights_calculate_score() {
         let weights = NormalizedWeights::default();
-        let score = weights.calculate_score(0.9, 0.8, 0.7, 0.6, 0.5);
+        let score = weights.calculate_score(0.9, 0.8, 0.7, 0.6);
         assert!(score.value() > 0.0);
         assert!(score.value() <= 1.0);
     }
@@ -481,7 +458,7 @@ mod tests {
     #[test]
     fn test_score_breakdown() {
         let weights = NormalizedWeights::default();
-        let breakdown = ScoreBreakdown::new(&weights, 0.9, 0.8, 0.7, 0.6, 0.5);
+        let breakdown = ScoreBreakdown::new(&weights, 0.9, 0.8, 0.7, 0.6);
 
         assert!((breakdown.medication.score - 0.9).abs() < 0.001);
         assert!(breakdown.total.value() > 0.0);

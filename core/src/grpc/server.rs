@@ -7,8 +7,6 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use pgvector::Vector as PgVector;
-use rust_decimal::Decimal;
-use rust_decimal::prelude::FromPrimitive;
 use tokio::sync::broadcast;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
@@ -375,7 +373,7 @@ where
             };
 
             // Call AI gateway
-            let parsed_items = match ai_client
+            let parse_result = match ai_client
                 .parse(
                     &content,
                     sender_name.as_deref(),
@@ -385,9 +383,9 @@ where
                 )
                 .await
             {
-                Ok(items) => {
+                Ok(result) => {
                     metrics::record_ai_parse("success");
-                    items
+                    result
                 }
                 Err(e) => {
                     metrics::record_ai_parse("error");
@@ -399,44 +397,44 @@ where
                 }
             };
 
-            if parsed_items.is_empty() {
-                tracing::debug!(id = %msg_id, "🎯 AI parsing complete (no items found)");
+            if parse_result.medications.is_empty() {
+                tracing::debug!(id = %msg_id, "🎯 AI parsing complete (no medications found)");
             } else {
                 tracing::info!(
                     id = %msg_id,
-                    items_count = parsed_items.len(),
+                    medications_count = parse_result.medications.len(),
+                    intent = ?parse_result.intent,
                     "🎯 AI parsing complete"
                 );
             }
 
-            // Create Offer/Request entities from parsed items
+            // Create Offer/Request entities from parsed medications
             let mut offers_created = 0;
             let mut requests_created = 0;
             let mut items_queued = 0;
             let mut new_request_ids: Vec<_> = Vec::new();
 
-            // Pre-filter items that will be accepted (need embeddings)
-            let accepted_items: Vec<_> = parsed_items
+            // Pre-filter medications that will be accepted (need embeddings)
+            let accepted_meds: Vec<_> = parse_result
+                .medications
                 .iter()
-                .filter(|item| {
+                .filter(|med| {
                     matches!(
-                        auto_action.determine_parse_action(item.ai_confidence),
+                        auto_action.determine_parse_action(med.confidence),
                         crate::matching::ParseAction::Accept
                     )
                 })
                 .collect();
 
-            // Batch generate embeddings for accepted items
+            // Batch generate embeddings for accepted medications
             // IMPORTANT: Strip dosage from medication names before embedding to prevent false positives
             // e.g., "Kozentex 150" and "Gonapure 150" would have similar embeddings due to "150"
-            let medications_normalized: Vec<String> = accepted_items
+            let medications_normalized: Vec<String> = accepted_meds
                 .iter()
-                .map(|item| crate::matching::arabic::normalize_for_matching(&item.medication))
+                .map(|med| crate::matching::arabic::normalize_for_matching(&med.name))
                 .collect();
-            let medications_original: Vec<String> = accepted_items
-                .iter()
-                .map(|item| item.medication.clone())
-                .collect();
+            let medications_original: Vec<String> =
+                accepted_meds.iter().map(|med| med.name.clone()).collect();
 
             let embeddings_map: std::collections::HashMap<String, Vec<f32>> =
                 if !medications_normalized.is_empty() {
@@ -451,27 +449,27 @@ where
                     std::collections::HashMap::new()
                 };
 
-            for item in parsed_items {
+            for med in parse_result.medications {
                 // Task 3.3: Determine action based on AI confidence
-                let parse_action = auto_action.determine_parse_action(item.ai_confidence);
+                let parse_action = auto_action.determine_parse_action(med.confidence);
 
                 match parse_action {
                     crate::matching::ParseAction::Accept => {
                         // Get pre-generated embedding
-                        let content_embedding = embeddings_map.get(&item.medication).cloned();
+                        let content_embedding = embeddings_map.get(&med.name).cloned();
 
                         // Dynamic medication resolution
                         let (master_medication_id, medication_curated) =
                             if let Some(resolver) = &medication_resolver {
                                 let resolution = if let Some(emb) = &content_embedding {
-                                    resolver.resolve_with_embedding(&item.medication, emb).await
+                                    resolver.resolve_with_embedding(&med.name, emb).await
                                 } else {
-                                    resolver.resolve(&item.medication).await
+                                    resolver.resolve(&med.name).await
                                 };
 
                                 if resolution.master_medication_id.is_some() {
                                     tracing::info!(
-                                        medication = %item.medication,
+                                        medication = %med.name,
                                         master_id = ?resolution.master_medication_id,
                                         method = %resolution.method,
                                         confidence = %resolution.confidence,
@@ -485,27 +483,23 @@ where
                                 (None, false)
                             };
 
-                        if item.item_type == Intent::Offer {
+                        if parse_result.intent == Intent::Offer {
                             let offer = Offer {
                                 id: Uuid::new_v4(),
                                 raw_message_id: msg_id,
                                 participant_id: participant.id,
                                 group_id: group.id,
-                                medication: item.medication.clone(),
-                                medication_raw: item.medication_raw.clone(),
-                                quantity: Decimal::from_f64(item.quantity),
-                                unit: item.unit.clone(),
-                                price: Decimal::from_f64(item.price),
-                                currency: Some("EGP".to_string()),
-                                // expiry_date removed - use expiry_info instead
+                                medication: med.name.clone(),
+                                medication_raw: med.name.clone(),
+                                unit: med.form.clone(),
                                 batch_number: None,
-                                notes: item.notes.clone(),
+                                notes: None,
                                 status: ItemStatus::Active,
                                 content_embedding: content_embedding.clone().map(PgVector::from),
-                                urgency_level: convert_urgency_level(item.urgency_level),
-                                expiry_info: item.expiry.clone(),
-                                ai_confidence: item.ai_confidence,
-                                master_medication_id, // Dynamic resolution
+                                urgency_level: convert_urgency_level(parse_result.urgency),
+                                expiry_info: med.expiry.clone(),
+                                ai_confidence: med.confidence,
+                                master_medication_id,
                                 medication_curated,
                                 confirmed_match_count: 0,
                                 created_at: Utc::now(),
@@ -573,25 +567,22 @@ where
                                 .with_details(serde_json::json!({ "message_id": msg_id }));
                                 let _ = audit_log_repo.save(&audit_log).await;
                             }
-                        } else if item.item_type == Intent::Request {
+                        } else if parse_result.intent == Intent::Request {
                             let request = RequestEntity {
                                 id: Uuid::new_v4(),
                                 raw_message_id: msg_id,
                                 participant_id: participant.id,
                                 group_id: group.id,
-                                medication: item.medication.clone(),
-                                medication_raw: item.medication_raw.clone(),
-                                quantity: Decimal::from_f64(item.quantity),
-                                unit: item.unit.clone(),
-                                max_price: Decimal::from_f64(item.max_price),
-                                currency: Some("EGP".to_string()),
-                                urgency_level: convert_urgency_level(item.urgency_level),
-                                expiry_requirement: item.expiry.clone(),
-                                ai_confidence: item.ai_confidence,
-                                notes: item.notes.clone(),
+                                medication: med.name.clone(),
+                                medication_raw: med.name.clone(),
+                                unit: med.form.clone(),
+                                urgency_level: convert_urgency_level(parse_result.urgency),
+                                expiry_requirement: med.expiry.clone(),
+                                ai_confidence: med.confidence,
+                                notes: None,
                                 status: ItemStatus::Active,
                                 content_embedding: content_embedding.clone().map(PgVector::from),
-                                master_medication_id, // Dynamic resolution (reuse from above)
+                                master_medication_id,
                                 medication_curated,
                                 confirmed_match_count: 0,
                                 created_at: Utc::now(),
@@ -670,8 +661,8 @@ where
                         // Task 3.3: Queue for human review
                         let review_item = ReviewQueueItem::for_low_confidence(
                             msg_id,
-                            serde_json::to_value(&item).unwrap_or(serde_json::Value::Null),
-                            item.ai_confidence,
+                            serde_json::to_value(&med).unwrap_or(serde_json::Value::Null),
+                            med.confidence,
                             "low_confidence",
                         );
 
@@ -680,8 +671,8 @@ where
                         } else {
                             tracing::info!(
                                 id = %msg_id,
-                                medication = %item.medication,
-                                confidence = %item.ai_confidence,
+                                medication = %med.name,
+                                confidence = %med.confidence,
                                 "📋 Item queued for human review (low confidence)"
                             );
                             metrics::record_ai_parse("queued_review");
@@ -696,7 +687,7 @@ where
                             )
                             .with_details(serde_json::json!({
                                 "message_id": msg_id,
-                                "confidence": item.ai_confidence
+                                "confidence": med.confidence
                             }));
                             let _ = audit_log_repo.save(&audit_log).await;
                         }
@@ -704,8 +695,8 @@ where
                     crate::matching::ParseAction::Reject => {
                         tracing::info!(
                             id = %msg_id,
-                            medication = %item.medication,
-                            confidence = %item.ai_confidence,
+                            medication = %med.name,
+                            confidence = %med.confidence,
                             "🚫 Item rejected (too low confidence)"
                         );
                     }

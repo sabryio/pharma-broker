@@ -10,8 +10,6 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use pgvector::Vector as PgVector;
-use rust_decimal::Decimal;
-use rust_decimal::prelude::FromPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -368,15 +366,11 @@ where
     let offer_items: Vec<ProcessedItem> = offers
         .into_iter()
         .map(|o| {
-            let qty = o.quantity.map(|q| {
-                let unit = o.unit.as_deref().unwrap_or("");
-                format!("{} {}", q, unit).trim().to_string()
-            });
             ProcessedItem {
                 id: o.id,
                 item_type: "offer".to_string(),
                 medication: o.medication,
-                quantity: qty,
+                quantity: None, // Removed: quantity no longer tracked
                 status: format!("{:?}", o.status),
                 created_at: o.created_at,
             }
@@ -386,15 +380,11 @@ where
     let request_items: Vec<ProcessedItem> = requests
         .into_iter()
         .map(|r| {
-            let qty = r.quantity.map(|q| {
-                let unit = r.unit.as_deref().unwrap_or("");
-                format!("{} {}", q, unit).trim().to_string()
-            });
             ProcessedItem {
                 id: r.id,
                 item_type: "request".to_string(),
                 medication: r.medication,
-                quantity: qty,
+                quantity: None, // Removed: quantity no longer tracked
                 status: format!("{:?}", r.status),
                 created_at: r.created_at,
             }
@@ -507,7 +497,7 @@ where
     };
 
     // Call AI parser
-    let parsed_items = match state
+    let parse_result = match state
         .ai_client
         .parse(
             &message.content,
@@ -518,7 +508,7 @@ where
         )
         .await
     {
-        Ok(items) => items,
+        Ok(result) => result,
         Err(e) => {
             error!(error = %e, message_id = %id, "AI parsing failed during reprocess");
             // Mark message with error
@@ -548,14 +538,15 @@ where
         }
     };
 
-    // Create Offer/Request entities from parsed items
+    // Create Offer/Request entities from parsed medications
     let mut offers_created = 0i32;
     let mut requests_created = 0i32;
 
-    // Batch generate embeddings for items
-    let medications: Vec<String> = parsed_items
+    // Batch generate embeddings for medications
+    let medications: Vec<String> = parse_result
+        .medications
         .iter()
-        .map(|item| item.medication.clone())
+        .map(|med| med.name.clone())
         .collect();
     let embeddings_map: std::collections::HashMap<String, Vec<f32>> = if !medications.is_empty() {
         match state.ai_client.embed_batch(&medications).await {
@@ -569,29 +560,25 @@ where
         std::collections::HashMap::new()
     };
 
-    for item in parsed_items {
-        let content_embedding = embeddings_map.get(&item.medication).cloned();
+    for med in parse_result.medications {
+        let content_embedding = embeddings_map.get(&med.name).cloned();
 
-        if item.item_type == crate::ai::Intent::Offer {
+        if parse_result.intent == crate::ai::Intent::Offer {
             let offer = Offer {
                 id: Uuid::new_v4(),
                 raw_message_id: id,
                 participant_id: message.participant_id,
                 group_id: message.group_id,
-                medication: item.medication.clone(),
-                medication_raw: item.medication_raw.clone(),
-                quantity: Decimal::from_f64(item.quantity),
-                unit: item.unit.clone(),
-                price: Decimal::from_f64(item.price),
-                currency: Some("EGP".to_string()),
-                // expiry_date removed - use expiry_info instead
+                medication: med.name.clone(),
+                medication_raw: med.name.clone(),
+                unit: med.form.clone(),
                 batch_number: None,
-                notes: item.notes.clone(),
+                notes: None,
                 status: ItemStatus::Active,
                 content_embedding: content_embedding.clone().map(PgVector::from),
-                urgency_level: convert_urgency_level(item.urgency_level),
-                expiry_info: item.expiry.clone(),
-                ai_confidence: item.ai_confidence,
+                urgency_level: convert_urgency_level(parse_result.urgency),
+                expiry_info: med.expiry.clone(),
+                ai_confidence: med.confidence,
                 master_medication_id: None,
                 medication_curated: false,
                 confirmed_match_count: 0,
@@ -639,22 +626,19 @@ where
                 info!(offer_id = %offer.id, medication = %offer.medication, "💊 Offer created during reprocess");
                 offers_created += 1;
             }
-        } else if item.item_type == crate::ai::Intent::Request {
+        } else if parse_result.intent == crate::ai::Intent::Request {
             let request = RequestEntity {
                 id: Uuid::new_v4(),
                 raw_message_id: id,
                 participant_id: message.participant_id,
                 group_id: message.group_id,
-                medication: item.medication.clone(),
-                medication_raw: item.medication_raw.clone(),
-                quantity: Decimal::from_f64(item.quantity),
-                unit: item.unit.clone(),
-                max_price: Decimal::from_f64(item.max_price),
-                currency: Some("EGP".to_string()),
-                urgency_level: convert_urgency_level(item.urgency_level),
-                expiry_requirement: item.expiry.clone(),
-                ai_confidence: item.ai_confidence,
-                notes: item.notes.clone(),
+                medication: med.name.clone(),
+                medication_raw: med.name.clone(),
+                unit: med.form.clone(),
+                urgency_level: convert_urgency_level(parse_result.urgency),
+                expiry_requirement: med.expiry.clone(),
+                ai_confidence: med.confidence,
+                notes: None,
                 status: ItemStatus::Active,
                 content_embedding: content_embedding.clone().map(PgVector::from),
                 master_medication_id: None,
@@ -1114,7 +1098,7 @@ where
     };
 
     // Call AI parser
-    let parsed_items = match state
+    let parse_result = match state
         .ai_client
         .parse(
             &message.content,
@@ -1125,7 +1109,7 @@ where
         )
         .await
     {
-        Ok(items) => items,
+        Ok(result) => result,
         Err(e) => {
             error!(error = %e, message_id = %id, "AI parsing failed during bulk reprocess");
             // Mark message with error
@@ -1144,14 +1128,15 @@ where
         }
     };
 
-    // Create Offer/Request entities from parsed items
+    // Create Offer/Request entities from parsed medications
     let mut offers_created = 0i32;
     let mut requests_created = 0i32;
 
-    // Batch generate embeddings for items
-    let medications: Vec<String> = parsed_items
+    // Batch generate embeddings for medications
+    let medications: Vec<String> = parse_result
+        .medications
         .iter()
-        .map(|item| item.medication.clone())
+        .map(|med| med.name.clone())
         .collect();
     let embeddings_map: std::collections::HashMap<String, Vec<f32>> = if !medications.is_empty() {
         match state.ai_client.embed_batch(&medications).await {
@@ -1165,29 +1150,25 @@ where
         std::collections::HashMap::new()
     };
 
-    for item in parsed_items {
-        let content_embedding = embeddings_map.get(&item.medication).cloned();
+    for med in parse_result.medications {
+        let content_embedding = embeddings_map.get(&med.name).cloned();
 
-        if item.item_type == crate::ai::Intent::Offer {
+        if parse_result.intent == crate::ai::Intent::Offer {
             let offer = Offer {
                 id: Uuid::new_v4(),
                 raw_message_id: id,
                 participant_id: message.participant_id,
                 group_id: message.group_id,
-                medication: item.medication.clone(),
-                medication_raw: item.medication_raw.clone(),
-                quantity: Decimal::from_f64(item.quantity),
-                unit: item.unit.clone(),
-                price: Decimal::from_f64(item.price),
-                currency: Some("EGP".to_string()),
-                // expiry_date removed - use expiry_info instead
+                medication: med.name.clone(),
+                medication_raw: med.name.clone(),
+                unit: med.form.clone(),
                 batch_number: None,
-                notes: item.notes.clone(),
+                notes: None,
                 status: ItemStatus::Active,
                 content_embedding: content_embedding.clone().map(PgVector::from),
-                urgency_level: convert_urgency_level(item.urgency_level),
-                expiry_info: item.expiry.clone(),
-                ai_confidence: item.ai_confidence,
+                urgency_level: convert_urgency_level(parse_result.urgency),
+                expiry_info: med.expiry.clone(),
+                ai_confidence: med.confidence,
                 master_medication_id: None,
                 medication_curated: false,
                 confirmed_match_count: 0,
@@ -1235,22 +1216,19 @@ where
                 debug!(offer_id = %offer.id, medication = %offer.medication, message_id = %id, "💊 Offer created during bulk reprocess");
                 offers_created += 1;
             }
-        } else if item.item_type == crate::ai::Intent::Request {
+        } else if parse_result.intent == crate::ai::Intent::Request {
             let request = RequestEntity {
                 id: Uuid::new_v4(),
                 raw_message_id: id,
                 participant_id: message.participant_id,
                 group_id: message.group_id,
-                medication: item.medication.clone(),
-                medication_raw: item.medication_raw.clone(),
-                quantity: Decimal::from_f64(item.quantity),
-                unit: item.unit.clone(),
-                max_price: Decimal::from_f64(item.max_price),
-                currency: Some("EGP".to_string()),
-                urgency_level: convert_urgency_level(item.urgency_level),
-                expiry_requirement: item.expiry.clone(),
-                ai_confidence: item.ai_confidence,
-                notes: item.notes.clone(),
+                medication: med.name.clone(),
+                medication_raw: med.name.clone(),
+                unit: med.form.clone(),
+                urgency_level: convert_urgency_level(parse_result.urgency),
+                expiry_requirement: med.expiry.clone(),
+                ai_confidence: med.confidence,
+                notes: None,
                 status: ItemStatus::Active,
                 content_embedding: content_embedding.clone().map(PgVector::from),
                 master_medication_id: None,

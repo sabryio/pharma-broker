@@ -32,14 +32,7 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(Requests::MedicationRaw).string_len(500))
-                    .col(ColumnDef::new(Requests::Quantity).decimal_len(10, 2))
                     .col(ColumnDef::new(Requests::Unit).string_len(20))
-                    .col(ColumnDef::new(Requests::MaxPrice).decimal_len(10, 2))
-                    .col(
-                        ColumnDef::new(Requests::Currency)
-                            .string_len(10)
-                            .default("EGP"),
-                    )
                     .col(
                         ColumnDef::new(Requests::UrgencyLevel)
                             .string_len(20)
@@ -259,10 +252,7 @@ pub enum Requests {
     GroupId,
     Medication,
     MedicationRaw,
-    Quantity,
     Unit,
-    MaxPrice,
-    Currency,
     UrgencyLevel,
     ExpiryRequirement,
     AiConfidence,

@@ -257,19 +257,16 @@ impl UncertaintyEstimator {
         // Perturb each weight
         let medication = perturbation(self.base_weights.medication, rng);
         let dosage = perturbation(self.base_weights.dosage, rng);
-        let quantity = perturbation(self.base_weights.quantity, rng);
-        let price = perturbation(self.base_weights.price, rng);
         let recency = perturbation(self.base_weights.recency, rng);
+        let expiry = perturbation(self.base_weights.expiry, rng);
 
         // Normalize to sum to 1.0
-        let sum = medication + dosage + quantity + price + recency;
+        let sum = medication + dosage + recency + expiry;
         Weights {
             medication: medication / sum,
             dosage: dosage / sum,
-            quantity: quantity / sum,
-            price: price / sum,
             recency: recency / sum,
-            expiry: self.base_weights.expiry,
+            expiry: expiry / sum,
             supplier: self.base_weights.supplier,
             ai_logic: self.base_weights.ai_logic,
         }
@@ -467,15 +464,12 @@ impl EnsembleUncertainty {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_decimal::Decimal;
 
     fn create_test_offer() -> Offer {
         Offer {
             id: uuid::Uuid::new_v4(),
             medication: "Aspirin 100mg".to_string(),
             medication_raw: "اسبرين 100".to_string(),
-            quantity: Some(Decimal::new(10, 0)),
-            price: Some(Decimal::new(50, 0)),
             ..Default::default()
         }
     }
@@ -485,8 +479,6 @@ mod tests {
             id: uuid::Uuid::new_v4(),
             medication: "Aspirin 100mg".to_string(),
             medication_raw: "اسبرين 100".to_string(),
-            quantity: Some(Decimal::new(10, 0)),
-            max_price: Some(Decimal::new(60, 0)),
             ..Default::default()
         }
     }
@@ -580,11 +572,8 @@ mod tests {
 
         for _ in 0..10 {
             let perturbed = estimator.perturb_weights(&mut rng);
-            let sum = perturbed.medication
-                + perturbed.dosage
-                + perturbed.quantity
-                + perturbed.price
-                + perturbed.recency;
+            let sum =
+                perturbed.medication + perturbed.dosage + perturbed.recency + perturbed.expiry;
             assert!((sum - 1.0).abs() < 0.001, "Weights should sum to 1.0");
         }
     }
