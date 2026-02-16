@@ -108,10 +108,12 @@ function SenderBadge({
   name,
   jid,
   accentColor,
+  medicationName,
 }: {
   name: string | null
   jid: string | null
   accentColor: 'teal' | 'amber'
+  medicationName?: string
 }) {
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [message, setMessage] = useState('')
@@ -374,6 +376,16 @@ function SenderBadge({
             {/* Quick message templates */}
             <div className="flex flex-wrap gap-2">
               <button
+                onClick={() =>
+                  setMessage(
+                    `سلام عليكم كنت بسأل على ${medicationName || '(اسم الدواء)'}`,
+                  )
+                }
+                className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
+              >
+                🇪🇬 Ask about med
+              </button>
+              <button
                 onClick={() => setMessage('مرحباً، هل العرض ما زال متاحاً؟')}
                 className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
               >
@@ -574,6 +586,7 @@ export function ReviewCard({
               name={offer.senderName}
               jid={offer.senderJid}
               accentColor="teal"
+              medicationName={offer.product}
             />
           </div>
 
@@ -736,6 +749,7 @@ export function ReviewCard({
               name={request.senderName}
               jid={request.senderJid}
               accentColor="amber"
+              medicationName={request.product}
             />
           </div>
 

@@ -264,6 +264,29 @@ function RawMessages() {
 
   // Reply handler - opens send message dialog
   const handleReply = useCallback((message: RawMessage) => {
+    console.log('📨 Reply clicked for message:', {
+      id: message.id,
+      participantJid: message.participantJid,
+      participantName: message.participantName,
+    })
+
+    if (!message.participantJid) {
+      toast.error('Cannot reply: Participant JID is missing')
+      console.error('❌ Missing participantJid in message:', message)
+      return
+    }
+
+    if (!message.participantJid.includes('@')) {
+      toast.error('Invalid JID format: Missing @ symbol')
+      console.error('❌ Invalid JID format:', message.participantJid)
+      return
+    }
+
+    console.log('✅ Opening send message dialog for:', {
+      jid: message.participantJid,
+      name: message.participantName,
+    })
+
     setReplyToMessage(message)
   }, [])
 
@@ -445,13 +468,13 @@ function RawMessages() {
         />
 
         {/* Send Message Dialog */}
-        {replyToMessage && replyToMessage.participantJid && (
+        {replyToMessage && (
           <SendMessageDialog
             open={!!replyToMessage}
             onOpenChange={(open) => !open && setReplyToMessage(null)}
-            recipientJid={replyToMessage.participantJid}
-            recipientName={replyToMessage.participantName || undefined}
-            context={`Reply to message from ${replyToMessage.participantName || replyToMessage.participantJid?.split('@')[0]}`}
+            recipientJid={replyToMessage.participantJid ?? ''}
+            recipientName={replyToMessage.participantName ?? undefined}
+            context={`Reply to message from ${replyToMessage.participantName || replyToMessage.participantJid?.split('@')[0] || 'Unknown'}`}
             accentColor="teal"
             onSuccess={() => {
               toast.success('Reply sent successfully')
