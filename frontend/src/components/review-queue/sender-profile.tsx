@@ -2,25 +2,25 @@
 // Rich sender profile with avatar, stats, and trust indicators
 
 import { useState } from 'react'
-import { cn } from '@/lib/utils'
 import {
-  useParticipantStats,
-  useParticipantByJid,
-} from '@/hooks/use-participants'
-import {
-  Shield,
-  ShieldCheck,
-  ShieldAlert,
-  TrendingUp,
-  Package,
-  ShoppingCart,
   CheckCircle,
-  XCircle,
-  Clock,
-  Loader2,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Loader2,
+  Package,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  ShoppingCart,
+  TrendingUp,
+  XCircle,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import {
+  useParticipantByJid,
+  useParticipantStats,
+} from '@/hooks/use-participants'
 
 interface SenderProfileProps {
   participantId?: string
@@ -32,7 +32,7 @@ interface SenderProfileProps {
 
 // Generate avatar color from name/jid
 function getAvatarColor(name: string): string {
-  const colors = [
+  const colors: Array<string> = [
     'bg-teal/20 text-teal',
     'bg-amber/20 text-amber',
     'bg-emerald/20 text-emerald',
@@ -45,14 +45,19 @@ function getAvatarColor(name: string): string {
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash)
   }
-  return colors[Math.abs(hash) % colors.length]
+  const color = colors[Math.abs(hash) % colors.length]
+  return color ?? colors[0] ?? ''
 }
 
 // Get initials from name
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/)
   if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    const first = parts[0]?.[0]
+    const last = parts[parts.length - 1]?.[0]
+    if (first && last) {
+      return (first + last).toUpperCase()
+    }
   }
   return name.slice(0, 2).toUpperCase()
 }

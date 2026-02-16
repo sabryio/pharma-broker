@@ -38,7 +38,7 @@ export function ReviewStatsCards({
     },
     {
       label: 'Avg Score',
-      value: `${avgConfidence}%`,
+      value: `${avgConfidence.toFixed(2)}%`,
       icon: TrendingUp,
       color: 'amber',
       glowClass: 'shadow-amber/20',

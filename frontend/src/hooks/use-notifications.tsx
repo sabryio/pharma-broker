@@ -180,8 +180,8 @@ export function useNotifications() {
       .map(Number)
     const [endHour, endMin] = settings.quietHoursEnd.split(':').map(Number)
 
-    const startMinutes = startHour * 60 + startMin
-    const endMinutes = endHour * 60 + endMin
+    const startMinutes = (startHour ?? 0) * 60 + (startMin ?? 0)
+    const endMinutes = (endHour ?? 0) * 60 + (endMin ?? 0)
 
     // Handle overnight quiet hours (e.g., 22:00 - 08:00)
     if (startMinutes > endMinutes) {

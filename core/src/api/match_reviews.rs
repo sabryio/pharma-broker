@@ -951,11 +951,25 @@ where
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    let unique_pending_offers = state
+        .match_repo
+        .count_unique_pending_offers()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let unique_pending_requests = state
+        .match_repo
+        .count_unique_pending_requests()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     tracing::debug!(
         pending = pending,
         confirmed_today = confirmed_today,
         rejected_today = rejected_today,
         avg_confidence = avg_confidence,
+        unique_pending_offers = unique_pending_offers,
+        unique_pending_requests = unique_pending_requests,
         ">>> [DEBUG] get_match_review_stats returning"
     );
 
@@ -965,6 +979,8 @@ where
         rejected_today,
         total_pending: pending,
         avg_confidence,
+        unique_pending_offers,
+        unique_pending_requests,
     }))
 }
 

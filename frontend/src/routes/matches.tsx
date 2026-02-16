@@ -134,7 +134,10 @@ export default function MatchesPage() {
   // Update selected match when focused index changes
   useEffect(() => {
     if (filteredMatches.length > 0 && focusedIndex < filteredMatches.length) {
-      setSelectedMatchId(filteredMatches[focusedIndex].id)
+      const match = filteredMatches[focusedIndex]
+      if (match) {
+        setSelectedMatchId(match.id)
+      }
     }
   }, [focusedIndex, filteredMatches])
 
@@ -167,7 +170,11 @@ export default function MatchesPage() {
           e.preventDefault()
           if (filteredMatches.length > 0) {
             const match = filteredMatches[focusedIndex]
-            setExpandedMatchId((prev) => (prev === match.id ? null : match.id))
+            if (match) {
+              setExpandedMatchId((prev) =>
+                prev === match.id ? null : match.id,
+              )
+            }
           }
           break
         case 'Escape':
@@ -188,7 +195,7 @@ export default function MatchesPage() {
           e.preventDefault()
           if (filteredMatches.length > 0) {
             const match = filteredMatches[focusedIndex]
-            if (match.status === 'PENDING') {
+            if (match && match.status === 'PENDING') {
               setDialogState({
                 isOpen: true,
                 actionType: 'approve',
@@ -202,7 +209,7 @@ export default function MatchesPage() {
           e.preventDefault()
           if (filteredMatches.length > 0) {
             const match = filteredMatches[focusedIndex]
-            if (match.status === 'PENDING') {
+            if (match && match.status === 'PENDING') {
               setDialogState({
                 isOpen: true,
                 actionType: 'reject',

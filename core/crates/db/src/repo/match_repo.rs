@@ -266,6 +266,38 @@ impl MatchRepository for SeaOrmMatchRepo {
 
         Ok(result.unwrap_or(0.0))
     }
+
+    async fn count_unique_pending_offers(&self) -> Result<i64> {
+        use sea_orm::{ConnectionTrait, Statement};
+
+        let result: Option<i64> = self
+            .db
+            .query_one(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT COUNT(DISTINCT offer_id) as unique_offers FROM matches WHERE status = 'PENDING'"
+                    .to_string(),
+            ))
+            .await?
+            .map(|row| row.try_get_by_index::<i64>(0).unwrap_or(0));
+
+        Ok(result.unwrap_or(0))
+    }
+
+    async fn count_unique_pending_requests(&self) -> Result<i64> {
+        use sea_orm::{ConnectionTrait, Statement};
+
+        let result: Option<i64> = self
+            .db
+            .query_one(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT COUNT(DISTINCT request_id) as unique_requests FROM matches WHERE status = 'PENDING'"
+                    .to_string(),
+            ))
+            .await?
+            .map(|row| row.try_get_by_index::<i64>(0).unwrap_or(0));
+
+        Ok(result.unwrap_or(0))
+    }
 }
 
 #[cfg(all(test, feature = "integration-tests"))]

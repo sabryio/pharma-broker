@@ -110,19 +110,22 @@ export const recordingsSlice = createSlice({
         state.recordings[state.activeRecordingId]
       ) {
         const recording = state.recordings[state.activeRecordingId]
-        recording.endedAt = new Date()
-        recording.duration =
-          new Date(recording.endedAt).getTime() -
-          new Date(recording.startedAt).getTime()
-        // Determine outcome from last snapshot
-        const lastSnapshot = recording.snapshots[recording.snapshots.length - 1]
-        if (lastSnapshot) {
-          recording.outcome =
-            lastSnapshot.event.type === 'approve'
-              ? 'approved'
-              : lastSnapshot.event.type === 'reject'
-                ? 'rejected'
-                : 'pending'
+        if (recording) {
+          recording.endedAt = new Date()
+          recording.duration =
+            new Date(recording.endedAt).getTime() -
+            new Date(recording.startedAt).getTime()
+          // Determine outcome from last snapshot
+          const lastSnapshot =
+            recording.snapshots[recording.snapshots.length - 1]
+          if (lastSnapshot) {
+            recording.outcome =
+              lastSnapshot.event.type === 'approve'
+                ? 'approved'
+                : lastSnapshot.event.type === 'reject'
+                  ? 'rejected'
+                  : 'pending'
+          }
         }
       }
       state.activeRecordingId = null

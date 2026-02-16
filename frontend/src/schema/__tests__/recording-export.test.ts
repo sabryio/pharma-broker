@@ -95,18 +95,68 @@ const recordingMetadataArb = fc.record({
 /** Generate a match review item (simplified for testing) */
 const matchReviewArb = fc.record({
   id: fc.uuid(),
-  confidence: fc.float({ min: 0, max: 1, noNaN: true }),
+  confidence: fc.float({ min: 0, max: 100, noNaN: true }),
   status: fc.constantFrom('PENDING', 'CONFIRMED', 'REJECTED', 'EXPIRED'),
   reasoning: fc.option(fc.string({ maxLength: 200 }), { nil: null }),
   issues: fc.array(fc.string({ maxLength: 50 }), { maxLength: 5 }),
+  offer: fc.record({
+    id: fc.uuid(),
+    product: fc.string({ minLength: 1, maxLength: 100 }),
+    source: fc.constant('whatsapp'),
+    sourceGroup: fc.option(fc.string({ maxLength: 50 }), { nil: null }),
+    senderName: fc.option(fc.string({ maxLength: 50 }), { nil: null }),
+    senderJid: fc.option(fc.string({ maxLength: 50 }), { nil: null }),
+    rawMessage: fc.option(fc.string({ maxLength: 200 }), { nil: null }),
+    quantity: fc.option(fc.nat().map(String), { nil: null }),
+    price: fc.option(
+      fc.float({ min: 0, max: 10000, noNaN: true }).map(String),
+      { nil: null },
+    ),
+    expiry: fc.option(
+      fc.date().map((d) => d.toISOString()),
+      { nil: null },
+    ),
+    masterId: fc.option(fc.uuid(), { nil: null }),
+    medicationAliasId: fc.option(fc.uuid(), { nil: null }),
+    curationStatus: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+  }),
+  request: fc.record({
+    id: fc.uuid(),
+    product: fc.string({ minLength: 1, maxLength: 100 }),
+    source: fc.constant('whatsapp'),
+    sourceGroup: fc.option(fc.string({ maxLength: 50 }), { nil: null }),
+    senderName: fc.option(fc.string({ maxLength: 50 }), { nil: null }),
+    senderJid: fc.option(fc.string({ maxLength: 50 }), { nil: null }),
+    rawMessage: fc.option(fc.string({ maxLength: 200 }), { nil: null }),
+    quantity: fc.option(fc.nat().map(String), { nil: null }),
+    maxPrice: fc.option(
+      fc.float({ min: 0, max: 10000, noNaN: true }).map(String),
+      { nil: null },
+    ),
+    urgency: fc.constantFrom('normal', 'urgent', 'critical'),
+    masterId: fc.option(fc.uuid(), { nil: null }),
+    medicationAliasId: fc.option(fc.uuid(), { nil: null }),
+    curationStatus: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+  }),
   createdAt: fc.date({ noInvalidDate: true }).map((d) => d.toISOString()),
+  confirmedAt: fc.option(
+    fc.date({ noInvalidDate: true }).map((d) => d.toISOString()),
+    { nil: null },
+  ),
+  aiConfidence: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), {
+    nil: null,
+  }),
+  aiAutoApproved: fc.option(fc.boolean(), { nil: null }),
+  aiApprovedAt: fc.option(
+    fc.date({ noInvalidDate: true }).map((d) => d.toISOString()),
+    { nil: null },
+  ),
 })
 
 /** Generate offer data */
 const offerArb = fc.record({
   id: fc.uuid(),
   product: fc.string({ minLength: 1, maxLength: 100 }),
-  medicationRaw: fc.option(fc.string({ maxLength: 100 }), { nil: null }),
   quantity: fc.option(fc.nat().map(String), { nil: null }),
   price: fc.option(fc.float({ min: 0, max: 10000, noNaN: true }).map(String), {
     nil: null,
@@ -117,7 +167,6 @@ const offerArb = fc.record({
 const requestArb = fc.record({
   id: fc.uuid(),
   product: fc.string({ minLength: 1, maxLength: 100 }),
-  medicationRaw: fc.option(fc.string({ maxLength: 100 }), { nil: null }),
   quantity: fc.option(fc.nat().map(String), { nil: null }),
   maxPrice: fc.option(
     fc.float({ min: 0, max: 10000, noNaN: true }).map(String),
@@ -132,8 +181,8 @@ const snapshotArb = fc.record({
   matchReview: matchReviewArb,
   offer: offerArb,
   request: requestArb,
-  confidence: fc.float({ min: 0, max: 1, noNaN: true }),
-  aiConfidence: fc.option(fc.float({ min: 0, max: 1, noNaN: true }), {
+  confidence: fc.float({ min: 0, max: 100, noNaN: true }),
+  aiConfidence: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), {
     nil: null,
   }),
   issues: fc.array(fc.string({ maxLength: 100 }), { maxLength: 5 }),
@@ -205,13 +254,15 @@ describe('Recording Export/Import', () => {
             const original = recording.snapshots[i]
             const restoredSnapshot = restored.snapshots[i]
 
-            expect(restoredSnapshot.id).toBe(original.id)
-            expect(restoredSnapshot.confidence).toBe(original.confidence)
-            expect(restoredSnapshot.aiConfidence).toBe(original.aiConfidence)
-            expect(restoredSnapshot.event.type).toBe(original.event.type)
-            expect(restoredSnapshot.event.label).toBe(original.event.label)
-            expect(restoredSnapshot.offer.id).toBe(original.offer.id)
-            expect(restoredSnapshot.request.id).toBe(original.request.id)
+            if (original && restoredSnapshot) {
+              expect(restoredSnapshot.id).toBe(original.id)
+              expect(restoredSnapshot.confidence).toBe(original.confidence)
+              expect(restoredSnapshot.aiConfidence).toBe(original.aiConfidence)
+              expect(restoredSnapshot.event.type).toBe(original.event.type)
+              expect(restoredSnapshot.event.label).toBe(original.event.label)
+              expect(restoredSnapshot.offer.id).toBe(original.offer.id)
+              expect(restoredSnapshot.request.id).toBe(original.request.id)
+            }
           }
         }),
         { numRuns: 100 },

@@ -163,7 +163,9 @@ export function AdjustmentControls() {
           </div>
           <Slider
             value={[sliders.medicationWeight]}
-            onValueChange={(v) => handleSliderChange('medicationWeight', v[0])}
+            onValueChange={(v) =>
+              handleSliderChange('medicationWeight', v[0] ?? 0)
+            }
             min={0}
             max={100}
             step={1}
@@ -187,7 +189,7 @@ export function AdjustmentControls() {
           <Slider
             value={[sliders.pharmaceuticalStrictness]}
             onValueChange={(v) =>
-              handleSliderChange('pharmaceuticalStrictness', v[0])
+              handleSliderChange('pharmaceuticalStrictness', v[0] ?? 0)
             }
             max={100}
             step={1}

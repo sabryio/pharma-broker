@@ -47,13 +47,11 @@ interface ReviewCardProps {
     id: string,
     type: 'offer' | 'request',
     medication: string,
-    medicationRaw?: string,
   ) => void
   onReparse?: (
     id: string,
     type: 'offer' | 'request',
     medication: string,
-    medicationRaw?: string,
   ) => void
   aiConfidence?: number | null
   matchDetails?: MatchDetails | null
@@ -143,7 +141,7 @@ function SenderBadge({
     },
   })
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = () => {
     if (!message.trim() || !jid) return
     setSendError(null)
     sendMessageMutation.mutate({
@@ -459,11 +457,11 @@ function SenderBadge({
  */
 function RawMessageSection({
   rawMessage,
-  medicationRaw,
+  medication,
   accentColor,
 }: {
   rawMessage: string | null
-  medicationRaw: string | null
+  medication: string | null
   accentColor: 'teal' | 'amber'
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
@@ -505,7 +503,7 @@ function RawMessageSection({
         <div className="px-3 pb-3 text-xs leading-relaxed" dir="auto">
           <HighlightedMessage
             text={rawMessage}
-            highlight={medicationRaw}
+            highlight={medication}
             accentColor={accentColor}
           />
         </div>
@@ -596,18 +594,10 @@ export function ReviewCard({
                 masterId={offer.masterId}
                 onClick={(e) => {
                   e.stopPropagation()
-                  onCurate?.(
-                    offer.medicationRaw || offer.product,
-                    offer.medicationAliasId,
-                  )
+                  onCurate?.(offer.product, offer.medicationAliasId)
                 }}
               />
             </div>
-            {offer.medicationRaw && offer.medicationRaw !== offer.product && (
-              <div className="text-xs text-muted-foreground mt-1 opacity-70">
-                Raw: {offer.medicationRaw}
-              </div>
-            )}
           </div>
 
           {/* Stats Grid */}
@@ -642,7 +632,7 @@ export function ReviewCard({
           {/* Raw Message Section */}
           <RawMessageSection
             rawMessage={offer.rawMessage}
-            medicationRaw={offer.medicationRaw}
+            medication={offer.product}
             accentColor="teal"
           />
 
@@ -657,14 +647,7 @@ export function ReviewCard({
         {/* Reclassify Button - Outside the card */}
         {onReclassify && (
           <button
-            onClick={() =>
-              onReclassify(
-                offer.id,
-                'offer',
-                offer.product,
-                offer.medicationRaw ?? undefined,
-              )
-            }
+            onClick={() => onReclassify(offer.id, 'offer', offer.product)}
             className={cn(
               'mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl',
               'bg-linear-to-r from-violet-500/10 to-fuchsia-500/10',
@@ -683,14 +666,7 @@ export function ReviewCard({
         {/* Reparse Button */}
         {onReparse && (
           <button
-            onClick={() =>
-              onReparse(
-                offer.id,
-                'offer',
-                offer.product,
-                offer.medicationRaw ?? undefined,
-              )
-            }
+            onClick={() => onReparse(offer.id, 'offer', offer.product)}
             className={cn(
               'mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl',
               'bg-linear-to-r from-cyan-500/10 to-blue-500/10',
@@ -780,19 +756,10 @@ export function ReviewCard({
                 masterId={request.masterId}
                 onClick={(e) => {
                   e.stopPropagation()
-                  onCurate?.(
-                    request.medicationRaw || request.product,
-                    request.medicationAliasId,
-                  )
+                  onCurate?.(request.product, request.medicationAliasId)
                 }}
               />
             </div>
-            {request.medicationRaw &&
-              request.medicationRaw !== request.product && (
-                <div className="text-xs text-muted-foreground mt-1 opacity-70">
-                  Raw: {request.medicationRaw}
-                </div>
-              )}
           </div>
 
           {/* Stats Grid */}
@@ -840,7 +807,7 @@ export function ReviewCard({
           {/* Raw Message Section */}
           <RawMessageSection
             rawMessage={request.rawMessage}
-            medicationRaw={request.medicationRaw}
+            medication={request.product}
             accentColor="amber"
           />
 
@@ -855,14 +822,7 @@ export function ReviewCard({
         {/* Reclassify Button - Outside the card */}
         {onReclassify && (
           <button
-            onClick={() =>
-              onReclassify(
-                request.id,
-                'request',
-                request.product,
-                request.medicationRaw ?? undefined,
-              )
-            }
+            onClick={() => onReclassify(request.id, 'request', request.product)}
             className={cn(
               'mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl',
               'bg-linear-to-r from-violet-500/10 to-fuchsia-500/10',
@@ -881,14 +841,7 @@ export function ReviewCard({
         {/* Reparse Button */}
         {onReparse && (
           <button
-            onClick={() =>
-              onReparse(
-                request.id,
-                'request',
-                request.product,
-                request.medicationRaw ?? undefined,
-              )
-            }
+            onClick={() => onReparse(request.id, 'request', request.product)}
             className={cn(
               'mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl',
               'bg-linear-to-r from-cyan-500/10 to-blue-500/10',

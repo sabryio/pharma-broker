@@ -76,7 +76,7 @@ function GalleryCard({
       {/* Card content */}
       <div
         onClick={onToggle}
-        className="p-4 bg-gradient-to-br from-secondary/80 to-secondary/40 backdrop-blur-sm"
+        className="p-4 bg-linear-to-br from-secondary/80 to-secondary/40 backdrop-blur-sm"
       >
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
@@ -318,7 +318,7 @@ export function EnhancedBulkGrid({
   return (
     <div className="space-y-4 animate-scale-in">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-gradient-to-r from-secondary/50 to-secondary/30 border border-border/50">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-linear-to-r from-secondary/50 to-secondary/30 border border-border/50">
         {/* Left: Selection controls */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -452,16 +452,23 @@ export function EnhancedBulkGrid({
                 </button>
 
                 <div className="w-full max-w-md">
-                  <GalleryCard
-                    review={filteredReviews[galleryIndex]}
-                    isSelected={selectedIds.has(
-                      filteredReviews[galleryIndex].id,
-                    )}
-                    onToggle={() => onToggle(filteredReviews[galleryIndex].id)}
-                    onPreview={() =>
-                      setPreviewReview(filteredReviews[galleryIndex])
-                    }
-                  />
+                  {filteredReviews[galleryIndex] && (
+                    <GalleryCard
+                      review={filteredReviews[galleryIndex]}
+                      isSelected={selectedIds.has(
+                        filteredReviews[galleryIndex].id,
+                      )}
+                      onToggle={() =>
+                        onToggle(filteredReviews[galleryIndex]!.id)
+                      }
+                      onPreview={() => {
+                        const review = filteredReviews[galleryIndex]
+                        if (review) {
+                          setPreviewReview(review)
+                        }
+                      }}
+                    />
+                  )}
                 </div>
 
                 <button

@@ -1,7 +1,9 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
+  AlertTriangle,
+  Bug,
   CheckCircle,
   Download,
   FileSpreadsheet,
@@ -11,39 +13,39 @@ import {
   Layers,
   Loader2,
   RefreshCw,
-  Undo2,
-  AlertTriangle,
   Stethoscope,
-  Bug,
+  Undo2,
 } from 'lucide-react'
 
+import type {
+  AdjustmentSettings,
+  FilterState,
+  HistoryEntry,
+  OfferWithMatches,
+  RequestWithMatches,
+} from '@/components/review-queue'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import {
-  type HistoryEntry,
-  type AdjustmentSettings,
-  defaultAdjustments,
   AdjustmentControls,
+  EnhancedBulkGrid,
+  FilterBar,
   QueueProgress,
-  TimelineHistory,
+  QuickActionsBar,
   RelatedMatchCarousel,
+  StatsDashboard,
+  TimelineHistory,
+  defaultAdjustments,
+  defaultFilterState,
   groupByOffer,
   groupByRequest,
-  type OfferWithMatches,
-  type RequestWithMatches,
-  FilterBar,
-  defaultFilterState,
-  type FilterState,
-  QuickActionsBar,
-  EnhancedBulkGrid,
-  StatsDashboard,
 } from '@/components/review-queue'
 import { CurationMode } from '@/components/medication-curation'
 import { useNotifications } from '@/hooks/use-notifications'
 import {
-  useMatchReviewsManual,
-  useMatchReviewStats,
-  useUpdateMatchReviewStatus,
   useBulkUpdateMatchReviews,
+  useMatchReviewStats,
+  useMatchReviewsManual,
+  useUpdateMatchReviewStatus,
 } from '@/hooks/use-match-reviews'
 import { cn } from '@/lib/utils'
 import { useAppSelector, useMatchReviewsActions } from '@/store'
@@ -71,7 +73,7 @@ export default function ReviewQueue() {
   const [bulkMode, setBulkMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showHistory, setShowHistory] = useState(false)
-  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [history, setHistory] = useState<Array<HistoryEntry>>([])
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [adjustments] = useState<AdjustmentSettings>(defaultAdjustments)
   const [optimisticallyRemoved, setOptimisticallyRemoved] = useState<
@@ -122,9 +124,7 @@ export default function ReviewQueue() {
       result = result.filter(
         (item) =>
           item.offer.product.toLowerCase().includes(search) ||
-          item.request.product.toLowerCase().includes(search) ||
-          item.offer.medicationRaw?.toLowerCase().includes(search) ||
-          item.request.medicationRaw?.toLowerCase().includes(search),
+          item.request.product.toLowerCase().includes(search),
       )
     }
 
@@ -300,11 +300,11 @@ export default function ReviewQueue() {
             )
             if (reqIndex !== -1) {
               setAnchorIndex(reqIndex)
-              const offIndex = groupedRequests[reqIndex].matches.findIndex(
+              const offIndex = groupedRequests[reqIndex]?.matches.findIndex(
                 (m) =>
                   m.offer.id === (currentGroup as OfferWithMatches).offer.id,
               )
-              setRelatedIndex(Math.max(0, offIndex))
+              setRelatedIndex(Math.max(0, offIndex ?? 0))
             }
           }
         } else {
@@ -315,12 +315,12 @@ export default function ReviewQueue() {
             )
             if (offIndex !== -1) {
               setAnchorIndex(offIndex)
-              const reqIndex = groupedOffers[offIndex].matches.findIndex(
+              const reqIndex = groupedOffers[offIndex]?.matches.findIndex(
                 (m) =>
                   m.request.id ===
                   (currentGroup as RequestWithMatches).request.id,
               )
-              setRelatedIndex(Math.max(0, reqIndex))
+              setRelatedIndex(Math.max(0, reqIndex ?? 0))
             }
           }
         }
@@ -347,7 +347,9 @@ export default function ReviewQueue() {
           } else if (anchorIndex > 0) {
             setAnchorIndex((i) => i - 1)
             const prevGroup = groups[anchorIndex - 1]
-            setRelatedIndex(prevGroup.matches.length - 1)
+            setRelatedIndex(
+              prevGroup?.matches.length ? prevGroup.matches.length - 1 : 0,
+            )
           }
           break
         case 'ArrowRight':
@@ -435,8 +437,8 @@ export default function ReviewQueue() {
   }
 
   const handleBulkAction = (action: 'approved' | 'rejected') => {
-    const entries: HistoryEntry[] = []
-    const ids: string[] = []
+    const entries: Array<HistoryEntry> = []
+    const ids: Array<string> = []
 
     selectedIds.forEach((id) => {
       const review = pendingReviews.find((r) => r.id === id)
@@ -485,7 +487,10 @@ export default function ReviewQueue() {
 
   const undoLastAction = () => {
     if (history.length === 0) return
-    restoreFromHistory(history[0].id)
+    const firstHistory = history[0]
+    if (firstHistory) {
+      restoreFromHistory(firstHistory.id)
+    }
   }
 
   const restoreFromHistory = (historyId: string) => {
@@ -736,17 +741,10 @@ export default function ReviewQueue() {
         </div>
 
         <StatsDashboard
-          pending={pendingReviews.length}
+          pending={apiStats?.pending ?? pendingReviews.length}
           approved={apiStats?.confirmedToday ?? 0}
           rejected={apiStats?.rejectedToday ?? 0}
-          avgConfidence={
-            pendingReviews.length > 0
-              ? Math.round(
-                  pendingReviews.reduce((acc, r) => acc + r.confidence, 0) /
-                    pendingReviews.length,
-                )
-              : (apiStats?.avgConfidence ?? 0)
-          }
+          avgConfidence={apiStats?.avgConfidence ?? 0}
           highConfidenceCount={
             pendingReviews.filter((r) => r.confidence >= 80).length
           }
@@ -771,10 +769,23 @@ export default function ReviewQueue() {
               filteredCount={filteredReviews.length}
             />
 
-            <QueueProgress
-              pending={filteredReviews.length}
-              total={totalReviews}
-            />
+            <div className="space-y-2">
+              <QueueProgress
+                pending={filteredReviews.length}
+                total={totalReviews}
+              />
+              {!bulkMode && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground px-2">
+                  <span>
+                    Showing {groupedOffers.length} unique offers from{' '}
+                    {filteredReviews.length} matches
+                  </span>
+                  <span>
+                    Total: {apiStats?.pending ?? 0} pending matches in database
+                  </span>
+                </div>
+              )}
+            </div>
             {showHistory && (
               <TimelineHistory
                 history={history}
@@ -806,6 +817,7 @@ export default function ReviewQueue() {
                   issues={currentMatch.issues}
                   onApprove={(id) => handleSingleAction(id, 'approved')}
                   onReject={(id) => handleSingleAction(id, 'rejected')}
+                  apiStats={apiStats}
                 />
                 <AdjustmentControls />
                 <QuickActionsBar

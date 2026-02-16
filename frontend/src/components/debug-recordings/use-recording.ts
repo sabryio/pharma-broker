@@ -134,7 +134,9 @@ export function useRecording(
             const oldest = Array.from(next.entries()).sort(
               ([, a], [, b]) => a.startedAt.getTime() - b.startedAt.getTime(),
             )[0]
-            next.delete(oldest[0])
+            if (oldest) {
+              next.delete(oldest[0])
+            }
           }
           next.set(matchId, {
             id: matchId,

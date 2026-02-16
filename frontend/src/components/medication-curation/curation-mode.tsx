@@ -90,7 +90,9 @@ export const CurationMode: React.FC = () => {
         const num = parseInt(e.key)
         if (num >= 1 && num <= suggestions.length) {
           const suggestion = suggestions[num - 1]
-          setSelectedMasterId(suggestion.master.id)
+          if (suggestion) {
+            setSelectedMasterId(suggestion.master.id)
+          }
           e.preventDefault()
         }
       }

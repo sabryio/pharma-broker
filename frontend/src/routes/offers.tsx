@@ -1,28 +1,29 @@
 import { createFileRoute } from '@tanstack/react-router'
+import {
+  AlertCircle,
+  ArrowRightLeft,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  Loader2,
+  MessageCircle,
+  MoreHorizontal,
+  Plus,
+} from 'lucide-react'
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
+import { useMemo, useState } from 'react'
+import type { Offer } from '@/schema/offer-request'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Badge } from '@/components/ui/badge'
 import { MatchCountInline } from '@/components/ui/match-count-badge'
 import { ReclassifyDialog } from '@/components/ui/reclassify-dialog'
-import {
-  MessageCircle,
-  Filter,
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-  AlertCircle,
-  ArrowRightLeft,
-  MoreHorizontal,
-} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useOffers } from '@/hooks/use-offers-requests'
-import { useState, useMemo } from 'react'
-import {
-  useReactTable,
-  getCoreRowModel,
-  flexRender,
-  createColumnHelper,
-} from '@tanstack/react-table'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,7 +31,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
-import type { Offer, OfferStatus } from '@/schema/offer-request'
 
 export const Route = createFileRoute('/offers')({
   component: Offers,
@@ -41,7 +41,6 @@ function Offers() {
   const [reclassifyItem, setReclassifyItem] = useState<{
     id: string
     medication: string
-    medicationRaw: string
   } | null>(null)
 
   const { data, isLoading, isError, error } = useOffers({
@@ -66,7 +65,7 @@ function Offers() {
       columnHelper.accessor('confirmed_match_count', {
         header: 'Matches',
         cell: (info) => (
-          <MatchCountInline count={info.getValue() ?? 0} variant="offer" />
+          <MatchCountInline count={info.getValue()} variant="offer" />
         ),
       }),
       columnHelper.accessor('group_id', {
@@ -76,7 +75,7 @@ function Offers() {
       columnHelper.accessor('status', {
         header: 'Status',
         cell: (info) => {
-          const status = info.getValue() as OfferStatus
+          const status = info.getValue()
           return (
             <Badge
               variant="outline"
@@ -112,7 +111,6 @@ function Offers() {
                     setReclassifyItem({
                       id: offer.id,
                       medication: offer.medication,
-                      medicationRaw: offer.medication_raw,
                     })
                   }
                   className="gap-2 text-amber"
@@ -188,7 +186,7 @@ function Offers() {
             <div className="flex flex-col items-center justify-center h-64 gap-3">
               <AlertCircle className="w-10 h-10 text-destructive" />
               <p className="text-muted-foreground">
-                {error?.message || 'Failed to load offers'}
+                {error.message || 'Failed to load offers'}
               </p>
               <p className="text-xs text-muted-foreground">
                 Make sure the backend is running on port 8082
@@ -284,7 +282,6 @@ function Offers() {
         itemId={reclassifyItem?.id ?? ''}
         itemType="offer"
         medication={reclassifyItem?.medication ?? ''}
-        medicationRaw={reclassifyItem?.medicationRaw}
         onSuccess={() => setReclassifyItem(null)}
       />
     </DashboardLayout>

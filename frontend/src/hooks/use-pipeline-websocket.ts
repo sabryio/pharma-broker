@@ -491,13 +491,16 @@ export function usePipelineWebSocket(
             // Update the current stage with progress info
             setStages((prev) => {
               const lastIndex = prev.length - 1
+              const lastStage = prev[lastIndex]
               if (
                 lastIndex >= 0 &&
-                prev[lastIndex].stageName === evt.stage_name
+                lastStage &&
+                lastStage.stageName === evt.stage_name
               ) {
                 const updated = [...prev]
                 updated[lastIndex] = {
-                  ...updated[lastIndex],
+                  ...lastStage,
+                  id: lastStage.id ?? '',
                   progressPercent: evt.progress_percent,
                   progressMessage: evt.message,
                 }

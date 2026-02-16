@@ -175,6 +175,10 @@ pub trait MatchRepository: Send + Sync {
     async fn count_rejected_today(&self) -> Result<i64>;
     /// Get average score of pending matches
     async fn avg_pending_score(&self) -> Result<f64>;
+    /// Count unique offers in pending matches
+    async fn count_unique_pending_offers(&self) -> Result<i64>;
+    /// Count unique requests in pending matches
+    async fn count_unique_pending_requests(&self) -> Result<i64>;
 }
 
 /// Raw message repository trait
@@ -601,4 +605,6 @@ pub struct MatchReviewStats {
     pub rejected_today: i64,
     pub total_pending: i64,
     pub avg_confidence: f64,
+    pub unique_pending_offers: i64,
+    pub unique_pending_requests: i64,
 }

@@ -23,6 +23,7 @@ import { SenderProfile } from './sender-profile'
 import { NotesPanel } from './notes-panel'
 import type { OfferWithMatches, RequestWithMatches } from './types'
 import type { ItemType } from '@/api/offers'
+import type { MatchReviewStats } from '@/schema/match-review'
 import { cn } from '@/lib/utils'
 import { ReparseDialog } from '@/components/ui/reparse-dialog'
 import { UncertaintyIndicator } from '@/components/debug-recordings'
@@ -32,8 +33,8 @@ import { reAuditMatch, recalculateConfidence } from '@/api/match-reviews'
 
 interface RelatedMatchCarouselProps {
   /** Grouped data - either offers with their requests or requests with their offers */
-  groupedByOffer: OfferWithMatches[]
-  groupedByRequest: RequestWithMatches[]
+  groupedByOffer: Array<OfferWithMatches>
+  groupedByRequest: Array<RequestWithMatches>
   /** Current mode - anchor by offer or request */
   anchorMode: 'offer' | 'request'
   onAnchorModeChange: (mode: 'offer' | 'request') => void
@@ -44,10 +45,12 @@ interface RelatedMatchCarouselProps {
   relatedIndex: number
   onRelatedIndexChange: (index: number) => void
   /** Issues for current match */
-  issues: string[]
+  issues: Array<string>
   /** Action handlers */
   onApprove: (matchId: string) => void
   onReject: (matchId: string) => void
+  /** API stats for total counts */
+  apiStats?: MatchReviewStats | null
 }
 
 export function RelatedMatchCarousel({
@@ -62,6 +65,7 @@ export function RelatedMatchCarousel({
   issues,
   onApprove,
   onReject,
+  apiStats,
 }: RelatedMatchCarouselProps) {
   const queryClient = useQueryClient()
   const [curationMedication, setCurationMedication] = useState<string | null>(
@@ -75,7 +79,6 @@ export function RelatedMatchCarousel({
     id: string
     type: ItemType
     medication: string
-    medicationRaw?: string
   } | null>(null)
 
   // Reparse dialog state
@@ -83,29 +86,18 @@ export function RelatedMatchCarousel({
     id: string
     type: ItemType
     medication: string
-    medicationRaw?: string
   } | null>(null)
 
   const handleReclassify = useCallback(
-    (
-      id: string,
-      type: 'offer' | 'request',
-      medication: string,
-      medicationRaw?: string,
-    ) => {
-      setReclassifyItem({ id, type, medication, medicationRaw })
+    (id: string, type: 'offer' | 'request', medication: string) => {
+      setReclassifyItem({ id, type, medication })
     },
     [],
   )
 
   const handleReparse = useCallback(
-    (
-      id: string,
-      type: 'offer' | 'request',
-      medication: string,
-      medicationRaw?: string,
-    ) => {
-      setReparseItem({ id, type, medication, medicationRaw })
+    (id: string, type: 'offer' | 'request', medication: string) => {
+      setReparseItem({ id, type, medication })
     },
     [],
   )
@@ -215,9 +207,6 @@ export function RelatedMatchCarousel({
     })
   }, [currentGroup, isOfferMode, anchorMode, rematchMutation])
 
-  if (!currentGroup) return null
-  if (!currentMatch) return null
-
   const totalAnchors = groups.length
   const totalMatches = matches.length
 
@@ -249,6 +238,8 @@ export function RelatedMatchCarousel({
   }, [relatedIndex, totalMatches, onRelatedIndexChange])
 
   const handleAction = (action: 'approved' | 'rejected') => {
+    if (!currentMatch) return
+
     const handler = action === 'approved' ? onApprove : onReject
     handler(currentMatch.matchId)
 
@@ -260,6 +251,9 @@ export function RelatedMatchCarousel({
       onRelatedIndexChange(0)
     }
   }
+
+  if (!currentGroup) return null
+  if (!currentMatch) return null
 
   return (
     <div className="space-y-4">
@@ -282,7 +276,21 @@ export function RelatedMatchCarousel({
             <span className="text-sm font-medium">
               {isOfferMode ? 'Offer' : 'Request'}{' '}
               <span className="text-teal font-bold">{anchorIndex + 1}</span>
-              <span className="text-muted-foreground"> of {totalAnchors}</span>
+              <span className="text-muted-foreground">
+                {' '}
+                of{' '}
+                {isOfferMode
+                  ? (apiStats?.uniquePendingOffers ?? totalAnchors)
+                  : (apiStats?.uniquePendingRequests ?? totalAnchors)}
+              </span>
+              {totalAnchors !==
+                (isOfferMode
+                  ? apiStats?.uniquePendingOffers
+                  : apiStats?.uniquePendingRequests) && (
+                <span className="text-xs text-muted-foreground/60 ml-1">
+                  ({totalAnchors} loaded)
+                </span>
+              )}
             </span>
           </div>
           <button
@@ -770,7 +778,6 @@ export function RelatedMatchCarousel({
         itemId={reclassifyItem?.id ?? ''}
         itemType={reclassifyItem?.type ?? 'offer'}
         medication={reclassifyItem?.medication ?? ''}
-        medicationRaw={reclassifyItem?.medicationRaw}
         onSuccess={() => {
           setReclassifyItem(null)
           // The dialog will invalidate queries automatically
@@ -785,7 +792,6 @@ export function RelatedMatchCarousel({
         itemId={reparseItem?.id ?? ''}
         itemType={reparseItem?.type ?? 'offer'}
         medication={reparseItem?.medication ?? ''}
-        medicationRaw={reparseItem?.medicationRaw}
         onSuccess={() => {
           setReparseItem(null)
           // The dialog will invalidate queries automatically

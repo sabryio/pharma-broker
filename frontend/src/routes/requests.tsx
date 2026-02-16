@@ -45,7 +45,6 @@ function Requests() {
   const [reclassifyItem, setReclassifyItem] = useState<{
     id: string
     medication: string
-    medicationRaw: string
   } | null>(null)
 
   const { data, isLoading, isError, error } = useRequests({
@@ -121,7 +120,6 @@ function Requests() {
                     setReclassifyItem({
                       id: request.id,
                       medication: request.medication,
-                      medicationRaw: request.medication_raw,
                     })
                   }
                   className="gap-2 text-emerald"
@@ -296,7 +294,6 @@ function Requests() {
         itemId={reclassifyItem?.id ?? ''}
         itemType="request"
         medication={reclassifyItem?.medication ?? ''}
-        medicationRaw={reclassifyItem?.medicationRaw}
         onSuccess={() => setReclassifyItem(null)}
       />
     </DashboardLayout>
