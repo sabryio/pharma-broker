@@ -6,10 +6,10 @@ import apiClient from './client'
 
 export interface Weights {
   medication: number
-  dosage: number
-  quantity: number
-  price: number
+  pharmaceutical: number
   recency: number
+  expiry: number
+  supplier: number
   ai_logic: number
 }
 
@@ -21,10 +21,10 @@ export interface WeightsResponse {
 
 export interface UpdateWeightsRequest {
   medication: number
-  dosage: number
-  quantity: number
-  price: number
+  pharmaceutical: number
   recency: number
+  expiry: number
+  supplier: number
   ai_logic: number
   reason?: string
 }
@@ -69,63 +69,42 @@ export async function updateWeights(
  *
  * Frontend sliders:
  * - Medication Name Weight (0-100) -> medication weight
- * - Dosage Strictness (0-100) -> dosage weight
- * - Quantity Tolerance (0-50) -> quantity weight (inverted - higher tolerance = lower weight)
- * - Price Flexibility (0-50) -> price weight (inverted - higher flexibility = lower weight)
+ * - Pharmaceutical Strictness (0-100) -> pharmaceutical weight (concentration + form)
  *
- * Fixed weights: recency=0.05, ai_logic=0.00
+ * Fixed weights: recency=0.10, ai_logic=0.10, expiry=0.0, supplier=0.0
  */
 export function slidersToWeights(sliders: {
   medicationWeight: number
-  dosageStrictness: number
-  quantityTolerance: number
-  priceFlexibility: number
+  pharmaceuticalStrictness: number
 }): Weights {
   // Fixed weights
-  const recency = 0.05
-  const ai_logic = 0.0
-  const fixedTotal = recency + ai_logic
+  const recency = 0.1
+  const ai_logic = 0.1
+  const expiry = 0.0
+  const supplier = 0.0
+  const fixedTotal = recency + ai_logic + expiry + supplier
 
   // Available weight for dynamic allocation
-  const availableWeight = 1.0 - fixedTotal // 0.95
+  const availableWeight = 1.0 - fixedTotal // 0.80
 
-  // Medication gets the lion's share based on slider (50-90% of available)
-  const medicationPct = 0.5 + (sliders.medicationWeight / 100) * 0.4
+  // Medication gets weight based on slider (40-80% of available)
+  const medicationPct = 0.4 + (sliders.medicationWeight / 100) * 0.4
   const medication = availableWeight * medicationPct
 
-  // Remaining weight for dosage, quantity, price
-  const remaining = availableWeight - medication
+  // Pharmaceutical gets the remaining weight
+  const pharmaceutical = availableWeight - medication
 
-  // Dosage strictness: higher = more weight on dosage
-  const dosageRatio = sliders.dosageStrictness / 100
-
-  // Quantity/Price: higher tolerance/flexibility = LESS weight (inverted)
-  const quantityRatio = 1 - sliders.quantityTolerance / 50
-  const priceRatio = 1 - sliders.priceFlexibility / 50
-
-  // Normalize the three ratios
-  const totalRatio = dosageRatio + quantityRatio + priceRatio
-
-  let dosage: number, quantity: number, price: number
-
-  if (totalRatio > 0) {
-    dosage = remaining * (dosageRatio / totalRatio)
-    quantity = remaining * (quantityRatio / totalRatio)
-    price = remaining * (priceRatio / totalRatio)
-  } else {
-    // Equal distribution if all sliders are at extremes
-    dosage = remaining / 3
-    quantity = remaining / 3
-    price = remaining / 3
-  }
+  // Ensure weights sum to exactly 1.0 by normalizing
+  const sum =
+    medication + pharmaceutical + recency + ai_logic + expiry + supplier
 
   return {
-    medication: Math.round(medication * 1000) / 1000,
-    dosage: Math.round(dosage * 1000) / 1000,
-    quantity: Math.round(quantity * 1000) / 1000,
-    price: Math.round(price * 1000) / 1000,
-    recency,
-    ai_logic,
+    medication: medication / sum,
+    pharmaceutical: pharmaceutical / sum,
+    recency: recency / sum,
+    expiry: expiry / sum,
+    supplier: supplier / sum,
+    ai_logic: ai_logic / sum,
   }
 }
 
@@ -134,40 +113,23 @@ export function slidersToWeights(sliders: {
  */
 export function weightsToSliders(weights: Weights): {
   medicationWeight: number
-  dosageStrictness: number
-  quantityTolerance: number
-  priceFlexibility: number
+  pharmaceuticalStrictness: number
 } {
-  const availableWeight = 0.95 // 1.0 - recency - ai_logic
+  const availableWeight = 0.8 // 1.0 - recency - ai_logic - expiry - supplier
 
-  // Medication weight percentage of available (50-90% range)
+  // Medication weight percentage of available (40-80% range)
   const medicationPct = weights.medication / availableWeight
-  const medicationWeight = Math.round(((medicationPct - 0.5) / 0.4) * 100)
+  const medicationWeight = Math.round(((medicationPct - 0.4) / 0.4) * 100)
 
-  // For the secondary weights, calculate their relative proportions
-  const secondaryTotal = weights.dosage + weights.quantity + weights.price
-
-  let dosageStrictness = 80
-  let quantityTolerance = 15
-  let priceFlexibility = 10
-
-  if (secondaryTotal > 0) {
-    // Dosage strictness: proportion of secondary weights
-    dosageStrictness = Math.round((weights.dosage / secondaryTotal) * 100)
-
-    // Quantity tolerance: inverted (higher weight = lower tolerance)
-    const quantityProportion = weights.quantity / secondaryTotal
-    quantityTolerance = Math.round((1 - quantityProportion) * 50)
-
-    // Price flexibility: inverted (higher weight = lower flexibility)
-    const priceProportion = weights.price / secondaryTotal
-    priceFlexibility = Math.round((1 - priceProportion) * 50)
-  }
+  // Pharmaceutical strictness: proportion of available weight
+  const pharmaceuticalPct = weights.pharmaceutical / availableWeight
+  const pharmaceuticalStrictness = Math.round(pharmaceuticalPct * 100)
 
   return {
     medicationWeight: Math.max(0, Math.min(100, medicationWeight)),
-    dosageStrictness: Math.max(0, Math.min(100, dosageStrictness)),
-    quantityTolerance: Math.max(0, Math.min(50, quantityTolerance)),
-    priceFlexibility: Math.max(0, Math.min(50, priceFlexibility)),
+    pharmaceuticalStrictness: Math.max(
+      0,
+      Math.min(100, pharmaceuticalStrictness),
+    ),
   }
 }
