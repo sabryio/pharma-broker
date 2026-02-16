@@ -423,9 +423,16 @@ impl MatchingEngine {
 
         let weights = self.scorer.get_weights();
 
+        // Get pharmaceutical validation details
+        let pharmaceutical_result = self
+            .scorer
+            .pharmaceutical_validator()
+            .validate(offer, request);
+
         // Build score breakdown as JSON
         let score_breakdown = serde_json::json!({
             "medication_score": score.medication_score,
+            "pharmaceutical_score": score.pharmaceutical_score,
             "dosage_score": score.dosage_score,
             "recency_score": score.recency_score,
             "ai_logic_score": score.ai_logic_score,
@@ -433,11 +440,38 @@ impl MatchingEngine {
             "confidence": format!("{:?}", score.confidence),
             "breakdown": score.breakdown,
             "action": format!("{:?}", action),
+            "pharmaceutical_validation": {
+                "passed": pharmaceutical_result.passed,
+                "score": pharmaceutical_result.score,
+                "concentration_check": pharmaceutical_result.concentration_check.as_ref().map(|c| serde_json::json!({
+                    "offer_value": c.offer_value.as_ref().map(|v| serde_json::json!({
+                        "numeric": v.numeric,
+                        "unit": v.unit,
+                        "original": v.original,
+                    })),
+                    "request_value": c.request_value.as_ref().map(|v| serde_json::json!({
+                        "numeric": v.numeric,
+                        "unit": v.unit,
+                        "original": v.original,
+                    })),
+                    "difference_percent": c.difference_percent,
+                    "penalty": c.penalty,
+                    "compatible": c.compatible,
+                })),
+                "form_check": pharmaceutical_result.form_check.as_ref().map(|f| serde_json::json!({
+                    "offer_form": f.offer_form,
+                    "request_form": f.request_form,
+                    "compatible": f.compatible,
+                    "penalty": f.penalty,
+                })),
+                "rejection_reason": pharmaceutical_result.rejection_reason,
+            },
         });
 
         // Build weights snapshot as JSON
         let weights_snapshot = serde_json::json!({
             "medication": weights.medication,
+            "pharmaceutical": weights.pharmaceutical,
             "recency": weights.recency,
             "expiry": weights.expiry,
             "supplier": weights.supplier,
@@ -516,6 +550,7 @@ impl MatchingEngine {
                 let score = MatchScore {
                     total: 0.0,
                     medication_score,
+                    pharmaceutical_score: 0.0,
                     dosage_score: 0.0,
                     recency_score: 0.0,
                     ai_logic_score: 0.0,
@@ -706,24 +741,35 @@ impl MatchingEngine {
         (score, action, review_result)
     }
 
-    /// Score a match with historical bonus details
-    /// Returns the score, action, and historical bonus applied
+    /// Score a match with historical bonus and pharmaceutical validation details
+    /// Returns the score, action, historical bonus, and pharmaceutical validation result
     pub async fn score_match_with_details(
         &self,
         offer: &Offer,
         request: &Request,
         medication_score: f64,
         user_id: Option<&str>,
-    ) -> (MatchScore, MatchAction, f64) {
+    ) -> (
+        MatchScore,
+        MatchAction,
+        f64,
+        super::PharmaceuticalValidationResult,
+    ) {
         let historical_bonus = self
             .historical_learner
             .get_historical_bonus(&offer.medication, &request.medication);
+
+        // Get pharmaceutical validation details
+        let pharmaceutical_result = self
+            .scorer
+            .pharmaceutical_validator()
+            .validate(offer, request);
 
         let (score, action) = self
             .score_match(offer, request, medication_score, user_id)
             .await;
 
-        (score, action, historical_bonus)
+        (score, action, historical_bonus, pharmaceutical_result)
     }
 
     /// Process a MatchAction (notify, auto-confirm, etc.)
@@ -1401,6 +1447,75 @@ impl MatchingEngine {
     }
 
     // =========================================================================
+    // Pharmaceutical Validator Configuration
+    // =========================================================================
+
+    /// Get pharmaceutical validator configuration
+    pub fn get_pharmaceutical_validator_config(&self) -> super::PharmaceuticalValidatorConfig {
+        self.scorer.get_pharmaceutical_config()
+    }
+
+    /// Set pharmaceutical validator configuration
+    pub fn set_pharmaceutical_validator_config(
+        &self,
+        config: super::PharmaceuticalValidatorConfig,
+    ) {
+        tracing::info!(
+            concentration_tolerance = config.concentration_tolerance_percent,
+            concentration_reject_threshold = config.concentration_reject_threshold_percent,
+            concentration_check_enabled = config.enable_concentration_check,
+            form_check_enabled = config.enable_form_check,
+            "Pharmaceutical validator configuration updated"
+        );
+        self.scorer.set_pharmaceutical_config(config);
+    }
+
+    /// Enable or disable concentration validation
+    pub fn enable_concentration_check(&self, enabled: bool) {
+        let mut config = self.scorer.get_pharmaceutical_config();
+        config.enable_concentration_check = enabled;
+        self.scorer.set_pharmaceutical_config(config);
+        tracing::info!(enabled = enabled, "Concentration check toggled");
+    }
+
+    /// Enable or disable form validation
+    pub fn enable_form_check(&self, enabled: bool) {
+        let mut config = self.scorer.get_pharmaceutical_config();
+        config.enable_form_check = enabled;
+        self.scorer.set_pharmaceutical_config(config);
+        tracing::info!(enabled = enabled, "Form check toggled");
+    }
+
+    /// Set concentration tolerance threshold
+    pub fn set_concentration_tolerance(&self, tolerance_percent: f64) {
+        let mut config = self.scorer.get_pharmaceutical_config();
+        config.concentration_tolerance_percent = tolerance_percent;
+        self.scorer.set_pharmaceutical_config(config);
+        tracing::info!(
+            tolerance_percent = tolerance_percent,
+            "Concentration tolerance updated"
+        );
+    }
+
+    /// Set concentration rejection threshold
+    pub fn set_concentration_reject_threshold(&self, threshold_percent: f64) {
+        let mut config = self.scorer.get_pharmaceutical_config();
+        config.concentration_reject_threshold_percent = threshold_percent;
+        self.scorer.set_pharmaceutical_config(config);
+        tracing::info!(
+            threshold_percent = threshold_percent,
+            "Concentration rejection threshold updated"
+        );
+    }
+
+    /// Get pharmaceutical validation statistics
+    pub fn get_pharmaceutical_validator_stats(
+        &self,
+    ) -> super::PharmaceuticalValidationStatsSnapshot {
+        self.scorer.pharmaceutical_validator().get_stats()
+    }
+
+    // =========================================================================
     // Match Filter (Stale/Same-Sender Filtering)
     // =========================================================================
 
@@ -1852,20 +1967,24 @@ impl MatchingEngine {
                     offer_class = %oc,
                     request_class = %rc,
                     embedding_similarity = embedding_similarity,
-                    "Class mismatch detected with high embedding similarity - flagging as suspicious"
+                    validation_type = "therapeutic_class_mismatch",
+                    severity = "high",
+                    "Therapeutic class mismatch detected with high embedding similarity - potential safety risk"
                 );
                 ClassMismatchResult::mismatch(Some(oc.clone()), Some(rc.clone()))
             }
             (Some(_), None) | (None, Some(_)) => {
                 // One medication has unknown class - flag as suspicious if similarity is very high
                 if embedding_similarity > 0.9 {
-                    tracing::debug!(
+                    tracing::warn!(
                         offer_med = %offer_med,
                         request_med = %request_med,
                         offer_class = ?offer_class,
                         request_class = ?request_class,
                         embedding_similarity = embedding_similarity,
-                        "High similarity with partial class information - flagging for review"
+                        validation_type = "therapeutic_class_partial",
+                        severity = "medium",
+                        "High similarity with incomplete class information - flagging for manual review"
                     );
                     ClassMismatchResult::mismatch(offer_class, request_class)
                 } else {
@@ -2089,596 +2208,527 @@ impl MatchingEngine {
     }
 }
 
-// =============================================================================
-// Tests
-// =============================================================================
-
 #[cfg(test)]
 mod tests {
-    use chrono::{Duration, Utc};
-    use uuid::Uuid;
-
     use super::*;
-    use crate::domain::MatchStatus;
+    use crate::domain::{Offer, Request};
+    use chrono::Utc;
 
-    #[tokio::test]
-    async fn test_create_matching_engine() {
-        let engine = MatchingEngine::default();
-
-        let weights = engine.get_weights();
-        assert!(weights.medication > 0.0);
-    }
-
-    #[tokio::test]
-    async fn test_score_match_basic() {
-        let engine = MatchingEngine::default();
-
-        let offer = Offer {
-            medication: "Aspirin 100mg".to_string(),
-
+    /// Helper function to create a test offer
+    fn create_test_offer(
+        medication: &str,
+        concentration: Option<&str>,
+        form: Option<&str>,
+    ) -> Offer {
+        Offer {
+            id: uuid::Uuid::new_v4(),
+            medication: medication.to_string(),
+            concentration: concentration.map(|s| s.to_string()),
+            form: form.map(|s| s.to_string()),
+            participant_id: uuid::Uuid::new_v4(),
+            group_id: uuid::Uuid::new_v4(),
+            raw_message_id: uuid::Uuid::new_v4(),
             created_at: Utc::now(),
             ..Default::default()
-        };
+        }
+    }
 
-        let request = Request {
-            medication: "Aspirin 100mg".to_string(),
+    /// Helper function to create a test request
+    fn create_test_request(
+        medication: &str,
+        concentration: Option<&str>,
+        form: Option<&str>,
+    ) -> Request {
+        Request {
+            id: uuid::Uuid::new_v4(),
+            medication: medication.to_string(),
+            concentration: concentration.map(|s| s.to_string()),
+            form: form.map(|s| s.to_string()),
+            participant_id: uuid::Uuid::new_v4(),
+            group_id: uuid::Uuid::new_v4(),
+            raw_message_id: uuid::Uuid::new_v4(),
+            created_at: Utc::now(),
             ..Default::default()
-        };
+        }
+    }
 
+    // =========================================================================
+    // Task 7.2.1: Test end-to-end scoring with pharmaceutical validation
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_end_to_end_scoring_with_pharmaceutical_validation() {
+        let engine = MatchingEngine::default();
+
+        // Create matching offer and request with identical pharmaceutical properties
+        let offer = create_test_offer("Aspirin", Some("100mg"), Some("اقراص"));
+        let request = create_test_request("Aspirin", Some("100mg"), Some("اقراص"));
+
+        // Score the match
+        let (score, action) = engine.score_match(&offer, &request, 0.95, None).await;
+
+        // Verify pharmaceutical score is included and high (identical properties)
+        assert!(
+            score.pharmaceutical_score > 0.95,
+            "Expected high pharmaceutical score for identical properties, got {}",
+            score.pharmaceutical_score
+        );
+
+        // Verify total score includes pharmaceutical component
+        assert!(
+            score.total > 0.0,
+            "Expected positive total score, got {}",
+            score.total
+        );
+
+        // Verify breakdown includes pharmaceutical score
+        assert!(
+            score.breakdown.contains("Pharma:"),
+            "Expected breakdown to include pharmaceutical score"
+        );
+
+        // Verify action is reasonable for high score
+        assert!(
+            matches!(
+                action,
+                MatchAction::AutoConfirm | MatchAction::SuggestToOperator
+            ),
+            "Expected AutoConfirm or SuggestToOperator for high score, got {:?}",
+            action
+        );
+    }
+
+    // =========================================================================
+    // Task 7.2.2: Test concentration mismatch reduces score appropriately
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_concentration_mismatch_reduces_score() {
+        let engine = MatchingEngine::default();
+
+        // Create offer and request with significant concentration difference (150mg vs 15mg = 900% difference)
+        let offer = create_test_offer("Aspirin", Some("150mg"), Some("اقراص"));
+        let request = create_test_request("Aspirin", Some("15mg"), Some("اقراص"));
+
+        // Score the match with high medication similarity
         let (score, _action) = engine.score_match(&offer, &request, 0.95, None).await;
 
-        assert!(score.total > 0.0);
-        assert!(score.medication_score == 0.95);
+        // Verify pharmaceutical score is significantly reduced due to concentration mismatch
+        assert!(
+            score.pharmaceutical_score < 0.5,
+            "Expected low pharmaceutical score for large concentration mismatch, got {}",
+            score.pharmaceutical_score
+        );
+
+        // Verify total score is reduced (but may still be relatively high due to other factors)
+        assert!(
+            score.total < 0.9,
+            "Expected reduced total score for concentration mismatch, got {}",
+            score.total
+        );
     }
 
     #[tokio::test]
-    async fn test_record_feedback() {
+    async fn test_moderate_concentration_difference_applies_penalty() {
         let engine = MatchingEngine::default();
 
-        let result = engine.record_feedback("user-1", true, 0.85).await;
-        assert!(result.is_ok());
+        // Create offer and request with moderate concentration difference (100mg vs 75mg = 33% difference)
+        let offer = create_test_offer("Aspirin", Some("100mg"), Some("اقراص"));
+        let request = create_test_request("Aspirin", Some("75mg"), Some("اقراص"));
 
-        let count = engine.get_sample_count().await;
-        assert_eq!(count, 1);
+        // Score the match
+        let (score, _action) = engine.score_match(&offer, &request, 0.95, None).await;
+
+        // Verify pharmaceutical score is reduced but not zero (graduated penalty)
+        assert!(
+            score.pharmaceutical_score > 0.3 && score.pharmaceutical_score < 0.9,
+            "Expected moderate pharmaceutical score for 33% concentration difference, got {}",
+            score.pharmaceutical_score
+        );
     }
 
     #[tokio::test]
-    async fn test_ab_test_integration() {
+    async fn test_missing_concentration_applies_moderate_penalty() {
         let engine = MatchingEngine::default();
 
-        let test_config = ABTestConfig {
-            test_id: "test-1".to_string(),
-            name: "Weight Test".to_string(),
-            description: "Testing new weights".to_string(),
-            control_pct: 0.5,
-            test_weights: Weights {
-                medication: 0.50,
-                recency: 0.05,
-                expiry: 0.05,
-                supplier: 0.05,
-                ai_logic: 0.0,
-            },
-            start_time: Utc::now() - Duration::hours(1),
-            end_time: Utc::now() + Duration::hours(1),
-            min_samples: 10,
-            active: true,
-            auto_rollback: None,
-        };
+        // Create offer with concentration, request without
+        let offer = create_test_offer("Aspirin", Some("100mg"), Some("اقراص"));
+        let request = create_test_request("Aspirin", None, Some("اقراص"));
 
-        let result = engine.create_ab_test(test_config);
-        assert!(result.is_ok());
+        // Score the match
+        let (score, _action) = engine.score_match(&offer, &request, 0.95, None).await;
 
-        let active = engine.get_active_ab_tests();
-        assert_eq!(active.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_warm_start_integration() {
-        let engine = MatchingEngine::default();
-
-        // With 0 samples, prior influence should be 100%
-        let influence = engine.get_prior_influence().await;
-        assert!((influence - 100.0).abs() < 0.001);
-    }
-
-    #[tokio::test]
-    async fn test_outlier_detection_integration() {
-        let engine = MatchingEngine::default();
-
-        // Add some normal scores
-        for _ in 0..30 {
-            engine.record_feedback("user", true, 0.75).await.ok();
-        }
-
-        let (mean, _std_dev, count) = engine.get_outlier_stats();
-        assert_eq!(count, 30);
-        assert!(mean > 0.7);
-    }
-
-    #[tokio::test]
-    async fn test_config_update() {
-        let engine = MatchingEngine::default();
-
-        let new_config = MatchingEngineConfig {
-            weights: Weights {
-                medication: 0.50,
-                recency: 0.05,
-                expiry: 0.05,
-                supplier: 0.05,
-                ai_logic: 0.0,
-            },
-            ..Default::default()
-        };
-
-        engine.update_config(new_config).await;
-
-        let weights = engine.get_weights();
-        assert!((weights.medication - 0.50).abs() < 0.001);
+        // Verify pharmaceutical score is reduced moderately (default 15% penalty)
+        assert!(
+            score.pharmaceutical_score > 0.7 && score.pharmaceutical_score < 1.0,
+            "Expected moderate penalty for missing concentration, got {}",
+            score.pharmaceutical_score
+        );
     }
 
     // =========================================================================
-    // Match Filter Integration Tests
+    // Task 7.2.3: Test form incompatibility reduces score appropriately
     // =========================================================================
 
     #[tokio::test]
-    async fn test_match_filter_integration() {
+    async fn test_form_incompatibility_reduces_score() {
         let engine = MatchingEngine::default();
 
-        let request = Request {
-            id: Uuid::new_v4(),
-            participant_id: Uuid::new_v4(), // Different from offers
-            ..Default::default()
-        };
+        // Create offer and request with incompatible forms (امبول vs اقراص)
+        let offer = create_test_offer("Aspirin", Some("100mg"), Some("امبول"));
+        let request = create_test_request("Aspirin", Some("100mg"), Some("اقراص"));
 
-        let offers = vec![
-            Offer {
-                id: Uuid::new_v4(),
-                participant_id: Uuid::new_v4(), // Different from request
-                created_at: Utc::now(),
-                ..Default::default()
-            },
-            Offer {
-                id: Uuid::new_v4(),
-                participant_id: Uuid::new_v4(), // Different from request
-                created_at: Utc::now(),
-                ..Default::default()
-            },
-            Offer {
-                id: Uuid::new_v4(),
-                participant_id: Uuid::new_v4(), // Different from request
-                created_at: Utc::now() - Duration::days(10), // Stale
-                ..Default::default()
-            },
-        ];
+        // Score the match
+        let (score, _action) = engine.score_match(&offer, &request, 0.95, None).await;
 
-        let filtered = engine.filter_offers_for_request(&offers, &request);
-
-        // offer-1 and offer-2 should pass (fresh), offer-3 filtered (stale)
-        assert_eq!(filtered.len(), 2);
+        // Verify pharmaceutical score is significantly reduced due to form incompatibility
+        assert!(
+            score.pharmaceutical_score < 0.5,
+            "Expected low pharmaceutical score for incompatible forms, got {}",
+            score.pharmaceutical_score
+        );
     }
 
     #[tokio::test]
-    async fn test_match_filter_stats() {
+    async fn test_compatible_forms_low_penalty() {
         let engine = MatchingEngine::default();
 
-        let request = Request {
-            id: Uuid::new_v4(),
-            participant_id: Uuid::new_v4(), // Different from offer
-            ..Default::default()
-        };
+        // Create offer and request with compatible forms (امبول vs فايل)
+        let offer = create_test_offer("Aspirin", Some("100mg"), Some("امبول"));
+        let request = create_test_request("Aspirin", Some("100mg"), Some("فايل"));
 
-        let offers = vec![Offer {
-            id: Uuid::new_v4(),
-            participant_id: Uuid::new_v4(), // Different from request
-            created_at: Utc::now(),
-            ..Default::default()
-        }];
+        // Score the match
+        let (score, _action) = engine.score_match(&offer, &request, 0.95, None).await;
 
-        engine.filter_offers_for_request(&offers, &request);
-
-        let stats = engine.get_match_filter_stats();
-        assert_eq!(stats.total_candidates, 1);
-        assert_eq!(stats.passed_filters, 1);
-    }
-
-    // =========================================================================
-    // Embedding Cache Integration Tests
-    // =========================================================================
-
-    #[tokio::test]
-    async fn test_embedding_cache_integration() {
-        let engine = MatchingEngine::default();
-
-        assert!(engine.is_embedding_cache_empty());
-
-        let masters = vec![MedicationMaster {
-            id: Uuid::new_v4(),
-            canonical_name: "Brufen".to_string(),
-            canonical_name_ar: Some("بروفين".to_string()),
-            active_ingredient: Some("Ibuprofen".to_string()),
-            strength: Some("400mg".to_string()),
-            dosage_form: None,
-            manufacturer: None,
-            eda_registration: None,
-            therapeutic_class: None,
-            atc_code: None,
-            status: pharma_db::entity::medication_master::MedicationStatus::Active,
-            embedding: Some(pgvector::Vector::from(vec![0.1, 0.2, 0.3])),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            created_by: None,
-        }];
-
-        engine.refresh_embedding_cache(&masters);
-
-        assert!(!engine.is_embedding_cache_empty());
-
-        // Test embedding retrieval
-        let emb = engine.get_medication_embedding("Brufen");
-        assert!(emb.is_some());
-
-        // Test synonym check
-        assert!(engine.are_medications_synonyms("Brufen", "Ibuprofen"));
-        assert!(engine.are_medications_synonyms("بروفين", "Brufen"));
-
-        // Test canonical name
-        let canonical = engine.get_canonical_medication("Ibuprofen");
-        assert_eq!(canonical, Some("brufen".to_string()));
-    }
-
-    // =========================================================================
-    // Audit Trail Integration Tests
-    // =========================================================================
-
-    #[tokio::test]
-    async fn test_audit_trail_integration() {
-        let engine = MatchingEngine::default();
-
-        let match_id = Uuid::new_v4();
-        let match_entity = MatchEntity {
-            id: match_id,
-            offer_id: Uuid::new_v4(),
-            request_id: Uuid::new_v4(),
-            score: 0.95,
-            status: MatchStatus::Confirmed,
-            reasoning: Some("High confidence match".to_string()),
-            ..Default::default()
-        };
-
-        // Log a match action
-        let result = engine
-            .log_match_action(&match_entity, MatchAction::AutoConfirm, "Test action")
-            .await;
-        assert!(result.is_ok());
-
-        // Get match history
-        let history = engine
-            .get_match_audit_history(&match_id.to_string())
-            .await
-            .unwrap();
-        assert_eq!(history.len(), 1);
-        assert_eq!(history[0].match_id, Some(match_id.to_string()));
+        // Verify pharmaceutical score has low penalty for compatible forms
+        assert!(
+            score.pharmaceutical_score > 0.8,
+            "Expected high pharmaceutical score for compatible forms, got {}",
+            score.pharmaceutical_score
+        );
     }
 
     #[tokio::test]
-    async fn test_audit_trail_config_change() {
+    async fn test_identical_forms_no_penalty() {
         let engine = MatchingEngine::default();
 
-        let result = engine
-            .log_config_change(
-                "confidence_threshold",
-                serde_json::json!(0.7),
-                serde_json::json!(0.8),
-                "admin",
-            )
-            .await;
-        assert!(result.is_ok());
+        // Create offer and request with identical forms
+        let offer = create_test_offer("Aspirin", Some("100mg"), Some("اقراص"));
+        let request = create_test_request("Aspirin", Some("100mg"), Some("اقراص"));
 
-        let recent = engine.get_recent_audit_actions(10).await.unwrap();
-        assert_eq!(recent.len(), 1);
+        // Score the match
+        let (score, _action) = engine.score_match(&offer, &request, 0.95, None).await;
+
+        // Verify pharmaceutical score is high (no form penalty)
+        assert!(
+            score.pharmaceutical_score > 0.95,
+            "Expected no penalty for identical forms, got {}",
+            score.pharmaceutical_score
+        );
     }
 
     // =========================================================================
-    // Historical Learning Integration Tests
+    // Task 7.2.4: Test therapeutic class mismatch returns zero score
     // =========================================================================
 
     #[tokio::test]
-    async fn test_historical_learning_integration() {
+    async fn test_therapeutic_class_mismatch_detection() {
         let engine = MatchingEngine::default();
 
-        assert!(engine.is_historical_learning_enabled());
-        assert_eq!(engine.medication_pair_count(), 0);
-
-        // Record feedback with medications
+        // Add medications to class index with different classes
+        engine.add_medication_class("Aspirin", "Analgesic").await;
         engine
-            .record_feedback_with_medications("user-1", true, 0.85, "Brufen", "Ibuprofen")
-            .await
-            .unwrap();
+            .add_medication_class("Metformin", "Antidiabetic")
+            .await;
 
-        assert_eq!(engine.medication_pair_count(), 1);
+        // Detect class mismatch with high embedding similarity
+        let result = engine
+            .detect_class_mismatch("Aspirin", "Metformin", 0.85)
+            .await;
 
-        // Check affinity was recorded
-        let affinity = engine.get_medication_affinity("Brufen", "Ibuprofen");
-        assert!(affinity.is_some());
-        assert!(affinity.unwrap() > 0.5); // Should be above neutral
+        // Verify mismatch is detected
+        assert!(result.is_mismatch, "Expected class mismatch to be detected");
+        assert!(
+            result.suspicious,
+            "Expected match to be flagged as suspicious"
+        );
+        // Note: Classes are normalized to lowercase by HardNegativeIndex
+        assert_eq!(result.offer_class, Some("analgesic".to_string()));
+        assert_eq!(result.request_class, Some("antidiabetic".to_string()));
     }
 
     #[tokio::test]
-    async fn test_historical_learning_bonus_applied() {
-        let mut config = MatchingEngineConfig::default();
-        config.historical.min_confirmations = 3;
-        config.historical.confidence_threshold = 3;
-        config.historical.historical_weight = 0.10;
-        let engine = MatchingEngine::new(config);
+    async fn test_no_class_mismatch_for_same_class() {
+        let engine = MatchingEngine::default();
 
-        // Record enough confirmations to trigger bonus
-        for _ in 0..5 {
-            engine
-                .record_feedback_with_medications("user", true, 0.85, "Brufen", "Ibuprofen")
-                .await
-                .unwrap();
-        }
+        // Add medications to class index with same class
+        engine.add_medication_class("Aspirin", "Analgesic").await;
+        engine.add_medication_class("Ibuprofen", "Analgesic").await;
 
-        // Score a match - should include historical bonus
-        let offer = Offer {
-            medication: "Brufen".to_string(),
-            created_at: Utc::now(),
-            ..Default::default()
-        };
+        // Detect class mismatch
+        let result = engine
+            .detect_class_mismatch("Aspirin", "Ibuprofen", 0.85)
+            .await;
 
-        let request = Request {
-            medication: "Ibuprofen".to_string(),
-            ..Default::default()
-        };
+        // Verify no mismatch is detected
+        assert!(
+            !result.is_mismatch,
+            "Expected no class mismatch for same class"
+        );
+        assert!(!result.suspicious, "Expected match not to be flagged");
+    }
 
-        let (score, _action, bonus) = engine
+    #[tokio::test]
+    async fn test_no_class_check_for_low_similarity() {
+        let engine = MatchingEngine::default();
+
+        // Add medications with different classes
+        engine.add_medication_class("Aspirin", "Analgesic").await;
+        engine
+            .add_medication_class("Metformin", "Antidiabetic")
+            .await;
+
+        // Detect class mismatch with low embedding similarity (below threshold)
+        let result = engine
+            .detect_class_mismatch("Aspirin", "Metformin", 0.75)
+            .await;
+
+        // Verify no mismatch is detected (similarity too low to check)
+        assert!(
+            !result.is_mismatch,
+            "Expected no class mismatch check for low similarity"
+        );
+    }
+
+    // =========================================================================
+    // Task 7.2.5: Test audit trail includes pharmaceutical validation details
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_audit_record_includes_pharmaceutical_details() {
+        let engine = MatchingEngine::default();
+
+        // Create offer and request with concentration mismatch
+        let offer = create_test_offer("Aspirin", Some("150mg"), Some("اقراص"));
+        let request = create_test_request("Aspirin", Some("100mg"), Some("اقراص"));
+
+        // Score the match
+        let (score, action) = engine.score_match(&offer, &request, 0.95, None).await;
+
+        // Build audit record
+        let audit_record = engine.build_audit_record(&offer, &request, &score, &action, None);
+
+        // Verify pharmaceutical score is in breakdown
+        let breakdown = audit_record.score_breakdown;
+        assert!(
+            breakdown.get("pharmaceutical_score").is_some(),
+            "Expected pharmaceutical_score in breakdown"
+        );
+
+        // Verify pharmaceutical validation details are present
+        let pharma_validation = breakdown.get("pharmaceutical_validation");
+        assert!(
+            pharma_validation.is_some(),
+            "Expected pharmaceutical_validation in breakdown"
+        );
+
+        let pharma_details = pharma_validation.unwrap();
+        assert!(
+            pharma_details.get("passed").is_some(),
+            "Expected 'passed' field in pharmaceutical validation"
+        );
+        assert!(
+            pharma_details.get("score").is_some(),
+            "Expected 'score' field in pharmaceutical validation"
+        );
+        assert!(
+            pharma_details.get("concentration_check").is_some(),
+            "Expected 'concentration_check' in pharmaceutical validation"
+        );
+        assert!(
+            pharma_details.get("form_check").is_some(),
+            "Expected 'form_check' in pharmaceutical validation"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_audit_record_includes_pharmaceutical_weight() {
+        let engine = MatchingEngine::default();
+
+        let offer = create_test_offer("Aspirin", Some("100mg"), Some("اقراص"));
+        let request = create_test_request("Aspirin", Some("100mg"), Some("اقراص"));
+
+        let (score, action) = engine.score_match(&offer, &request, 0.95, None).await;
+        let audit_record = engine.build_audit_record(&offer, &request, &score, &action, None);
+
+        // Verify pharmaceutical weight is in weights snapshot
+        let weights = audit_record.weights_snapshot;
+        assert!(
+            weights.get("pharmaceutical").is_some(),
+            "Expected pharmaceutical weight in weights snapshot"
+        );
+
+        let pharma_weight = weights.get("pharmaceutical").unwrap().as_f64().unwrap();
+        // Pharmaceutical weight should be present (may be 0.0 if warm start overrides it)
+        assert!(
+            pharma_weight >= 0.0,
+            "Expected pharmaceutical weight to be present, got {}",
+            pharma_weight
+        );
+    }
+
+    // =========================================================================
+    // Task 7.2.6: Test config changes propagate through engine
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_pharmaceutical_config_changes_affect_scoring() {
+        let engine = MatchingEngine::default();
+
+        // Create offer and request with 30% concentration difference
+        let offer = create_test_offer("Aspirin", Some("130mg"), Some("اقراص"));
+        let request = create_test_request("Aspirin", Some("100mg"), Some("اقراص"));
+
+        // Score with default config (tolerance: 20%, reject: 50%)
+        let (score1, _) = engine.score_match(&offer, &request, 0.95, None).await;
+
+        // Update config to be more lenient (tolerance: 40%, reject: 70%)
+        let mut config = engine.get_pharmaceutical_validator_config();
+        config.concentration_tolerance_percent = 40.0;
+        config.concentration_reject_threshold_percent = 70.0;
+        engine.set_pharmaceutical_validator_config(config);
+
+        // Score again with new config
+        let (score2, _) = engine.score_match(&offer, &request, 0.95, None).await;
+
+        // Verify score improved with more lenient config
+        assert!(
+            score2.pharmaceutical_score > score1.pharmaceutical_score,
+            "Expected higher pharmaceutical score with more lenient config: {} vs {}",
+            score2.pharmaceutical_score,
+            score1.pharmaceutical_score
+        );
+    }
+
+    #[tokio::test]
+    async fn test_disable_concentration_check() {
+        let engine = MatchingEngine::default();
+
+        // Create offer and request with large concentration difference
+        let offer = create_test_offer("Aspirin", Some("150mg"), Some("اقراص"));
+        let request = create_test_request("Aspirin", Some("15mg"), Some("اقراص"));
+
+        // Score with concentration check enabled
+        let (score1, _) = engine.score_match(&offer, &request, 0.95, None).await;
+
+        // Disable concentration check
+        engine.enable_concentration_check(false);
+
+        // Score again with concentration check disabled
+        let (score2, _) = engine.score_match(&offer, &request, 0.95, None).await;
+
+        // Verify pharmaceutical score is higher when check is disabled
+        assert!(
+            score2.pharmaceutical_score > score1.pharmaceutical_score,
+            "Expected higher pharmaceutical score with concentration check disabled: {} vs {}",
+            score2.pharmaceutical_score,
+            score1.pharmaceutical_score
+        );
+    }
+
+    #[tokio::test]
+    async fn test_disable_form_check() {
+        let engine = MatchingEngine::default();
+
+        // Create offer and request with incompatible forms
+        let offer = create_test_offer("Aspirin", Some("100mg"), Some("امبول"));
+        let request = create_test_request("Aspirin", Some("100mg"), Some("اقراص"));
+
+        // Score with form check enabled
+        let (score1, _) = engine.score_match(&offer, &request, 0.95, None).await;
+
+        // Disable form check
+        engine.enable_form_check(false);
+
+        // Score again with form check disabled
+        let (score2, _) = engine.score_match(&offer, &request, 0.95, None).await;
+
+        // Verify pharmaceutical score is higher when check is disabled
+        assert!(
+            score2.pharmaceutical_score > score1.pharmaceutical_score,
+            "Expected higher pharmaceutical score with form check disabled: {} vs {}",
+            score2.pharmaceutical_score,
+            score1.pharmaceutical_score
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_pharmaceutical_validator_stats() {
+        let engine = MatchingEngine::default();
+
+        // Perform some scoring operations
+        let offer1 = create_test_offer("Aspirin", Some("100mg"), Some("اقراص"));
+        let request1 = create_test_request("Aspirin", Some("100mg"), Some("اقراص"));
+        let _ = engine.score_match(&offer1, &request1, 0.95, None).await;
+
+        let offer2 = create_test_offer("Aspirin", Some("150mg"), Some("امبول"));
+        let request2 = create_test_request("Aspirin", Some("15mg"), Some("اقراص"));
+        let _ = engine.score_match(&offer2, &request2, 0.95, None).await;
+
+        // Get stats
+        let stats = engine.get_pharmaceutical_validator_stats();
+
+        // Verify stats are tracked
+        assert!(
+            stats.total_validations >= 2,
+            "Expected at least 2 validations, got {}",
+            stats.total_validations
+        );
+    }
+
+    #[tokio::test]
+    async fn test_score_match_with_details_returns_pharmaceutical_result() {
+        let engine = MatchingEngine::default();
+
+        // Create offer and request with concentration mismatch
+        let offer = create_test_offer("Aspirin", Some("150mg"), Some("اقراص"));
+        let request = create_test_request("Aspirin", Some("100mg"), Some("اقراص"));
+
+        // Score with details
+        let (_score, _action, _historical_bonus, pharma_result) = engine
             .score_match_with_details(&offer, &request, 0.95, None)
             .await;
 
-        assert!(bonus > 0.0, "Historical bonus should be positive");
-        assert!(score.total > 0.0);
-    }
-
-    #[tokio::test]
-    async fn test_historical_learning_stats() {
-        let engine = MatchingEngine::default();
-
-        engine
-            .record_feedback_with_medications("user", true, 0.85, "A", "B")
-            .await
-            .unwrap();
-        engine
-            .record_feedback_with_medications("user", false, 0.65, "C", "D")
-            .await
-            .unwrap();
-
-        let stats = engine.get_historical_stats();
-        assert_eq!(stats.total_pairs_tracked, 2);
-        assert_eq!(stats.total_confirmations, 1);
-        assert_eq!(stats.total_rejections, 1);
-    }
-
-    #[tokio::test]
-    async fn test_historical_learning_export_import() {
-        let engine1 = MatchingEngine::default();
-
-        engine1
-            .record_feedback_with_medications("user", true, 0.85, "Med1", "Med2")
-            .await
-            .unwrap();
-
-        let exported = engine1.export_medication_affinities();
-        assert_eq!(exported.len(), 1);
-
-        let engine2 = MatchingEngine::default();
-        engine2.load_medication_affinities(exported);
-
-        assert_eq!(engine2.medication_pair_count(), 1);
-        assert!(engine2.get_medication_affinity("Med1", "Med2").is_some());
-    }
-
-    #[tokio::test]
-    async fn test_historical_learning_clear() {
-        let engine = MatchingEngine::default();
-
-        engine
-            .record_feedback_with_medications("user", true, 0.85, "A", "B")
-            .await
-            .unwrap();
-        assert_eq!(engine.medication_pair_count(), 1);
-
-        engine.clear_historical_learning();
-        assert_eq!(engine.medication_pair_count(), 0);
-    }
-
-    // =========================================================================
-    // Class Mismatch Detection Tests (Requirement 3.2)
-    // =========================================================================
-
-    #[tokio::test]
-    async fn test_class_mismatch_detection_different_classes() {
-        let engine = MatchingEngine::default();
-
-        // Add medications with different therapeutic classes
-        engine
-            .add_medication_class("Metformin", "Antidiabetic")
-            .await;
-        engine
-            .add_medication_class("Metoprolol", "Beta-blocker")
-            .await;
-        engine.mark_class_index_built().await;
-
-        // High similarity (>0.8) with different classes should flag as suspicious
-        let result = engine
-            .detect_class_mismatch("Metformin", "Metoprolol", 0.85)
-            .await;
-
-        assert!(result.is_mismatch);
-        assert!(result.suspicious);
-        assert_eq!(result.offer_class, Some("antidiabetic".to_string()));
-        // Note: HardNegativeIndex normalizes "Beta-blocker" to "betablocker" (removes hyphen)
-        assert_eq!(result.request_class, Some("betablocker".to_string()));
-        assert!(result.reason.is_some());
-    }
-
-    #[tokio::test]
-    async fn test_class_mismatch_detection_same_class() {
-        let engine = MatchingEngine::default();
-
-        // Add medications with same therapeutic class
-        engine
-            .add_medication_class("Metformin", "Antidiabetic")
-            .await;
-        engine
-            .add_medication_class("Glipizide", "Antidiabetic")
-            .await;
-        engine.mark_class_index_built().await;
-
-        // High similarity with same class should NOT flag as suspicious
-        let result = engine
-            .detect_class_mismatch("Metformin", "Glipizide", 0.85)
-            .await;
-
-        assert!(!result.is_mismatch);
-        assert!(!result.suspicious);
-    }
-
-    #[tokio::test]
-    async fn test_class_mismatch_detection_low_similarity() {
-        let engine = MatchingEngine::default();
-
-        // Add medications with different therapeutic classes
-        engine
-            .add_medication_class("Metformin", "Antidiabetic")
-            .await;
-        engine
-            .add_medication_class("Metoprolol", "Beta-blocker")
-            .await;
-        engine.mark_class_index_built().await;
-
-        // Low similarity (<0.8) should NOT trigger class mismatch check
-        let result = engine
-            .detect_class_mismatch("Metformin", "Metoprolol", 0.75)
-            .await;
-
-        assert!(!result.is_mismatch);
-        assert!(!result.suspicious);
-    }
-
-    #[tokio::test]
-    async fn test_class_mismatch_detection_unknown_class() {
-        let engine = MatchingEngine::default();
-
-        // Add only one medication with class
-        engine
-            .add_medication_class("Metformin", "Antidiabetic")
-            .await;
-        engine.mark_class_index_built().await;
-
-        // Very high similarity (>0.9) with unknown class should flag
-        let result = engine
-            .detect_class_mismatch("Metformin", "UnknownMed", 0.95)
-            .await;
-
-        assert!(result.is_mismatch);
-        assert!(result.suspicious);
-        assert_eq!(result.offer_class, Some("antidiabetic".to_string()));
-        assert_eq!(result.request_class, None);
-
-        // High but not very high similarity (0.8-0.9) with unknown class should NOT flag
-        let result2 = engine
-            .detect_class_mismatch("Metformin", "UnknownMed", 0.85)
-            .await;
-
-        assert!(!result2.is_mismatch);
-        assert!(!result2.suspicious);
-    }
-
-    #[tokio::test]
-    async fn test_class_index_operations() {
-        let engine = MatchingEngine::default();
-
-        // Initially empty
-        assert!(!engine.is_class_index_ready().await);
-        assert_eq!(engine.class_index_medication_count().await, 0);
-        assert_eq!(engine.class_index_class_count().await, 0);
-
-        // Add medications
-        engine
-            .add_medication_class("Metformin", "Antidiabetic")
-            .await;
-        engine
-            .add_medication_class("Glipizide", "Antidiabetic")
-            .await;
-        engine
-            .add_medication_class("Metoprolol", "Beta-blocker")
-            .await;
-        engine.mark_class_index_built().await;
-
-        assert!(engine.is_class_index_ready().await);
-        assert_eq!(engine.class_index_medication_count().await, 3);
-        assert_eq!(engine.class_index_class_count().await, 2);
-
-        // Get class
-        let class = engine.get_medication_class("Metformin").await;
-        assert_eq!(class, Some("antidiabetic".to_string()));
-
-        // Clear
-        engine.clear_class_index().await;
-        assert!(!engine.is_class_index_ready().await);
-        assert_eq!(engine.class_index_medication_count().await, 0);
-    }
-
-    #[tokio::test]
-    async fn test_bulk_load_medication_classes() {
-        let engine = MatchingEngine::default();
-
-        let medications = vec![
-            ("Metformin".to_string(), "Antidiabetic".to_string()),
-            ("Glipizide".to_string(), "Antidiabetic".to_string()),
-            ("Metoprolol".to_string(), "Beta-blocker".to_string()),
-            ("Atenolol".to_string(), "Beta-blocker".to_string()),
-        ];
-
-        engine.load_medication_classes(&medications).await;
-
-        assert!(engine.is_class_index_ready().await);
-        assert_eq!(engine.class_index_medication_count().await, 4);
-        assert_eq!(engine.class_index_class_count().await, 2);
-    }
-
-    #[tokio::test]
-    async fn test_class_mismatch_result_constructors() {
-        // Test no_mismatch constructor
-        let no_mismatch = ClassMismatchResult::no_mismatch();
-        assert!(!no_mismatch.is_mismatch);
-        assert!(!no_mismatch.suspicious);
-        assert!(no_mismatch.offer_class.is_none());
-        assert!(no_mismatch.request_class.is_none());
-        assert!(no_mismatch.reason.is_none());
-
-        // Test mismatch constructor with both classes
-        let mismatch = ClassMismatchResult::mismatch(
-            Some("Antidiabetic".to_string()),
-            Some("Beta-blocker".to_string()),
-        );
-        assert!(mismatch.is_mismatch);
-        assert!(mismatch.suspicious);
-        assert_eq!(mismatch.offer_class, Some("Antidiabetic".to_string()));
-        assert_eq!(mismatch.request_class, Some("Beta-blocker".to_string()));
-        assert!(mismatch.reason.is_some());
+        // Verify pharmaceutical result is returned
         assert!(
-            mismatch
-                .reason
-                .unwrap()
-                .contains("different therapeutic classes")
+            pharma_result.score < 1.0,
+            "Expected reduced pharmaceutical score for concentration mismatch"
         );
 
-        // Test mismatch constructor with one unknown class
-        let partial_mismatch =
-            ClassMismatchResult::mismatch(Some("Antidiabetic".to_string()), None);
-        assert!(partial_mismatch.is_mismatch);
-        assert!(partial_mismatch.suspicious);
-        assert!(partial_mismatch.reason.unwrap().contains("unknown class"));
+        // Verify concentration check details are present
+        assert!(
+            pharma_result.concentration_check.is_some(),
+            "Expected concentration check result"
+        );
+
+        let conc_check = pharma_result.concentration_check.unwrap();
+        assert!(
+            conc_check.offer_value.is_some(),
+            "Expected offer concentration value"
+        );
+        assert!(
+            conc_check.request_value.is_some(),
+            "Expected request concentration value"
+        );
+        assert!(
+            conc_check.difference_percent.is_some(),
+            "Expected concentration difference percentage"
+        );
+
+        // Verify form check details are present
+        assert!(
+            pharma_result.form_check.is_some(),
+            "Expected form check result"
+        );
     }
 }

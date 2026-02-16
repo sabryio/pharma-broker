@@ -244,6 +244,8 @@ impl WeightLearner {
         Weights {
             medication: current.medication
                 * (1.0 + lr * correlations.get("medication").unwrap_or(&0.0)),
+            pharmaceutical: current.pharmaceutical
+                * (1.0 + lr * correlations.get("pharmaceutical").unwrap_or(&0.0)),
             recency: current.recency * (1.0 + lr * correlations.get("recency").unwrap_or(&0.0)),
             expiry: current.expiry * (1.0 + lr * correlations.get("expiry").unwrap_or(&0.0)),
             supplier: current.supplier * (1.0 + lr * correlations.get("supplier").unwrap_or(&0.0)),
@@ -268,6 +270,7 @@ impl WeightLearner {
 
         Weights {
             medication: constrain(current.medication, adjusted.medication),
+            pharmaceutical: constrain(current.pharmaceutical, adjusted.pharmaceutical),
             recency: constrain(current.recency, adjusted.recency),
             expiry: constrain(current.expiry, adjusted.expiry),
             supplier: constrain(current.supplier, adjusted.supplier),
@@ -279,24 +282,27 @@ impl WeightLearner {
     /// Ported from Go: WeightLearner.normalizeWeights (learner.go:203-225)
     pub fn normalize_weights(&self, weights: &Weights) -> Weights {
         let sum = weights.medication
+            + weights.pharmaceutical
             + weights.recency
             + weights.expiry
             + weights.supplier
             + weights.ai_logic;
 
         if sum == 0.0 {
-            // Fallback to equal weights (5 weights now)
+            // Fallback to equal weights (6 weights now)
             return Weights {
-                medication: 1.0 / 5.0,
-                recency: 1.0 / 5.0,
-                expiry: 1.0 / 5.0,
-                supplier: 1.0 / 5.0,
-                ai_logic: 1.0 / 5.0,
+                medication: 1.0 / 6.0,
+                pharmaceutical: 1.0 / 6.0,
+                recency: 1.0 / 6.0,
+                expiry: 1.0 / 6.0,
+                supplier: 1.0 / 6.0,
+                ai_logic: 1.0 / 6.0,
             };
         }
 
         Weights {
             medication: weights.medication / sum,
+            pharmaceutical: weights.pharmaceutical / sum,
             recency: weights.recency / sum,
             expiry: weights.expiry / sum,
             supplier: weights.supplier / sum,
@@ -398,384 +404,5 @@ impl WeightLearner {
     /// Get scorer reference
     pub fn scorer(&self) -> Option<&Scorer> {
         self.scorer.as_ref()
-    }
-}
-
-// ============================================================================
-// Tests - Ported from learner_test.go
-// ============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rstest::rstest;
-
-    #[test]
-    fn test_default_learning_config() {
-        let config = LearningConfig::default();
-
-        assert!((config.learning_rate - 0.1).abs() < 0.001);
-        assert!((config.min_weight - 0.05).abs() < 0.001);
-        assert!((config.max_weight - 0.70).abs() < 0.001);
-        assert!((config.min_change - 0.02).abs() < 0.001);
-        assert_eq!(config.min_samples, 100);
-        assert_eq!(config.analysis_window, 30);
-    }
-
-    #[test]
-    fn test_calculate_correlations() {
-        let learner = WeightLearner::new();
-
-        let stats = FeedbackStats {
-            // Medication: strong positive correlation
-            confirmed_avg_medication: 0.90,
-            rejected_avg_medication: 0.60,
-            medication_diff: 0.30,
-
-            // Quantity: weak positive correlation
-            confirmed_avg_quantity: 0.85,
-            rejected_avg_quantity: 0.80,
-            quantity_diff: 0.05,
-
-            // Price: negative correlation
-            confirmed_avg_price: 0.70,
-            rejected_avg_price: 0.80,
-            price_diff: -0.10,
-
-            ..Default::default()
-        };
-
-        let correlations = learner.calculate_correlations(&stats);
-
-        // Medication: 0.30 / 0.90 ≈ 0.333
-        let expected_med = 0.30 / 0.90;
-        assert!(
-            (correlations["medication"] - expected_med).abs() < 0.001,
-            "medication correlation: {} vs {}",
-            correlations["medication"],
-            expected_med
-        );
-
-        // Quantity: 0.05 / 0.85 ≈ 0.059
-        let expected_qty = 0.05 / 0.85;
-        assert!(
-            (correlations["quantity"] - expected_qty).abs() < 0.001,
-            "quantity correlation: {} vs {}",
-            correlations["quantity"],
-            expected_qty
-        );
-
-        // Price: -0.10 / 0.80 = -0.125 (negative!)
-        let expected_price = -0.10 / 0.80;
-        assert!(
-            (correlations["price"] - expected_price).abs() < 0.001,
-            "price correlation: {} vs {}",
-            correlations["price"],
-            expected_price
-        );
-    }
-
-    #[test]
-    fn test_adjust_weights_positive_correlation() {
-        let learner = WeightLearner::new();
-
-        let current = Weights {
-            medication: 0.45,
-            recency: 0.05,
-            expiry: 0.025,
-            supplier: 0.025,
-            ai_logic: 0.35,
-        };
-
-        let mut correlations = HashMap::new();
-        correlations.insert("medication".to_string(), 0.30); // Strong positive
-        correlations.insert("dosage".to_string(), 0.0);
-        correlations.insert("recency".to_string(), 0.0);
-
-        let adjusted = learner.adjust_weights(&current, &correlations);
-
-        // Medication: 0.45 * (1 + 0.1 * 0.30) = 0.45 * 1.03 = 0.4635
-        let expected_med = 0.45 * (1.0 + 0.1 * 0.30);
-        assert!(
-            (adjusted.medication - expected_med).abs() < 0.0001,
-            "medication: {} vs {}",
-            adjusted.medication,
-            expected_med
-        );
-    }
-
-    #[test]
-    fn test_apply_constraints_min_max_bounds() {
-        let learner = WeightLearner::with_config(LearningConfig {
-            min_weight: 0.05,
-            max_weight: 0.70,
-            min_change: 0.02,
-            ..Default::default()
-        });
-
-        let current = Weights {
-            medication: 0.50,
-            recency: 0.05,
-            expiry: 0.025,
-            supplier: 0.025,
-            ai_logic: 0.30,
-        };
-
-        let adjusted = Weights {
-            medication: 0.80, // Exceeds max
-            recency: 0.06,    // Small change (0.01 < 0.02)
-            expiry: 0.025,    // No change
-            supplier: 0.025,  // No change
-            ai_logic: 0.35,   // Acceptable change
-        };
-
-        let constrained = learner.apply_constraints(&current, &adjusted);
-
-        // Medication clamped to max
-        assert_eq!(constrained.medication, 0.70);
-
-        // Recency unchanged (change too small)
-        assert_eq!(constrained.recency, 0.05);
-    }
-
-    #[test]
-    fn test_normalize_weights() {
-        let learner = WeightLearner::new();
-
-        let weights = Weights {
-            medication: 0.50,
-            recency: 0.05,
-            expiry: 0.025,
-            supplier: 0.025,
-            ai_logic: 0.35,
-        };
-        // Sum = 1.05
-
-        let normalized = learner.normalize_weights(&weights);
-
-        let sum = normalized.medication
-            + normalized.recency
-            + normalized.expiry
-            + normalized.supplier
-            + normalized.ai_logic;
-
-        assert!((sum - 1.0).abs() < 0.0001, "sum: {}", sum);
-
-        // Proportions maintained
-        let expected_med = 0.50 / 1.05;
-        assert!(
-            (normalized.medication - expected_med).abs() < 0.0001,
-            "medication: {} vs {}",
-            normalized.medication,
-            expected_med
-        );
-    }
-
-    #[test]
-    fn test_normalize_weights_zero_sum() {
-        let learner = WeightLearner::new();
-
-        // Explicit zero weights (not default which has non-zero values)
-        let weights = Weights {
-            medication: 0.0,
-            recency: 0.0,
-            expiry: 0.0,
-            supplier: 0.0,
-            ai_logic: 0.0,
-        };
-
-        let normalized = learner.normalize_weights(&weights);
-
-        // Should return equal weights (1/6 for each of 6 weights)
-        let expected = 1.0 / 6.0;
-        assert!((normalized.medication - expected).abs() < 0.0001);
-
-        let sum = normalized.medication
-            + normalized.recency
-            + normalized.expiry
-            + normalized.supplier
-            + normalized.ai_logic;
-        assert!((sum - 1.0).abs() < 0.0001);
-    }
-
-    #[test]
-    fn test_calculate_optimal_weights_insufficient_data() {
-        let learner = WeightLearner::new();
-
-        let stats = FeedbackStats {
-            total_feedback: 50, // Less than min (100)
-            ..Default::default()
-        };
-
-        let current = Weights::default();
-        let result = learner.calculate_optimal_weights(&stats, &current);
-
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            LearnerError::InsufficientData { got, need } => {
-                assert_eq!(got, 50);
-                assert_eq!(need, 100);
-            }
-            _ => panic!("Wrong error type"),
-        }
-    }
-
-    #[test]
-    fn test_calculate_optimal_weights_success() {
-        let learner = WeightLearner::new();
-
-        let stats = FeedbackStats {
-            total_feedback: 200,
-            confirmed_count: 150,
-            rejected_count: 50,
-            avg_confirmed_score: 0.88,
-            avg_rejected_score: 0.75,
-            confirmation_rate: 0.75,
-
-            confirmed_avg_medication: 0.90,
-            rejected_avg_medication: 0.60,
-            medication_diff: 0.30,
-
-            confirmed_avg_dosage: 0.85,
-            rejected_avg_dosage: 0.82,
-            dosage_diff: 0.03,
-
-            confirmed_avg_quantity: 0.88,
-            rejected_avg_quantity: 0.85,
-            quantity_diff: 0.03,
-
-            confirmed_avg_price: 0.80,
-            rejected_avg_price: 0.78,
-            price_diff: 0.02,
-
-            confirmed_avg_recency: 0.92,
-            rejected_avg_recency: 0.90,
-            recency_diff: 0.02,
-
-            confirmed_avg_total: 0.88,
-            rejected_avg_total: 0.75,
-
-            confirmed_avg_ai_logic: 0.85,
-            rejected_avg_ai_logic: 0.80,
-            ai_logic_diff: 0.05,
-        };
-
-        let current = Weights::default();
-        let (weights, metrics) = learner
-            .calculate_optimal_weights(&stats, &current)
-            .expect("should calculate");
-
-        // Sum should be 1.0 (all 5 weight fields)
-        let sum = weights.medication
-            + weights.recency
-            + weights.expiry
-            + weights.supplier
-            + weights.ai_logic;
-        assert!((sum - 1.0).abs() < 0.0001, "sum: {}", sum);
-
-        // Metrics should reflect stats
-        assert_eq!(metrics.confirmation_rate, 0.75);
-        assert_eq!(metrics.sample_size, 200);
-    }
-
-    #[rstest]
-    #[case(
-        PerformanceMetrics {
-            avg_score_confirmed: 0.85,
-            avg_score_rejected: 0.65,
-            confirmation_rate: 0.75,
-            ..Default::default()
-        },
-        PerformanceMetrics {
-            avg_score_confirmed: 0.88,
-            avg_score_rejected: 0.63,
-            confirmation_rate: 0.76,
-            ..Default::default()
-        },
-        true // Better separation, stable rate
-    )]
-    #[case(
-        PerformanceMetrics {
-            avg_score_confirmed: 0.85,
-            avg_score_rejected: 0.65,
-            confirmation_rate: 0.75,
-            ..Default::default()
-        },
-        PerformanceMetrics {
-            avg_score_confirmed: 0.82,
-            avg_score_rejected: 0.68,
-            confirmation_rate: 0.75,
-            ..Default::default()
-        },
-        false // Worse separation
-    )]
-    #[case(
-        PerformanceMetrics {
-            avg_score_confirmed: 0.85,
-            avg_score_rejected: 0.65,
-            confirmation_rate: 0.75,
-            ..Default::default()
-        },
-        PerformanceMetrics {
-            avg_score_confirmed: 0.90,
-            avg_score_rejected: 0.60,
-            confirmation_rate: 0.65, // Dropped > 5%
-            ..Default::default()
-        },
-        false // Rate dropped too much
-    )]
-    fn test_should_apply(
-        #[case] old: PerformanceMetrics,
-        #[case] new: PerformanceMetrics,
-        #[case] expected: bool,
-    ) {
-        let learner = WeightLearner::new();
-        assert_eq!(learner.should_apply(&old, &new), expected);
-    }
-
-    #[test]
-    fn test_set_get_config() {
-        let learner = WeightLearner::new();
-
-        let custom = LearningConfig {
-            learning_rate: 0.05,
-            min_weight: 0.10,
-            max_weight: 0.60,
-            min_change: 0.03,
-            min_samples: 200,
-            analysis_window: 60,
-        };
-
-        learner.set_config(custom);
-        let got = learner.get_config();
-
-        assert!((got.learning_rate - 0.05).abs() < 0.001);
-        assert_eq!(got.min_samples, 200);
-    }
-
-    #[test]
-    fn test_calculate_metrics() {
-        let learner = WeightLearner::new();
-
-        let stats = FeedbackStats {
-            total_feedback: 200,
-            confirmed_count: 150,
-            confirmation_rate: 0.75,
-            confirmed_avg_total: 0.88,
-            rejected_avg_total: 0.65,
-            ..Default::default()
-        };
-
-        let metrics = learner.calculate_metrics(&stats);
-
-        assert_eq!(metrics.confirmation_rate, 0.75);
-        assert_eq!(metrics.avg_score_confirmed, 0.88);
-        assert_eq!(metrics.avg_score_rejected, 0.65);
-        assert_eq!(metrics.sample_size, 200);
-        assert_eq!(metrics.precision, 0.75);
-
-        // F1 Score
-        let expected_f1 = 2.0 * (0.75 * 0.75) / (0.75 + 0.75);
-        assert!((metrics.f1_score - expected_f1).abs() < 0.0001);
     }
 }

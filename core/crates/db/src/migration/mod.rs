@@ -26,6 +26,8 @@ mod m20260103_000018_create_auto_approve_config;
 mod m20260103_000019_create_medication_pair_cooldowns;
 // BM25 full-text search indexes
 mod m20260216_000020_create_bm25_indexes;
+// Pharmaceutical validation weight history update
+mod m20260216_000021_update_weight_history_pharmaceutical;
 
 pub struct Migrator;
 
@@ -57,6 +59,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260103_000019_create_medication_pair_cooldowns::Migration),
             // BM25 Full-Text Search Indexes (Phase 4)
             Box::new(m20260216_000020_create_bm25_indexes::Migration),
+            // Pharmaceutical Validation Weight History Update (Phase 5)
+            Box::new(m20260216_000021_update_weight_history_pharmaceutical::Migration),
         ]
     }
 }

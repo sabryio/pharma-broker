@@ -171,3 +171,204 @@ where
         items_queued,
     }))
 }
+
+// ============================================================================
+// Pharmaceutical Validation Configuration API
+// ============================================================================
+
+use crate::matching::PharmaceuticalValidationStatsSnapshot;
+use crate::matching::PharmaceuticalValidatorConfig;
+
+#[derive(Debug, Serialize)]
+pub struct PharmaceuticalConfigResponse {
+    pub config: PharmaceuticalValidatorConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdatePharmaceuticalConfigRequest {
+    pub concentration_tolerance_percent: Option<f64>,
+    pub concentration_reject_threshold_percent: Option<f64>,
+    pub missing_concentration_penalty: Option<f64>,
+    pub missing_form_penalty: Option<f64>,
+    pub enable_concentration_check: Option<bool>,
+    pub enable_form_check: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PharmaceuticalStatsResponse {
+    pub stats: PharmaceuticalValidationStatsSnapshot,
+}
+
+/// GET /api/matching/pharmaceutical-config
+///
+/// Get current pharmaceutical validation configuration
+pub async fn get_pharmaceutical_config<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+) -> Result<Json<PharmaceuticalConfigResponse>, (StatusCode, String)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    let matching_engine = state.matching_engine.as_ref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Matching engine not initialized".to_string(),
+    ))?;
+
+    let config = matching_engine.get_pharmaceutical_validator_config();
+
+    tracing::debug!(
+        concentration_tolerance = config.concentration_tolerance_percent,
+        concentration_reject_threshold = config.concentration_reject_threshold_percent,
+        concentration_check_enabled = config.enable_concentration_check,
+        form_check_enabled = config.enable_form_check,
+        "Retrieved pharmaceutical validation config"
+    );
+
+    Ok(Json(PharmaceuticalConfigResponse { config }))
+}
+
+/// PUT /api/matching/pharmaceutical-config
+///
+/// Update pharmaceutical validation configuration
+pub async fn update_pharmaceutical_config<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Json(req): Json<UpdatePharmaceuticalConfigRequest>,
+) -> Result<Json<PharmaceuticalConfigResponse>, (StatusCode, String)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    let matching_engine = state.matching_engine.as_ref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Matching engine not initialized".to_string(),
+    ))?;
+
+    // Get current config
+    let mut config = matching_engine.get_pharmaceutical_validator_config();
+
+    // Apply updates
+    if let Some(tolerance) = req.concentration_tolerance_percent {
+        if !(0.0..=100.0).contains(&tolerance) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Concentration tolerance must be between 0 and 100".to_string(),
+            ));
+        }
+        config.concentration_tolerance_percent = tolerance;
+    }
+
+    if let Some(threshold) = req.concentration_reject_threshold_percent {
+        if !(0.0..=100.0).contains(&threshold) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Concentration reject threshold must be between 0 and 100".to_string(),
+            ));
+        }
+        config.concentration_reject_threshold_percent = threshold;
+    }
+
+    if let Some(penalty) = req.missing_concentration_penalty {
+        if !(0.0..=1.0).contains(&penalty) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Missing concentration penalty must be between 0 and 1".to_string(),
+            ));
+        }
+        config.missing_concentration_penalty = penalty;
+    }
+
+    if let Some(penalty) = req.missing_form_penalty {
+        if !(0.0..=1.0).contains(&penalty) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Missing form penalty must be between 0 and 1".to_string(),
+            ));
+        }
+        config.missing_form_penalty = penalty;
+    }
+
+    if let Some(enabled) = req.enable_concentration_check {
+        config.enable_concentration_check = enabled;
+    }
+
+    if let Some(enabled) = req.enable_form_check {
+        config.enable_form_check = enabled;
+    }
+
+    // Validate that reject threshold is greater than tolerance
+    if config.concentration_reject_threshold_percent <= config.concentration_tolerance_percent {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Concentration reject threshold must be greater than tolerance".to_string(),
+        ));
+    }
+
+    // Update config
+    matching_engine.set_pharmaceutical_validator_config(config.clone());
+
+    tracing::info!(
+        concentration_tolerance = config.concentration_tolerance_percent,
+        concentration_reject_threshold = config.concentration_reject_threshold_percent,
+        concentration_check_enabled = config.enable_concentration_check,
+        form_check_enabled = config.enable_form_check,
+        "Updated pharmaceutical validation config"
+    );
+
+    Ok(Json(PharmaceuticalConfigResponse { config }))
+}
+
+/// GET /api/matching/pharmaceutical-stats
+///
+/// Get pharmaceutical validation statistics
+pub async fn get_pharmaceutical_stats<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+) -> Result<Json<PharmaceuticalStatsResponse>, (StatusCode, String)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    let matching_engine = state.matching_engine.as_ref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Matching engine not initialized".to_string(),
+    ))?;
+
+    let stats = matching_engine.get_pharmaceutical_validator_stats();
+
+    tracing::debug!(
+        total_validations = stats.total_validations,
+        passed_validations = stats.passed_validations,
+        concentration_rejections = stats.concentration_rejections,
+        form_rejections = stats.form_rejections,
+        rejection_rate = stats.rejection_rate,
+        "Retrieved pharmaceutical validation stats"
+    );
+
+    Ok(Json(PharmaceuticalStatsResponse { stats }))
+}
+
+/// POST /api/matching/pharmaceutical-config/reset
+///
+/// Reset pharmaceutical validation configuration to defaults
+pub async fn reset_pharmaceutical_config<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+) -> Result<Json<PharmaceuticalConfigResponse>, (StatusCode, String)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    let matching_engine = state.matching_engine.as_ref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Matching engine not initialized".to_string(),
+    ))?;
+
+    let config = PharmaceuticalValidatorConfig::default();
+    matching_engine.set_pharmaceutical_validator_config(config.clone());
+
+    tracing::info!("Reset pharmaceutical validation config to defaults");
+
+    Ok(Json(PharmaceuticalConfigResponse { config }))
+}

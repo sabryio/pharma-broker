@@ -9,10 +9,10 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: Uuid,
     pub medication_weight: f64,
-    pub dosage_weight: f64,
-    pub quantity_weight: f64,
-    pub price_weight: f64,
+    pub pharmaceutical_weight: f64,
     pub recency_weight: f64,
+    pub expiry_weight: f64,
+    pub supplier_weight: f64,
     pub ai_logic_weight: f64,
     pub source: String,
     pub sample_count: i32,

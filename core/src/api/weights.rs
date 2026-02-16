@@ -40,7 +40,8 @@ pub struct WeightsResponse {
 #[derive(Debug, Deserialize)]
 pub struct UpdateWeightsRequest {
     pub medication: f64,
-    pub dosage: f64,
+    #[serde(default)]
+    pub pharmaceutical: f64,
     pub recency: f64,
     #[serde(default)]
     pub expiry: f64,
@@ -148,7 +149,12 @@ where
     };
 
     // Validate weights sum approximately to 1.0
-    let sum = req.medication + req.dosage + req.recency + req.expiry + req.supplier + req.ai_logic;
+    let sum = req.medication
+        + req.pharmaceutical
+        + req.recency
+        + req.expiry
+        + req.supplier
+        + req.ai_logic;
     if (sum - 1.0).abs() > 0.01 {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -158,7 +164,7 @@ where
 
     // Validate all weights are positive
     if req.medication < 0.0
-        || req.dosage < 0.0
+        || req.pharmaceutical < 0.0
         || req.recency < 0.0
         || req.expiry < 0.0
         || req.supplier < 0.0
@@ -172,6 +178,7 @@ where
 
     let new_weights = Weights {
         medication: req.medication,
+        pharmaceutical: req.pharmaceutical,
         recency: req.recency,
         expiry: req.expiry,
         supplier: req.supplier,

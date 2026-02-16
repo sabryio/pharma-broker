@@ -966,7 +966,7 @@ mod tests {
     fn test_ensemble_default() {
         let matcher = EnsembleMatcher::default();
         assert!(matcher.is_enabled());
-        assert_eq!(matcher.strategy_names().len(), 6);
+        assert_eq!(matcher.strategy_names().len(), 5); // 5 strategies: Embedding, Fuzzy, Historical, Recency, AI
     }
 
     #[test]

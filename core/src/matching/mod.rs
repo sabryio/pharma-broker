@@ -12,6 +12,7 @@ mod auditor_factory;
 mod auto_approve;
 mod blocklist;
 mod calibration;
+mod concentration_parser;
 mod confidence;
 mod consensus_auditor;
 mod contrastive_validator;
@@ -21,6 +22,7 @@ mod ensemble;
 mod expiry;
 mod fallback_matcher;
 mod filter;
+mod form_validator;
 mod fts_search;
 mod fuzzy;
 mod hard_negative;
@@ -32,6 +34,7 @@ mod learner;
 mod medication_resolver;
 mod performance_tracker;
 mod persistent_audit;
+mod pharmaceutical_validator;
 mod pipeline_events;
 mod pipeline_types;
 mod reviewer;
@@ -77,6 +80,18 @@ pub use audit::{
 pub use calibration::{
     CalibrationBin, CalibrationConfig, CalibrationReport, CalibrationStatsSnapshot,
     ConfidenceCalibrator,
+};
+
+// --- concentration_parser ---
+pub use concentration_parser::{ConcentrationParser, ConcentrationValue};
+
+// --- form_validator ---
+pub use form_validator::{FormCompatibility, FormCompatibilityRule, FormValidator};
+
+// --- pharmaceutical_validator ---
+pub use pharmaceutical_validator::{
+    ConcentrationCheckResult, FormCheckResult, PharmaceuticalValidationResult,
+    PharmaceuticalValidationStatsSnapshot, PharmaceuticalValidator, PharmaceuticalValidatorConfig,
 };
 
 // --- confidence ---

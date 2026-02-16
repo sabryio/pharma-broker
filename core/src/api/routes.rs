@@ -169,6 +169,20 @@ where
             "/api/match/rematch",
             post(matching::rematch_item::<RQ, A, MM>),
         )
+        // Pharmaceutical validation configuration
+        .route(
+            "/api/matching/pharmaceutical-config",
+            get(matching::get_pharmaceutical_config::<RQ, A, MM>)
+                .put(matching::update_pharmaceutical_config::<RQ, A, MM>),
+        )
+        .route(
+            "/api/matching/pharmaceutical-stats",
+            get(matching::get_pharmaceutical_stats::<RQ, A, MM>),
+        )
+        .route(
+            "/api/matching/pharmaceutical-config/reset",
+            post(matching::reset_pharmaceutical_config::<RQ, A, MM>),
+        )
         .route(
             "/api/items/{item_type}/{id}",
             get(reclassify::get_item::<RQ, A, MM>),
