@@ -213,14 +213,12 @@ impl LearningScheduler {
     pub fn build_note(&self, old: &Weights, new: &Weights, metrics: &PerformanceMetrics) -> String {
         format!(
             "Auto-learned from {} samples. Separation: {:.3}. \
-             Weights changed: med {:.2}→{:.2}, dosage {:.2}→{:.2}, \
+             Weights changed: med {:.2}→{:.2}, \
              recency {:.2}→{:.2}, expiry {:.2}→{:.2}",
             metrics.sample_size,
             metrics.avg_score_confirmed - metrics.avg_score_rejected,
             old.medication,
             new.medication,
-            old.dosage,
-            new.dosage,
             old.recency,
             new.recency,
             old.expiry,

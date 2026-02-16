@@ -241,7 +241,6 @@ where
         let offer_summary = OfferSummary {
             id: offer.id,
             product: offer.medication.clone(),
-            medication_raw: Some(offer.medication.clone()),
             source: format!("Offer #{}", &offer.id.to_string()[..8]),
             source_group: offer_group.map(|g| g.name),
             sender_name: offer_participant
@@ -267,7 +266,6 @@ where
         let request_summary = RequestSummary {
             id: request.id,
             product: request.medication.clone(),
-            medication_raw: Some(request.medication.clone()),
             source: format!("Request #{}", &request.id.to_string()[..8]),
             source_group: request_group.map(|g| g.name),
             sender_name: request_participant
@@ -397,7 +395,6 @@ where
     let offer_summary = OfferSummary {
         id: offer.id,
         product: offer.medication.clone(),
-        medication_raw: Some(offer.medication.clone()),
         source: format!("Offer #{}", &offer.id.to_string()[..8]),
         source_group: offer_group.map(|g| g.name),
         sender_name: offer_participant
@@ -423,7 +420,6 @@ where
     let request_summary = RequestSummary {
         id: request.id,
         product: request.medication.clone(),
-        medication_raw: Some(request.medication.clone()),
         source: format!("Request #{}", &request.id.to_string()[..8]),
         source_group: request_group.map(|g| g.name),
         sender_name: request_participant
@@ -1113,8 +1109,7 @@ where
     // Calculate medication similarity with raw text validation
     let medication_sim =
         crate::matching::medication_similarity(&offer.medication, &request.medication);
-    let raw_sim =
-        crate::matching::medication_similarity(&offer.medication, &request.medication);
+    let raw_sim = crate::matching::medication_similarity(&offer.medication, &request.medication);
 
     // Calculate combined similarity using raw text validation
     let combined_sim = crate::matching::medication_similarity_with_raw(

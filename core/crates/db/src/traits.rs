@@ -72,7 +72,6 @@ pub trait OfferRepository: Send + Sync {
         &self,
         id: Uuid,
         medication: &str,
-        medication_raw: &str,
         ai_confidence: Option<f64>,
     ) -> Result<OfferModel>;
     async fn find_semantic_duplicates(
@@ -80,6 +79,14 @@ pub trait OfferRepository: Send + Sync {
         params: SemanticDuplicateParams<'_>,
     ) -> Result<Vec<OfferModel>>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
+    /// Search offers using pg_textsearch BM25 ranking
+    /// Returns offers with their BM25 scores (negative values, lower = better match)
+    async fn search_bm25(
+        &self,
+        query: &str,
+        limit: i64,
+        max_score: f64,
+    ) -> Result<Vec<(OfferModel, f64)>>;
 }
 
 /// Request repository trait
@@ -110,7 +117,6 @@ pub trait RequestRepository: Send + Sync {
         &self,
         id: Uuid,
         medication: &str,
-        medication_raw: &str,
         ai_confidence: Option<f64>,
     ) -> Result<RequestModel>;
     async fn find_semantic_duplicates(
@@ -118,6 +124,14 @@ pub trait RequestRepository: Send + Sync {
         params: SemanticDuplicateParams<'_>,
     ) -> Result<Vec<RequestModel>>;
     async fn delete_before(&self, cutoff: &DateTime<Utc>) -> Result<u64>;
+    /// Search requests using pg_textsearch BM25 ranking
+    /// Returns requests with their BM25 scores (negative values, lower = better match)
+    async fn search_bm25(
+        &self,
+        query: &str,
+        limit: i64,
+        max_score: f64,
+    ) -> Result<Vec<(RequestModel, f64)>>;
 }
 
 /// Match repository trait
@@ -519,8 +533,6 @@ pub trait AutoApproveConfigRepository: Send + Sync {
 pub struct OfferSummary {
     pub id: Uuid,
     pub product: String,
-    /// Original medication text for highlighting
-    pub medication_raw: Option<String>,
     pub source: String,
     /// WhatsApp group name where the offer came from
     pub source_group: Option<String>,
@@ -544,8 +556,6 @@ pub struct OfferSummary {
 pub struct RequestSummary {
     pub id: Uuid,
     pub product: String,
-    /// Original medication text for highlighting
-    pub medication_raw: Option<String>,
     pub source: String,
     /// WhatsApp group name where the request came from
     pub source_group: Option<String>,

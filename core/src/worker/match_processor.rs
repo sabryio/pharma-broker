@@ -151,91 +151,55 @@ impl MatchProcessor {
             }
         };
 
-        // 3. Perform matching
+        // 3. Perform matching using hierarchical approach
         let mut matches_created = 0;
 
         // Apply matching filter (stale/same-sender etc.)
-        let candidates = self
+        let filtered_refs = self
             .matching_engine
             .filter_offers_for_request(&active_offers, &request);
 
-        for offer in candidates {
+        // Convert references to owned values for hierarchical matcher
+        let candidates: Vec<_> = filtered_refs.into_iter().cloned().collect();
+
+        // Use hierarchical matcher for better accuracy with stricter thresholds
+        let hierarchical_config = crate::matching::TextSearchConfig::default();
+
+        let hierarchical_matcher = crate::matching::TextSearchMatcher::new(
+            hierarchical_config,
+            Some(self.repos.offer.clone()),
+        );
+
+        let hierarchical_matches = hierarchical_matcher
+            .match_request(&request, &candidates)
+            .await;
+
+        for h_match in hierarchical_matches {
             // Skip if already matched
-            if let Ok(exists) = self.repos.match_repo.exists(offer.id, request.id).await
+            if let Ok(exists) = self
+                .repos
+                .match_repo
+                .exists(h_match.offer_id, h_match.request_id)
+                .await
                 && exists
             {
                 continue;
             }
 
-            // Calculate medication similarity score
-            // Phase 3: Deterministic matching with master_medication_id
-            let med_score = match (&offer.master_medication_id, &request.master_medication_id) {
-                // Both have master IDs - deterministic match
-                (Some(offer_master), Some(request_master)) => {
-                    if offer_master == request_master {
-                        1.0 // Same medication = 100% match
-                    } else {
-                        0.0 // Different medications = no match
-                    }
-                }
-                // Fallback to embedding similarity when master IDs not available
-                _ => {
-                    // First try embedding similarity
-                    let embedding_sim = match (&offer.content_embedding, &request.content_embedding)
-                    {
-                        (Some(o), Some(r)) => {
-                            crate::matching::cosine_similarity(o.as_slice(), r.as_slice())
-                                .unwrap_or(0.0)
-                        }
-                        _ => 0.0,
-                    };
-
-                    // Calculate fuzzy similarity with raw text validation
-                    // This prevents false positives from AI hallucination/mistransliteration
-                    let fuzzy_sim = crate::matching::medication_similarity_with_raw(
-                        &offer.medication,
-                        &request.medication,
-                        Some(&offer.medication),
-                        Some(&request.medication),
-                    );
-
-                    // If embedding similarity is high but fuzzy/raw similarity is low,
-                    // trust the fuzzy/raw similarity (prevents AI hallucination matches)
-                    if embedding_sim > 0.8 && fuzzy_sim < 0.5 {
-                        tracing::warn!(
-                            offer_id = %offer.id,
-                            request_id = %request.id,
-                            offer_med = %offer.medication,
-                            request_med = %request.medication,
-                            offer_raw = %offer.medication,
-                            request_raw = %request.medication,
-                            embedding_sim = %embedding_sim,
-                            fuzzy_sim = %fuzzy_sim,
-                            "High embedding similarity but low fuzzy/raw similarity - using fuzzy score"
-                        );
-                        fuzzy_sim
-                    } else if embedding_sim > 0.0 {
-                        // Use weighted combination: embedding (40%) + fuzzy with raw (60%)
-                        // This gives more weight to raw text validation
-                        embedding_sim * 0.4 + fuzzy_sim * 0.6
-                    } else {
-                        // No embedding, use fuzzy with raw validation
-                        fuzzy_sim
-                    }
-                }
+            // Get the offer details
+            let offer = match candidates.iter().find(|o| o.id == h_match.offer_id) {
+                Some(o) => o,
+                None => continue,
             };
 
-            // Score match
+            // Score match using the hierarchical score
+            let med_score = h_match.score;
+
+            // Get action from matching engine
             let participant_id_str = request.participant_id.to_string();
             let (score, action, review) = self
                 .matching_engine
-                .score_match_ai(
-                    offer,
-                    &request,
-                    med_score,
-                    Some(&participant_id_str),
-                    true, // Defaulting to true for now, can be made configurable
-                )
+                .score_match_ai(offer, &request, med_score, Some(&participant_id_str), true)
                 .await;
 
             // Check if actionable
@@ -247,21 +211,24 @@ impl MatchProcessor {
                     (MatchStatus::Pending, None)
                 };
 
+                // Create Match with hierarchical method info and full score breakdown
+                let reasoning = format!(
+                    "{} | {} | Method: {}",
+                    score.breakdown, h_match.explanation, h_match.method
+                );
+
                 // Create Match
                 let match_entity = MatchEntity {
                     id: Uuid::new_v4(),
                     offer_id: offer.id,
                     request_id: request.id,
                     score: score.total,
-                    reasoning: Some(score.breakdown.clone()),
+                    reasoning: Some(reasoning),
                     matched_by: Some(format!("worker:{}", self.worker_id)),
                     status,
                     created_at: Utc::now(),
                     confirmed_at,
-                    // REMOVED: notes (use reasoning instead)
-                    // REMOVED: ai_status (use status + matched_by instead)
                     ai_confidence: review.as_ref().map(|r| r.confidence as f64),
-                    // REMOVED: ai_explanation (merged into reasoning)
                 };
 
                 if let Err(e) = self.repos.match_repo.save(&match_entity).await {

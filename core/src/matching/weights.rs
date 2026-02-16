@@ -41,11 +41,10 @@ impl std::error::Error for WeightError {}
 /// Updated with new factors: expiry and supplier (Requirements 8.1)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Weights {
-    /// Medication name similarity weight (default: 0.70)
+    /// Medication name similarity weight (default: 0.80)
     pub medication: f64,
-    /// Dosage match weight - increased for safety (default: 0.20)
-    pub dosage: f64,
-    /// Recency/freshness weight (default: 0.05)
+
+    /// Recency/freshness weight (default: 0.10)
     pub recency: f64,
     /// Expiry date validation weight (default: 0.05)
     pub expiry: f64,
@@ -57,15 +56,14 @@ pub struct Weights {
 
 impl Default for Weights {
     fn default() -> Self {
-        // Updated weights without quantity/price:
-        // medication (70%), dosage (20%), recency (5%), expiry (5%)
+        // Updated weights: medication (80%), recency (10%), AI logic (10%)
+        // Dosage completely removed from the system
         Self {
-            medication: 0.70,
-            dosage: 0.20,
-            recency: 0.05,
-            expiry: 0.05,
+            medication: 0.80,
+            recency: 0.10,
+            expiry: 0.0,
             supplier: 0.0,
-            ai_logic: 0.0,
+            ai_logic: 0.10,
         }
     }
 }
@@ -73,7 +71,7 @@ impl Default for Weights {
 impl Weights {
     /// Calculate the sum of all weights
     pub fn sum(&self) -> f64 {
-        self.medication + self.dosage + self.recency + self.expiry + self.supplier + self.ai_logic
+        self.medication + self.recency + self.expiry + self.supplier + self.ai_logic
     }
 
     /// Validate that weights sum to 1.0 and none are negative
@@ -83,12 +81,6 @@ impl Weights {
             return Err(WeightError::NegativeWeight {
                 field: "medication".to_string(),
                 value: self.medication,
-            });
-        }
-        if self.dosage < 0.0 {
-            return Err(WeightError::NegativeWeight {
-                field: "dosage".to_string(),
-                value: self.dosage,
             });
         }
         if self.recency < 0.0 {
@@ -134,7 +126,6 @@ impl Weights {
         let sum = self.sum();
         if sum > 0.0 && (sum - 1.0).abs() > WEIGHT_SUM_TOLERANCE {
             self.medication /= sum;
-            self.dosage /= sum;
             self.recency /= sum;
             self.expiry /= sum;
             self.supplier /= sum;
@@ -194,7 +185,6 @@ mod tests {
     fn test_validate_invalid_sum() {
         let weights = Weights {
             medication: 0.5,
-            dosage: 0.1,
             recency: 0.1,
             expiry: 0.05,
             supplier: 0.3, // Sum = 1.05
@@ -214,7 +204,6 @@ mod tests {
     fn test_validate_negative_weight() {
         let weights = Weights {
             medication: -0.1,
-            dosage: 0.20,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.0,
@@ -234,7 +223,6 @@ mod tests {
     fn test_normalize_weights() {
         let mut weights = Weights {
             medication: 0.6,
-            dosage: 0.15,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.05,
@@ -253,7 +241,6 @@ mod tests {
     fn test_normalized_returns_copy() {
         let weights = Weights {
             medication: 0.6,
-            dosage: 0.15,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.05,
@@ -269,11 +256,11 @@ mod tests {
     #[test]
     fn test_new_default_weight_values() {
         let weights = Weights::default();
-        assert!((weights.medication - 0.70).abs() < 0.001);
-        assert!((weights.dosage - 0.20).abs() < 0.001);
-        assert!((weights.recency - 0.05).abs() < 0.001);
-        assert!((weights.expiry - 0.05).abs() < 0.001);
+        // Updated: medication (80%), recency (10%), AI logic (10%)
+        assert!((weights.medication - 0.80).abs() < 0.001);
+        assert!((weights.recency - 0.10).abs() < 0.001);
+        assert!((weights.expiry - 0.0).abs() < 0.001);
         assert!((weights.supplier - 0.0).abs() < 0.001);
-        assert!((weights.ai_logic - 0.0).abs() < 0.001);
+        assert!((weights.ai_logic - 0.10).abs() < 0.001);
     }
 }

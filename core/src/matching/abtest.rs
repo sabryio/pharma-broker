@@ -663,7 +663,6 @@ mod tests {
             control_pct: 0.5,
             test_weights: Weights {
                 medication: 0.50,
-                dosage: 0.20,
                 recency: 0.05,
                 expiry: 0.05,
                 supplier: 0.05,
@@ -780,7 +779,6 @@ mod tests {
     fn test_no_active_test_returns_base_weights() {
         let base = Weights {
             medication: 0.40,
-            dosage: 0.20,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.05,

@@ -256,15 +256,13 @@ impl UncertaintyEstimator {
 
         // Perturb each weight
         let medication = perturbation(self.base_weights.medication, rng);
-        let dosage = perturbation(self.base_weights.dosage, rng);
         let recency = perturbation(self.base_weights.recency, rng);
         let expiry = perturbation(self.base_weights.expiry, rng);
 
         // Normalize to sum to 1.0
-        let sum = medication + dosage + recency + expiry;
+        let sum = medication + recency + expiry;
         Weights {
             medication: medication / sum,
-            dosage: dosage / sum,
             recency: recency / sum,
             expiry: expiry / sum,
             supplier: self.base_weights.supplier,
@@ -570,10 +568,8 @@ mod tests {
 
         for _ in 0..10 {
             let perturbed = estimator.perturb_weights(&mut rng);
-            let sum =
-                perturbed.medication + perturbed.dosage + perturbed.recency + perturbed.expiry;
+            let sum = perturbed.medication + perturbed.recency + perturbed.expiry; // dosage removed
             assert!((sum - 1.0).abs() < 0.001, "Weights should sum to 1.0");
         }
     }
 }
-

@@ -18,7 +18,6 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::blocklist::MedicationBlocklist;
-use super::dosage_gate::{DosageFlag, DosageGate};
 use crate::domain::{Offer, Request};
 
 // =============================================================================
@@ -453,7 +452,6 @@ impl Default for SafetyGuardrailsConfig {
 /// Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
 pub struct SafetyGuardrails {
     blocklist: Arc<MedicationBlocklist>,
-    dosage_gate: Arc<DosageGate>,
     override_tracker: RwLock<OverrideTracker>,
     anomaly_detector: RwLock<AnomalyDetector>,
     cooldown_tracker: RwLock<CooldownTracker>,
@@ -466,12 +464,10 @@ impl SafetyGuardrails {
     /// Create new safety guardrails
     pub fn new(
         blocklist: Arc<MedicationBlocklist>,
-        dosage_gate: Arc<DosageGate>,
         config: SafetyGuardrailsConfig,
     ) -> Self {
         Self {
             blocklist,
-            dosage_gate,
             override_tracker: RwLock::new(OverrideTracker::new(config.override_tracker.clone())),
             anomaly_detector: RwLock::new(AnomalyDetector::new(config.anomaly_detector.clone())),
             cooldown_tracker: RwLock::new(CooldownTracker::new()),
@@ -487,15 +483,11 @@ impl SafetyGuardrails {
         &self,
         offer: &Offer,
         request: &Request,
-        dosage_score: f64,
     ) -> Vec<SafetyCheckResult> {
         let mut results = Vec::new();
 
         // Check blocklist (Requirement 7.1)
         results.push(self.check_blocklist(&offer.medication, &request.medication));
-
-        // Check dosage mismatch (Requirement 7.4)
-        results.push(self.check_dosage_mismatch(offer, request, dosage_score));
 
         // Check cooldown
         results.push(
@@ -519,28 +511,6 @@ impl SafetyGuardrails {
             )
         } else {
             SafetyCheckResult::passed("blocklist")
-        }
-    }
-
-    /// Check for dosage mismatch
-    /// Requirement 7.4
-    fn check_dosage_mismatch(
-        &self,
-        offer: &Offer,
-        request: &Request,
-        dosage_score: f64,
-    ) -> SafetyCheckResult {
-        let result = self.dosage_gate.evaluate(offer, request, dosage_score);
-
-        // Check for mandatory review flag (>100% difference in dosage_gate)
-        // or if dosage score indicates >20% mismatch
-        if result.has_flag(&DosageFlag::MandatoryReview) {
-            SafetyCheckResult::failed(
-                "dosage_mismatch",
-                "Dosage differs by more than 20%, requires human review",
-            )
-        } else {
-            SafetyCheckResult::passed("dosage_mismatch")
         }
     }
 

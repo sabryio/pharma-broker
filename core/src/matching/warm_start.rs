@@ -33,12 +33,11 @@ impl Default for WarmStartConfig {
     fn default() -> Self {
         Self {
             prior_weights: Weights {
-                medication: 0.70, // Medication match is DOMINANT even in cold start
-                dosage: 0.20,     // Increased for safety
-                recency: 0.05,
-                expiry: 0.05,
+                medication: 0.80, // Medication match is DOMINANT
+                recency: 0.10,
+                expiry: 0.0,
                 supplier: 0.0,
-                ai_logic: 0.0,
+                ai_logic: 0.10,
             },
             prior_strength: 50,           // Equivalent to 50 samples
             decay_half_life: 14,          // Prior halves every 2 weeks
@@ -108,8 +107,6 @@ impl WarmStartManager {
         let blended = Weights {
             medication: data_weight * learned_weights.medication
                 + prior_weight * config.prior_weights.medication,
-            dosage: data_weight * learned_weights.dosage
-                + prior_weight * config.prior_weights.dosage,
             recency: data_weight * learned_weights.recency
                 + prior_weight * config.prior_weights.recency,
             expiry: data_weight * learned_weights.expiry
@@ -356,18 +353,17 @@ mod tests {
 
         let learned = Weights {
             medication: 0.50,
-            dosage: 0.30,
             recency: 0.10,
             expiry: 0.10,
             supplier: 0.0,
-            ai_logic: 0.0,
+            ai_logic: 0.30,
         };
 
         // With only 10 samples (< 20 min), should use pure prior
         let effective = manager.get_effective_weights(&learned, 10);
 
         // Should return prior weights
-        assert!((effective.medication - 0.70).abs() < 0.001);
+        assert!((effective.medication - 0.80).abs() < 0.001);
     }
 
     #[test]
@@ -376,19 +372,18 @@ mod tests {
 
         let learned = Weights {
             medication: 0.50,
-            dosage: 0.30,
             recency: 0.10,
             expiry: 0.10,
             supplier: 0.0,
-            ai_logic: 0.0,
+            ai_logic: 0.30,
         };
 
         // With 100 samples, should blend with prior
         let effective = manager.get_effective_weights(&learned, 100);
 
-        // Should be between prior (0.70) and learned (0.50)
+        // Should be between prior (0.80) and learned (0.50)
         assert!(effective.medication > 0.50);
-        assert!(effective.medication < 0.70);
+        assert!(effective.medication < 0.80);
     }
 
     #[test]
@@ -401,11 +396,10 @@ mod tests {
 
         let learned = Weights {
             medication: 0.50,
-            dosage: 0.30,
             recency: 0.10,
             expiry: 0.10,
             supplier: 0.0,
-            ai_logic: 0.0,
+            ai_logic: 0.30,
         };
 
         // When disabled, should return learned weights

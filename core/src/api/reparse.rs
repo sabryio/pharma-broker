@@ -237,7 +237,6 @@ where
                 .update_medication(
                     req.item_id,
                     &parsed_medication.name,
-                    &parsed_medication.name,
                     Some(parsed_medication.confidence),
                 )
                 .await
@@ -257,7 +256,6 @@ where
                 .request_repo
                 .update_medication(
                     req.item_id,
-                    &parsed_medication.name,
                     &parsed_medication.name,
                     Some(parsed_medication.confidence),
                 )

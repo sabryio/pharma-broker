@@ -79,7 +79,6 @@ pub struct ItemSummary {
     pub id: Uuid,
     pub item_type: ItemType,
     pub medication: String,
-    pub medication_raw: String,
     pub quantity: Option<String>,
     pub price: Option<String>,
     pub status: String,
@@ -354,7 +353,6 @@ fn offer_to_summary(offer: &OfferModel) -> ItemSummary {
         id: offer.id,
         item_type: ItemType::Offer,
         medication: offer.medication.clone(),
-        medication_raw: offer.medication.clone(),
         quantity: None, // Removed from schema
         price: None,    // Removed from schema
         status: format!("{:?}", offer.status),
@@ -367,11 +365,9 @@ fn request_to_summary(request: &RequestModel) -> ItemSummary {
         id: request.id,
         item_type: ItemType::Request,
         medication: request.medication.clone(),
-        medication_raw: request.medication.clone(),
         quantity: None, // Removed from schema
         price: None,    // Removed from schema
         status: format!("{:?}", request.status),
         created_at: request.created_at.to_rfc3339(),
     }
 }
-

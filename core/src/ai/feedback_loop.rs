@@ -358,7 +358,6 @@ impl LLMFeedbackLoop {
             "items": [{
                 "type": feedback.correct_extraction.item_type,
                 "medication": feedback.correct_extraction.medication,
-                "medication_raw": feedback.correct_extraction.medication,
                 "quantity": feedback.correct_extraction.quantity,
                 "price": feedback.correct_extraction.price,
                 "ai_confidence": feedback.ai_extraction.confidence
@@ -387,7 +386,6 @@ impl LLMFeedbackLoop {
             "items": [{
                 "type": feedback.correct_extraction.item_type,
                 "medication": feedback.correct_extraction.medication,
-                "medication_raw": feedback.correct_extraction.medication,
                 "quantity": feedback.correct_extraction.quantity,
                 "price": feedback.correct_extraction.price
             }]

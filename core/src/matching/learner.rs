@@ -244,7 +244,6 @@ impl WeightLearner {
         Weights {
             medication: current.medication
                 * (1.0 + lr * correlations.get("medication").unwrap_or(&0.0)),
-            dosage: current.dosage * (1.0 + lr * correlations.get("dosage").unwrap_or(&0.0)),
             recency: current.recency * (1.0 + lr * correlations.get("recency").unwrap_or(&0.0)),
             expiry: current.expiry * (1.0 + lr * correlations.get("expiry").unwrap_or(&0.0)),
             supplier: current.supplier * (1.0 + lr * correlations.get("supplier").unwrap_or(&0.0)),
@@ -269,7 +268,6 @@ impl WeightLearner {
 
         Weights {
             medication: constrain(current.medication, adjusted.medication),
-            dosage: constrain(current.dosage, adjusted.dosage),
             recency: constrain(current.recency, adjusted.recency),
             expiry: constrain(current.expiry, adjusted.expiry),
             supplier: constrain(current.supplier, adjusted.supplier),
@@ -281,27 +279,24 @@ impl WeightLearner {
     /// Ported from Go: WeightLearner.normalizeWeights (learner.go:203-225)
     pub fn normalize_weights(&self, weights: &Weights) -> Weights {
         let sum = weights.medication
-            + weights.dosage
             + weights.recency
             + weights.expiry
             + weights.supplier
             + weights.ai_logic;
 
         if sum == 0.0 {
-            // Fallback to equal weights (6 weights now)
+            // Fallback to equal weights (5 weights now)
             return Weights {
-                medication: 1.0 / 6.0,
-                dosage: 1.0 / 6.0,
-                recency: 1.0 / 6.0,
-                expiry: 1.0 / 6.0,
-                supplier: 1.0 / 6.0,
-                ai_logic: 1.0 / 6.0,
+                medication: 1.0 / 5.0,
+                recency: 1.0 / 5.0,
+                expiry: 1.0 / 5.0,
+                supplier: 1.0 / 5.0,
+                ai_logic: 1.0 / 5.0,
             };
         }
 
         Weights {
             medication: weights.medication / sum,
-            dosage: weights.dosage / sum,
             recency: weights.recency / sum,
             expiry: weights.expiry / sum,
             supplier: weights.supplier / sum,
@@ -486,7 +481,6 @@ mod tests {
 
         let current = Weights {
             medication: 0.45,
-            dosage: 0.10,
             recency: 0.05,
             expiry: 0.025,
             supplier: 0.025,
@@ -521,7 +515,6 @@ mod tests {
 
         let current = Weights {
             medication: 0.50,
-            dosage: 0.10,
             recency: 0.05,
             expiry: 0.025,
             supplier: 0.025,
@@ -530,7 +523,6 @@ mod tests {
 
         let adjusted = Weights {
             medication: 0.80, // Exceeds max
-            dosage: 0.02,     // Below min
             recency: 0.06,    // Small change (0.01 < 0.02)
             expiry: 0.025,    // No change
             supplier: 0.025,  // No change
@@ -542,9 +534,6 @@ mod tests {
         // Medication clamped to max
         assert_eq!(constrained.medication, 0.70);
 
-        // Dosage raised to min
-        assert_eq!(constrained.dosage, 0.05);
-
         // Recency unchanged (change too small)
         assert_eq!(constrained.recency, 0.05);
     }
@@ -555,7 +544,6 @@ mod tests {
 
         let weights = Weights {
             medication: 0.50,
-            dosage: 0.10,
             recency: 0.05,
             expiry: 0.025,
             supplier: 0.025,
@@ -566,7 +554,6 @@ mod tests {
         let normalized = learner.normalize_weights(&weights);
 
         let sum = normalized.medication
-            + normalized.dosage
             + normalized.recency
             + normalized.expiry
             + normalized.supplier
@@ -591,7 +578,6 @@ mod tests {
         // Explicit zero weights (not default which has non-zero values)
         let weights = Weights {
             medication: 0.0,
-            dosage: 0.0,
             recency: 0.0,
             expiry: 0.0,
             supplier: 0.0,
@@ -603,10 +589,8 @@ mod tests {
         // Should return equal weights (1/6 for each of 6 weights)
         let expected = 1.0 / 6.0;
         assert!((normalized.medication - expected).abs() < 0.0001);
-        assert!((normalized.dosage - expected).abs() < 0.0001);
 
         let sum = normalized.medication
-            + normalized.dosage
             + normalized.recency
             + normalized.expiry
             + normalized.supplier
@@ -681,9 +665,8 @@ mod tests {
             .calculate_optimal_weights(&stats, &current)
             .expect("should calculate");
 
-        // Sum should be 1.0 (all 6 weight fields)
+        // Sum should be 1.0 (all 5 weight fields)
         let sum = weights.medication
-            + weights.dosage
             + weights.recency
             + weights.expiry
             + weights.supplier

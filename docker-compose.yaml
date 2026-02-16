@@ -1,9 +1,11 @@
 name: pharmabroker
 
 services:
-  # PostgreSQL with pgvector for semantic search
+  # PostgreSQL with pgvector and pg_textsearch for semantic and BM25 search
   postgres:
-    image: pgvector/pgvector:pg18-trixie
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
     container_name: pharma-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-pharmabroker}
@@ -14,6 +16,8 @@ services:
     volumes:
       # For pg18+, mount at /var/lib/postgresql (not /data subdirectory)
       - ./data/postgres:/var/lib/postgresql
+      # Mount initialization scripts
+      - ./postgres/init-scripts:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d pharmabroker"]
       interval: 10s

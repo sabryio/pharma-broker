@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use super::{DecayType, Thresholds, Weights, compare_dosages, parse_dosage};
+use super::{DecayType, Thresholds, Weights};
 use crate::domain::{ConfidenceBand, Offer, Request};
 
 /// Medication category for recency decay configuration
@@ -184,11 +184,12 @@ impl Scorer {
     }
 
     /// Calculate full match score
-    /// Ported from Go: Scorer.ScoreMatch (scorer.go:223-272)
+    /// Uses medication (80%), recency (10%), and AI logic (10%)
+    /// Dosage has been completely removed from the system
     pub fn score_match(
         &self,
         offer: &Offer,
-        request: &Request,
+        _request: &Request,
         medication_score: f64,
         ai_logic_score: Option<f64>,
     ) -> MatchScore {
@@ -212,41 +213,35 @@ impl Scorer {
             };
         }
 
+        // Get weights
         let weights = self.weights.read().unwrap();
-        let ai_logic_score = ai_logic_score.unwrap_or(0.0);
 
+        // Calculate recency score
         let recency_score = self.recency_score(offer.created_at);
 
-        // Real dosage comparison - ported from Go: Scorer.DosageScore (scorer.go:189-207)
-        let offer_dosage = parse_dosage(&offer.medication);
-        let request_dosage = parse_dosage(&request.medication);
-        let dosage_score = match (&offer_dosage, &request_dosage) {
-            (None, None) => 0.9,                      // Both missing - slight penalty
-            (None, Some(_)) | (Some(_), None) => 0.7, // One missing - partial penalty
-            _ => compare_dosages(&offer_dosage, &request_dosage),
-        };
+        // Get AI logic score (default to 0.0 if not provided)
+        let ai_score = ai_logic_score.unwrap_or(0.0);
 
-        let total = medication_score * weights.medication
-            + dosage_score * weights.dosage
-            + recency_score * weights.recency
-            + ai_logic_score * weights.ai_logic;
+        // Calculate weighted total: medication (80%) + recency (10%) + AI (10%)
+        let total = (medication_score * weights.medication)
+            + (recency_score * weights.recency)
+            + (ai_score * weights.ai_logic);
 
         let total = total.clamp(0.0, 1.0);
         let confidence = self.get_confidence_band(total);
 
         let breakdown = format!(
-            "Med:{:.0}% Dos:{:.0}% Rec:{:.0}% AI:{:.0}%",
+            "Med:{:.0}% Rec:{:.0}% AI:{:.0}%",
             medication_score * 100.0,
-            dosage_score * 100.0,
             recency_score * 100.0,
-            ai_logic_score * 100.0
+            ai_score * 100.0
         );
 
         MatchScore {
             medication_score,
-            dosage_score,
+            dosage_score: 0.0, // Dosage permanently removed
             recency_score,
-            ai_logic_score,
+            ai_logic_score: ai_score,
             total,
             confidence,
             breakdown,
@@ -303,7 +298,6 @@ mod tests {
         let scorer = Scorer::default();
         let new_weights = Weights {
             medication: 0.70,
-            dosage: 0.20,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.0,

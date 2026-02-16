@@ -19,10 +19,7 @@ use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    HistoricalLearner, HistoricalLearningConfig, compare_dosages, cosine_similarity,
-    normalize_arabic, parse_dosage,
-};
+use super::{HistoricalLearner, HistoricalLearningConfig, cosine_similarity, normalize_arabic};
 use crate::domain::{Offer, Request};
 use strsim::jaro_winkler;
 
@@ -391,63 +388,6 @@ impl MatchingStrategy for FuzzyStringStrategy {
     }
 }
 
-/// Dosage comparison strategy
-pub struct DosageStrategy {
-    weight: RwLock<f64>,
-    enabled: RwLock<bool>,
-}
-
-impl Default for DosageStrategy {
-    fn default() -> Self {
-        Self {
-            weight: RwLock::new(0.15),
-            enabled: RwLock::new(true),
-        }
-    }
-}
-
-impl DosageStrategy {
-    pub fn new(weight: f64) -> Self {
-        Self {
-            weight: RwLock::new(weight),
-            enabled: RwLock::new(true),
-        }
-    }
-}
-
-impl MatchingStrategy for DosageStrategy {
-    fn name(&self) -> &str {
-        "dosage"
-    }
-
-    fn score(&self, offer: &Offer, request: &Request, _context: &StrategyContext) -> f64 {
-        let offer_dosage = parse_dosage(&offer.medication);
-        let request_dosage = parse_dosage(&request.medication);
-
-        match (&offer_dosage, &request_dosage) {
-            (None, None) => 0.9,                      // Both missing - slight penalty
-            (None, Some(_)) | (Some(_), None) => 0.7, // One missing - partial penalty
-            _ => compare_dosages(&offer_dosage, &request_dosage),
-        }
-    }
-
-    fn weight(&self) -> f64 {
-        *self.weight.read().unwrap()
-    }
-
-    fn set_weight(&self, weight: f64) {
-        *self.weight.write().unwrap() = weight;
-    }
-
-    fn is_enabled(&self) -> bool {
-        *self.enabled.read().unwrap()
-    }
-
-    fn enable(&self, enabled: bool) {
-        *self.enabled.write().unwrap() = enabled;
-    }
-}
-
 /// Historical pattern learning strategy
 pub struct HistoricalStrategy {
     weight: RwLock<f64>,
@@ -646,7 +586,6 @@ impl EnsembleMatcher {
         let strategies: Vec<Arc<dyn MatchingStrategy>> = vec![
             Arc::new(EmbeddingStrategy::new(config.embedding_weight)),
             Arc::new(FuzzyStringStrategy::new(config.fuzzy_weight)),
-            Arc::new(DosageStrategy::new(config.dosage_weight)),
             Arc::new(HistoricalStrategy::with_default_learner(
                 config.historical_weight,
             )),
@@ -1117,28 +1056,6 @@ mod tests {
 
         let score = strategy.score(&offer, &request, &context);
         assert!(score > 0.9); // Arabic normalization should help
-    }
-
-    #[test]
-    fn test_dosage_strategy_match() {
-        let strategy = DosageStrategy::default();
-        let offer = create_test_offer("Aspirin 500mg", Utc::now());
-        let request = create_test_request("Aspirin 500mg");
-        let context = StrategyContext::new();
-
-        let score = strategy.score(&offer, &request, &context);
-        assert!(score > 0.9);
-    }
-
-    #[test]
-    fn test_dosage_strategy_different() {
-        let strategy = DosageStrategy::default();
-        let offer = create_test_offer("Aspirin 500mg", Utc::now());
-        let request = create_test_request("Aspirin 250mg");
-        let context = StrategyContext::new();
-
-        let score = strategy.score(&offer, &request, &context);
-        assert!(score < 1.0); // Should be penalized for different dosage
     }
 
     #[test]

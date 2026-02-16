@@ -143,7 +143,6 @@ impl RequestRepository for SeaOrmRequestRepo {
         &self,
         id: Uuid,
         medication: &str,
-        _medication_raw: &str,
         ai_confidence: Option<f64>,
     ) -> Result<request::Model> {
         let request = Request::find_by_id(id)
@@ -204,6 +203,62 @@ impl RequestRepository for SeaOrmRequestRepo {
             .exec(&*self.db)
             .await?;
         Ok(result.rows_affected)
+    }
+
+    async fn search_bm25(
+        &self,
+        query: &str,
+        limit: i64,
+        max_score: f64,
+    ) -> Result<Vec<(request::Model, f64)>> {
+        // Use pg_textsearch BM25 operator with explicit index name
+        // Returns negative scores where lower (more negative) = better match
+        // Note: Using to_bm25query() with explicit index name for WHERE clause compatibility
+        let sql = r#"
+            SELECT *, medication <@> to_bm25query($1, 'requests_medication_bm25_idx') as bm25_score
+            FROM requests
+            WHERE status = 'active'
+              AND medication <@> to_bm25query($1, 'requests_medication_bm25_idx') < $2
+            ORDER BY bm25_score
+            LIMIT $3
+        "#;
+
+        let results: Vec<(request::Model, f64)> = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                sql,
+                vec![query.into(), max_score.into(), limit.into()],
+            ))
+            .await?
+            .into_iter()
+            .filter_map(|row| {
+                // Parse the row into request::Model and score
+                let request = request::Model {
+                    id: row.try_get("", "id").ok()?,
+                    raw_message_id: row.try_get("", "raw_message_id").ok()?,
+                    participant_id: row.try_get("", "participant_id").ok()?,
+                    group_id: row.try_get("", "group_id").ok()?,
+                    medication: row.try_get("", "medication").ok()?,
+                    form: row.try_get("", "form").ok()?,
+                    concentration: row.try_get("", "concentration").ok()?,
+                    urgency_level: row.try_get("", "urgency_level").ok()?,
+                    expiry_requirement: row.try_get("", "expiry_requirement").ok()?,
+                    ai_confidence: row.try_get("", "ai_confidence").ok()?,
+                    status: row.try_get("", "status").ok()?,
+                    content_embedding: row.try_get("", "content_embedding").ok()?,
+                    master_medication_id: row.try_get("", "master_medication_id").ok()?,
+                    medication_curated: row.try_get("", "medication_curated").ok()?,
+                    confirmed_match_count: row.try_get("", "confirmed_match_count").ok()?,
+                    created_at: row.try_get("", "created_at").ok()?,
+                    updated_at: row.try_get("", "updated_at").ok()?,
+                };
+                let score: f64 = row.try_get("", "bm25_score").ok()?;
+                Some((request, score))
+            })
+            .collect();
+
+        Ok(results)
     }
 }
 

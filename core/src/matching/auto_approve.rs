@@ -1192,7 +1192,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::blocklist::MedicationBlocklist;
-use super::dosage_gate::{DosageFlag, DosageGate};
 use super::reviewer::AIReviewer;
 use super::safety_guardrails::CooldownTracker;
 use crate::domain::{Match, Offer, Request};
@@ -1383,8 +1382,6 @@ pub struct AutoApproveProcessor {
     ai_reviewer: Arc<AIReviewer>,
     /// Medication blocklist for safety checks
     blocklist: Arc<MedicationBlocklist>,
-    /// Dosage gate for dosage mismatch checks
-    dosage_gate: Arc<DosageGate>,
     /// Internal state
     state: RwLock<ProcessorState>,
     /// Cooldown tracker for medication pairs
@@ -1397,13 +1394,11 @@ impl AutoApproveProcessor {
         config: AutoApproveConfig,
         ai_reviewer: Arc<AIReviewer>,
         blocklist: Arc<MedicationBlocklist>,
-        dosage_gate: Arc<DosageGate>,
     ) -> Self {
         Self {
             config: RwLock::new(config),
             ai_reviewer,
             blocklist,
-            dosage_gate,
             state: RwLock::new(ProcessorState::default()),
             cooldown_tracker: RwLock::new(CooldownTracker::new()),
         }
@@ -1486,7 +1481,6 @@ impl AutoApproveProcessor {
         &self,
         offer: &Offer,
         request: &Request,
-        dosage_score: f64,
     ) -> Vec<SafetyCheckResult> {
         let mut results = Vec::new();
 
@@ -1504,17 +1498,6 @@ impl AutoApproveProcessor {
             ));
         } else {
             results.push(SafetyCheckResult::passed("blocklist"));
-        }
-
-        // Check dosage mismatch (Requirement 7.4)
-        let dosage_result = self.dosage_gate.evaluate(offer, request, dosage_score);
-        if dosage_result.has_flag(&DosageFlag::MandatoryReview) {
-            results.push(SafetyCheckResult::failed(
-                "dosage_mismatch",
-                "Dosage differs by more than 20%, requires human review",
-            ));
-        } else {
-            results.push(SafetyCheckResult::passed("dosage_mismatch"));
         }
 
         // Check cooldown (Requirement 4.3)
@@ -1595,8 +1578,7 @@ impl AutoApproveProcessor {
             .unwrap_or_else(|| "No AI explanation available".to_string());
 
         // Run safety checks
-        let dosage_score = match_entity.score; // Use match score as proxy for dosage score
-        let safety_checks = self.run_safety_checks(offer, request, dosage_score).await;
+        let safety_checks = self.run_safety_checks(offer, request).await;
 
         // Check for safety failures (Requirement 7.1, 7.4)
         if let Some(reason) = Self::any_safety_check_failed(&safety_checks) {

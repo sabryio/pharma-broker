@@ -15,8 +15,6 @@ mod calibration;
 mod confidence;
 mod consensus_auditor;
 mod contrastive_validator;
-mod dosage;
-mod dosage_gate;
 mod embedding_cache;
 mod engine;
 mod ensemble;
@@ -27,6 +25,7 @@ mod fts_search;
 mod fuzzy;
 mod hard_negative;
 mod hierarchical_matcher;
+mod hierarchical_textsearch;
 mod historical;
 mod hybrid_filter;
 mod learner;
@@ -82,12 +81,6 @@ pub use calibration::{
 
 // --- confidence ---
 pub use confidence::{ConfidenceConfig, ConfidenceManager, ConfidenceManagerStats};
-
-// --- dosage ---
-pub use dosage::{Dosage, compare_dosages, is_same_dosage, parse_dosage};
-
-// --- dosage_gate ---
-pub use dosage_gate::{DosageFlag, DosageGate, DosageGateConfig, DosageGateResult};
 
 // --- expiry ---
 pub use expiry::{ExpiryConfig, ExpiryResult, ExpiryScorer, ExpiryWarning};
@@ -169,6 +162,12 @@ pub use medication_resolver::{
 // --- hierarchical_matcher ---
 pub use hierarchical_matcher::{
     HierarchicalConfig, HierarchicalStats, HierarchicalStatsSnapshot, MatchCandidate, MatchStage,
+};
+
+// --- hierarchical_textsearch ---
+pub use hierarchical_textsearch::{
+    HierarchicalConfig as TextSearchConfig, HierarchicalMatch,
+    HierarchicalMatcher as TextSearchMatcher, MatchMethod as TextSearchMethod,
 };
 
 // --- alias_learner ---

@@ -172,7 +172,6 @@ where
 
     let new_weights = Weights {
         medication: req.medication,
-        dosage: req.dosage,
         recency: req.recency,
         expiry: req.expiry,
         supplier: req.supplier,
@@ -208,7 +207,6 @@ where
 
     tracing::info!(
         medication = %new_weights.medication,
-        dosage = %new_weights.dosage,
         reason = %reason,
         "Weights updated via API"
     );

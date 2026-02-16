@@ -37,10 +37,6 @@ use super::{
     ConfidenceConfig,
     ConfidenceManager,
     ConfidenceManagerStats,
-    DosageFlag,
-    DosageGate,
-    DosageGateConfig,
-    DosageGateResult,
     EmbeddingCache,
     EmbeddingCacheStatsSnapshot,
     ExpiryConfig,
@@ -129,8 +125,6 @@ pub struct MatchingEngineConfig {
     pub audit_trail: AuditTrailConfig,
     /// Historical learning settings
     pub historical: HistoricalLearningConfig,
-    /// Dosage gate settings (Requirements 1.1, 1.3, 1.4)
-    pub dosage_gate: DosageGateConfig,
     /// Expiry scorer settings (Requirements 5.1, 5.2, 5.4, 5.5)
     pub expiry: ExpiryConfig,
 }
@@ -219,8 +213,6 @@ pub struct MatchingEngine {
         Option<Arc<PersistentAuditRecorder<pharma_db::repo::SeaOrmMatchAuditRecordRepo>>>,
     /// Uncertainty estimator
     uncertainty_estimator: UncertaintyEstimator,
-    /// Dosage gate for safety validation (Requirements 1.1, 1.3, 1.4)
-    dosage_gate: RwLock<DosageGate>,
     /// Medication blocklist for dangerous pairs (Requirements 3.1, 3.5)
     blocklist: RwLock<MedicationBlocklist>,
     /// Expiry scorer for expiry date validation (Requirements 5.1, 5.2, 5.4, 5.5)
@@ -285,7 +277,6 @@ impl MatchingEngine {
             UncertaintyEstimator::new(UncertaintyConfig::from_env(), config.weights.clone());
 
         // Initialize new safety components (Requirements 1.1, 3.1, 5.1)
-        let dosage_gate = RwLock::new(DosageGate::new(config.dosage_gate.clone()));
         let blocklist = RwLock::new(MedicationBlocklist::with_defaults());
         let expiry_scorer = RwLock::new(ExpiryScorer::new(config.expiry.clone()));
 
@@ -301,12 +292,10 @@ impl MatchingEngine {
         // Initialize auto-approve processor for AI-supervised auto-approval
         // Requirements: 1.1, 1.2, 1.3, 1.4, 6.1, 6.2, 7.1-7.5
         let blocklist_for_processor = Arc::new(MedicationBlocklist::with_defaults());
-        let dosage_gate_for_processor = Arc::new(DosageGate::new(config.dosage_gate.clone()));
         let auto_approve_processor = Arc::new(AutoApproveProcessor::new(
             AutoApproveConfig::default(),
             ai_reviewer.clone(),
             blocklist_for_processor,
-            dosage_gate_for_processor,
         ));
 
         Self {
@@ -324,7 +313,6 @@ impl MatchingEngine {
             audit_recorder,
             persistent_audit_recorder: None, // Default to None, can be set via set_persistent_audit_recorder()
             uncertainty_estimator,
-            dosage_gate,
             blocklist,
             expiry_scorer,
             arabic_matcher,
@@ -450,7 +438,6 @@ impl MatchingEngine {
         // Build weights snapshot as JSON
         let weights_snapshot = serde_json::json!({
             "medication": weights.medication,
-            "dosage": weights.dosage,
             "recency": weights.recency,
             "expiry": weights.expiry,
             "supplier": weights.supplier,
@@ -563,24 +550,6 @@ impl MatchingEngine {
             .scorer
             .score_match(offer, request, effective_medication_score, None);
 
-        // 2. Apply dosage gate evaluation (Requirements 1.1, 1.3, 1.4)
-        let dosage_gate = self.dosage_gate.read().await;
-        let dosage_gate_result = dosage_gate.evaluate(offer, request, score.dosage_score);
-        if !dosage_gate_result.passed {
-            score.total = dosage_gate.apply_to_score(score.total, &dosage_gate_result);
-            tracing::debug!(
-                offer_med = %offer.medication,
-                request_med = %request.medication,
-                dosage_score = score.dosage_score,
-                capped_score = score.total,
-                flags = ?dosage_gate_result.flags,
-                "Dosage gate triggered - score capped"
-            );
-        }
-
-        // 3. Apply expiry scoring (Requirements 5.1, 5.2, 5.4, 5.5)
-        // Drop dosage_gate lock before acquiring expiry_scorer lock
-        drop(dosage_gate);
         let expiry_scorer = self.expiry_scorer.read().await;
         // Use expiry_info (text) instead of expiry_date
         // For now, skip expiry scoring if we don't have structured date
@@ -973,7 +942,6 @@ impl MatchingEngine {
 
         tracing::info!(
             medication = format!("{:.2}", weights.medication),
-            dosage = format!("{:.2}", weights.dosage),
             recency = format!("{:.2}", weights.recency),
             reason = reason,
             "Applied new weights"
@@ -1402,12 +1370,6 @@ impl MatchingEngine {
         self.historical_learner
             .set_config(config.historical.clone());
 
-        // Update dosage gate
-        self.dosage_gate
-            .write()
-            .await
-            .set_config(config.dosage_gate.clone());
-
         // Update expiry scorer
         self.expiry_scorer
             .write()
@@ -1707,39 +1669,6 @@ impl MatchingEngine {
     /// Get number of tracked medication pairs
     pub fn medication_pair_count(&self) -> usize {
         self.historical_learner.pair_count()
-    }
-
-    // =========================================================================
-    // Dosage Gate (Safety Validation)
-    // Requirements: 1.1, 1.3, 1.4
-    // =========================================================================
-
-    /// Evaluate dosage gate for an offer-request pair
-    pub async fn evaluate_dosage_gate(
-        &self,
-        offer: &Offer,
-        request: &Request,
-        dosage_score: f64,
-    ) -> DosageGateResult {
-        self.dosage_gate
-            .read()
-            .await
-            .evaluate(offer, request, dosage_score)
-    }
-
-    /// Get dosage gate configuration
-    pub async fn get_dosage_gate_config(&self) -> DosageGateConfig {
-        self.dosage_gate.read().await.config().clone()
-    }
-
-    /// Update dosage gate configuration
-    pub async fn set_dosage_gate_config(&self, config: DosageGateConfig) {
-        self.dosage_gate.write().await.set_config(config);
-    }
-
-    /// Check if dosage gate has specific flag
-    pub fn dosage_gate_has_flag(&self, result: &DosageGateResult, flag: &DosageFlag) -> bool {
-        result.has_flag(flag)
     }
 
     // =========================================================================
@@ -2224,7 +2153,6 @@ mod tests {
             control_pct: 0.5,
             test_weights: Weights {
                 medication: 0.50,
-                dosage: 0.20,
                 recency: 0.05,
                 expiry: 0.05,
                 supplier: 0.05,
@@ -2274,7 +2202,6 @@ mod tests {
         let new_config = MatchingEngineConfig {
             weights: Weights {
                 medication: 0.50,
-                dosage: 0.20,
                 recency: 0.05,
                 expiry: 0.05,
                 supplier: 0.05,
