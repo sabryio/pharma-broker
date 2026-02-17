@@ -5,6 +5,8 @@ import {
   Building2,
   Calendar,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Hash,
   Loader2,
@@ -54,6 +56,11 @@ interface ReviewCardProps {
   ) => void
   aiConfidence?: number | null
   matchDetails?: MatchDetails | null
+  // Carousel props for navigating through similar items
+  carouselIndex?: number
+  carouselTotal?: number
+  onCarouselPrev?: () => void
+  onCarouselNext?: () => void
 }
 
 /**
@@ -530,6 +537,10 @@ export function ReviewCard({
   onCurate,
   onReclassify,
   onReparse,
+  carouselIndex,
+  carouselTotal,
+  onCarouselPrev,
+  onCarouselNext,
 }: ReviewCardProps) {
   const isOffer = type === 'offer'
 
@@ -639,6 +650,61 @@ export function ReviewCard({
             <div className="flex-1 h-px bg-linear-to-l from-teal/40 to-transparent" />
           </div>
         </div>
+
+        {/* Mini Carousel Navigation */}
+        {carouselTotal && carouselTotal > 1 && (
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <button
+              onClick={onCarouselPrev}
+              disabled={!onCarouselPrev || carouselIndex === 0}
+              className={cn(
+                'p-2 rounded-full transition-all duration-200',
+                'bg-linear-to-r from-teal/20 to-emerald/20',
+                'border border-teal/30 hover:border-teal/60',
+                'hover:scale-110 active:scale-95',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
+              )}
+            >
+              <ChevronLeft className="w-4 h-4 text-teal" />
+            </button>
+
+            {/* Dot indicators */}
+            <div className="flex items-center gap-1.5">
+              {Array.from({ length: Math.min(carouselTotal, 7) }).map(
+                (_, idx) => (
+                  <div
+                    key={idx}
+                    className={cn(
+                      'rounded-full transition-all duration-300',
+                      idx === carouselIndex
+                        ? 'w-6 h-2 bg-linear-to-r from-teal to-emerald'
+                        : 'w-2 h-2 bg-muted-foreground/30',
+                    )}
+                  />
+                ),
+              )}
+              {carouselTotal > 7 && (
+                <span className="text-xs text-muted-foreground ml-1">
+                  +{carouselTotal - 7}
+                </span>
+              )}
+            </div>
+
+            <button
+              onClick={onCarouselNext}
+              disabled={!onCarouselNext || carouselIndex === carouselTotal - 1}
+              className={cn(
+                'p-2 rounded-full transition-all duration-200',
+                'bg-linear-to-r from-teal/20 to-emerald/20',
+                'border border-teal/30 hover:border-teal/60',
+                'hover:scale-110 active:scale-95',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
+              )}
+            >
+              <ChevronRight className="w-4 h-4 text-teal" />
+            </button>
+          </div>
+        )}
 
         {/* Reclassify Button - Outside the card */}
         {onReclassify && (
@@ -797,6 +863,61 @@ export function ReviewCard({
             <div className="flex-1 h-px bg-linear-to-l from-amber/40 to-transparent" />
           </div>
         </div>
+
+        {/* Mini Carousel Navigation */}
+        {carouselTotal && carouselTotal > 1 && (
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <button
+              onClick={onCarouselPrev}
+              disabled={!onCarouselPrev || carouselIndex === 0}
+              className={cn(
+                'p-2 rounded-full transition-all duration-200',
+                'bg-linear-to-r from-amber/20 to-orange-500/20',
+                'border border-amber/30 hover:border-amber/60',
+                'hover:scale-110 active:scale-95',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
+              )}
+            >
+              <ChevronLeft className="w-4 h-4 text-amber" />
+            </button>
+
+            {/* Dot indicators */}
+            <div className="flex items-center gap-1.5">
+              {Array.from({ length: Math.min(carouselTotal, 7) }).map(
+                (_, idx) => (
+                  <div
+                    key={idx}
+                    className={cn(
+                      'rounded-full transition-all duration-300',
+                      idx === carouselIndex
+                        ? 'w-6 h-2 bg-linear-to-r from-amber to-orange-500'
+                        : 'w-2 h-2 bg-muted-foreground/30',
+                    )}
+                  />
+                ),
+              )}
+              {carouselTotal > 7 && (
+                <span className="text-xs text-muted-foreground ml-1">
+                  +{carouselTotal - 7}
+                </span>
+              )}
+            </div>
+
+            <button
+              onClick={onCarouselNext}
+              disabled={!onCarouselNext || carouselIndex === carouselTotal - 1}
+              className={cn(
+                'p-2 rounded-full transition-all duration-200',
+                'bg-linear-to-r from-amber/20 to-orange-500/20',
+                'border border-amber/30 hover:border-amber/60',
+                'hover:scale-110 active:scale-95',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
+              )}
+            >
+              <ChevronRight className="w-4 h-4 text-amber" />
+            </button>
+          </div>
+        )}
 
         {/* Reclassify Button - Outside the card */}
         {onReclassify && (
