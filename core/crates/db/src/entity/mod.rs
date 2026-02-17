@@ -23,6 +23,7 @@ pub mod participant;
 pub mod participant_group;
 pub mod raw_message;
 pub mod request;
+pub mod retry_queue;
 pub mod review_queue;
 pub mod weight_history;
 
@@ -41,6 +42,7 @@ pub use participant::Entity as Participant;
 pub use participant_group::Entity as ParticipantGroup;
 pub use raw_message::Entity as RawMessage;
 pub use request::Entity as Request;
+pub use retry_queue::Entity as RetryQueue;
 pub use review_queue::Entity as ReviewQueue;
 pub use weight_history::Entity as WeightHistory;
 

@@ -421,11 +421,14 @@ impl PharmaParser {
         let mut first_reason = None;
         let mut errors = Vec::new();
         let mut permanent_failure = false;
+        let mut successful_chunks = 0;
+        let mut failed_chunks = 0;
 
         for (idx, chunk, result) in results {
             match result {
                 Ok(parse_result) => {
                     self.circuit_breaker.record_success();
+                    successful_chunks += 1;
 
                     // Capture first chunk's metadata
                     if first_intent.is_none() {
@@ -452,6 +455,8 @@ impl PharmaParser {
                     all_medications.extend(parse_result.medications);
                 }
                 Err(e) => {
+                    failed_chunks += 1;
+
                     // Check for context error (either direct API error or wrapped in RetryExhausted)
                     let is_context_error = match &e {
                         ClientError::Api { status, message } => {
@@ -487,6 +492,8 @@ impl PharmaParser {
                         .await
                         {
                             Ok(sub_result) => {
+                                successful_chunks += 1;
+                                failed_chunks -= 1; // Recovered from failure
                                 all_medications.extend(sub_result.medications);
                                 continue;
                             }
@@ -519,6 +526,15 @@ impl PharmaParser {
             }
         }
 
+        // Log summary of chunk processing
+        info!(
+            successful_chunks = successful_chunks,
+            failed_chunks = failed_chunks,
+            total_chunks = chunks.len(),
+            depth = depth,
+            "Chunk processing summary"
+        );
+
         // If we hit a permanent failure, propagate it
         if permanent_failure && all_medications.is_empty() {
             return Err(ParseError::Parse(format!(
@@ -530,7 +546,21 @@ impl PharmaParser {
 
         // If all chunks failed (but not permanent), return error
         if all_medications.is_empty() && !errors.is_empty() {
-            return Err(ParseError::Parse(errors.join("; ")));
+            return Err(ParseError::Parse(format!(
+                "All {} chunks failed. Errors: {}",
+                chunks.len(),
+                errors.join("; ")
+            )));
+        }
+
+        // If we have partial success, log warning but continue
+        if !errors.is_empty() && !all_medications.is_empty() {
+            warn!(
+                successful_chunks = successful_chunks,
+                failed_chunks = failed_chunks,
+                medications_extracted = all_medications.len(),
+                "Partial chunk processing success - some chunks failed but medications were extracted"
+            );
         }
 
         info!(
@@ -1243,5 +1273,3 @@ mod tests {
         assert_eq!(stats.total_batches, 0);
     }
 }
-
-

@@ -28,6 +28,8 @@ mod m20260103_000019_create_medication_pair_cooldowns;
 mod m20260216_000020_create_bm25_indexes;
 // Pharmaceutical validation weight history update
 mod m20260216_000021_update_weight_history_pharmaceutical;
+// Retry queue for failed message processing
+mod m20260217_000001_create_retry_queue;
 
 pub struct Migrator;
 
@@ -61,6 +63,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260216_000020_create_bm25_indexes::Migration),
             // Pharmaceutical Validation Weight History Update (Phase 5)
             Box::new(m20260216_000021_update_weight_history_pharmaceutical::Migration),
+            // Retry Queue for Failed Message Processing (Phase 6)
+            Box::new(m20260217_000001_create_retry_queue::Migration),
         ]
     }
 }

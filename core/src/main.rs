@@ -103,6 +103,8 @@ async fn main() -> anyhow::Result<()> {
     let match_queue_repo = Arc::new(SeaOrmMatchQueueRepo::new(db.clone()));
     let medication_master_repo = Arc::new(SeaOrmMedicationMasterRepo::new(db.clone()));
     let medication_alias_repo = Arc::new(SeaOrmMedicationAliasRepo::new(db.clone()));
+    let retry_queue_repo = Arc::new(pharma_db::repo::SeaOrmRetryQueueRepo::new(db.clone()));
+    tracing::info!("✅ Retry queue repository initialized");
 
     // Create AI client (reads AI_GATEWAY_URL from env)
     let ai_client = Arc::new(PharmaParser::from_env());
@@ -290,6 +292,23 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Initialize and start RetryProcessor (retry failed messages worker)
+    let rx_retry_processor = worker_shutdown_rx.clone();
+    let retry_processor_repos = pharma_core::worker::retry_processor::RetryProcessorRepos {
+        retry_queue: retry_queue_repo.clone(),
+        raw_message: raw_message_repo.clone(),
+        offer: offer_repo.clone(),
+        request: request_repo.clone(),
+    };
+    let retry_processor = pharma_core::worker::retry_processor::RetryProcessor::new(
+        retry_processor_repos,
+        ai_client.clone(),
+    );
+    let retry_processor_handle = tokio::spawn(async move {
+        retry_processor.run(rx_retry_processor).await;
+    });
+    tracing::info!("🔄 RetryProcessor started");
+
     // Create alias learner for automated alias learning from confirmations
     let alias_learner = Arc::new(AliasLearner::from_env());
     tracing::info!(
@@ -384,6 +403,7 @@ async fn main() -> anyhow::Result<()> {
         review_queue: review_queue_repo,
         audit_log: audit_log_repo,
         match_queue: match_queue_repo.clone(),
+        retry_queue: retry_queue_repo.clone(),
         medication_master: medication_master_repo.clone(),
         medication_alias: medication_alias_repo.clone(),
         match_repo: match_repo.clone(),
@@ -531,6 +551,13 @@ async fn main() -> anyhow::Result<()> {
                         Ok(Ok(())) => tracing::info!("✅ UnprocessedPoller stopped gracefully"),
                         Ok(Err(e)) => tracing::warn!("⚠️ UnprocessedPoller task panicked: {}", e),
                         Err(_) => tracing::warn!("⚠️ UnprocessedPoller drain timed out after {:?}", drain_timeout),
+                    }
+                },
+                async {
+                    match tokio::time::timeout(drain_timeout, retry_processor_handle).await {
+                        Ok(Ok(())) => tracing::info!("✅ RetryProcessor stopped gracefully"),
+                        Ok(Err(e)) => tracing::warn!("⚠️ RetryProcessor task panicked: {}", e),
+                        Err(_) => tracing::warn!("⚠️ RetryProcessor drain timed out after {:?}", drain_timeout),
                     }
                 }
             );

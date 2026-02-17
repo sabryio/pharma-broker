@@ -38,7 +38,7 @@ impl Default for ClientConfig {
             base_url: "http://localhost:12434/engines/llama.cpp/v1".to_string(),
             api_key: None,
             model: "ai/qwen3-vl:latest".to_string(),
-            timeout: Duration::from_secs(120),
+            timeout: Duration::from_secs(180), // Increased from 120 to 180 seconds
             retry: RetryConfig::default(),
             temperature: 0.1,
             max_tokens: None, // Unlimited by default - let the model decide
@@ -99,7 +99,7 @@ impl ClientConfig {
                 std::env::var("AI_TIMEOUT_SECS")
                     .ok()
                     .and_then(|s| s.parse().ok())
-                    .unwrap_or(60),
+                    .unwrap_or(180), // Increased default from 60 to 180 seconds
             ),
             ..Default::default()
         }
@@ -265,6 +265,8 @@ impl Client {
                                 warn!(
                                     attempt,
                                     error = %e,
+                                    content_len = content.len(),
+                                    content_preview = &content[..content.len().min(200)],
                                     "Incomplete JSON response from model, attempting repair"
                                 );
 
@@ -297,15 +299,27 @@ impl Client {
                                             warn!(
                                                 attempt,
                                                 error = %repair_parse_err,
+                                                repair_status = %repair_result.status,
                                                 "JSON repair did not produce valid output, will retry"
                                             );
                                         }
                                     }
+                                } else {
+                                    warn!(
+                                        attempt,
+                                        repair_status = %repair_result.status,
+                                        "JSON repair produced no output, will retry"
+                                    );
                                 }
 
                                 last_error = Some(Error::IncompleteJson(e.to_string()));
                             } else {
-                                warn!(attempt, error = %e, "Failed to parse structured output");
+                                warn!(
+                                    attempt,
+                                    error = %e,
+                                    content_preview = &content[..content.len().min(200)],
+                                    "Failed to parse structured output (non-retryable)"
+                                );
                                 // Non-incomplete parse errors are not retryable
                                 return Err(Error::Parse(e));
                             }

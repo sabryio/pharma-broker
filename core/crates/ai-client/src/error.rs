@@ -49,7 +49,10 @@ impl Error {
     /// which indicate the model returned truncated output.
     pub fn is_incomplete_json(err: &serde_json::Error) -> bool {
         let msg = err.to_string().to_lowercase();
-        msg.contains("eof while parsing") || msg.contains("unexpected end of input")
+        msg.contains("eof while parsing")
+            || msg.contains("unexpected end of input")
+            || msg.contains("unexpected end of json")
+            || msg.contains("premature end of input")
     }
 
     /// Check if an API error message indicates context size exceeded

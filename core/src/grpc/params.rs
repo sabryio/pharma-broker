@@ -11,12 +11,12 @@ use crate::matching::{MatchingEngine, MedicationResolver};
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
     MedicationAliasRepository, MedicationMasterRepository, OfferRepository, ParticipantRepository,
-    RawMessageRepository, RequestRepository, ReviewQueueRepository,
+    RawMessageRepository, RequestRepository, RetryQueueRepository, ReviewQueueRepository,
 };
 use crate::ws::WsEvent;
 
 /// Repositories required by the gRPC service
-pub struct GrpcRepositories<O, R, M, G, F, RQ, A, MQ, P>
+pub struct GrpcRepositories<O, R, M, G, F, RQ, A, MQ, P, RTQ>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -27,6 +27,7 @@ where
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
     P: ParticipantRepository + 'static,
+    RTQ: RetryQueueRepository + 'static,
 {
     pub offer: Arc<O>,
     pub request: Arc<R>,
@@ -37,6 +38,7 @@ where
     pub review_queue: Arc<RQ>,
     pub audit_log: Arc<A>,
     pub match_queue: Arc<MQ>,
+    pub retry_queue: Arc<RTQ>,
     pub medication_master: Arc<dyn MedicationMasterRepository + Send + Sync>,
     pub medication_alias: Arc<dyn MedicationAliasRepository + Send + Sync>,
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,

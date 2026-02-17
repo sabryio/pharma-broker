@@ -44,6 +44,10 @@ pub use crate::entity::weight_history::Model as WeightHistoryModel;
 // Re-export common types from centralized location
 pub use crate::entity::common::{ItemStatus, MatchStatus, UrgencyLevel};
 
+// Re-export retry queue types
+pub use crate::entity::retry_queue::{FailureReason, Model as RetryQueueModel, RetryStatus};
+pub use crate::repo::RetryQueueStats;
+
 /// Offer repository trait
 #[async_trait]
 pub trait OfferRepository: Send + Sync {
@@ -606,4 +610,47 @@ pub struct MatchReviewStats {
     pub avg_confidence: f64,
     pub unique_pending_offers: i64,
     pub unique_pending_requests: i64,
+}
+
+/// Retry queue repository trait for failed message processing
+#[async_trait]
+pub trait RetryQueueRepository: Send + Sync {
+    /// Add a failed message to the retry queue
+    async fn enqueue(
+        &self,
+        raw_message_id: Uuid,
+        failure_reason: FailureReason,
+        original_error: &str,
+        priority: i32,
+    ) -> Result<RetryQueueModel>;
+
+    /// Get pending items ready for retry
+    async fn get_pending(&self, limit: i64) -> Result<Vec<RetryQueueModel>>;
+
+    /// Mark an item as being processed
+    async fn mark_processing(&self, id: Uuid) -> Result<RetryQueueModel>;
+
+    /// Mark an item as successfully completed
+    async fn mark_completed(&self, id: Uuid) -> Result<RetryQueueModel>;
+
+    /// Mark an item as failed and optionally schedule retry
+    async fn mark_failed(&self, id: Uuid, error: &str, retry: bool) -> Result<RetryQueueModel>;
+
+    /// Cancel a retry item
+    async fn cancel(&self, id: Uuid) -> Result<RetryQueueModel>;
+
+    /// Get retry item by raw message ID
+    async fn get_by_raw_message_id(&self, raw_message_id: Uuid) -> Result<Option<RetryQueueModel>>;
+
+    /// Count items by status
+    async fn count_by_status(&self, status: RetryStatus) -> Result<i64>;
+
+    /// Count items by failure reason
+    async fn count_by_failure_reason(&self, reason: FailureReason) -> Result<i64>;
+
+    /// Get retry queue statistics
+    async fn get_stats(&self) -> Result<RetryQueueStats>;
+
+    /// Clean up old completed/failed items
+    async fn cleanup_old(&self, days: i64) -> Result<u64>;
 }

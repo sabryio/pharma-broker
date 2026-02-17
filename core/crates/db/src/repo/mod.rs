@@ -15,6 +15,7 @@ mod offer;
 mod participant;
 mod raw_message;
 mod request;
+mod retry_queue;
 mod review_queue;
 mod weight_history;
 
@@ -31,5 +32,6 @@ pub use offer::SeaOrmOfferRepo;
 pub use participant::SeaOrmParticipantRepo;
 pub use raw_message::SeaOrmRawMessageRepo;
 pub use request::SeaOrmRequestRepo;
+pub use retry_queue::{RetryQueueStats, SeaOrmRetryQueueRepo};
 pub use review_queue::SeaOrmReviewQueueRepo;
 pub use weight_history::SeaOrmWeightHistoryRepo;

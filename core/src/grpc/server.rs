@@ -31,12 +31,13 @@ use crate::matching::MedicationResolver;
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, FindDuplicateParams, GroupRepository,
     MatchQueueRepository, MatchRepository, MedicationMasterRepository, OfferRepository,
-    ParticipantRepository, RawMessageRepository, RequestRepository, ReviewQueueRepository,
-    SemanticDuplicateParams,
+    ParticipantRepository, RawMessageRepository, RequestRepository, RetryQueueRepository,
+    ReviewQueueRepository, SemanticDuplicateParams,
 };
+use pharma_db::entity::retry_queue::FailureReason;
 
 /// The gRPC service implementation
-pub struct PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P>
+pub struct PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P, RTQ>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -47,6 +48,7 @@ where
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
     P: ParticipantRepository + 'static,
+    RTQ: RetryQueueRepository + 'static,
 {
     pub offer_repo: Arc<O>,
     pub request_repo: Arc<R>,
@@ -57,6 +59,7 @@ where
     pub review_queue_repo: Arc<RQ>,
     pub audit_log_repo: Arc<A>,
     pub match_queue_repo: Arc<MQ>,
+    pub retry_queue_repo: Arc<RTQ>,
     pub medication_master_repo: Arc<dyn MedicationMasterRepository + Send + Sync>,
     pub match_repo: Arc<dyn MatchRepository + Send + Sync>,
     pub ai_client: Arc<PharmaParser>,
@@ -67,7 +70,7 @@ where
     start_time: std::time::Instant,
 }
 
-impl<O, R, M, G, F, RQ, A, MQ, P> PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P>
+impl<O, R, M, G, F, RQ, A, MQ, P, RTQ> PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P, RTQ>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -78,10 +81,11 @@ where
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
     P: ParticipantRepository + 'static,
+    RTQ: RetryQueueRepository + 'static,
 {
     /// Create a new service from structured parameter objects
     pub fn new(
-        repos: super::params::GrpcRepositories<O, R, M, G, F, RQ, A, MQ, P>,
+        repos: super::params::GrpcRepositories<O, R, M, G, F, RQ, A, MQ, P, RTQ>,
         deps: super::params::GrpcDependencies,
     ) -> Self {
         Self {
@@ -94,6 +98,7 @@ where
             review_queue_repo: repos.review_queue,
             audit_log_repo: repos.audit_log,
             match_queue_repo: repos.match_queue,
+            retry_queue_repo: repos.retry_queue,
             medication_master_repo: repos.medication_master,
             match_repo: repos.match_repo,
             ai_client: deps.ai_client,
@@ -146,7 +151,8 @@ fn convert_urgency_level(ai_level: AiUrgencyLevel) -> UrgencyLevel {
 }
 
 #[tonic::async_trait]
-impl<O, R, M, G, F, RQ, A, MQ, P> PharmaCore for PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P>
+impl<O, R, M, G, F, RQ, A, MQ, P, RTQ> PharmaCore
+    for PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P, RTQ>
 where
     O: OfferRepository + 'static,
     R: RequestRepository + 'static,
@@ -157,6 +163,7 @@ where
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
     P: ParticipantRepository + 'static,
+    RTQ: RetryQueueRepository + 'static,
 {
     /// Process an incoming WhatsApp message
     async fn process_message(
@@ -353,6 +360,7 @@ where
         let match_queue_repo = self.match_queue_repo.clone();
         let medication_master_repo = self.medication_master_repo.clone();
         let medication_resolver = self.medication_resolver.clone();
+        let retry_queue_repo = self.retry_queue_repo.clone();
 
         tokio::spawn(async move {
             tracing::info!(id = %msg_id, "🤖 Starting AI parsing (background)");
@@ -390,6 +398,45 @@ where
                 Err(e) => {
                     metrics::record_ai_parse("error");
                     tracing::error!(error = %e, id = %msg_id, "AI parsing failed");
+
+                    // Determine failure reason from error type
+                    let failure_reason = if e.to_string().contains("Circuit breaker open") {
+                        FailureReason::CircuitBreaker
+                    } else if e.to_string().contains("Network error") {
+                        FailureReason::NetworkError
+                    } else if e.to_string().contains("Incomplete JSON") {
+                        FailureReason::IncompleteJson
+                    } else if e.to_string().contains("timeout") || e.to_string().contains("Timeout")
+                    {
+                        FailureReason::Timeout
+                    } else if e.to_string().contains("Parse error") {
+                        FailureReason::ParseError
+                    } else {
+                        FailureReason::Other
+                    };
+
+                    // Enqueue for retry
+                    match retry_queue_repo
+                        .enqueue(msg_id, failure_reason.clone(), &e.to_string(), 0)
+                        .await
+                    {
+                        Ok(_) => {
+                            tracing::info!(
+                                msg_id = %msg_id,
+                                failure_reason = ?failure_reason,
+                                "📥 Message enqueued for retry"
+                            );
+                            metrics::record_ai_parse("enqueued_retry");
+                        }
+                        Err(enqueue_err) => {
+                            tracing::error!(
+                                error = %enqueue_err,
+                                msg_id = %msg_id,
+                                "Failed to enqueue message for retry"
+                            );
+                        }
+                    }
+
                     let _ = raw_message_repo
                         .mark_processed(msg_id, Some(&e.to_string()))
                         .await;
@@ -888,9 +935,9 @@ where
 }
 
 /// Start the gRPC server on the specified address
-pub async fn start_grpc_server<O, R, M, G, F, RQ, A, MQ, P, S>(
+pub async fn start_grpc_server<O, R, M, G, F, RQ, A, MQ, P, RTQ, S>(
     addr: SocketAddr,
-    service: PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P>,
+    service: PharmaCoreService<O, R, M, G, F, RQ, A, MQ, P, RTQ>,
     shutdown: S,
 ) -> std::result::Result<(), tonic::transport::Error>
 where
@@ -903,6 +950,7 @@ where
     A: AuditLogRepository + 'static,
     MQ: MatchQueueRepository + 'static,
     P: ParticipantRepository + 'static,
+    RTQ: RetryQueueRepository + 'static,
     S: std::future::Future<Output = ()> + Send + 'static,
 {
     tracing::info!("🔌 gRPC server starting on {}", addr);
