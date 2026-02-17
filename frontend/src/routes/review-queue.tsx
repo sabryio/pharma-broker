@@ -185,11 +185,6 @@ export default function ReviewQueue() {
   }, [groups.length, anchorIndex])
 
   useEffect(() => {
-    setAnchorIndex(0)
-    setRelatedIndex(0)
-  }, [anchorMode])
-
-  useEffect(() => {
     pendingReviews.forEach((review) => {
       if (
         review.confidence < settings.highPriorityThreshold &&
@@ -289,40 +284,74 @@ export default function ReviewQueue() {
   )
 
   const handleAnchorModeChange = useCallback(
-    (newMode: 'offer' | 'request') => {
+    (newMode: 'offer' | 'request', currentMedicationName?: string) => {
       if (newMode === anchorMode) return
 
-      if (currentMatch && currentGroup) {
+      // Use provided medication name or fall back to currentGroup
+      let medicationToFind = currentMedicationName
+
+      if (!medicationToFind && currentGroup) {
+        medicationToFind =
+          anchorMode === 'offer'
+            ? (currentGroup as OfferWithMatches).offer.product
+                .trim()
+                .toLowerCase()
+            : (currentGroup as RequestWithMatches).request.product
+                .trim()
+                .toLowerCase()
+      }
+
+      if (medicationToFind && currentMatch) {
         if (newMode === 'request') {
-          const matchWithReq = currentMatch as any
-          if (matchWithReq.request) {
-            const reqIndex = groupedRequests.findIndex(
-              (g) => g.request.id === matchWithReq.request.id,
-            )
-            if (reqIndex !== -1) {
-              setAnchorIndex(reqIndex)
+          // Switching from offer to request
+          // Try to find a request with the same medication name
+          const reqIndex = groupedRequests.findIndex(
+            (g) => g.request.product.trim().toLowerCase() === medicationToFind,
+          )
+
+          if (reqIndex !== -1) {
+            setAnchorIndex(reqIndex)
+            // Try to find the specific match that corresponds to the current offer
+            const matchWithReq = currentMatch as any
+            if (matchWithReq.request && currentGroup) {
               const offIndex = groupedRequests[reqIndex]?.matches.findIndex(
                 (m) =>
                   m.offer.id === (currentGroup as OfferWithMatches).offer.id,
               )
               setRelatedIndex(Math.max(0, offIndex ?? 0))
+            } else {
+              setRelatedIndex(0)
             }
+          } else {
+            // No matching medication found, go to first request
+            setAnchorIndex(0)
+            setRelatedIndex(0)
           }
         } else {
-          const matchWithOff = currentMatch as any
-          if (matchWithOff.offer) {
-            const offIndex = groupedOffers.findIndex(
-              (g) => g.offer.id === matchWithOff.offer.id,
-            )
-            if (offIndex !== -1) {
-              setAnchorIndex(offIndex)
+          // Switching from request to offer
+          // Try to find an offer with the same medication name
+          const offIndex = groupedOffers.findIndex(
+            (g) => g.offer.product.trim().toLowerCase() === medicationToFind,
+          )
+
+          if (offIndex !== -1) {
+            setAnchorIndex(offIndex)
+            // Try to find the specific match that corresponds to the current request
+            const matchWithOff = currentMatch as any
+            if (matchWithOff.offer && currentGroup) {
               const reqIndex = groupedOffers[offIndex]?.matches.findIndex(
                 (m) =>
                   m.request.id ===
                   (currentGroup as RequestWithMatches).request.id,
               )
               setRelatedIndex(Math.max(0, reqIndex ?? 0))
+            } else {
+              setRelatedIndex(0)
             }
+          } else {
+            // No matching medication found, go to first offer
+            setAnchorIndex(0)
+            setRelatedIndex(0)
           }
         }
       }

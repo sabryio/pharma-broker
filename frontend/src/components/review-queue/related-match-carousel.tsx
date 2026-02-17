@@ -38,7 +38,10 @@ interface RelatedMatchCarouselProps {
   groupedByRequest: Array<RequestWithMatches>
   /** Current mode - anchor by offer or request */
   anchorMode: 'offer' | 'request'
-  onAnchorModeChange: (mode: 'offer' | 'request') => void
+  onAnchorModeChange: (
+    mode: 'offer' | 'request',
+    currentMedicationName?: string,
+  ) => void
   /** Current anchor index (which offer/request is shown) */
   anchorIndex: number
   onAnchorIndexChange: (index: number) => void
@@ -344,7 +347,23 @@ export function RelatedMatchCarousel({
 
         {/* Center: Mode Toggle */}
         <button
-          onClick={() => onAnchorModeChange(isOfferMode ? 'request' : 'offer')}
+          onClick={() => {
+            // Get the current medication name from actualCurrentGroup
+            const currentMedicationName = actualCurrentGroup
+              ? isOfferMode
+                ? (actualCurrentGroup as OfferWithMatches).offer.product
+                    .trim()
+                    .toLowerCase()
+                : (actualCurrentGroup as RequestWithMatches).request.product
+                    .trim()
+                    .toLowerCase()
+              : undefined
+
+            onAnchorModeChange(
+              isOfferMode ? 'request' : 'offer',
+              currentMedicationName,
+            )
+          }}
           className={cn(
             'flex items-center gap-2 px-4 py-2 rounded-lg',
             'bg-linear-to-r from-violet-500/20 to-fuchsia-500/20',

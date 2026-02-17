@@ -3,14 +3,7 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { cn } from '@/lib/utils'
-import {
-  Search,
-  ChevronDown,
-  Package,
-  ShoppingCart,
-  Check,
-  X,
-} from 'lucide-react'
+import { ChevronDown, Package, ShoppingCart, Check, X } from 'lucide-react'
 import {
   Command,
   CommandEmpty,
@@ -45,6 +38,9 @@ interface SelectableCard {
   matchCount: number
   confidence: number
   source?: string
+  // For medication grouping
+  itemCount?: number // How many offers/requests share this medication name
+  firstIndex?: number // Index of the first item in this medication group
 }
 
 export function CardSelector({
@@ -58,40 +54,117 @@ export function CardSelector({
   const [open, setOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
 
-  // Build list of all selectable cards
+  // Build list of all selectable cards - grouped by medication name
   const cards = useMemo<SelectableCard[]>(() => {
     const result: SelectableCard[] = []
+    const medicationMap = new Map<
+      string,
+      {
+        indices: number[]
+        totalMatches: number
+        totalConfidence: number
+        source?: string
+      }
+    >()
 
     if (anchorMode === 'offer') {
+      // First pass: group by medication name
       groupedByOffer.forEach((group, index) => {
+        const medicationName = group.offer.product.trim().toLowerCase()
+
+        if (!medicationMap.has(medicationName)) {
+          medicationMap.set(medicationName, {
+            indices: [],
+            totalMatches: 0,
+            totalConfidence: 0,
+            source: group.offer.source,
+          })
+        }
+
+        const medGroup = medicationMap.get(medicationName)!
+        medGroup.indices.push(index)
+        medGroup.totalMatches += group.matches.length
+        medGroup.totalConfidence += group.matches.reduce(
+          (sum, m) => sum + m.confidence,
+          0,
+        )
+      })
+
+      // Second pass: create cards from grouped data
+      medicationMap.forEach((medGroup) => {
+        const firstIndex = medGroup.indices[0]
+        if (firstIndex === undefined) return
+
+        const firstGroup = groupedByOffer[firstIndex]
+        if (!firstGroup) return
+
+        const avgConfidence =
+          medGroup.totalMatches > 0
+            ? medGroup.totalConfidence / medGroup.totalMatches
+            : 0
+
         result.push({
-          id: group.offer.id,
-          name: group.offer.product,
+          id: firstGroup.offer.id,
+          name: firstGroup.offer.product,
           type: 'offer',
-          anchorIndex: index,
-          matchCount: group.matches.length,
-          confidence:
-            group.matches.reduce((sum, m) => sum + m.confidence, 0) /
-            (group.matches.length || 1),
-          source: group.offer.source,
+          anchorIndex: firstIndex,
+          matchCount: medGroup.totalMatches,
+          confidence: avgConfidence,
+          source: medGroup.source,
+          itemCount: medGroup.indices.length,
+          firstIndex: firstIndex,
         })
       })
     } else {
+      // First pass: group by medication name
       groupedByRequest.forEach((group, index) => {
+        const medicationName = group.request.product.trim().toLowerCase()
+
+        if (!medicationMap.has(medicationName)) {
+          medicationMap.set(medicationName, {
+            indices: [],
+            totalMatches: 0,
+            totalConfidence: 0,
+          })
+        }
+
+        const medGroup = medicationMap.get(medicationName)!
+        medGroup.indices.push(index)
+        medGroup.totalMatches += group.matches.length
+        medGroup.totalConfidence += group.matches.reduce(
+          (sum, m) => sum + m.confidence,
+          0,
+        )
+      })
+
+      // Second pass: create cards from grouped data
+      medicationMap.forEach((medGroup) => {
+        const firstIndex = medGroup.indices[0]
+        if (firstIndex === undefined) return
+
+        const firstGroup = groupedByRequest[firstIndex]
+        if (!firstGroup) return
+
+        const avgConfidence =
+          medGroup.totalMatches > 0
+            ? medGroup.totalConfidence / medGroup.totalMatches
+            : 0
+
         result.push({
-          id: group.request.id,
-          name: group.request.product,
+          id: firstGroup.request.id,
+          name: firstGroup.request.product,
           type: 'request',
-          anchorIndex: index,
-          matchCount: group.matches.length,
-          confidence:
-            group.matches.reduce((sum, m) => sum + m.confidence, 0) /
-            (group.matches.length || 1),
+          anchorIndex: firstIndex,
+          matchCount: medGroup.totalMatches,
+          confidence: avgConfidence,
+          itemCount: medGroup.indices.length,
+          firstIndex: firstIndex,
         })
       })
     }
 
-    return result
+    // Sort by anchor index (offer/request number)
+    return result.sort((a, b) => a.anchorIndex - b.anchorIndex)
   }, [groupedByOffer, groupedByRequest, anchorMode])
 
   // Filter cards based on search
@@ -102,7 +175,24 @@ export function CardSelector({
     return cards.filter((card) => card.name.toLowerCase().includes(search))
   }, [cards, searchValue])
 
-  const currentCard = cards[currentAnchorIndex]
+  const currentCard = useMemo(() => {
+    // Find the card that contains the current anchor index
+    return cards.find((card) => {
+      if (anchorMode === 'offer') {
+        const medicationName = groupedByOffer[currentAnchorIndex]?.offer.product
+          .trim()
+          .toLowerCase()
+        return card.name.trim().toLowerCase() === medicationName
+      } else {
+        const medicationName = groupedByRequest[
+          currentAnchorIndex
+        ]?.request.product
+          .trim()
+          .toLowerCase()
+        return card.name.trim().toLowerCase() === medicationName
+      }
+    })
+  }, [cards, currentAnchorIndex, anchorMode, groupedByOffer, groupedByRequest])
 
   const handleSelect = useCallback(
     (card: SelectableCard) => {
@@ -168,7 +258,19 @@ export function CardSelector({
               <div className="p-1">
                 <CommandGroup>
                   {filteredCards.map((card) => {
-                    const isSelected = card.anchorIndex === currentAnchorIndex
+                    // Check if current anchor index belongs to this medication group
+                    const currentMedicationName =
+                      anchorMode === 'offer'
+                        ? groupedByOffer[currentAnchorIndex]?.offer.product
+                            .trim()
+                            .toLowerCase()
+                        : groupedByRequest[currentAnchorIndex]?.request.product
+                            .trim()
+                            .toLowerCase()
+
+                    const isSelected =
+                      card.name.trim().toLowerCase() === currentMedicationName
+
                     const confidenceColor =
                       card.confidence >= 80
                         ? 'text-emerald-400'
@@ -209,6 +311,11 @@ export function CardSelector({
                             <p className="text-sm font-medium text-foreground truncate">
                               {card.name}
                             </p>
+                            {card.itemCount && card.itemCount > 1 && (
+                              <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-400 text-[10px] font-bold">
+                                ×{card.itemCount}
+                              </span>
+                            )}
                             {isSelected && (
                               <Check className="w-3.5 h-3.5 text-teal shrink-0" />
                             )}
