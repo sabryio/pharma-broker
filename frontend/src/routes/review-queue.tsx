@@ -27,6 +27,7 @@ import type {
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import {
   AdjustmentControls,
+  CardSelector,
   EnhancedBulkGrid,
   FilterBar,
   QueueProgress,
@@ -805,6 +806,63 @@ export default function ReviewQueue() {
 
             {!bulkMode && currentMatch && (
               <>
+                {/* Card Selectors for quick navigation */}
+                <div className="flex items-center justify-center gap-3">
+                  {/* Offer Selector */}
+                  <CardSelector
+                    groupedByOffer={groupedOffers}
+                    groupedByRequest={groupedRequests}
+                    anchorMode="offer"
+                    currentAnchorIndex={
+                      anchorMode === 'offer'
+                        ? anchorIndex
+                        : groupedOffers.findIndex(
+                            (g) => g.offer.id === currentMatch.offer.id,
+                          )
+                    }
+                    onNavigate={(newAnchorIndex, newRelatedIndex) => {
+                      if (anchorMode === 'offer') {
+                        setAnchorIndex(newAnchorIndex)
+                        if (newRelatedIndex !== undefined) {
+                          setRelatedIndex(newRelatedIndex)
+                        }
+                      } else {
+                        // Switch to offer mode and navigate
+                        setAnchorMode('offer')
+                        setAnchorIndex(newAnchorIndex)
+                        setRelatedIndex(newRelatedIndex ?? 0)
+                      }
+                    }}
+                  />
+
+                  {/* Request Selector */}
+                  <CardSelector
+                    groupedByOffer={groupedOffers}
+                    groupedByRequest={groupedRequests}
+                    anchorMode="request"
+                    currentAnchorIndex={
+                      anchorMode === 'request'
+                        ? anchorIndex
+                        : groupedRequests.findIndex(
+                            (g) => g.request.id === currentMatch.request.id,
+                          )
+                    }
+                    onNavigate={(newAnchorIndex, newRelatedIndex) => {
+                      if (anchorMode === 'request') {
+                        setAnchorIndex(newAnchorIndex)
+                        if (newRelatedIndex !== undefined) {
+                          setRelatedIndex(newRelatedIndex)
+                        }
+                      } else {
+                        // Switch to request mode and navigate
+                        setAnchorMode('request')
+                        setAnchorIndex(newAnchorIndex)
+                        setRelatedIndex(newRelatedIndex ?? 0)
+                      }
+                    }}
+                  />
+                </div>
+
                 <RelatedMatchCarousel
                   groupedByOffer={groupedOffers}
                   groupedByRequest={groupedRequests}
