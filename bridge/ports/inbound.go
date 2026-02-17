@@ -3,6 +3,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"pharma-bridge/domain"
 )
@@ -38,4 +39,24 @@ type QRHandler interface {
 	SetPaired()
 	// IsPaired returns true if paired.
 	IsPaired() bool
+}
+
+// HistorySyncer handles history sync deduplication and filtering.
+type HistorySyncer interface {
+	// ShouldProcess checks if a history sync should be processed (cooldown check).
+	ShouldProcess() bool
+	// IsMessageTooOld checks if a message is older than the max age.
+	IsMessageTooOld(timestamp time.Time) bool
+	// IsMessageProcessed checks if a message has already been processed.
+	IsMessageProcessed(msgID string) bool
+	// MarkMessageProcessed marks a message as processed.
+	MarkMessageProcessed(msgID string)
+	// MaxMessages returns the maximum messages to process per sync.
+	MaxMessages() int
+	// RecordReceived records that messages were received.
+	RecordReceived(count int)
+	// RecordSkipped records that messages were skipped.
+	RecordSkipped(count int)
+	// RecordProcessed records that messages were processed.
+	RecordProcessed(count int)
 }

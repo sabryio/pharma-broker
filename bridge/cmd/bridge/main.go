@@ -21,6 +21,7 @@ import (
 	"pharma-bridge/cache"
 	"pharma-bridge/deduplicator"
 	"pharma-bridge/domain"
+	"pharma-bridge/historysync"
 	"pharma-bridge/infra/config"
 	infrahttp "pharma-bridge/infra/http"
 	"pharma-bridge/ports"
@@ -60,6 +61,7 @@ func main() {
 		fx.Provide(provideRateLimiter),
 		fx.Provide(provideGroupCache),
 		fx.Provide(provideDeduplicator),
+		fx.Provide(provideHistorySyncer),
 
 		// Adapters
 		fx.Provide(provideQRHandler),
@@ -122,6 +124,16 @@ func provideDeduplicator(lc fx.Lifecycle, cfg *config.Config, logger zerolog.Log
 	})
 
 	return dedup
+}
+
+func provideHistorySyncer(cfg *config.Config, logger zerolog.Logger) ports.HistorySyncer {
+	return historysync.New(historysync.Config{
+		Cooldown:    cfg.HistorySync.Cooldown,
+		MaxAge:      cfg.HistorySync.MaxAge,
+		MaxMessages: cfg.HistorySync.MaxMessages,
+		CacheSize:   cfg.HistorySync.CacheSize,
+		CacheTTL:    cfg.HistorySync.CacheTTL,
+	}, logger)
 }
 
 func provideQRHandler(cfg *config.Config, logger zerolog.Logger) *qradapter.HandlerAdapter {
@@ -194,13 +206,14 @@ func provideWhatsAppClient(
 	lc fx.Lifecycle,
 	cfg *config.Config,
 	qrHandler *qradapter.HandlerAdapter,
+	historySyncer ports.HistorySyncer,
 	logger zerolog.Logger,
 ) (*whatsapp.Client, error) {
 	client, err := whatsapp.NewClient(context.Background(), whatsapp.ClientConfig{
 		StorePath:    cfg.WhatsApp.StorePath,
 		QRMaxRetries: cfg.WhatsApp.QRRetries,
 		QRTimeout:    cfg.WhatsApp.QRTimeout,
-	}, qrHandler, logger)
+	}, qrHandler, historySyncer, logger)
 	if err != nil {
 		return nil, err
 	}

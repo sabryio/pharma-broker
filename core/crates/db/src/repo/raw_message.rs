@@ -46,13 +46,56 @@ impl SeaOrmRawMessageRepo {
             }
         }
 
-        // Apply search filter (case-insensitive content search)
+        // Apply search filter (case-insensitive search in content, external_id, reply_to_id)
+        // Also searches in participant JID/phone if search looks like a phone number or JID
         if let Some(search) = params.search.as_ref().filter(|s| !s.is_empty()) {
             let search_pattern = format!("%{}%", search.to_lowercase());
-            query = query.filter(
-                Expr::expr(Func::lower(Expr::col(raw_message::Column::Content)))
-                    .like(&search_pattern),
-            );
+
+            // Check if search looks like a phone number or JID (contains @ or only digits/+)
+            let is_jid_search = search.contains('@')
+                || search
+                    .chars()
+                    .all(|c| c.is_numeric() || c == '+' || c == ' ' || c == '-');
+
+            if is_jid_search {
+                // For JID/phone searches, search in participant JID and phone fields
+                query = query.filter(
+                    raw_message::Column::ParticipantId.in_subquery(
+                        sea_orm::QuerySelect::query(
+                            &mut crate::entity::participant::Entity::find()
+                                .filter(
+                                    Expr::expr(Func::lower(Expr::col(
+                                        crate::entity::participant::Column::Jid,
+                                    )))
+                                    .like(&search_pattern)
+                                    .or(Expr::expr(
+                                        Func::lower(Expr::col(
+                                            crate::entity::participant::Column::Phone,
+                                        )),
+                                    )
+                                    .like(&search_pattern)),
+                                )
+                                .select_only()
+                                .column(crate::entity::participant::Column::Id),
+                        )
+                        .take(),
+                    ),
+                );
+            } else {
+                // For text searches, search in message content and IDs
+                query = query.filter(
+                    Expr::expr(Func::lower(Expr::col(raw_message::Column::Content)))
+                        .like(&search_pattern)
+                        .or(
+                            Expr::expr(Func::lower(Expr::col(raw_message::Column::ExternalId)))
+                                .like(&search_pattern),
+                        )
+                        .or(
+                            Expr::expr(Func::lower(Expr::col(raw_message::Column::ReplyToId)))
+                                .like(&search_pattern),
+                        ),
+                );
+            }
         }
 
         // Apply date range filters

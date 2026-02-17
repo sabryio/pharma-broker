@@ -21,12 +21,13 @@ import (
 
 // Client implements ports.MessageSource for WhatsApp.
 type Client struct {
-	wa        *whatsmeow.Client
-	store     *sqlstore.Container
-	qrHandler ports.QRHandler
-	logger    zerolog.Logger
-	messages  chan domain.Message
-	cfg       ClientConfig
+	wa            *whatsmeow.Client
+	store         *sqlstore.Container
+	qrHandler     ports.QRHandler
+	historySyncer ports.HistorySyncer
+	logger        zerolog.Logger
+	messages      chan domain.Message
+	cfg           ClientConfig
 }
 
 // ClientConfig holds configuration for the WhatsApp client.
@@ -37,7 +38,7 @@ type ClientConfig struct {
 }
 
 // NewClient creates a new WhatsApp client.
-func NewClient(ctx context.Context, cfg ClientConfig, qrHandler ports.QRHandler, logger zerolog.Logger) (*Client, error) {
+func NewClient(ctx context.Context, cfg ClientConfig, qrHandler ports.QRHandler, historySyncer ports.HistorySyncer, logger zerolog.Logger) (*Client, error) {
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
 	container, err := sqlstore.New(ctx, "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on&_busy_timeout=5000&_journal_mode=WAL", cfg.StorePath), dbLog)
 	if err != nil {
@@ -45,11 +46,12 @@ func NewClient(ctx context.Context, cfg ClientConfig, qrHandler ports.QRHandler,
 	}
 
 	return &Client{
-		store:     container,
-		qrHandler: qrHandler,
-		logger:    logger.With().Str("component", "whatsapp").Logger(),
-		messages:  make(chan domain.Message, 1000),
-		cfg:       cfg,
+		store:         container,
+		qrHandler:     qrHandler,
+		historySyncer: historySyncer,
+		logger:        logger.With().Str("component", "whatsapp").Logger(),
+		messages:      make(chan domain.Message, 1000),
+		cfg:           cfg,
 	}, nil
 }
 
@@ -248,33 +250,62 @@ func (c *Client) handleMessage(evt *events.Message) {
 }
 
 func (c *Client) handleHistorySync(v *events.HistorySync) {
-	c.logger.Info().Int("conversations", len(v.Data.Conversations)).Msg("Processing History Sync")
+	// Check if we should process this history sync (cooldown)
+	if !c.historySyncer.ShouldProcess() {
+		c.logger.Info().Msg("⏭️ History sync skipped (cooldown active)")
+		return
+	}
+
+	c.logger.Info().Int("conversations", len(v.Data.Conversations)).Msg("📚 Processing History Sync")
+
+	messagesReceived := 0
+	messagesSkipped := 0
+	messagesProcessed := 0
 
 	for _, conv := range v.Data.Conversations {
 		for _, waMsg := range conv.Messages {
+			messagesReceived++
+
 			if waMsg.Message == nil || waMsg.Message.Key == nil {
+				messagesSkipped++
 				continue
 			}
 
 			key := waMsg.Message.Key
 			msgID := domain.MessageID(key.GetID())
 
+			// Check if already processed
+			if c.historySyncer.IsMessageProcessed(msgID.String()) {
+				messagesSkipped++
+				continue
+			}
+
 			ts := domain.UnixTimestamp(0)
 			if waMsg.Message.MessageTimestamp != nil {
 				ts = domain.UnixTimestamp(*waMsg.Message.MessageTimestamp)
 			}
 
+			// Check message age
+			msgTime := time.Unix(ts.Int64(), 0)
+			if c.historySyncer.IsMessageTooOld(msgTime) {
+				messagesSkipped++
+				continue
+			}
+
 			if key.RemoteJID == nil {
+				messagesSkipped++
 				continue
 			}
 
 			chatJID, err := types.ParseJID(*key.RemoteJID)
 			if err != nil || chatJID.Server != "g.us" {
+				messagesSkipped++
 				continue
 			}
 
 			content := extractContent(waMsg.Message.Message)
 			if content == "" {
+				messagesSkipped++
 				continue
 			}
 
@@ -323,12 +354,36 @@ func (c *Client) handleHistorySync(v *events.HistorySync) {
 				IsGroup:     true,
 			}
 
+			// Mark as processed before sending
+			c.historySyncer.MarkMessageProcessed(msgID.String())
+
 			select {
 			case c.messages <- msg:
+				messagesProcessed++
 			default:
+				messagesSkipped++
+			}
+
+			// Check max messages limit
+			if c.historySyncer.MaxMessages() > 0 && messagesProcessed >= c.historySyncer.MaxMessages() {
+				c.logger.Info().
+					Int("max_messages", c.historySyncer.MaxMessages()).
+					Msg("⚠️ Reached max messages limit for history sync")
+				break
 			}
 		}
 	}
+
+	// Record statistics
+	c.historySyncer.RecordReceived(messagesReceived)
+	c.historySyncer.RecordSkipped(messagesSkipped)
+	c.historySyncer.RecordProcessed(messagesProcessed)
+
+	c.logger.Info().
+		Int("received", messagesReceived).
+		Int("skipped", messagesSkipped).
+		Int("processed", messagesProcessed).
+		Msg("✅ History sync complete")
 }
 
 // GetWhatsmeowClient returns the underlying whatsmeow client.
