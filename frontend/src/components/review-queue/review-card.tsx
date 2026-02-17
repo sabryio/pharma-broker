@@ -119,11 +119,13 @@ function SenderBadge({
   jid,
   accentColor,
   medicationName,
+  cardType,
 }: {
   name: string | null
   jid: string | null
   accentColor: 'teal' | 'amber'
   medicationName?: string
+  cardType?: 'offer' | 'request'
 }) {
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [message, setMessage] = useState('')
@@ -385,36 +387,29 @@ function SenderBadge({
 
             {/* Quick message templates */}
             <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() =>
-                  setMessage(
-                    `سلام عليكم كنت بسأل على ${medicationName || '(اسم الدواء)'}`,
-                  )
-                }
-                className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
-              >
-                🇪🇬 Ask about med
-              </button>
-              <button
-                onClick={() => setMessage('مرحباً، هل العرض ما زال متاحاً؟')}
-                className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
-              >
-                🇪🇬 Ask availability
-              </button>
-              <button
-                onClick={() => setMessage('Hello, is this still available?')}
-                className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
-              >
-                🇬🇧 Ask availability
-              </button>
-              <button
-                onClick={() =>
-                  setMessage('شكراً على العرض، سأتواصل معك قريباً.')
-                }
-                className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
-              >
-                🇪🇬 Thank you
-              </button>
+              {cardType === 'offer' ? (
+                <button
+                  onClick={() =>
+                    setMessage(
+                      `سلام عليكم كنت بسأل على ${medicationName || '(اسم الدواء)'}`,
+                    )
+                  }
+                  className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
+                >
+                  🇪🇬 Ask about med
+                </button>
+              ) : (
+                <button
+                  onClick={() =>
+                    setMessage(
+                      `سلام عليكم بخصوص دوا ${medicationName || '(اسم الدواء)'} متوفر عندى`,
+                    )
+                  }
+                  className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
+                >
+                  🇪🇬 I have this med
+                </button>
+              )}
             </div>
 
             {/* Character count */}
@@ -553,16 +548,12 @@ function CommonGroupsBadge({
   // Get groups between current participant and "me" (the reviewer)
   // Hardcoded reviewer JID for now - will be replaced with auth context
   const reviewerJid = '201021347532@s.whatsapp.net'
-  const {
-    data: myGroupsWithCurrent,
-    isLoading: loadingMyCurrent,
-    isError: errorMyCurrent,
-  } = useCommonGroups(currentJid, reviewerJid)
-  const {
-    data: myGroupsWithOther,
-    isLoading: loadingMyOther,
-    isError: errorMyOther,
-  } = useCommonGroups(otherJid, reviewerJid)
+  const { data: myGroupsWithCurrent, isError: errorMyCurrent } =
+    useCommonGroups(currentJid, reviewerJid)
+  const { data: myGroupsWithOther, isError: errorMyOther } = useCommonGroups(
+    otherJid,
+    reviewerJid,
+  )
 
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -881,6 +872,7 @@ export function ReviewCard({
               jid={offer.senderJid}
               accentColor="teal"
               medicationName={offer.product}
+              cardType="offer"
             />
           </div>
 
@@ -963,24 +955,70 @@ export function ReviewCard({
 
             {/* Dot indicators */}
             <div className="flex items-center gap-1.5">
-              {Array.from({ length: Math.min(carouselTotal, 7) }).map(
-                (_, idx) => (
-                  <div
-                    key={idx}
-                    className={cn(
-                      'rounded-full transition-all duration-300',
-                      idx === carouselIndex
-                        ? 'w-6 h-2 bg-linear-to-r from-teal to-emerald'
-                        : 'w-2 h-2 bg-muted-foreground/30',
-                    )}
-                  />
-                ),
-              )}
-              {carouselTotal > 7 && (
-                <span className="text-xs text-muted-foreground ml-1">
-                  +{carouselTotal - 7}
-                </span>
-              )}
+              {(() => {
+                if (
+                  carouselIndex === undefined ||
+                  carouselTotal === undefined
+                ) {
+                  return null
+                }
+
+                const maxDots = 7
+                if (carouselTotal <= maxDots) {
+                  // Show all dots if total is 7 or less
+                  return Array.from({ length: carouselTotal }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className={cn(
+                        'rounded-full transition-all duration-300',
+                        idx === carouselIndex
+                          ? 'w-6 h-2 bg-linear-to-r from-teal to-emerald'
+                          : 'w-2 h-2 bg-muted-foreground/30',
+                      )}
+                    />
+                  ))
+                }
+
+                // Sliding window for more than 7 items
+                const halfWindow = Math.floor(maxDots / 2)
+                let startIdx = Math.max(0, carouselIndex - halfWindow)
+                let endIdx = Math.min(carouselTotal, startIdx + maxDots)
+
+                // Adjust if we're near the end
+                if (endIdx === carouselTotal) {
+                  startIdx = Math.max(0, carouselTotal - maxDots)
+                }
+
+                const dots = []
+                for (let i = startIdx; i < endIdx; i++) {
+                  dots.push(
+                    <div
+                      key={i}
+                      className={cn(
+                        'rounded-full transition-all duration-300',
+                        i === carouselIndex
+                          ? 'w-6 h-2 bg-linear-to-r from-teal to-emerald'
+                          : 'w-2 h-2 bg-muted-foreground/30',
+                      )}
+                    />,
+                  )
+                }
+
+                // Show remaining count
+                const remaining = carouselTotal - endIdx
+                if (remaining > 0) {
+                  dots.push(
+                    <span
+                      key="remaining"
+                      className="text-xs text-muted-foreground ml-1"
+                    >
+                      +{remaining}
+                    </span>,
+                  )
+                }
+
+                return dots
+              })()}
             </div>
 
             <button
@@ -1092,6 +1130,7 @@ export function ReviewCard({
               jid={request.senderJid}
               accentColor="amber"
               medicationName={request.product}
+              cardType="request"
             />
           </div>
 
@@ -1185,24 +1224,70 @@ export function ReviewCard({
 
             {/* Dot indicators */}
             <div className="flex items-center gap-1.5">
-              {Array.from({ length: Math.min(carouselTotal, 7) }).map(
-                (_, idx) => (
-                  <div
-                    key={idx}
-                    className={cn(
-                      'rounded-full transition-all duration-300',
-                      idx === carouselIndex
-                        ? 'w-6 h-2 bg-linear-to-r from-amber to-orange-500'
-                        : 'w-2 h-2 bg-muted-foreground/30',
-                    )}
-                  />
-                ),
-              )}
-              {carouselTotal > 7 && (
-                <span className="text-xs text-muted-foreground ml-1">
-                  +{carouselTotal - 7}
-                </span>
-              )}
+              {(() => {
+                if (
+                  carouselIndex === undefined ||
+                  carouselTotal === undefined
+                ) {
+                  return null
+                }
+
+                const maxDots = 7
+                if (carouselTotal <= maxDots) {
+                  // Show all dots if total is 7 or less
+                  return Array.from({ length: carouselTotal }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className={cn(
+                        'rounded-full transition-all duration-300',
+                        idx === carouselIndex
+                          ? 'w-6 h-2 bg-linear-to-r from-amber to-orange-500'
+                          : 'w-2 h-2 bg-muted-foreground/30',
+                      )}
+                    />
+                  ))
+                }
+
+                // Sliding window for more than 7 items
+                const halfWindow = Math.floor(maxDots / 2)
+                let startIdx = Math.max(0, carouselIndex - halfWindow)
+                let endIdx = Math.min(carouselTotal, startIdx + maxDots)
+
+                // Adjust if we're near the end
+                if (endIdx === carouselTotal) {
+                  startIdx = Math.max(0, carouselTotal - maxDots)
+                }
+
+                const dots = []
+                for (let i = startIdx; i < endIdx; i++) {
+                  dots.push(
+                    <div
+                      key={i}
+                      className={cn(
+                        'rounded-full transition-all duration-300',
+                        i === carouselIndex
+                          ? 'w-6 h-2 bg-linear-to-r from-amber to-orange-500'
+                          : 'w-2 h-2 bg-muted-foreground/30',
+                      )}
+                    />,
+                  )
+                }
+
+                // Show remaining count
+                const remaining = carouselTotal - endIdx
+                if (remaining > 0) {
+                  dots.push(
+                    <span
+                      key="remaining"
+                      className="text-xs text-muted-foreground ml-1"
+                    >
+                      +{remaining}
+                    </span>,
+                  )
+                }
+
+                return dots
+              })()}
             </div>
 
             <button
