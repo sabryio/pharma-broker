@@ -402,6 +402,49 @@ where
     }))
 }
 
+/// Get all failed message IDs for auto-reprocess
+///
+/// GET /api/raw-messages/failed-ids
+///
+/// Returns array of UUIDs for messages with error status
+pub async fn get_failed_message_ids<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+) -> Result<Json<ApiResponse<Vec<Uuid>>>, (StatusCode, Json<ApiResponse<()>>)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    info!("Fetching failed message IDs for auto-reprocess");
+
+    // Query for messages with error status
+    let failed_ids = state
+        .raw_message_repo
+        .get_failed_message_ids()
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to fetch failed message IDs");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to fetch failed messages: {}", e)),
+                    meta: None,
+                }),
+            )
+        })?;
+
+    info!(count = failed_ids.len(), "Found failed messages");
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(failed_ids),
+        error: None,
+        meta: None,
+    }))
+}
+
 /// Reprocess a single raw message
 ///
 /// POST /api/raw-messages/:id/reprocess

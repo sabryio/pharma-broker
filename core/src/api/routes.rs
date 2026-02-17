@@ -488,6 +488,11 @@ where
             "/api/raw-messages",
             get(raw_messages::list_raw_messages::<RQ, A, MM>),
         )
+        // Get failed message IDs for auto-reprocess (must come before {id} route)
+        .route(
+            "/api/raw-messages/failed-ids",
+            get(raw_messages::get_failed_message_ids::<RQ, A, MM>),
+        )
         .route(
             "/api/raw-messages/{id}",
             get(raw_messages::get_raw_message::<RQ, A, MM>)

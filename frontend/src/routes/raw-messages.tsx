@@ -9,6 +9,7 @@ import {
   useBulkReprocessMessages,
   useBulkDeleteMessages,
   useBulkMarkProcessed,
+  useAutoReprocessFailed,
 } from '@/hooks/use-raw-messages'
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
@@ -73,6 +74,7 @@ function RawMessages() {
   const bulkReprocessMutation = useBulkReprocessMessages()
   const bulkDeleteMutation = useBulkDeleteMessages()
   const bulkMarkProcessedMutation = useBulkMarkProcessed()
+  const autoReprocessMutation = useAutoReprocessFailed()
 
   // Fetch data first (before callbacks that depend on it)
   const { data, isLoading, isError, error, isFetching, refetch } =
@@ -364,6 +366,43 @@ function RawMessages() {
     })
   }, [bulkMarkProcessedMutation, selectedIds])
 
+  const handleAutoReprocess = useCallback(() => {
+    toast.info('Finding failed messages...', {
+      description: 'Scanning for messages with errors',
+    })
+
+    autoReprocessMutation.mutate(undefined, {
+      onSuccess: (response) => {
+        const result = response.data
+        if (result) {
+          const successCount = result.total_succeeded || 0
+          const failCount = result.total_failed || 0
+          const offersCreated = result.total_offers_created || 0
+          const requestsCreated = result.total_requests_created || 0
+
+          if (failCount === 0) {
+            toast.success(`Auto-reprocess complete!`, {
+              description: `${successCount} messages processed • ${offersCreated} offers • ${requestsCreated} requests`,
+            })
+          } else {
+            toast.warning(`Partial success`, {
+              description: `${successCount} succeeded, ${failCount} failed`,
+            })
+          }
+        }
+      },
+      onError: (err) => {
+        if (err.message === 'No failed messages found') {
+          toast.info('No failed messages', {
+            description: 'All messages have been processed successfully',
+          })
+        } else {
+          toast.error(`Auto-reprocess failed: ${err.message}`)
+        }
+      },
+    })
+  }, [autoReprocessMutation])
+
   return (
     <DashboardLayout>
       <div className="h-full flex flex-col gap-3 p-4">
@@ -382,6 +421,8 @@ function RawMessages() {
               onRefresh={() => refetch()}
               isRefreshing={isFetching}
               totalCount={totalCount}
+              onAutoReprocess={handleAutoReprocess}
+              isAutoReprocessing={autoReprocessMutation.isPending}
             />
           </div>
 

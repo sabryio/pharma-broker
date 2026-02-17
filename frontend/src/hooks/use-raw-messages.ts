@@ -459,6 +459,36 @@ export function useBulkMarkProcessed() {
   })
 }
 
+/**
+ * Hook to auto-reprocess all failed messages
+ * Fetches failed message IDs and triggers bulk reprocess
+ */
+export function useAutoReprocessFailed() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      // First, get all failed message IDs
+      const { getFailedMessageIds, bulkReprocessMessages } =
+        await import('@/api/raw-messages')
+      const response = await getFailedMessageIds()
+
+      if (!response.success || !response.data || response.data.length === 0) {
+        throw new Error('No failed messages found')
+      }
+
+      const failedIds = response.data
+
+      // Then bulk reprocess them
+      return bulkReprocessMessages(failedIds)
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.rawMessages.all })
+    },
+  })
+}
+
 // Re-export types for convenience
 export type { BulkOperationResult }
 export type { ReprocessResponse }

@@ -208,4 +208,14 @@ impl RawMessageRepository for SeaOrmRawMessageRepo {
         let count = query.count(&*self.db).await.map_err(Error::from)?;
         Ok(count as i64)
     }
+
+    async fn get_failed_message_ids(&self) -> Result<Vec<Uuid>> {
+        let messages = RawMessage::find()
+            .filter(raw_message::Column::Error.is_not_null())
+            .all(&*self.db)
+            .await
+            .map_err(Error::from)?;
+
+        Ok(messages.into_iter().map(|m| m.id).collect())
+    }
 }

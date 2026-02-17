@@ -209,6 +209,9 @@ pub trait RawMessageRepository: Send + Sync {
 
     /// Count raw messages matching the given filters
     async fn count_all(&self, params: &RawMessageQueryParams) -> Result<i64>;
+
+    /// Get all failed message IDs for auto-reprocess
+    async fn get_failed_message_ids(&self) -> Result<Vec<Uuid>>;
 }
 
 /// Group repository trait
