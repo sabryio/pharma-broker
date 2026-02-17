@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 import { Link, useLocation } from '@tanstack/react-router'
 import {
+  Activity,
   ArrowRightLeft,
   BarChart3,
   Bot,
@@ -27,6 +28,7 @@ const navItems = [
   { title: 'AI Parsing', icon: Brain, path: '/parsing-review' },
   { title: 'Review Queue', icon: ClipboardCheck, path: '/review-queue' },
   { title: 'AI Supervision', icon: Bot, path: '/supervision' },
+  { title: 'AI Health', icon: Activity, path: '/ai-health' },
   { title: 'Matches', icon: Sparkles, path: '/matches' },
   { title: 'Groups', icon: Users, path: '/groups' },
   { title: 'Analytics', icon: BarChart3, path: '/analytics' },

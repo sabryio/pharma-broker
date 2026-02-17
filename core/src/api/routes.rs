@@ -424,6 +424,23 @@ where
             "/api/diagnostics/queries",
             get(diagnostics::analyze_queries::<RQ, A, MM>),
         )
+        // AI Health Monitoring
+        .route(
+            "/api/ai-health",
+            get(super::ai_health::get_ai_health::<RQ, A, MM>),
+        )
+        .route(
+            "/api/ai-health/circuit-breaker",
+            get(super::ai_health::get_circuit_breaker::<RQ, A, MM>),
+        )
+        .route(
+            "/api/ai-health/retry-queue",
+            get(super::ai_health::get_retry_queue::<RQ, A, MM>),
+        )
+        .route(
+            "/api/ai-health/test-connection",
+            post(super::ai_health::test_connection::<RQ, A, MM>),
+        )
         // Audit Records (Match Debug/Replay)
         .route(
             "/api/audit-records",

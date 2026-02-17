@@ -2,6 +2,7 @@
 //!
 //! Ported from legacy/api/handlers/*.go
 
+pub mod ai_health;
 pub mod analytics;
 pub mod audit_records;
 pub mod audit_trail;
