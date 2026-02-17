@@ -18,6 +18,7 @@ import { Route as OffersRouteImport } from './routes/offers'
 import { Route as MatchesRouteImport } from './routes/matches'
 import { Route as GroupsRouteImport } from './routes/groups'
 import { Route as DebugRecordingsRouteImport } from './routes/debug-recordings'
+import { Route as AiHealthRouteImport } from './routes/ai-health'
 import { Route as IndexRouteImport } from './routes/index'
 
 const SupervisionRoute = SupervisionRouteImport.update({
@@ -65,6 +66,11 @@ const DebugRecordingsRoute = DebugRecordingsRouteImport.update({
   path: '/debug-recordings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AiHealthRoute = AiHealthRouteImport.update({
+  id: '/ai-health',
+  path: '/ai-health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -73,6 +79,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ai-health': typeof AiHealthRoute
   '/debug-recordings': typeof DebugRecordingsRoute
   '/groups': typeof GroupsRoute
   '/matches': typeof MatchesRoute
@@ -85,6 +92,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ai-health': typeof AiHealthRoute
   '/debug-recordings': typeof DebugRecordingsRoute
   '/groups': typeof GroupsRoute
   '/matches': typeof MatchesRoute
@@ -98,6 +106,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/ai-health': typeof AiHealthRoute
   '/debug-recordings': typeof DebugRecordingsRoute
   '/groups': typeof GroupsRoute
   '/matches': typeof MatchesRoute
@@ -112,6 +121,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/ai-health'
     | '/debug-recordings'
     | '/groups'
     | '/matches'
@@ -124,6 +134,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ai-health'
     | '/debug-recordings'
     | '/groups'
     | '/matches'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/ai-health'
     | '/debug-recordings'
     | '/groups'
     | '/matches'
@@ -149,6 +161,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AiHealthRoute: typeof AiHealthRoute
   DebugRecordingsRoute: typeof DebugRecordingsRoute
   GroupsRoute: typeof GroupsRoute
   MatchesRoute: typeof MatchesRoute
@@ -225,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DebugRecordingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ai-health': {
+      id: '/ai-health'
+      path: '/ai-health'
+      fullPath: '/ai-health'
+      preLoaderRoute: typeof AiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -237,6 +257,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AiHealthRoute: AiHealthRoute,
   DebugRecordingsRoute: DebugRecordingsRoute,
   GroupsRoute: GroupsRoute,
   MatchesRoute: MatchesRoute,
