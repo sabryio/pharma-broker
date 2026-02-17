@@ -106,32 +106,16 @@ function SnapshotCard({
             Offer
           </p>
           <p className="text-sm font-medium text-foreground truncate">
-            {snapshot.offer.product}
+            {snapshot?.offer?.product || 'N/A'}
           </p>
-          {snapshot.offer.medicationRaw && (
-            <p
-              className="text-xs text-muted-foreground truncate mt-0.5"
-              dir="auto"
-            >
-              {snapshot.offer.medicationRaw}
-            </p>
-          )}
         </div>
         <div className="p-3 rounded-xl bg-background/50 border border-border/30">
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1.5">
             Request
           </p>
           <p className="text-sm font-medium text-foreground truncate">
-            {snapshot.request.product}
+            {snapshot?.request?.product || 'N/A'}
           </p>
-          {snapshot.request.medicationRaw && (
-            <p
-              className="text-xs text-muted-foreground truncate mt-0.5"
-              dir="auto"
-            >
-              {snapshot.request.medicationRaw}
-            </p>
-          )}
         </div>
       </div>
 

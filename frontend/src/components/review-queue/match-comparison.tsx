@@ -2,24 +2,24 @@
 // Side-by-side layout with visual field connectors
 
 import { useMemo } from 'react'
-import { cn } from '@/lib/utils'
 import {
-  Package,
+  AlertTriangle,
+  Calendar,
+  Check,
   DollarSign,
   Hash,
-  Calendar,
-  AlertTriangle,
-  Check,
-  X,
   Minus,
+  Package,
+  X,
 } from 'lucide-react'
 import type { ReviewOffer, ReviewRequest } from './types'
+import { cn } from '@/lib/utils'
 
 interface FieldMatch {
   field: string
   label: string
-  offerValue: string | null
-  requestValue: string | null
+  offerValue: string | null | undefined
+  requestValue: string | null | undefined
   matchType: 'exact' | 'partial' | 'mismatch' | 'na'
   score: number // 0-100
   icon: React.ReactNode
@@ -90,8 +90,8 @@ function calculateMedicationMatch(
 
 // Calculate quantity match
 function calculateQuantityMatch(
-  offerQty: string | null,
-  requestQty: string | null,
+  offerQty: string | null | undefined,
+  requestQty: string | null | undefined,
 ): { type: FieldMatch['matchType']; score: number } {
   if (!offerQty || !requestQty) {
     return { type: 'na', score: 0 }
@@ -118,8 +118,8 @@ function calculateQuantityMatch(
 
 // Calculate price match
 function calculatePriceMatch(
-  offerPrice: string | null,
-  maxPrice: string | null,
+  offerPrice: string | null | undefined,
+  maxPrice: string | null | undefined,
 ): { type: FieldMatch['matchType']; score: number } {
   if (!offerPrice || !maxPrice) {
     return { type: 'na', score: 0 }
@@ -149,7 +149,7 @@ export function MatchComparison({
   request,
   className,
 }: MatchComparisonProps) {
-  const fieldMatches = useMemo<FieldMatch[]>(() => {
+  const fieldMatches = useMemo<Array<FieldMatch>>(() => {
     const medMatch = calculateMedicationMatch(offer.product, request.product)
     const qtyMatch = calculateQuantityMatch(offer.quantity, request.quantity)
     const priceMatch = calculatePriceMatch(offer.price, request.maxPrice)

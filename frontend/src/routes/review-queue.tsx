@@ -1,7 +1,9 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
+  AlertTriangle,
+  Bug,
   CheckCircle,
   Download,
   FileSpreadsheet,
@@ -11,39 +13,40 @@ import {
   Layers,
   Loader2,
   RefreshCw,
-  Undo2,
-  AlertTriangle,
   Stethoscope,
-  Bug,
+  Undo2,
 } from 'lucide-react'
 
+import type {
+  AdjustmentSettings,
+  FilterState,
+  HistoryEntry,
+  OfferWithMatches,
+  RequestWithMatches,
+} from '@/components/review-queue'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import {
-  type HistoryEntry,
-  type AdjustmentSettings,
-  defaultAdjustments,
   AdjustmentControls,
+  CardSelector,
+  EnhancedBulkGrid,
+  FilterBar,
   QueueProgress,
-  TimelineHistory,
+  QuickActionsBar,
   RelatedMatchCarousel,
+  StatsDashboard,
+  TimelineHistory,
+  defaultAdjustments,
+  defaultFilterState,
   groupByOffer,
   groupByRequest,
-  type OfferWithMatches,
-  type RequestWithMatches,
-  FilterBar,
-  defaultFilterState,
-  type FilterState,
-  QuickActionsBar,
-  EnhancedBulkGrid,
-  StatsDashboard,
 } from '@/components/review-queue'
 import { CurationMode } from '@/components/medication-curation'
 import { useNotifications } from '@/hooks/use-notifications'
 import {
-  useMatchReviewsManual,
-  useMatchReviewStats,
-  useUpdateMatchReviewStatus,
   useBulkUpdateMatchReviews,
+  useMatchReviewStats,
+  useMatchReviewsManual,
+  useUpdateMatchReviewStatus,
 } from '@/hooks/use-match-reviews'
 import { cn } from '@/lib/utils'
 import { useAppSelector, useMatchReviewsActions } from '@/store'
@@ -71,7 +74,7 @@ export default function ReviewQueue() {
   const [bulkMode, setBulkMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showHistory, setShowHistory] = useState(false)
-  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [history, setHistory] = useState<Array<HistoryEntry>>([])
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [adjustments] = useState<AdjustmentSettings>(defaultAdjustments)
   const [optimisticallyRemoved, setOptimisticallyRemoved] = useState<
@@ -122,9 +125,7 @@ export default function ReviewQueue() {
       result = result.filter(
         (item) =>
           item.offer.product.toLowerCase().includes(search) ||
-          item.request.product.toLowerCase().includes(search) ||
-          item.offer.medicationRaw?.toLowerCase().includes(search) ||
-          item.request.medicationRaw?.toLowerCase().includes(search),
+          item.request.product.toLowerCase().includes(search),
       )
     }
 
@@ -182,11 +183,6 @@ export default function ReviewQueue() {
       setRelatedIndex(0)
     }
   }, [groups.length, anchorIndex])
-
-  useEffect(() => {
-    setAnchorIndex(0)
-    setRelatedIndex(0)
-  }, [anchorMode])
 
   useEffect(() => {
     pendingReviews.forEach((review) => {
@@ -288,40 +284,74 @@ export default function ReviewQueue() {
   )
 
   const handleAnchorModeChange = useCallback(
-    (newMode: 'offer' | 'request') => {
+    (newMode: 'offer' | 'request', currentMedicationName?: string) => {
       if (newMode === anchorMode) return
 
-      if (currentMatch && currentGroup) {
+      // Use provided medication name or fall back to currentGroup
+      let medicationToFind = currentMedicationName
+
+      if (!medicationToFind && currentGroup) {
+        medicationToFind =
+          anchorMode === 'offer'
+            ? (currentGroup as OfferWithMatches).offer.product
+                .trim()
+                .toLowerCase()
+            : (currentGroup as RequestWithMatches).request.product
+                .trim()
+                .toLowerCase()
+      }
+
+      if (medicationToFind && currentMatch) {
         if (newMode === 'request') {
-          const matchWithReq = currentMatch as any
-          if (matchWithReq.request) {
-            const reqIndex = groupedRequests.findIndex(
-              (g) => g.request.id === matchWithReq.request.id,
-            )
-            if (reqIndex !== -1) {
-              setAnchorIndex(reqIndex)
-              const offIndex = groupedRequests[reqIndex].matches.findIndex(
+          // Switching from offer to request
+          // Try to find a request with the same medication name
+          const reqIndex = groupedRequests.findIndex(
+            (g) => g.request.product.trim().toLowerCase() === medicationToFind,
+          )
+
+          if (reqIndex !== -1) {
+            setAnchorIndex(reqIndex)
+            // Try to find the specific match that corresponds to the current offer
+            const matchWithReq = currentMatch as any
+            if (matchWithReq.request && currentGroup) {
+              const offIndex = groupedRequests[reqIndex]?.matches.findIndex(
                 (m) =>
                   m.offer.id === (currentGroup as OfferWithMatches).offer.id,
               )
-              setRelatedIndex(Math.max(0, offIndex))
+              setRelatedIndex(Math.max(0, offIndex ?? 0))
+            } else {
+              setRelatedIndex(0)
             }
+          } else {
+            // No matching medication found, go to first request
+            setAnchorIndex(0)
+            setRelatedIndex(0)
           }
         } else {
-          const matchWithOff = currentMatch as any
-          if (matchWithOff.offer) {
-            const offIndex = groupedOffers.findIndex(
-              (g) => g.offer.id === matchWithOff.offer.id,
-            )
-            if (offIndex !== -1) {
-              setAnchorIndex(offIndex)
-              const reqIndex = groupedOffers[offIndex].matches.findIndex(
+          // Switching from request to offer
+          // Try to find an offer with the same medication name
+          const offIndex = groupedOffers.findIndex(
+            (g) => g.offer.product.trim().toLowerCase() === medicationToFind,
+          )
+
+          if (offIndex !== -1) {
+            setAnchorIndex(offIndex)
+            // Try to find the specific match that corresponds to the current request
+            const matchWithOff = currentMatch as any
+            if (matchWithOff.offer && currentGroup) {
+              const reqIndex = groupedOffers[offIndex]?.matches.findIndex(
                 (m) =>
                   m.request.id ===
                   (currentGroup as RequestWithMatches).request.id,
               )
-              setRelatedIndex(Math.max(0, reqIndex))
+              setRelatedIndex(Math.max(0, reqIndex ?? 0))
+            } else {
+              setRelatedIndex(0)
             }
+          } else {
+            // No matching medication found, go to first offer
+            setAnchorIndex(0)
+            setRelatedIndex(0)
           }
         }
       }
@@ -347,7 +377,9 @@ export default function ReviewQueue() {
           } else if (anchorIndex > 0) {
             setAnchorIndex((i) => i - 1)
             const prevGroup = groups[anchorIndex - 1]
-            setRelatedIndex(prevGroup.matches.length - 1)
+            setRelatedIndex(
+              prevGroup?.matches.length ? prevGroup.matches.length - 1 : 0,
+            )
           }
           break
         case 'ArrowRight':
@@ -435,8 +467,8 @@ export default function ReviewQueue() {
   }
 
   const handleBulkAction = (action: 'approved' | 'rejected') => {
-    const entries: HistoryEntry[] = []
-    const ids: string[] = []
+    const entries: Array<HistoryEntry> = []
+    const ids: Array<string> = []
 
     selectedIds.forEach((id) => {
       const review = pendingReviews.find((r) => r.id === id)
@@ -485,7 +517,10 @@ export default function ReviewQueue() {
 
   const undoLastAction = () => {
     if (history.length === 0) return
-    restoreFromHistory(history[0].id)
+    const firstHistory = history[0]
+    if (firstHistory) {
+      restoreFromHistory(firstHistory.id)
+    }
   }
 
   const restoreFromHistory = (historyId: string) => {
@@ -736,17 +771,10 @@ export default function ReviewQueue() {
         </div>
 
         <StatsDashboard
-          pending={pendingReviews.length}
+          pending={apiStats?.pending ?? pendingReviews.length}
           approved={apiStats?.confirmedToday ?? 0}
           rejected={apiStats?.rejectedToday ?? 0}
-          avgConfidence={
-            pendingReviews.length > 0
-              ? Math.round(
-                  pendingReviews.reduce((acc, r) => acc + r.confidence, 0) /
-                    pendingReviews.length,
-                )
-              : (apiStats?.avgConfidence ?? 0)
-          }
+          avgConfidence={apiStats?.avgConfidence ?? 0}
           highConfidenceCount={
             pendingReviews.filter((r) => r.confidence >= 80).length
           }
@@ -771,10 +799,23 @@ export default function ReviewQueue() {
               filteredCount={filteredReviews.length}
             />
 
-            <QueueProgress
-              pending={filteredReviews.length}
-              total={totalReviews}
-            />
+            <div className="space-y-2">
+              <QueueProgress
+                pending={filteredReviews.length}
+                total={totalReviews}
+              />
+              {!bulkMode && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground px-2">
+                  <span>
+                    Showing {groupedOffers.length} unique offers from{' '}
+                    {filteredReviews.length} matches
+                  </span>
+                  <span>
+                    Total: {apiStats?.pending ?? 0} pending matches in database
+                  </span>
+                </div>
+              )}
+            </div>
             {showHistory && (
               <TimelineHistory
                 history={history}
@@ -794,6 +835,63 @@ export default function ReviewQueue() {
 
             {!bulkMode && currentMatch && (
               <>
+                {/* Card Selectors for quick navigation */}
+                <div className="flex items-center justify-center gap-3">
+                  {/* Offer Selector */}
+                  <CardSelector
+                    groupedByOffer={groupedOffers}
+                    groupedByRequest={groupedRequests}
+                    anchorMode="offer"
+                    currentAnchorIndex={
+                      anchorMode === 'offer'
+                        ? anchorIndex
+                        : groupedOffers.findIndex(
+                            (g) => g.offer.id === currentMatch.offer.id,
+                          )
+                    }
+                    onNavigate={(newAnchorIndex, newRelatedIndex) => {
+                      if (anchorMode === 'offer') {
+                        setAnchorIndex(newAnchorIndex)
+                        if (newRelatedIndex !== undefined) {
+                          setRelatedIndex(newRelatedIndex)
+                        }
+                      } else {
+                        // Switch to offer mode and navigate
+                        setAnchorMode('offer')
+                        setAnchorIndex(newAnchorIndex)
+                        setRelatedIndex(newRelatedIndex ?? 0)
+                      }
+                    }}
+                  />
+
+                  {/* Request Selector */}
+                  <CardSelector
+                    groupedByOffer={groupedOffers}
+                    groupedByRequest={groupedRequests}
+                    anchorMode="request"
+                    currentAnchorIndex={
+                      anchorMode === 'request'
+                        ? anchorIndex
+                        : groupedRequests.findIndex(
+                            (g) => g.request.id === currentMatch.request.id,
+                          )
+                    }
+                    onNavigate={(newAnchorIndex, newRelatedIndex) => {
+                      if (anchorMode === 'request') {
+                        setAnchorIndex(newAnchorIndex)
+                        if (newRelatedIndex !== undefined) {
+                          setRelatedIndex(newRelatedIndex)
+                        }
+                      } else {
+                        // Switch to request mode and navigate
+                        setAnchorMode('request')
+                        setAnchorIndex(newAnchorIndex)
+                        setRelatedIndex(newRelatedIndex ?? 0)
+                      }
+                    }}
+                  />
+                </div>
+
                 <RelatedMatchCarousel
                   groupedByOffer={groupedOffers}
                   groupedByRequest={groupedRequests}
@@ -806,6 +904,7 @@ export default function ReviewQueue() {
                   issues={currentMatch.issues}
                   onApprove={(id) => handleSingleAction(id, 'approved')}
                   onReject={(id) => handleSingleAction(id, 'rejected')}
+                  apiStats={apiStats}
                 />
                 <AdjustmentControls />
                 <QuickActionsBar

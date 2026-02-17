@@ -169,6 +169,20 @@ where
             "/api/match/rematch",
             post(matching::rematch_item::<RQ, A, MM>),
         )
+        // Pharmaceutical validation configuration
+        .route(
+            "/api/matching/pharmaceutical-config",
+            get(matching::get_pharmaceutical_config::<RQ, A, MM>)
+                .put(matching::update_pharmaceutical_config::<RQ, A, MM>),
+        )
+        .route(
+            "/api/matching/pharmaceutical-stats",
+            get(matching::get_pharmaceutical_stats::<RQ, A, MM>),
+        )
+        .route(
+            "/api/matching/pharmaceutical-config/reset",
+            post(matching::reset_pharmaceutical_config::<RQ, A, MM>),
+        )
         .route(
             "/api/items/{item_type}/{id}",
             get(reclassify::get_item::<RQ, A, MM>),
@@ -465,10 +479,19 @@ where
             "/api/participants/by-jid/{jid}",
             get(participants::get_participant_by_jid::<RQ, A, MM>),
         )
+        .route(
+            "/api/participants/common-groups/{jid1}/{jid2}",
+            get(participants::get_common_groups::<RQ, A, MM>),
+        )
         // Raw Messages
         .route(
             "/api/raw-messages",
             get(raw_messages::list_raw_messages::<RQ, A, MM>),
+        )
+        // Get failed message IDs for auto-reprocess (must come before {id} route)
+        .route(
+            "/api/raw-messages/failed-ids",
+            get(raw_messages::get_failed_message_ids::<RQ, A, MM>),
         )
         .route(
             "/api/raw-messages/{id}",

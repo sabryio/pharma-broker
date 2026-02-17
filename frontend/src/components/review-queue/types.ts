@@ -119,6 +119,50 @@ export function groupByRequest(reviews: Review[]): RequestWithMatches[] {
   return Array.from(map.values())
 }
 
+/**
+ * Group offers by medication name for mini-carousel navigation
+ * Returns a map where each medication name maps to an array of offers
+ */
+export function groupOffersByMedication(
+  offers: OfferWithMatches[],
+): Map<string, OfferWithMatches[]> {
+  const map = new Map<string, OfferWithMatches[]>()
+
+  for (const offerGroup of offers) {
+    const medicationName = offerGroup.offer.product.trim().toLowerCase()
+
+    if (!map.has(medicationName)) {
+      map.set(medicationName, [])
+    }
+
+    map.get(medicationName)!.push(offerGroup)
+  }
+
+  return map
+}
+
+/**
+ * Group requests by medication name for mini-carousel navigation
+ * Returns a map where each medication name maps to an array of requests
+ */
+export function groupRequestsByMedication(
+  requests: RequestWithMatches[],
+): Map<string, RequestWithMatches[]> {
+  const map = new Map<string, RequestWithMatches[]>()
+
+  for (const requestGroup of requests) {
+    const medicationName = requestGroup.request.product.trim().toLowerCase()
+
+    if (!map.has(medicationName)) {
+      map.set(medicationName, [])
+    }
+
+    map.get(medicationName)!.push(requestGroup)
+  }
+
+  return map
+}
+
 // Helper to get confidence color class
 export function getConfidenceColor(confidence: number): string {
   if (confidence >= 80) return 'text-emerald'

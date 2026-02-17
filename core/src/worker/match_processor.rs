@@ -19,6 +19,10 @@ use crate::matching::{MatchAction, MatchingEngine};
 use crate::repository::FeedbackModel;
 use crate::ws::WsEvent;
 
+/// Minimum score threshold for creating matches (85%)
+/// Matches below this threshold are considered false positives
+const MIN_MATCH_SCORE: f64 = 0.85;
+
 /// Repository dependencies for MatchProcessor
 pub struct MatchProcessorRepos {
     pub match_queue: Arc<dyn MatchQueueRepository>,
@@ -202,8 +206,19 @@ impl MatchProcessor {
                 .score_match_ai(offer, &request, med_score, Some(&participant_id_str), true)
                 .await;
 
-            // Check if actionable
-            if score.confidence != ConfidenceBand::None && action != MatchAction::Ignore {
+            // Check if actionable and meets minimum score threshold
+            if score.total >= MIN_MATCH_SCORE
+                && score.confidence != ConfidenceBand::None
+                && action != MatchAction::Ignore
+            {
+                info!(
+                    offer_id = %offer.id,
+                    request_id = %request.id,
+                    score = %score.total,
+                    "✅ Creating match (score >= {})",
+                    MIN_MATCH_SCORE
+                );
+
                 // Determine status based on action
                 let (status, confirmed_at) = if action == MatchAction::AutoConfirm {
                     (MatchStatus::Confirmed, Some(Utc::now()))
@@ -265,6 +280,17 @@ impl MatchProcessor {
                             }));
                     let _ = self.repos.audit_log.save(&audit_log).await;
                 }
+            } else if score.total < MIN_MATCH_SCORE {
+                // Log rejected low-score matches
+                warn!(
+                    offer_id = %offer.id,
+                    offer_med = %offer.medication,
+                    request_id = %request.id,
+                    request_med = %request.medication,
+                    score = %score.total,
+                    "❌ Rejected low-score match (score < {})",
+                    MIN_MATCH_SCORE
+                );
             }
         }
 

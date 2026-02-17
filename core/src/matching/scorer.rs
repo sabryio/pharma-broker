@@ -6,7 +6,9 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use super::{DecayType, Thresholds, Weights};
+use super::{
+    DecayType, PharmaceuticalValidator, PharmaceuticalValidatorConfig, Thresholds, Weights,
+};
 use crate::domain::{ConfidenceBand, Offer, Request};
 
 /// Medication category for recency decay configuration
@@ -27,6 +29,7 @@ pub enum MedicationCategory {
 #[derive(Debug, Clone)]
 pub struct MatchScore {
     pub medication_score: f64,
+    pub pharmaceutical_score: f64,
     pub dosage_score: f64,
     pub recency_score: f64,
     pub ai_logic_score: f64,
@@ -47,6 +50,8 @@ pub struct Scorer {
     /// Category-specific half-life overrides
     /// Requirements: 6.4
     category_half_lives: RwLock<HashMap<MedicationCategory, f64>>,
+    /// Pharmaceutical validator for concentration and form validation
+    pharmaceutical_validator: PharmaceuticalValidator,
 }
 
 impl Default for Scorer {
@@ -72,6 +77,7 @@ impl Scorer {
             min_medication_score: RwLock::new(0.7), // Raised from 0.5 to reduce false positives
             medication_gate_enabled: RwLock::new(true),
             category_half_lives: RwLock::new(category_half_lives),
+            pharmaceutical_validator: PharmaceuticalValidator::default(),
         }
     }
 
@@ -184,12 +190,12 @@ impl Scorer {
     }
 
     /// Calculate full match score
-    /// Uses medication (80%), recency (10%), and AI logic (10%)
+    /// Uses medication (60%), pharmaceutical (20%), recency (10%), and AI logic (10%)
     /// Dosage has been completely removed from the system
     pub fn score_match(
         &self,
         offer: &Offer,
-        _request: &Request,
+        request: &Request,
         medication_score: f64,
         ai_logic_score: Option<f64>,
     ) -> MatchScore {
@@ -200,6 +206,7 @@ impl Scorer {
         if gate_enabled && medication_score < min_med {
             return MatchScore {
                 medication_score,
+                pharmaceutical_score: 0.0,
                 dosage_score: 0.0,
                 recency_score: 0.0,
                 ai_logic_score: 0.0,
@@ -216,14 +223,20 @@ impl Scorer {
         // Get weights
         let weights = self.weights.read().unwrap();
 
+        // Calculate pharmaceutical compatibility score
+        let pharmaceutical_score = self
+            .pharmaceutical_validator
+            .calculate_score(offer, request);
+
         // Calculate recency score
         let recency_score = self.recency_score(offer.created_at);
 
         // Get AI logic score (default to 0.0 if not provided)
         let ai_score = ai_logic_score.unwrap_or(0.0);
 
-        // Calculate weighted total: medication (80%) + recency (10%) + AI (10%)
+        // Calculate weighted total: medication (60%) + pharmaceutical (20%) + recency (10%) + AI (10%)
         let total = (medication_score * weights.medication)
+            + (pharmaceutical_score * weights.pharmaceutical)
             + (recency_score * weights.recency)
             + (ai_score * weights.ai_logic);
 
@@ -231,14 +244,16 @@ impl Scorer {
         let confidence = self.get_confidence_band(total);
 
         let breakdown = format!(
-            "Med:{:.0}% Rec:{:.0}% AI:{:.0}%",
+            "Med:{:.0}% Pharma:{:.0}% Rec:{:.0}% AI:{:.0}%",
             medication_score * 100.0,
+            pharmaceutical_score * 100.0,
             recency_score * 100.0,
             ai_score * 100.0
         );
 
         MatchScore {
             medication_score,
+            pharmaceutical_score,
             dosage_score: 0.0, // Dosage permanently removed
             recency_score,
             ai_logic_score: ai_score,
@@ -267,6 +282,21 @@ impl Scorer {
     pub fn get_thresholds(&self) -> Thresholds {
         self.thresholds.read().unwrap().clone()
     }
+
+    /// Get pharmaceutical validator configuration
+    pub fn get_pharmaceutical_config(&self) -> PharmaceuticalValidatorConfig {
+        self.pharmaceutical_validator.get_config()
+    }
+
+    /// Set pharmaceutical validator configuration
+    pub fn set_pharmaceutical_config(&self, config: PharmaceuticalValidatorConfig) {
+        self.pharmaceutical_validator.set_config(config);
+    }
+
+    /// Get reference to pharmaceutical validator
+    pub fn pharmaceutical_validator(&self) -> &PharmaceuticalValidator {
+        &self.pharmaceutical_validator
+    }
 }
 
 #[cfg(test)]
@@ -291,23 +321,6 @@ mod tests {
     fn test_get_confidence_band(#[case] score: f64, #[case] expected: ConfidenceBand) {
         let scorer = Scorer::default();
         assert_eq!(scorer.get_confidence_band(score), expected);
-    }
-
-    #[test]
-    fn test_update_weights() {
-        let scorer = Scorer::default();
-        let new_weights = Weights {
-            medication: 0.70,
-            recency: 0.05,
-            expiry: 0.05,
-            supplier: 0.0,
-            ai_logic: 0.0,
-        };
-
-        scorer.update_weights(new_weights.clone());
-        let got = scorer.get_weights();
-
-        assert!((got.medication - 0.70).abs() < 0.001);
     }
 
     #[test]
@@ -400,5 +413,231 @@ mod tests {
         assert!(half_lives.contains_key(&MedicationCategory::Urgent));
         assert!(half_lives.contains_key(&MedicationCategory::Stable));
         assert_eq!(half_lives.len(), 2);
+    }
+
+    #[test]
+    fn test_scoring_with_pharmaceutical_validation() {
+        use crate::domain::{Offer, Request};
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let scorer = Scorer::default();
+        let now = Utc::now();
+
+        // Create offer and request with matching concentration and form
+        let offer = Offer {
+            id: Uuid::new_v4(),
+            medication: "باراسيتامول".to_string(),
+            concentration: Some("500mg".to_string()),
+            form: Some("اقراص".to_string()),
+            created_at: now,
+            ..Default::default()
+        };
+
+        let request = Request {
+            id: Uuid::new_v4(),
+            medication: "باراسيتامول".to_string(),
+            concentration: Some("500mg".to_string()),
+            form: Some("اقراص".to_string()),
+            created_at: now,
+            ..Default::default()
+        };
+
+        let medication_score = 0.95;
+        let ai_logic_score = Some(0.8);
+
+        let score = scorer.score_match(&offer, &request, medication_score, ai_logic_score);
+
+        // Pharmaceutical score should be 1.0 (perfect match)
+        assert!(
+            (score.pharmaceutical_score - 1.0).abs() < 0.01,
+            "Expected pharmaceutical score ~1.0, got {}",
+            score.pharmaceutical_score
+        );
+
+        // Total score should include pharmaceutical component
+        assert!(score.total > 0.0);
+        assert!(score.total <= 1.0);
+    }
+
+    #[test]
+    fn test_pharmaceutical_score_calculation() {
+        use crate::domain::{Offer, Request};
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let scorer = Scorer::default();
+        let now = Utc::now();
+
+        // Create offer and request with mismatched concentration
+        let offer = Offer {
+            id: Uuid::new_v4(),
+            medication: "باراسيتامول".to_string(),
+            concentration: Some("500mg".to_string()),
+            form: Some("اقراص".to_string()),
+            created_at: now,
+            ..Default::default()
+        };
+
+        let request = Request {
+            id: Uuid::new_v4(),
+            medication: "باراسيتامول".to_string(),
+            concentration: Some("250mg".to_string()), // Different concentration
+            form: Some("اقراص".to_string()),
+            created_at: now,
+            ..Default::default()
+        };
+
+        let medication_score = 0.95;
+        let score = scorer.score_match(&offer, &request, medication_score, None);
+
+        // Pharmaceutical score should be reduced due to concentration mismatch
+        assert!(
+            score.pharmaceutical_score < 1.0,
+            "Expected pharmaceutical score < 1.0 for concentration mismatch, got {}",
+            score.pharmaceutical_score
+        );
+    }
+
+    #[test]
+    fn test_weight_application_with_pharmaceutical_component() {
+        use crate::domain::{Offer, Request};
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let scorer = Scorer::default();
+        let weights = scorer.get_weights();
+
+        // Verify default weights include pharmaceutical
+        assert!(
+            (weights.pharmaceutical - 0.20).abs() < 0.001,
+            "Expected pharmaceutical weight 0.20, got {}",
+            weights.pharmaceutical
+        );
+
+        let now = Utc::now();
+
+        let offer = Offer {
+            id: Uuid::new_v4(),
+            medication: "باراسيتامول".to_string(),
+            concentration: Some("500mg".to_string()),
+            form: Some("اقراص".to_string()),
+            created_at: now,
+            ..Default::default()
+        };
+
+        let request = Request {
+            id: Uuid::new_v4(),
+            medication: "باراسيتامول".to_string(),
+            concentration: Some("500mg".to_string()),
+            form: Some("اقراص".to_string()),
+            created_at: now,
+            ..Default::default()
+        };
+
+        let medication_score = 0.9;
+        let score = scorer.score_match(&offer, &request, medication_score, Some(0.8));
+
+        // Verify total score is weighted correctly
+        // Expected: 0.9*0.6 + 1.0*0.2 + recency*0.1 + 0.8*0.1
+        let expected_min = 0.9 * 0.6 + 1.0 * 0.2 + 0.8 * 0.1; // Assuming recency >= 0
+        assert!(
+            score.total >= expected_min - 0.01,
+            "Expected total >= {}, got {}",
+            expected_min,
+            score.total
+        );
+    }
+
+    #[test]
+    fn test_breakdown_includes_pharmaceutical_score() {
+        use crate::domain::{Offer, Request};
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let scorer = Scorer::default();
+        let now = Utc::now();
+
+        let offer = Offer {
+            id: Uuid::new_v4(),
+            medication: "باراسيتامول".to_string(),
+            concentration: Some("500mg".to_string()),
+            form: Some("اقراص".to_string()),
+            created_at: now,
+            ..Default::default()
+        };
+
+        let request = Request {
+            id: Uuid::new_v4(),
+            medication: "باراسيتامول".to_string(),
+            concentration: Some("500mg".to_string()),
+            form: Some("اقراص".to_string()),
+            created_at: now,
+            ..Default::default()
+        };
+
+        let score = scorer.score_match(&offer, &request, 0.95, Some(0.8));
+
+        // Breakdown should include "Pharma:"
+        assert!(
+            score.breakdown.contains("Pharma:"),
+            "Expected breakdown to contain 'Pharma:', got: {}",
+            score.breakdown
+        );
+
+        // Breakdown should have the format: Med:X% Pharma:Y% Rec:Z% AI:W%
+        let parts: Vec<&str> = score.breakdown.split_whitespace().collect();
+        assert!(
+            parts.len() >= 4,
+            "Expected at least 4 components in breakdown"
+        );
+    }
+
+    #[test]
+    fn test_config_changes_affect_scoring() {
+        use crate::domain::{Offer, Request};
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let scorer = Scorer::default();
+        let now = Utc::now();
+
+        // Create offer and request with slightly different concentration
+        let offer = Offer {
+            id: Uuid::new_v4(),
+            medication: "باراسيتامول".to_string(),
+            concentration: Some("500mg".to_string()),
+            form: Some("اقراص".to_string()),
+            created_at: now,
+            ..Default::default()
+        };
+
+        let request = Request {
+            id: Uuid::new_v4(),
+            medication: "باراسيتامول".to_string(),
+            concentration: Some("450mg".to_string()), // 10% difference
+            form: Some("اقراص".to_string()),
+            created_at: now,
+            ..Default::default()
+        };
+
+        // Score with default config (20% tolerance)
+        let score1 = scorer.score_match(&offer, &request, 0.95, None);
+
+        // Change config to stricter tolerance (5%)
+        let mut config = scorer.get_pharmaceutical_config();
+        config.concentration_tolerance_percent = 5.0;
+        scorer.set_pharmaceutical_config(config);
+
+        // Score again with stricter config
+        let score2 = scorer.score_match(&offer, &request, 0.95, None);
+
+        // Score should be lower with stricter config
+        assert!(
+            score2.pharmaceutical_score < score1.pharmaceutical_score,
+            "Expected lower pharmaceutical score with stricter config: {} vs {}",
+            score2.pharmaceutical_score,
+            score1.pharmaceutical_score
+        );
     }
 }

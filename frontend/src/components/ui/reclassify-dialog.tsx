@@ -3,14 +3,15 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+  AlertCircle,
   ArrowRightLeft,
+  CheckCircle2,
+  Loader2,
   Package,
   ShoppingCart,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
   Sparkles,
 } from 'lucide-react'
+import type { ItemType } from '@/api/offers'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -22,7 +23,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { reclassifyItem, type ItemType } from '@/api/offers'
+import { reclassifyItem } from '@/api/offers'
 
 interface ReclassifyDialogProps {
   open: boolean
@@ -30,7 +31,6 @@ interface ReclassifyDialogProps {
   itemId: string
   itemType: ItemType
   medication: string
-  medicationRaw?: string
   onSuccess?: (newId: string, newType: ItemType) => void
 }
 
@@ -43,7 +43,6 @@ export function ReclassifyDialog({
   itemId,
   itemType,
   medication,
-  medicationRaw,
   onSuccess,
 }: ReclassifyDialogProps) {
   const [notes, setNotes] = useState('')
@@ -143,11 +142,6 @@ export function ReclassifyDialog({
                     <p className="font-medium text-foreground truncate">
                       {medication}
                     </p>
-                    {medicationRaw && medicationRaw !== medication && (
-                      <p className="text-sm text-muted-foreground truncate">
-                        Raw: {medicationRaw}
-                      </p>
-                    )}
                     <p className="text-xs text-muted-foreground mt-1">
                       ID: {itemId.slice(0, 8)}...
                     </p>

@@ -5,8 +5,9 @@ import {
   Building2,
   Calendar,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
-  DollarSign,
   Hash,
   Loader2,
   MessageSquare,
@@ -16,6 +17,7 @@ import {
   Sparkles,
   TrendingUp,
   User,
+  Users,
 } from 'lucide-react'
 import { MedicationCurationBadge } from './medication-curation-badge'
 import type { MatchDetails, ReviewOffer, ReviewRequest } from './types'
@@ -37,6 +39,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useSendMessage } from '@/hooks/use-send-message'
+import { useCommonGroups } from '@/hooks/use-common-groups'
 
 interface ReviewCardProps {
   type: 'offer' | 'request'
@@ -47,16 +50,21 @@ interface ReviewCardProps {
     id: string,
     type: 'offer' | 'request',
     medication: string,
-    medicationRaw?: string,
   ) => void
   onReparse?: (
     id: string,
     type: 'offer' | 'request',
     medication: string,
-    medicationRaw?: string,
   ) => void
   aiConfidence?: number | null
   matchDetails?: MatchDetails | null
+  // Carousel props for navigating through similar items
+  carouselIndex?: number
+  carouselTotal?: number
+  onCarouselPrev?: () => void
+  onCarouselNext?: () => void
+  // Common groups props
+  otherParticipantJid?: string | null
 }
 
 /**
@@ -110,10 +118,12 @@ function SenderBadge({
   name,
   jid,
   accentColor,
+  medicationName,
 }: {
   name: string | null
   jid: string | null
   accentColor: 'teal' | 'amber'
+  medicationName?: string
 }) {
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [message, setMessage] = useState('')
@@ -143,7 +153,7 @@ function SenderBadge({
     },
   })
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = () => {
     if (!message.trim() || !jid) return
     setSendError(null)
     sendMessageMutation.mutate({
@@ -376,6 +386,16 @@ function SenderBadge({
             {/* Quick message templates */}
             <div className="flex flex-wrap gap-2">
               <button
+                onClick={() =>
+                  setMessage(
+                    `سلام عليكم كنت بسأل على ${medicationName || '(اسم الدواء)'}`,
+                  )
+                }
+                className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
+              >
+                🇪🇬 Ask about med
+              </button>
+              <button
                 onClick={() => setMessage('مرحباً، هل العرض ما زال متاحاً؟')}
                 className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
               >
@@ -459,11 +479,11 @@ function SenderBadge({
  */
 function RawMessageSection({
   rawMessage,
-  medicationRaw,
+  medication,
   accentColor,
 }: {
   rawMessage: string | null
-  medicationRaw: string | null
+  medication: string | null
   accentColor: 'teal' | 'amber'
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
@@ -505,11 +525,290 @@ function RawMessageSection({
         <div className="px-3 pb-3 text-xs leading-relaxed" dir="auto">
           <HighlightedMessage
             text={rawMessage}
-            highlight={medicationRaw}
+            highlight={medication}
             accentColor={accentColor}
           />
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Compact common groups display for cards
+ */
+function CommonGroupsBadge({
+  currentJid,
+  otherJid,
+  accentColor,
+}: {
+  currentJid: string | null
+  otherJid: string | null
+  accentColor: 'teal' | 'amber'
+}) {
+  // Get groups between the two participants
+  const { data: participantGroups, isLoading: loadingParticipants } =
+    useCommonGroups(currentJid, otherJid)
+
+  // Get groups between current participant and "me" (the reviewer)
+  // Hardcoded reviewer JID for now - will be replaced with auth context
+  const reviewerJid = '201021347532@s.whatsapp.net'
+  const {
+    data: myGroupsWithCurrent,
+    isLoading: loadingMyCurrent,
+    isError: errorMyCurrent,
+  } = useCommonGroups(currentJid, reviewerJid)
+  const {
+    data: myGroupsWithOther,
+    isLoading: loadingMyOther,
+    isError: errorMyOther,
+  } = useCommonGroups(otherJid, reviewerJid)
+
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  const isLoading = loadingParticipants
+
+  if (isLoading) {
+    return (
+      <div
+        className={cn(
+          'mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border',
+          accentColor === 'teal'
+            ? 'bg-teal/5 border-teal/20'
+            : 'bg-amber/5 border-amber/20',
+        )}
+      >
+        <Loader2
+          className={cn(
+            'w-3.5 h-3.5 animate-spin',
+            accentColor === 'teal' ? 'text-teal' : 'text-amber',
+          )}
+        />
+        <span className="text-xs text-muted-foreground">
+          Checking groups...
+        </span>
+      </div>
+    )
+  }
+
+  const commonGroups = participantGroups?.common_groups || []
+  // Only show "with you" groups if the API call succeeded (not 404)
+  const myCurrentGroups = !errorMyCurrent
+    ? myGroupsWithCurrent?.common_groups || []
+    : []
+  const myOtherGroups = !errorMyOther
+    ? myGroupsWithOther?.common_groups || []
+    : []
+
+  const hasAnyGroups =
+    commonGroups.length > 0 ||
+    myCurrentGroups.length > 0 ||
+    myOtherGroups.length > 0
+
+  if (!hasAnyGroups) return null
+
+  return (
+    <div
+      className={cn(
+        'mt-3 rounded-lg border overflow-hidden transition-all duration-300',
+        'bg-linear-to-br from-slate-900/60 via-slate-800/40 to-slate-900/60',
+        'border-slate-700/50 backdrop-blur-sm',
+      )}
+    >
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between px-3 py-2.5 text-xs hover:bg-slate-800/30 transition-colors group"
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="relative">
+            <div className="w-7 h-7 rounded-lg bg-linear-to-br from-violet-500/30 to-fuchsia-500/30 flex items-center justify-center border border-violet-500/30">
+              <Users className="w-3.5 h-3.5 text-violet-300" />
+            </div>
+            {commonGroups.length > 0 && (
+              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald flex items-center justify-center">
+                <span className="text-[8px] font-bold text-white">
+                  {commonGroups.length}
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col items-start">
+            <span className="font-semibold text-violet-300 group-hover:text-violet-200 transition-colors">
+              Shared Groups
+            </span>
+            <span className="text-[10px] text-slate-400">
+              {commonGroups.length > 0 && `${commonGroups.length} between them`}
+              {myCurrentGroups.length > 0 &&
+                ` • ${myCurrentGroups.length} with you`}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasAnyGroups && (
+            <div className="flex items-center gap-1">
+              {commonGroups.length > 0 && (
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald animate-pulse" />
+              )}
+              {(myCurrentGroups.length > 0 || myOtherGroups.length > 0) && (
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              )}
+            </div>
+          )}
+          {isExpanded ? (
+            <ChevronUp className="w-3.5 h-3.5 text-violet-400" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-violet-400" />
+          )}
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div className="px-3 pb-3 space-y-3 animate-in slide-in-from-top-2 duration-200">
+          {/* Groups between both participants */}
+          {commonGroups.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 px-2 py-1">
+                <div className="w-5 h-5 rounded-md bg-emerald/20 flex items-center justify-center">
+                  <Users className="w-3 h-3 text-emerald" />
+                </div>
+                <span className="text-[10px] font-bold text-emerald uppercase tracking-wider">
+                  Between Participants ({commonGroups.length})
+                </span>
+              </div>
+              {commonGroups.map((group) => (
+                <div
+                  key={group.id}
+                  className="flex items-center justify-between gap-2 p-2 rounded-lg bg-emerald/10 border border-emerald/20 hover:border-emerald/30 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-emerald truncate">
+                      {group.name}
+                    </p>
+                    {group.description && (
+                      <p className="text-[10px] text-emerald/70 truncate">
+                        {group.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-emerald/60 shrink-0">
+                    <Users className="w-3 h-3" />
+                    <span>{group.member_count}</span>
+                  </div>
+                </div>
+              ))}
+              <p className="text-[10px] text-emerald/70 px-2 leading-relaxed">
+                💡 Both can communicate directly in{' '}
+                {commonGroups.length > 1 ? 'these groups' : 'this group'}
+              </p>
+            </div>
+          )}
+
+          {/* Groups with current participant and me */}
+          {myCurrentGroups.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 px-2 py-1">
+                <div className="w-5 h-5 rounded-md bg-cyan-500/20 flex items-center justify-center">
+                  <User className="w-3 h-3 text-cyan-400" />
+                </div>
+                <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider">
+                  You & {accentColor === 'teal' ? 'Offer' : 'Request'} Sender (
+                  {myCurrentGroups.length})
+                </span>
+              </div>
+              {myCurrentGroups.map((group) => (
+                <div
+                  key={group.id}
+                  className="flex items-center justify-between gap-2 p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 hover:border-cyan-500/30 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-cyan-400 truncate">
+                      {group.name}
+                    </p>
+                    {group.description && (
+                      <p className="text-[10px] text-cyan-400/70 truncate">
+                        {group.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-cyan-400/60 shrink-0">
+                    <Users className="w-3 h-3" />
+                    <span>{group.member_count}</span>
+                  </div>
+                </div>
+              ))}
+              <p className="text-[10px] text-cyan-400/70 px-2 leading-relaxed">
+                🤝 You can reach them in{' '}
+                {myCurrentGroups.length > 1 ? 'these groups' : 'this group'}
+              </p>
+            </div>
+          )}
+
+          {/* Groups with other participant and me */}
+          {myOtherGroups.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 px-2 py-1">
+                <div className="w-5 h-5 rounded-md bg-blue-500/20 flex items-center justify-center">
+                  <User className="w-3 h-3 text-blue-400" />
+                </div>
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">
+                  You & {accentColor === 'teal' ? 'Request' : 'Offer'} Sender (
+                  {myOtherGroups.length})
+                </span>
+              </div>
+              {myOtherGroups.map((group) => (
+                <div
+                  key={group.id}
+                  className="flex items-center justify-between gap-2 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 hover:border-blue-500/30 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-blue-400 truncate">
+                      {group.name}
+                    </p>
+                    {group.description && (
+                      <p className="text-[10px] text-blue-400/70 truncate">
+                        {group.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-blue-400/60 shrink-0">
+                    <Users className="w-3 h-3" />
+                    <span>{group.member_count}</span>
+                  </div>
+                </div>
+              ))}
+              <p className="text-[10px] text-blue-400/70 px-2 leading-relaxed">
+                🤝 You can reach them in{' '}
+                {myOtherGroups.length > 1 ? 'these groups' : 'this group'}
+              </p>
+            </div>
+          )}
+
+          {/* Summary footer */}
+          <div className="pt-2 border-t border-slate-700/50">
+            <div className="flex items-center justify-center gap-4 text-[10px]">
+              {commonGroups.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-emerald" />
+                  <span className="text-slate-400">
+                    {commonGroups.length} shared
+                  </span>
+                </div>
+              )}
+              {(myCurrentGroups.length > 0 || myOtherGroups.length > 0) && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <span className="text-slate-400">
+                    {myCurrentGroups.length + myOtherGroups.length} with you
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Decorative gradient line */}
+      <div className="h-px bg-linear-to-r from-transparent via-violet-500/50 to-transparent" />
     </div>
   )
 }
@@ -521,6 +820,11 @@ export function ReviewCard({
   onCurate,
   onReclassify,
   onReparse,
+  carouselIndex,
+  carouselTotal,
+  onCarouselPrev,
+  onCarouselNext,
+  otherParticipantJid,
 }: ReviewCardProps) {
   const isOffer = type === 'offer'
 
@@ -576,6 +880,7 @@ export function ReviewCard({
               name={offer.senderName}
               jid={offer.senderJid}
               accentColor="teal"
+              medicationName={offer.product}
             />
           </div>
 
@@ -596,45 +901,21 @@ export function ReviewCard({
                 masterId={offer.masterId}
                 onClick={(e) => {
                   e.stopPropagation()
-                  onCurate?.(
-                    offer.medicationRaw || offer.product,
-                    offer.medicationAliasId,
-                  )
+                  onCurate?.(offer.product, offer.medicationAliasId)
                 }}
               />
             </div>
-            {offer.medicationRaw && offer.medicationRaw !== offer.product && (
-              <div className="text-xs text-muted-foreground mt-1 opacity-70">
-                Raw: {offer.medicationRaw}
-              </div>
-            )}
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-teal/30 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Hash className="w-3 h-3" />
-                <span>Qty</span>
-              </div>
-              <span className="text-sm font-bold text-teal">
-                {offer.quantity}
-              </span>
-            </div>
-            <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-teal/30 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <DollarSign className="w-3 h-3" />
-                <span>Price</span>
-              </div>
-              <span className="text-sm font-bold text-teal">{offer.price}</span>
-            </div>
+          <div className="grid grid-cols-1 gap-3 mb-4">
             <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-teal/30 transition-colors">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                 <Calendar className="w-3 h-3" />
                 <span>Expiry</span>
               </div>
               <span className="text-sm font-bold text-foreground">
-                {offer.expiry}
+                {offer.expiry || 'N/A'}
               </span>
             </div>
           </div>
@@ -642,9 +923,18 @@ export function ReviewCard({
           {/* Raw Message Section */}
           <RawMessageSection
             rawMessage={offer.rawMessage}
-            medicationRaw={offer.medicationRaw}
+            medication={offer.product}
             accentColor="teal"
           />
+
+          {/* Common Groups Badge */}
+          {otherParticipantJid && (
+            <CommonGroupsBadge
+              currentJid={offer.senderJid}
+              otherJid={otherParticipantJid}
+              accentColor="teal"
+            />
+          )}
 
           {/* Footer */}
           <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
@@ -654,17 +944,65 @@ export function ReviewCard({
           </div>
         </div>
 
+        {/* Mini Carousel Navigation */}
+        {carouselTotal && carouselTotal > 1 && (
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <button
+              onClick={onCarouselPrev}
+              disabled={!onCarouselPrev || carouselIndex === 0}
+              className={cn(
+                'p-2 rounded-full transition-all duration-200',
+                'bg-linear-to-r from-teal/20 to-emerald/20',
+                'border border-teal/30 hover:border-teal/60',
+                'hover:scale-110 active:scale-95',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
+              )}
+            >
+              <ChevronLeft className="w-4 h-4 text-teal" />
+            </button>
+
+            {/* Dot indicators */}
+            <div className="flex items-center gap-1.5">
+              {Array.from({ length: Math.min(carouselTotal, 7) }).map(
+                (_, idx) => (
+                  <div
+                    key={idx}
+                    className={cn(
+                      'rounded-full transition-all duration-300',
+                      idx === carouselIndex
+                        ? 'w-6 h-2 bg-linear-to-r from-teal to-emerald'
+                        : 'w-2 h-2 bg-muted-foreground/30',
+                    )}
+                  />
+                ),
+              )}
+              {carouselTotal > 7 && (
+                <span className="text-xs text-muted-foreground ml-1">
+                  +{carouselTotal - 7}
+                </span>
+              )}
+            </div>
+
+            <button
+              onClick={onCarouselNext}
+              disabled={!onCarouselNext || carouselIndex === carouselTotal - 1}
+              className={cn(
+                'p-2 rounded-full transition-all duration-200',
+                'bg-linear-to-r from-teal/20 to-emerald/20',
+                'border border-teal/30 hover:border-teal/60',
+                'hover:scale-110 active:scale-95',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
+              )}
+            >
+              <ChevronRight className="w-4 h-4 text-teal" />
+            </button>
+          </div>
+        )}
+
         {/* Reclassify Button - Outside the card */}
         {onReclassify && (
           <button
-            onClick={() =>
-              onReclassify(
-                offer.id,
-                'offer',
-                offer.product,
-                offer.medicationRaw ?? undefined,
-              )
-            }
+            onClick={() => onReclassify(offer.id, 'offer', offer.product)}
             className={cn(
               'mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl',
               'bg-linear-to-r from-violet-500/10 to-fuchsia-500/10',
@@ -683,14 +1021,7 @@ export function ReviewCard({
         {/* Reparse Button */}
         {onReparse && (
           <button
-            onClick={() =>
-              onReparse(
-                offer.id,
-                'offer',
-                offer.product,
-                offer.medicationRaw ?? undefined,
-              )
-            }
+            onClick={() => onReparse(offer.id, 'offer', offer.product)}
             className={cn(
               'mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl',
               'bg-linear-to-r from-cyan-500/10 to-blue-500/10',
@@ -760,6 +1091,7 @@ export function ReviewCard({
               name={request.senderName}
               jid={request.senderJid}
               accentColor="amber"
+              medicationName={request.product}
             />
           </div>
 
@@ -780,41 +1112,14 @@ export function ReviewCard({
                 masterId={request.masterId}
                 onClick={(e) => {
                   e.stopPropagation()
-                  onCurate?.(
-                    request.medicationRaw || request.product,
-                    request.medicationAliasId,
-                  )
+                  onCurate?.(request.product, request.medicationAliasId)
                 }}
               />
             </div>
-            {request.medicationRaw &&
-              request.medicationRaw !== request.product && (
-                <div className="text-xs text-muted-foreground mt-1 opacity-70">
-                  Raw: {request.medicationRaw}
-                </div>
-              )}
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-amber/30 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Hash className="w-3 h-3" />
-                <span>Qty</span>
-              </div>
-              <span className="text-sm font-bold text-amber">
-                {request.quantity}
-              </span>
-            </div>
-            <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-amber/30 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <DollarSign className="w-3 h-3" />
-                <span>Max</span>
-              </div>
-              <span className="text-sm font-bold text-amber">
-                {request.maxPrice}
-              </span>
-            </div>
+          <div className="grid grid-cols-1 gap-3 mb-4">
             <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-amber/30 transition-colors">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                 <AlertCircle className="w-3 h-3" />
@@ -840,9 +1145,18 @@ export function ReviewCard({
           {/* Raw Message Section */}
           <RawMessageSection
             rawMessage={request.rawMessage}
-            medicationRaw={request.medicationRaw}
+            medication={request.product}
             accentColor="amber"
           />
+
+          {/* Common Groups Badge */}
+          {otherParticipantJid && (
+            <CommonGroupsBadge
+              currentJid={request.senderJid}
+              otherJid={otherParticipantJid}
+              accentColor="amber"
+            />
+          )}
 
           {/* Footer */}
           <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
@@ -852,17 +1166,65 @@ export function ReviewCard({
           </div>
         </div>
 
+        {/* Mini Carousel Navigation */}
+        {carouselTotal && carouselTotal > 1 && (
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <button
+              onClick={onCarouselPrev}
+              disabled={!onCarouselPrev || carouselIndex === 0}
+              className={cn(
+                'p-2 rounded-full transition-all duration-200',
+                'bg-linear-to-r from-amber/20 to-orange-500/20',
+                'border border-amber/30 hover:border-amber/60',
+                'hover:scale-110 active:scale-95',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
+              )}
+            >
+              <ChevronLeft className="w-4 h-4 text-amber" />
+            </button>
+
+            {/* Dot indicators */}
+            <div className="flex items-center gap-1.5">
+              {Array.from({ length: Math.min(carouselTotal, 7) }).map(
+                (_, idx) => (
+                  <div
+                    key={idx}
+                    className={cn(
+                      'rounded-full transition-all duration-300',
+                      idx === carouselIndex
+                        ? 'w-6 h-2 bg-linear-to-r from-amber to-orange-500'
+                        : 'w-2 h-2 bg-muted-foreground/30',
+                    )}
+                  />
+                ),
+              )}
+              {carouselTotal > 7 && (
+                <span className="text-xs text-muted-foreground ml-1">
+                  +{carouselTotal - 7}
+                </span>
+              )}
+            </div>
+
+            <button
+              onClick={onCarouselNext}
+              disabled={!onCarouselNext || carouselIndex === carouselTotal - 1}
+              className={cn(
+                'p-2 rounded-full transition-all duration-200',
+                'bg-linear-to-r from-amber/20 to-orange-500/20',
+                'border border-amber/30 hover:border-amber/60',
+                'hover:scale-110 active:scale-95',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
+              )}
+            >
+              <ChevronRight className="w-4 h-4 text-amber" />
+            </button>
+          </div>
+        )}
+
         {/* Reclassify Button - Outside the card */}
         {onReclassify && (
           <button
-            onClick={() =>
-              onReclassify(
-                request.id,
-                'request',
-                request.product,
-                request.medicationRaw ?? undefined,
-              )
-            }
+            onClick={() => onReclassify(request.id, 'request', request.product)}
             className={cn(
               'mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl',
               'bg-linear-to-r from-violet-500/10 to-fuchsia-500/10',
@@ -881,14 +1243,7 @@ export function ReviewCard({
         {/* Reparse Button */}
         {onReparse && (
           <button
-            onClick={() =>
-              onReparse(
-                request.id,
-                'request',
-                request.product,
-                request.medicationRaw ?? undefined,
-              )
-            }
+            onClick={() => onReparse(request.id, 'request', request.product)}
             className={cn(
               'mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl',
               'bg-linear-to-r from-cyan-500/10 to-blue-500/10',

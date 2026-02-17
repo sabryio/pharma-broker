@@ -33,7 +33,8 @@ interface SendMessageDialogProps {
 
 // Quick message templates
 const quickTemplates = [
-  { label: '🇪🇬 Ask availability', text: 'مرحباً، هل العرض ما زال متاحاً؟' },
+  { label: '🇪🇬 Ask about med', text: 'سلام عليكم كنت بسأل على (اسم الدواء)' },
+  { label: '�� Ask availability', text: 'مرحباً، هل العرض ما زال متاحاً؟' },
   { label: '🇬🇧 Ask availability', text: 'Hello, is this still available?' },
   { label: '🇪🇬 Thank you', text: 'شكراً على العرض، سأتواصل معك قريباً.' },
   {
@@ -77,18 +78,38 @@ export function SendMessageDialog({
   // Use the send message hook
   const sendMessageMutation = useSendMessage({
     onSuccess: (messageId) => {
+      console.log('✅ Message sent successfully:', { messageId, recipientJid })
       setMessage('')
       setSendError(null)
       onOpenChange(false)
       onSuccess?.(messageId)
     },
     onError: (error) => {
+      console.error('❌ Failed to send message:', {
+        error: error.message,
+        recipientJid,
+        messageLength: message.length,
+      })
       setSendError(error.message)
     },
   })
 
   const handleSendMessage = () => {
-    if (!message.trim() || !recipientJid) return
+    if (!message.trim() || !recipientJid) {
+      console.warn('⚠️ Cannot send message:', {
+        hasMessage: !!message.trim(),
+        hasRecipientJid: !!recipientJid,
+        recipientJid,
+      })
+      return
+    }
+
+    console.log('📤 Sending message:', {
+      recipientJid,
+      contentLength: message.trim().length,
+      recipientName,
+    })
+
     setSendError(null)
     sendMessageMutation.mutate({
       recipient_jid: recipientJid,

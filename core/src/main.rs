@@ -312,20 +312,22 @@ async fn main() -> anyhow::Result<()> {
         let client = Arc::new(BridgeClient::new(config));
 
         // Try to connect, but don't fail startup if bridge is not available
+        // The client will automatically reconnect when needed
         match client.connect().await {
             Ok(()) => {
                 tracing::info!(address = %bridge_addr, "🔗 Bridge client connected");
-                Some(client)
             }
             Err(e) => {
                 tracing::warn!(
                     address = %bridge_addr,
                     error = %e,
-                    "⚠️ Bridge client connection failed - send message feature will be unavailable"
+                    "⚠️ Bridge client connection failed - will retry on first send attempt"
                 );
-                None
             }
         }
+
+        // Always return Some(client) so it can reconnect later
+        Some(client)
     };
 
     // Create application state for HTTP (with matching engine)

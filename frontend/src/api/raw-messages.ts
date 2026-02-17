@@ -173,3 +173,15 @@ export async function bulkMarkProcessed(
 
   return response.data
 }
+
+/**
+ * Get all failed message IDs for auto-reprocess
+ * Returns array of message IDs with error status
+ */
+export async function getFailedMessageIds(): Promise<ApiResponse<string[]>> {
+  const response = await apiClient.get<ApiResponse<string[]>>(
+    '/api/raw-messages/failed-ids',
+  )
+
+  return response.data
+}

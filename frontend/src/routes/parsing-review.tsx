@@ -133,6 +133,7 @@ export default function ParsingReview() {
   const undoLast = useCallback(() => {
     if (history.length === 0) return
     const last = history[0]
+    if (!last) return
 
     // Remove from optimistically removed set
     setOptimisticallyRemoved((prev) => {

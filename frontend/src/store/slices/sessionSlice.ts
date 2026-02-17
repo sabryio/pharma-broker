@@ -25,7 +25,7 @@ const initialState: SessionState = {
   userName: null,
   isAuthenticated: false,
   preferences: {
-    defaultPageSize: 20,
+    defaultPageSize: 100,
     autoRefreshInterval: 30000,
     showConfidenceColors: true,
     compactMode: false,

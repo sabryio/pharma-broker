@@ -14,7 +14,6 @@ export const MatchStatusSchema = z.enum([
 export const OfferSummarySchema = z.object({
   id: z.uuid(),
   product: z.string(),
-  medicationRaw: z.string().nullable().optional(),
   source: z.string(),
   sourceGroup: z.string().nullable(),
   senderName: z.string().nullable(),
@@ -29,7 +28,6 @@ export const OfferSummarySchema = z.object({
 export const RequestSummarySchema = z.object({
   id: z.uuid(),
   product: z.string(),
-  medicationRaw: z.string().nullable().optional(),
   source: z.string(),
   sourceGroup: z.string().nullable(),
   senderName: z.string().nullable(),
@@ -72,6 +70,8 @@ export const MatchReviewStatsSchema = z.object({
   rejectedToday: z.number(),
   totalPending: z.number(),
   avgConfidence: z.number(),
+  uniquePendingOffers: z.number(),
+  uniquePendingRequests: z.number(),
 })
 
 export const UpdateMatchReviewRequestSchema = z.object({

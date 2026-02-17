@@ -21,7 +21,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Search, X, CalendarIcon, RefreshCw } from 'lucide-react'
+import { Search, X, CalendarIcon, RefreshCw, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { RawMessageFilters, ProcessingStatus } from './types'
 import { defaultFilters } from './types'
@@ -32,6 +32,8 @@ interface FilterToolbarProps {
   onRefresh: () => void
   isRefreshing: boolean
   totalCount: number
+  onAutoReprocess?: () => void
+  isAutoReprocessing?: boolean
 }
 
 export function FilterToolbar({
@@ -40,6 +42,8 @@ export function FilterToolbar({
   onRefresh,
   isRefreshing,
   totalCount,
+  onAutoReprocess,
+  isAutoReprocessing = false,
 }: FilterToolbarProps) {
   const [startDateOpen, setStartDateOpen] = useState(false)
   const [endDateOpen, setEndDateOpen] = useState(false)
@@ -211,6 +215,42 @@ export function FilterToolbar({
       <span className="text-xs text-muted-foreground tabular-nums">
         {totalCount.toLocaleString()} messages
       </span>
+
+      {/* Auto Reprocess Failed Messages */}
+      {onAutoReprocess && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onAutoReprocess}
+              disabled={isAutoReprocessing}
+              className={cn(
+                'h-8 px-3 gap-1.5',
+                'bg-linear-to-r from-amber-500/10 to-orange-500/10',
+                'border-amber-500/30 hover:border-amber-500/50',
+                'text-amber-600 dark:text-amber-400',
+                'hover:from-amber-500/20 hover:to-orange-500/20',
+                'transition-all duration-200',
+                isAutoReprocessing && 'animate-pulse',
+              )}
+            >
+              <Zap
+                className={cn(
+                  'w-3.5 h-3.5',
+                  isAutoReprocessing && 'animate-spin',
+                )}
+              />
+              <span className="text-xs font-medium">
+                {isAutoReprocessing ? 'Processing...' : 'Fix Failed'}
+              </span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Automatically reprocess all failed messages
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       {/* Refresh */}
       <Tooltip>

@@ -248,8 +248,6 @@ where
                 .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
             sender_jid: offer_participant.map(|p| p.jid),
             raw_message: offer_raw_message.map(|m| m.content),
-            quantity: None, // Removed: quantity no longer tracked
-            price: None,    // Removed: price no longer tracked
             expiry: offer.expiry_info.clone(),
             master_id: offer_curation.as_ref().and_then(|a| a.master_medication_id),
             medication_alias_id: offer_curation.as_ref().map(|a| a.id),
@@ -273,8 +271,6 @@ where
                 .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
             sender_jid: request_participant.map(|p| p.jid),
             raw_message: request_raw_message.map(|m| m.content),
-            quantity: None,  // Removed: quantity no longer tracked
-            max_price: None, // Removed: max_price no longer tracked
             urgency: format!("{:?}", request.urgency_level),
             master_id: request_curation
                 .as_ref()
@@ -402,8 +398,6 @@ where
             .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
         sender_jid: offer_participant.map(|p| p.jid),
         raw_message: offer_raw_message.map(|m| m.content),
-        quantity: None, // Removed: quantity no longer tracked
-        price: None,    // Removed: price no longer tracked
         expiry: offer.expiry_info.clone(),
         master_id: offer_curation.as_ref().and_then(|a| a.master_medication_id),
         medication_alias_id: offer_curation.as_ref().map(|a| a.id),
@@ -427,8 +421,6 @@ where
             .and_then(|p| p.display_name.clone().or_else(|| p.push_name.clone())),
         sender_jid: request_participant.map(|p| p.jid),
         raw_message: request_raw_message.map(|m| m.content),
-        quantity: None,  // Removed: quantity no longer tracked
-        max_price: None, // Removed: max_price no longer tracked
         urgency: format!("{:?}", request.urgency_level),
         master_id: request_curation
             .as_ref()
@@ -951,11 +943,25 @@ where
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    let unique_pending_offers = state
+        .match_repo
+        .count_unique_pending_offers()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let unique_pending_requests = state
+        .match_repo
+        .count_unique_pending_requests()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     tracing::debug!(
         pending = pending,
         confirmed_today = confirmed_today,
         rejected_today = rejected_today,
         avg_confidence = avg_confidence,
+        unique_pending_offers = unique_pending_offers,
+        unique_pending_requests = unique_pending_requests,
         ">>> [DEBUG] get_match_review_stats returning"
     );
 
@@ -965,6 +971,8 @@ where
         rejected_today,
         total_pending: pending,
         avg_confidence,
+        unique_pending_offers,
+        unique_pending_requests,
     }))
 }
 

@@ -277,7 +277,9 @@ export function StatsDashboard({
             <span className="text-xs text-muted-foreground">Avg Score</span>
           </div>
           <div className="flex items-center justify-between">
-            <p className="text-2xl font-bold text-amber">{avgConfidence}%</p>
+            <p className="text-2xl font-bold text-amber">
+              {avgConfidence.toFixed(2)}%
+            </p>
             <TrendIndicator
               current={avgConfidence}
               previous={avgConfidenceYesterday}
@@ -394,7 +396,9 @@ export function StatsDashboard({
             />
           </div>
           <div className="flex items-center gap-4">
-            <p className="text-4xl font-bold text-amber">{avgConfidence}%</p>
+            <p className="text-4xl font-bold text-amber">
+              {avgConfidence.toFixed(2)}%
+            </p>
             <MiniSparkline data={approvalTrend} color="#f59e0b" />
           </div>
         </div>

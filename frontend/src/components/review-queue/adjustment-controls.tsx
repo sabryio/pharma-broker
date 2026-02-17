@@ -30,16 +30,12 @@ function useDebounce<T>(value: T, delay: number): T {
 
 interface SliderValues {
   medicationWeight: number
-  dosageStrictness: number
-  quantityTolerance: number
-  priceFlexibility: number
+  pharmaceuticalStrictness: number
 }
 
 const defaultSliders: SliderValues = {
-  medicationWeight: 85,
-  dosageStrictness: 80,
-  quantityTolerance: 15,
-  priceFlexibility: 10,
+  medicationWeight: 75,
+  pharmaceuticalStrictness: 50,
 }
 
 export function AdjustmentControls() {
@@ -100,9 +96,7 @@ export function AdjustmentControls() {
     const currentWeights = weightsData.weights
     const hasChanged =
       Math.abs(weights.medication - currentWeights.medication) > 0.001 ||
-      Math.abs(weights.dosage - currentWeights.dosage) > 0.001 ||
-      Math.abs(weights.quantity - currentWeights.quantity) > 0.001 ||
-      Math.abs(weights.price - currentWeights.price) > 0.001
+      Math.abs(weights.pharmaceutical - currentWeights.pharmaceutical) > 0.001
 
     if (hasChanged) {
       updateMutation.mutate({
@@ -156,7 +150,7 @@ export function AdjustmentControls() {
         <SaveStatusBadge status={saveStatus} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Medication Name Weight - Most Important */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -169,8 +163,10 @@ export function AdjustmentControls() {
           </div>
           <Slider
             value={[sliders.medicationWeight]}
-            onValueChange={(v) => handleSliderChange('medicationWeight', v[0])}
-            min={50}
+            onValueChange={(v) =>
+              handleSliderChange('medicationWeight', v[0] ?? 0)
+            }
+            min={0}
             max={100}
             step={1}
             className="slider-emerald"
@@ -180,69 +176,27 @@ export function AdjustmentControls() {
           </p>
         </div>
 
-        {/* Dosage Strictness */}
+        {/* Pharmaceutical Strictness */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              Dosage Strictness
+              Pharmaceutical
             </span>
             <span className="text-sm font-medium text-purple-400">
-              {Math.round(currentWeights.dosage * 100)}%
+              {Math.round(currentWeights.pharmaceutical * 100)}%
             </span>
           </div>
           <Slider
-            value={[sliders.dosageStrictness]}
-            onValueChange={(v) => handleSliderChange('dosageStrictness', v[0])}
+            value={[sliders.pharmaceuticalStrictness]}
+            onValueChange={(v) =>
+              handleSliderChange('pharmaceuticalStrictness', v[0] ?? 0)
+            }
             max={100}
             step={1}
             className="slider-purple"
           />
           <p className="text-xs text-muted-foreground/70">
-            Higher = stricter dosage matching
-          </p>
-        </div>
-
-        {/* Quantity Tolerance */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">
-              Quantity Tolerance
-            </span>
-            <span className="text-sm font-medium text-amber">
-              {Math.round(currentWeights.quantity * 100)}%
-            </span>
-          </div>
-          <Slider
-            value={[sliders.quantityTolerance]}
-            onValueChange={(v) => handleSliderChange('quantityTolerance', v[0])}
-            max={50}
-            step={1}
-            className="slider-amber"
-          />
-          <p className="text-xs text-muted-foreground/70">
-            Higher tolerance = less strict
-          </p>
-        </div>
-
-        {/* Price Flexibility */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">
-              Price Flexibility
-            </span>
-            <span className="text-sm font-medium text-teal">
-              {Math.round(currentWeights.price * 100)}%
-            </span>
-          </div>
-          <Slider
-            value={[sliders.priceFlexibility]}
-            onValueChange={(v) => handleSliderChange('priceFlexibility', v[0])}
-            max={50}
-            step={1}
-            className="slider-teal"
-          />
-          <p className="text-xs text-muted-foreground/70">
-            Higher flexibility = less strict
+            Concentration + form validation
           </p>
         </div>
       </div>
@@ -261,19 +215,19 @@ export function AdjustmentControls() {
             variant="outline"
             className="text-purple-400 border-purple-400/30"
           >
-            Dose: {Math.round(currentWeights.dosage * 100)}%
-          </Badge>
-          <Badge variant="outline" className="text-amber border-amber/30">
-            Qty: {Math.round(currentWeights.quantity * 100)}%
-          </Badge>
-          <Badge variant="outline" className="text-teal border-teal/30">
-            Price: {Math.round(currentWeights.price * 100)}%
+            Pharma: {Math.round(currentWeights.pharmaceutical * 100)}%
           </Badge>
           <Badge
             variant="outline"
             className="text-muted-foreground border-muted-foreground/30"
           >
             Recency: {Math.round(currentWeights.recency * 100)}%
+          </Badge>
+          <Badge
+            variant="outline"
+            className="text-muted-foreground border-muted-foreground/30"
+          >
+            AI: {Math.round(currentWeights.ai_logic * 100)}%
           </Badge>
         </div>
       </div>

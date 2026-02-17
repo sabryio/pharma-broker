@@ -349,11 +349,18 @@ func (c *Client) GetJoinedGroups(ctx context.Context) ([]domain.GroupInfo, error
 
 	result := make([]domain.GroupInfo, 0, len(groups))
 	for _, g := range groups {
+		// Extract participant JIDs
+		participants := make([]domain.JID, 0, len(g.Participants))
+		for _, p := range g.Participants {
+			participants = append(participants, domain.JID(p.JID.String()))
+		}
+
 		result = append(result, domain.GroupInfo{
-			JID:         domain.JID(g.JID.String()),
-			Name:        g.Name,
-			Description: g.Topic,
-			MemberCount: int32(len(g.Participants)),
+			JID:          domain.JID(g.JID.String()),
+			Name:         g.Name,
+			Description:  g.Topic,
+			MemberCount:  int32(len(g.Participants)),
+			Participants: participants,
 		})
 	}
 

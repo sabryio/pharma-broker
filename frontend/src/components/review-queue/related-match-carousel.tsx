@@ -1,7 +1,7 @@
 // Related Match Carousel Component
 // Beautiful carousel for navigating through related matches
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -22,7 +22,9 @@ import { CurationDialog } from './curation-dialog'
 import { SenderProfile } from './sender-profile'
 import { NotesPanel } from './notes-panel'
 import type { OfferWithMatches, RequestWithMatches } from './types'
+import { groupOffersByMedication, groupRequestsByMedication } from './types'
 import type { ItemType } from '@/api/offers'
+import type { MatchReviewStats } from '@/schema/match-review'
 import { cn } from '@/lib/utils'
 import { ReparseDialog } from '@/components/ui/reparse-dialog'
 import { UncertaintyIndicator } from '@/components/debug-recordings'
@@ -32,11 +34,14 @@ import { reAuditMatch, recalculateConfidence } from '@/api/match-reviews'
 
 interface RelatedMatchCarouselProps {
   /** Grouped data - either offers with their requests or requests with their offers */
-  groupedByOffer: OfferWithMatches[]
-  groupedByRequest: RequestWithMatches[]
+  groupedByOffer: Array<OfferWithMatches>
+  groupedByRequest: Array<RequestWithMatches>
   /** Current mode - anchor by offer or request */
   anchorMode: 'offer' | 'request'
-  onAnchorModeChange: (mode: 'offer' | 'request') => void
+  onAnchorModeChange: (
+    mode: 'offer' | 'request',
+    currentMedicationName?: string,
+  ) => void
   /** Current anchor index (which offer/request is shown) */
   anchorIndex: number
   onAnchorIndexChange: (index: number) => void
@@ -44,10 +49,12 @@ interface RelatedMatchCarouselProps {
   relatedIndex: number
   onRelatedIndexChange: (index: number) => void
   /** Issues for current match */
-  issues: string[]
+  issues: Array<string>
   /** Action handlers */
   onApprove: (matchId: string) => void
   onReject: (matchId: string) => void
+  /** API stats for total counts */
+  apiStats?: MatchReviewStats | null
 }
 
 export function RelatedMatchCarousel({
@@ -62,6 +69,7 @@ export function RelatedMatchCarousel({
   issues,
   onApprove,
   onReject,
+  apiStats,
 }: RelatedMatchCarouselProps) {
   const queryClient = useQueryClient()
   const [curationMedication, setCurationMedication] = useState<string | null>(
@@ -75,7 +83,6 @@ export function RelatedMatchCarousel({
     id: string
     type: ItemType
     medication: string
-    medicationRaw?: string
   } | null>(null)
 
   // Reparse dialog state
@@ -83,39 +90,66 @@ export function RelatedMatchCarousel({
     id: string
     type: ItemType
     medication: string
-    medicationRaw?: string
   } | null>(null)
 
+  // Anchor carousel state - for navigating between items with same medication name
+  const [anchorCarouselIndex, setAnchorCarouselIndex] = useState(0)
+
+  // Go-to input state
+  const [goToInput, setGoToInput] = useState('')
+
   const handleReclassify = useCallback(
-    (
-      id: string,
-      type: 'offer' | 'request',
-      medication: string,
-      medicationRaw?: string,
-    ) => {
-      setReclassifyItem({ id, type, medication, medicationRaw })
+    (id: string, type: 'offer' | 'request', medication: string) => {
+      setReclassifyItem({ id, type, medication })
     },
     [],
   )
 
   const handleReparse = useCallback(
-    (
-      id: string,
-      type: 'offer' | 'request',
-      medication: string,
-      medicationRaw?: string,
-    ) => {
-      setReparseItem({ id, type, medication, medicationRaw })
+    (id: string, type: 'offer' | 'request', medication: string) => {
+      setReparseItem({ id, type, medication })
     },
     [],
   )
 
   const isOfferMode = anchorMode === 'offer'
   const groups = isOfferMode ? groupedByOffer : groupedByRequest
+
+  // Group by medication name for anchor carousel
+  const medicationGroups = useMemo(() => {
+    if (isOfferMode) {
+      return groupOffersByMedication(groupedByOffer)
+    } else {
+      return groupRequestsByMedication(groupedByRequest)
+    }
+  }, [isOfferMode, groupedByOffer, groupedByRequest])
+
+  // Get current medication group
   const currentGroup = groups[anchorIndex]
+  const currentMedicationName = currentGroup
+    ? isOfferMode
+      ? (currentGroup as OfferWithMatches).offer.product.trim().toLowerCase()
+      : (currentGroup as RequestWithMatches).request.product
+          .trim()
+          .toLowerCase()
+    : null
+
+  // Get all items with same medication name
+  const sameMedicationItems = currentMedicationName
+    ? medicationGroups.get(currentMedicationName) || []
+    : []
+
+  // Get the actual current item from the carousel
+  const actualCurrentGroup =
+    sameMedicationItems[anchorCarouselIndex] || currentGroup
+
+  // Reset anchor carousel index when anchor changes
+  useMemo(() => {
+    setAnchorCarouselIndex(0)
+  }, [anchorIndex])
 
   // Get current match early so it can be used in callbacks
-  const matches = currentGroup?.matches ?? []
+  const matches = actualCurrentGroup?.matches ?? []
   const currentMatch = matches[relatedIndex]
 
   const rematchMutation = useMutation({
@@ -195,15 +229,15 @@ export function RelatedMatchCarousel({
   }, [currentMatch, recalculateMutation])
 
   const handleRematch = useCallback(() => {
-    if (!currentGroup) return
+    if (!actualCurrentGroup) return
 
     const itemId = isOfferMode
-      ? (currentGroup as OfferWithMatches).offer.id
-      : (currentGroup as RequestWithMatches).request.id
+      ? (actualCurrentGroup as OfferWithMatches).offer.id
+      : (actualCurrentGroup as RequestWithMatches).request.id
 
     const itemName = isOfferMode
-      ? (currentGroup as OfferWithMatches).offer.product
-      : (currentGroup as RequestWithMatches).request.product
+      ? (actualCurrentGroup as OfferWithMatches).offer.product
+      : (actualCurrentGroup as RequestWithMatches).request.product
 
     toast.info(`Rematching ${isOfferMode ? 'offer' : 'request'}`, {
       description: `Finding new matches for "${itemName}"...`,
@@ -213,10 +247,7 @@ export function RelatedMatchCarousel({
       item_id: itemId,
       item_type: anchorMode as ItemType,
     })
-  }, [currentGroup, isOfferMode, anchorMode, rematchMutation])
-
-  if (!currentGroup) return null
-  if (!currentMatch) return null
+  }, [actualCurrentGroup, isOfferMode, anchorMode, rematchMutation])
 
   const totalAnchors = groups.length
   const totalMatches = matches.length
@@ -236,6 +267,30 @@ export function RelatedMatchCarousel({
     }
   }, [anchorIndex, totalAnchors, onAnchorIndexChange, onRelatedIndexChange])
 
+  const handleGoTo = useCallback(() => {
+    const targetNumber = parseInt(goToInput, 10)
+    const maxNumber = isOfferMode
+      ? (apiStats?.uniquePendingOffers ?? totalAnchors)
+      : (apiStats?.uniquePendingRequests ?? totalAnchors)
+
+    if (
+      !isNaN(targetNumber) &&
+      targetNumber >= 1 &&
+      targetNumber <= maxNumber
+    ) {
+      onAnchorIndexChange(targetNumber - 1) // Convert to 0-indexed
+      onRelatedIndexChange(0) // Reset related index
+      setGoToInput('') // Clear input
+    }
+  }, [
+    goToInput,
+    isOfferMode,
+    apiStats,
+    totalAnchors,
+    onAnchorIndexChange,
+    onRelatedIndexChange,
+  ])
+
   const prevRelated = useCallback(() => {
     if (relatedIndex > 0) {
       onRelatedIndexChange(relatedIndex - 1)
@@ -249,6 +304,8 @@ export function RelatedMatchCarousel({
   }, [relatedIndex, totalMatches, onRelatedIndexChange])
 
   const handleAction = (action: 'approved' | 'rejected') => {
+    if (!currentMatch) return
+
     const handler = action === 'approved' ? onApprove : onReject
     handler(currentMatch.matchId)
 
@@ -260,6 +317,9 @@ export function RelatedMatchCarousel({
       onRelatedIndexChange(0)
     }
   }
+
+  if (!currentGroup) return null
+  if (!currentMatch) return null
 
   return (
     <div className="space-y-4">
@@ -282,7 +342,21 @@ export function RelatedMatchCarousel({
             <span className="text-sm font-medium">
               {isOfferMode ? 'Offer' : 'Request'}{' '}
               <span className="text-teal font-bold">{anchorIndex + 1}</span>
-              <span className="text-muted-foreground"> of {totalAnchors}</span>
+              <span className="text-muted-foreground">
+                {' '}
+                of{' '}
+                {isOfferMode
+                  ? (apiStats?.uniquePendingOffers ?? totalAnchors)
+                  : (apiStats?.uniquePendingRequests ?? totalAnchors)}
+              </span>
+              {totalAnchors !==
+                (isOfferMode
+                  ? apiStats?.uniquePendingOffers
+                  : apiStats?.uniquePendingRequests) && (
+                <span className="text-xs text-muted-foreground/60 ml-1">
+                  ({totalAnchors} loaded)
+                </span>
+              )}
             </span>
           </div>
           <button
@@ -296,11 +370,76 @@ export function RelatedMatchCarousel({
           >
             <ChevronRight className="w-5 h-5" />
           </button>
+
+          {/* Go To Input */}
+          <div className="flex items-center gap-1.5 ml-3 px-3 py-1.5 rounded-lg bg-secondary/30 border border-border/40">
+            <span className="text-xs text-muted-foreground font-medium">
+              Jump to:
+            </span>
+            <input
+              type="number"
+              min="1"
+              max={
+                isOfferMode
+                  ? (apiStats?.uniquePendingOffers ?? totalAnchors)
+                  : (apiStats?.uniquePendingRequests ?? totalAnchors)
+              }
+              value={goToInput}
+              onChange={(e) => setGoToInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleGoTo()
+                }
+              }}
+              placeholder="#"
+              className={cn(
+                'w-16 px-2 py-1 rounded-md text-sm font-medium text-center',
+                'bg-background/50 border border-border/60',
+                'focus:border-teal/60 focus:ring-2 focus:ring-teal/20 focus:outline-none',
+                'transition-all duration-200',
+                'placeholder:text-muted-foreground/40',
+                // Remove number input spinners
+                '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
+              )}
+            />
+            <button
+              onClick={handleGoTo}
+              disabled={!goToInput.trim()}
+              className={cn(
+                'px-2.5 py-1 rounded-md text-xs font-semibold',
+                'bg-linear-to-r from-teal/30 to-emerald/30',
+                'border border-teal/40',
+                'text-teal hover:text-teal/90',
+                'hover:from-teal/40 hover:to-emerald/40 hover:border-teal/60',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
+                'transition-all duration-200 hover:scale-105 active:scale-95',
+                'shadow-sm hover:shadow-teal/20',
+              )}
+            >
+              →
+            </button>
+          </div>
         </div>
 
         {/* Center: Mode Toggle */}
         <button
-          onClick={() => onAnchorModeChange(isOfferMode ? 'request' : 'offer')}
+          onClick={() => {
+            // Get the current medication name from actualCurrentGroup
+            const currentMedicationName = actualCurrentGroup
+              ? isOfferMode
+                ? (actualCurrentGroup as OfferWithMatches).offer.product
+                    .trim()
+                    .toLowerCase()
+                : (actualCurrentGroup as RequestWithMatches).request.product
+                    .trim()
+                    .toLowerCase()
+              : undefined
+
+            onAnchorModeChange(
+              isOfferMode ? 'request' : 'offer',
+              currentMedicationName,
+            )
+          }}
           className={cn(
             'flex items-center gap-2 px-4 py-2 rounded-lg',
             'bg-linear-to-r from-violet-500/20 to-fuchsia-500/20',
@@ -351,24 +490,62 @@ export function RelatedMatchCarousel({
             {isOfferMode ? (
               <ReviewCard
                 type="offer"
-                offer={(currentGroup as OfferWithMatches).offer}
+                offer={(actualCurrentGroup as OfferWithMatches).offer}
                 onCurate={(name, id) => {
                   setCurationMedication(name)
                   setCurationAliasId(id ?? null)
                 }}
                 onReclassify={handleReclassify}
                 onReparse={handleReparse}
+                carouselIndex={anchorCarouselIndex}
+                carouselTotal={sameMedicationItems.length}
+                onCarouselPrev={() => {
+                  if (anchorCarouselIndex > 0) {
+                    setAnchorCarouselIndex(anchorCarouselIndex - 1)
+                    onRelatedIndexChange(0) // Reset related index
+                  }
+                }}
+                onCarouselNext={() => {
+                  if (anchorCarouselIndex < sameMedicationItems.length - 1) {
+                    setAnchorCarouselIndex(anchorCarouselIndex + 1)
+                    onRelatedIndexChange(0) // Reset related index
+                  }
+                }}
+                otherParticipantJid={
+                  currentMatch
+                    ? (currentMatch as { request: any }).request.senderJid
+                    : null
+                }
               />
             ) : (
               <ReviewCard
                 type="request"
-                request={(currentGroup as RequestWithMatches).request}
+                request={(actualCurrentGroup as RequestWithMatches).request}
                 onCurate={(name, id) => {
                   setCurationMedication(name)
                   setCurationAliasId(id ?? null)
                 }}
                 onReclassify={handleReclassify}
                 onReparse={handleReparse}
+                carouselIndex={anchorCarouselIndex}
+                carouselTotal={sameMedicationItems.length}
+                onCarouselPrev={() => {
+                  if (anchorCarouselIndex > 0) {
+                    setAnchorCarouselIndex(anchorCarouselIndex - 1)
+                    onRelatedIndexChange(0) // Reset related index
+                  }
+                }}
+                onCarouselNext={() => {
+                  if (anchorCarouselIndex < sameMedicationItems.length - 1) {
+                    setAnchorCarouselIndex(anchorCarouselIndex + 1)
+                    onRelatedIndexChange(0) // Reset related index
+                  }
+                }}
+                otherParticipantJid={
+                  currentMatch
+                    ? (currentMatch as { offer: any }).offer.senderJid
+                    : null
+                }
               />
             )}
             {/* Fixed indicator badge */}
@@ -531,60 +708,6 @@ export function RelatedMatchCarousel({
                 ))}
               </div>
             )}
-
-            {/* Inner Carousel Navigation (Related Items) */}
-            {totalMatches > 1 && (
-              <div className="flex items-center gap-3 mt-6">
-                <button
-                  onClick={prevRelated}
-                  disabled={relatedIndex === 0}
-                  className={cn(
-                    'p-2 rounded-full transition-all duration-200',
-                    'bg-linear-to-r from-amber/20 to-orange-500/20',
-                    'border border-amber/30 hover:border-amber/60',
-                    'hover:scale-110 active:scale-95',
-                    'disabled:opacity-30 disabled:cursor-not-allowed',
-                  )}
-                >
-                  <ChevronLeft className="w-4 h-4 text-amber" />
-                </button>
-
-                {/* Dot indicators */}
-                <div className="flex items-center gap-1.5">
-                  {matches.slice(0, 7).map((_, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => onRelatedIndexChange(idx)}
-                      className={cn(
-                        'w-2 h-2 rounded-full transition-all duration-300',
-                        idx === relatedIndex
-                          ? 'w-6 bg-linear-to-r from-amber to-orange-500'
-                          : 'bg-muted-foreground/30 hover:bg-muted-foreground/50',
-                      )}
-                    />
-                  ))}
-                  {totalMatches > 7 && (
-                    <span className="text-xs text-muted-foreground ml-1">
-                      +{totalMatches - 7}
-                    </span>
-                  )}
-                </div>
-
-                <button
-                  onClick={nextRelated}
-                  disabled={relatedIndex === totalMatches - 1}
-                  className={cn(
-                    'p-2 rounded-full transition-all duration-200',
-                    'bg-linear-to-r from-amber/20 to-orange-500/20',
-                    'border border-amber/30 hover:border-amber/60',
-                    'hover:scale-110 active:scale-95',
-                    'disabled:opacity-30 disabled:cursor-not-allowed',
-                  )}
-                >
-                  <ChevronRight className="w-4 h-4 text-amber" />
-                </button>
-              </div>
-            )}
           </div>
 
           {/* Right: Dynamic Card (Carousel) */}
@@ -605,6 +728,13 @@ export function RelatedMatchCarousel({
                 onReclassify={handleReclassify}
                 onReparse={handleReparse}
                 aiConfidence={currentMatch.aiConfidence}
+                carouselIndex={relatedIndex}
+                carouselTotal={totalMatches}
+                onCarouselPrev={prevRelated}
+                onCarouselNext={nextRelated}
+                otherParticipantJid={
+                  (actualCurrentGroup as OfferWithMatches).offer.senderJid
+                }
               />
             ) : (
               <ReviewCard
@@ -617,6 +747,13 @@ export function RelatedMatchCarousel({
                 onReclassify={handleReclassify}
                 onReparse={handleReparse}
                 aiConfidence={currentMatch.aiConfidence}
+                carouselIndex={relatedIndex}
+                carouselTotal={totalMatches}
+                onCarouselPrev={prevRelated}
+                onCarouselNext={nextRelated}
+                otherParticipantJid={
+                  (actualCurrentGroup as RequestWithMatches).request.senderJid
+                }
               />
             )}
             {/* Carousel indicator badge */}
@@ -671,13 +808,13 @@ export function RelatedMatchCarousel({
             <MatchComparison
               offer={
                 isOfferMode
-                  ? (currentGroup as OfferWithMatches).offer
+                  ? (actualCurrentGroup as OfferWithMatches).offer
                   : (currentMatch as { offer: any }).offer
               }
               request={
                 isOfferMode
                   ? (currentMatch as { request: any }).request
-                  : (currentGroup as RequestWithMatches).request
+                  : (actualCurrentGroup as RequestWithMatches).request
               }
               className="p-4 rounded-xl bg-secondary/20 border border-border/30"
             />
@@ -704,12 +841,12 @@ export function RelatedMatchCarousel({
             <SenderProfile
               senderName={
                 isOfferMode
-                  ? (currentGroup as OfferWithMatches).offer.senderName
+                  ? (actualCurrentGroup as OfferWithMatches).offer.senderName
                   : (currentMatch as { offer: any }).offer.senderName
               }
               senderJid={
                 isOfferMode
-                  ? (currentGroup as OfferWithMatches).offer.senderJid
+                  ? (actualCurrentGroup as OfferWithMatches).offer.senderJid
                   : (currentMatch as { offer: any }).offer.senderJid
               }
               showStats={true}
@@ -725,12 +862,13 @@ export function RelatedMatchCarousel({
               senderName={
                 isOfferMode
                   ? (currentMatch as { request: any }).request.senderName
-                  : (currentGroup as RequestWithMatches).request.senderName
+                  : (actualCurrentGroup as RequestWithMatches).request
+                      .senderName
               }
               senderJid={
                 isOfferMode
                   ? (currentMatch as { request: any }).request.senderJid
-                  : (currentGroup as RequestWithMatches).request.senderJid
+                  : (actualCurrentGroup as RequestWithMatches).request.senderJid
               }
               showStats={true}
             />
@@ -770,7 +908,6 @@ export function RelatedMatchCarousel({
         itemId={reclassifyItem?.id ?? ''}
         itemType={reclassifyItem?.type ?? 'offer'}
         medication={reclassifyItem?.medication ?? ''}
-        medicationRaw={reclassifyItem?.medicationRaw}
         onSuccess={() => {
           setReclassifyItem(null)
           // The dialog will invalidate queries automatically
@@ -785,7 +922,6 @@ export function RelatedMatchCarousel({
         itemId={reparseItem?.id ?? ''}
         itemType={reparseItem?.type ?? 'offer'}
         medication={reparseItem?.medication ?? ''}
-        medicationRaw={reparseItem?.medicationRaw}
         onSuccess={() => {
           setReparseItem(null)
           // The dialog will invalidate queries automatically

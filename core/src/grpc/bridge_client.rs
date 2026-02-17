@@ -103,6 +103,15 @@ impl BridgeClient {
         content: String,
         reference_id: Option<String>,
     ) -> Result<String, BridgeClientError> {
+        // Try to reconnect if not connected
+        if !self.is_connected().await {
+            tracing::warn!("Bridge client not connected, attempting to reconnect...");
+            if let Err(e) = self.connect().await {
+                tracing::error!(error = %e, "Failed to reconnect to bridge");
+                return Err(BridgeClientError::NotConnected);
+            }
+        }
+
         let client_guard = self.client.read().await;
         let client = client_guard
             .as_ref()

@@ -175,6 +175,10 @@ pub trait MatchRepository: Send + Sync {
     async fn count_rejected_today(&self) -> Result<i64>;
     /// Get average score of pending matches
     async fn avg_pending_score(&self) -> Result<f64>;
+    /// Count unique offers in pending matches
+    async fn count_unique_pending_offers(&self) -> Result<i64>;
+    /// Count unique requests in pending matches
+    async fn count_unique_pending_requests(&self) -> Result<i64>;
 }
 
 /// Raw message repository trait
@@ -205,6 +209,9 @@ pub trait RawMessageRepository: Send + Sync {
 
     /// Count raw messages matching the given filters
     async fn count_all(&self, params: &RawMessageQueryParams) -> Result<i64>;
+
+    /// Get all failed message IDs for auto-reprocess
+    async fn get_failed_message_ids(&self) -> Result<Vec<Uuid>>;
 }
 
 /// Group repository trait
@@ -542,8 +549,6 @@ pub struct OfferSummary {
     pub sender_jid: Option<String>,
     /// Original raw message content
     pub raw_message: Option<String>,
-    pub quantity: Option<String>,
-    pub price: Option<String>,
     pub expiry: Option<String>,
     pub master_id: Option<Uuid>,
     pub medication_alias_id: Option<Uuid>,
@@ -565,8 +570,6 @@ pub struct RequestSummary {
     pub sender_jid: Option<String>,
     /// Original raw message content
     pub raw_message: Option<String>,
-    pub quantity: Option<String>,
-    pub max_price: Option<String>,
     pub urgency: String,
     pub master_id: Option<Uuid>,
     pub medication_alias_id: Option<Uuid>,
@@ -601,4 +604,6 @@ pub struct MatchReviewStats {
     pub rejected_today: i64,
     pub total_pending: i64,
     pub avg_confidence: f64,
+    pub unique_pending_offers: i64,
+    pub unique_pending_requests: i64,
 }

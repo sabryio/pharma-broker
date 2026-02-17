@@ -271,6 +271,45 @@ func (b *Bridge) syncWhatsAppGroupsOnConnect(ctx context.Context) {
 	b.syncGroups(ctx)
 }
 
+// TriggerGroupSync manually triggers a group sync from WhatsApp to Core.
+// This is exposed for HTTP API to allow manual sync triggers.
+func (b *Bridge) TriggerGroupSync(ctx context.Context) {
+	if b.groupSyncer == nil || b.groupProvider == nil {
+		b.logger.Warn().Msg("Group syncer or provider not configured")
+		return
+	}
+
+	if !b.source.IsConnected() {
+		b.logger.Warn().Msg("WhatsApp not connected, cannot sync groups")
+		return
+	}
+
+	b.logger.Info().Msg("🔄 Manual group sync triggered")
+
+	// Fetch groups from WhatsApp
+	groups, err := b.groupProvider.GetJoinedGroups(ctx)
+	if err != nil {
+		b.logger.Error().Err(err).Msg("Failed to get WhatsApp groups")
+		return
+	}
+
+	// Sync to Core
+	added, updated, err := b.groupSyncer.SyncGroups(ctx, groups)
+	if err != nil {
+		b.logger.Error().Err(err).Msg("Failed to sync groups to Core")
+		return
+	}
+
+	b.logger.Info().
+		Int32("added", added).
+		Int32("updated", updated).
+		Int("total", len(groups)).
+		Msg("✅ Manual group sync completed")
+
+	// Refresh monitored groups cache
+	b.syncGroups(ctx)
+}
+
 func (b *Bridge) syncGroupsWorker(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()

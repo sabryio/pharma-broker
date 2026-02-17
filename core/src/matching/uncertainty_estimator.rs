@@ -263,6 +263,7 @@ impl UncertaintyEstimator {
         let sum = medication + recency + expiry;
         Weights {
             medication: medication / sum,
+            pharmaceutical: self.base_weights.pharmaceutical,
             recency: recency / sum,
             expiry: expiry / sum,
             supplier: self.base_weights.supplier,

@@ -38,28 +38,31 @@ impl std::error::Error for WeightError {}
 
 /// Scoring weights for multi-field matching
 /// Ported from Go: Weights struct (interface.go)
-/// Updated with new factors: expiry and supplier (Requirements 8.1)
+/// Updated with new factors: expiry, supplier, and pharmaceutical validation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Weights {
-    /// Medication name similarity weight (default: 0.80)
+    /// Medication name similarity weight (default: 0.60)
     pub medication: f64,
+
+    /// Pharmaceutical validation weight (concentration + form) (default: 0.20)
+    pub pharmaceutical: f64,
 
     /// Recency/freshness weight (default: 0.10)
     pub recency: f64,
-    /// Expiry date validation weight (default: 0.05)
+    /// Expiry date validation weight (default: 0.0)
     pub expiry: f64,
     /// Supplier reliability weight (default: 0.0, reserved for future)
     pub supplier: f64,
-    /// AI logic score weight (default: 0.0, disabled)
+    /// AI logic score weight (default: 0.10)
     pub ai_logic: f64,
 }
 
 impl Default for Weights {
     fn default() -> Self {
-        // Updated weights: medication (80%), recency (10%), AI logic (10%)
-        // Dosage completely removed from the system
+        // Updated weights: medication (60%), pharmaceutical (20%), recency (10%), AI logic (10%)
         Self {
-            medication: 0.80,
+            medication: 0.60,
+            pharmaceutical: 0.20,
             recency: 0.10,
             expiry: 0.0,
             supplier: 0.0,
@@ -71,7 +74,12 @@ impl Default for Weights {
 impl Weights {
     /// Calculate the sum of all weights
     pub fn sum(&self) -> f64 {
-        self.medication + self.recency + self.expiry + self.supplier + self.ai_logic
+        self.medication
+            + self.pharmaceutical
+            + self.recency
+            + self.expiry
+            + self.supplier
+            + self.ai_logic
     }
 
     /// Validate that weights sum to 1.0 and none are negative
@@ -81,6 +89,12 @@ impl Weights {
             return Err(WeightError::NegativeWeight {
                 field: "medication".to_string(),
                 value: self.medication,
+            });
+        }
+        if self.pharmaceutical < 0.0 {
+            return Err(WeightError::NegativeWeight {
+                field: "pharmaceutical".to_string(),
+                value: self.pharmaceutical,
             });
         }
         if self.recency < 0.0 {
@@ -126,6 +140,7 @@ impl Weights {
         let sum = self.sum();
         if sum > 0.0 && (sum - 1.0).abs() > WEIGHT_SUM_TOLERANCE {
             self.medication /= sum;
+            self.pharmaceutical /= sum;
             self.recency /= sum;
             self.expiry /= sum;
             self.supplier /= sum;
@@ -185,6 +200,7 @@ mod tests {
     fn test_validate_invalid_sum() {
         let weights = Weights {
             medication: 0.5,
+            pharmaceutical: 0.1,
             recency: 0.1,
             expiry: 0.05,
             supplier: 0.3, // Sum = 1.05
@@ -204,6 +220,7 @@ mod tests {
     fn test_validate_negative_weight() {
         let weights = Weights {
             medication: -0.1,
+            pharmaceutical: 0.2,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.0,
@@ -223,10 +240,11 @@ mod tests {
     fn test_normalize_weights() {
         let mut weights = Weights {
             medication: 0.6,
+            pharmaceutical: 0.1,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.05,
-            ai_logic: 0.2, // Sum = 1.1
+            ai_logic: 0.2, // Sum = 1.05
         };
         weights.normalize();
         let sum = weights.sum();
@@ -241,14 +259,15 @@ mod tests {
     fn test_normalized_returns_copy() {
         let weights = Weights {
             medication: 0.6,
+            pharmaceutical: 0.1,
             recency: 0.05,
             expiry: 0.05,
             supplier: 0.05,
-            ai_logic: 0.2, // Sum = 1.1
+            ai_logic: 0.2, // Sum = 1.05
         };
         let normalized = weights.normalized();
         // Original should be unchanged
-        assert!((weights.sum() - 1.1).abs() < 0.001);
+        assert!((weights.sum() - 1.05).abs() < 0.001);
         // Normalized copy should sum to 1.0
         assert!((normalized.sum() - 1.0).abs() < WEIGHT_SUM_TOLERANCE);
     }
@@ -256,11 +275,46 @@ mod tests {
     #[test]
     fn test_new_default_weight_values() {
         let weights = Weights::default();
-        // Updated: medication (80%), recency (10%), AI logic (10%)
-        assert!((weights.medication - 0.80).abs() < 0.001);
+        // Updated: medication (60%), pharmaceutical (20%), recency (10%), AI logic (10%)
+        assert!((weights.medication - 0.60).abs() < 0.001);
+        assert!((weights.pharmaceutical - 0.20).abs() < 0.001);
         assert!((weights.recency - 0.10).abs() < 0.001);
         assert!((weights.expiry - 0.0).abs() < 0.001);
         assert!((weights.supplier - 0.0).abs() < 0.001);
         assert!((weights.ai_logic - 0.10).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_pharmaceutical_weight_validation() {
+        let weights = Weights {
+            medication: 0.60,
+            pharmaceutical: -0.1, // Negative
+            recency: 0.10,
+            expiry: 0.0,
+            supplier: 0.0,
+            ai_logic: 0.10,
+        };
+        let result = weights.validate();
+        assert!(result.is_err());
+        match result {
+            Err(WeightError::NegativeWeight { field, .. }) => {
+                assert_eq!(field, "pharmaceutical");
+            }
+            _ => panic!("Expected NegativeWeight error for pharmaceutical"),
+        }
+    }
+
+    #[test]
+    fn test_backward_compatibility_zero_pharmaceutical() {
+        // Test that pharmaceutical weight can be 0.0 for backward compatibility
+        let weights = Weights {
+            medication: 0.80,
+            pharmaceutical: 0.0,
+            recency: 0.10,
+            expiry: 0.0,
+            supplier: 0.0,
+            ai_logic: 0.10,
+        };
+        assert!(weights.validate().is_ok());
     }
 }

@@ -88,7 +88,6 @@ function convertAuditToRecording(audit: FrontendAuditRecord): MatchRecording {
   const offerSummary = {
     id: audit.matchId,
     product: audit.offerProduct,
-    medicationRaw: null,
     source: 'backend',
     sourceGroup: null,
     senderName: null,
@@ -103,7 +102,6 @@ function convertAuditToRecording(audit: FrontendAuditRecord): MatchRecording {
   const requestSummary = {
     id: audit.matchId,
     product: audit.requestProduct,
-    medicationRaw: null,
     source: 'backend',
     sourceGroup: null,
     senderName: null,
@@ -139,14 +137,12 @@ function convertAuditToRecording(audit: FrontendAuditRecord): MatchRecording {
         offer: {
           id: audit.matchId,
           product: audit.offerProduct,
-          medicationRaw: null,
           quantity: null,
           price: null,
         },
         request: {
           id: audit.matchId,
           product: audit.requestProduct,
-          medicationRaw: null,
           quantity: null,
           maxPrice: null,
         },

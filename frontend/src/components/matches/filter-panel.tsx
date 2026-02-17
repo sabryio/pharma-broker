@@ -306,12 +306,15 @@ export function FilterPanel({
               </label>
               <div className="px-2">
                 <Slider
-                  value={[filters.minConfidence, filters.maxConfidence]}
+                  value={[
+                    filters.minConfidence ?? 0,
+                    filters.maxConfidence ?? 100,
+                  ]}
                   onValueChange={([min, max]) => {
                     onFiltersChange({
                       ...filters,
-                      minConfidence: min,
-                      maxConfidence: max,
+                      minConfidence: min ?? 0,
+                      maxConfidence: max ?? 100,
                     })
                   }}
                   min={0}

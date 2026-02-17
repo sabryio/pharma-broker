@@ -313,7 +313,8 @@ describe('Property-Based Tests: Form Validation', () => {
       fc.assert(
         fc.property(phoneArb, (phone) => {
           const jid = `${phone}@s.whatsapp.net`
-          return jid.endsWith('@s.whatsapp.net') && jid.split('@')[0].length > 0
+          const parts = jid.split('@')
+          return jid.endsWith('@s.whatsapp.net') && (parts[0]?.length ?? 0) > 0
         }),
         { numRuns: 100 },
       )
@@ -333,7 +334,8 @@ describe('Property-Based Tests: Form Validation', () => {
       fc.assert(
         fc.property(groupIdArb, (groupId) => {
           const jid = `${groupId}@g.us`
-          return jid.endsWith('@g.us') && jid.split('@')[0].length > 0
+          const parts = jid.split('@')
+          return jid.endsWith('@g.us') && (parts[0]?.length ?? 0) > 0
         }),
         { numRuns: 100 },
       )

@@ -290,12 +290,12 @@ pub fn new_test_feedback(match_id: Uuid, confirmed: bool) -> feedback_record::Ac
 pub fn new_test_weight_history(source: &str) -> weight_history::ActiveModel {
     weight_history::ActiveModel {
         id: Set(Uuid::new_v4()),
-        medication_weight: Set(0.55), // Increased: medication name is primary
-        dosage_weight: Set(0.05),     // Reduced: prevent wrong matches on dosage alone
-        quantity_weight: Set(0.05),   // Reduced
-        price_weight: Set(0.05),      // Reduced
-        recency_weight: Set(0.30),    // Fuzzy matching weight
+        medication_weight: Set(0.40),
+        recency_weight: Set(0.20),
         ai_logic_weight: Set(0.0),
+        pharmaceutical_weight: Set(0.20),
+        expiry_weight: Set(0.10),
+        supplier_weight: Set(0.10),
         source: Set(source.to_string()),
         sample_count: Set(100),
         created_at: Set(Utc::now()),

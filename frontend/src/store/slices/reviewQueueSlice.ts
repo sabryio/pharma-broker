@@ -80,7 +80,7 @@ export const reviewQueueSlice = createSlice({
         : -1
       if (currentIdx < ids.length - 1) {
         state.currentIndex = currentIdx + 1
-        state.currentItemId = ids[currentIdx + 1]
+        state.currentItemId = ids[currentIdx + 1] ?? null
       }
     },
     navigateToPrevious: (state, action: PayloadAction<string[]>) => {
@@ -90,7 +90,7 @@ export const reviewQueueSlice = createSlice({
         : -1
       if (currentIdx > 0) {
         state.currentIndex = currentIdx - 1
-        state.currentItemId = ids[currentIdx - 1]
+        state.currentItemId = ids[currentIdx - 1] ?? null
       }
     },
   },

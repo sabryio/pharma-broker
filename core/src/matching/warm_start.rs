@@ -34,6 +34,7 @@ impl Default for WarmStartConfig {
         Self {
             prior_weights: Weights {
                 medication: 0.80, // Medication match is DOMINANT
+                pharmaceutical: 0.0,
                 recency: 0.10,
                 expiry: 0.0,
                 supplier: 0.0,
@@ -107,6 +108,8 @@ impl WarmStartManager {
         let blended = Weights {
             medication: data_weight * learned_weights.medication
                 + prior_weight * config.prior_weights.medication,
+            pharmaceutical: data_weight * learned_weights.pharmaceutical
+                + prior_weight * config.prior_weights.pharmaceutical,
             recency: data_weight * learned_weights.recency
                 + prior_weight * config.prior_weights.recency,
             expiry: data_weight * learned_weights.expiry
@@ -340,7 +343,9 @@ mod tests {
     fn test_default_warm_start_config() {
         let config = WarmStartConfig::default();
 
-        assert!((config.prior_weights.medication - 0.70).abs() < 0.001);
+        // Prior weights are intentionally more conservative than default weights
+        assert!((config.prior_weights.medication - 0.80).abs() < 0.001);
+        assert!((config.prior_weights.pharmaceutical - 0.0).abs() < 0.001);
         assert_eq!(config.prior_strength, 50);
         assert_eq!(config.decay_half_life, 14);
         assert_eq!(config.min_samples_for_learning, 20);
@@ -353,6 +358,7 @@ mod tests {
 
         let learned = Weights {
             medication: 0.50,
+            pharmaceutical: 0.0,
             recency: 0.10,
             expiry: 0.10,
             supplier: 0.0,
@@ -372,6 +378,7 @@ mod tests {
 
         let learned = Weights {
             medication: 0.50,
+            pharmaceutical: 0.0,
             recency: 0.10,
             expiry: 0.10,
             supplier: 0.0,
@@ -396,6 +403,7 @@ mod tests {
 
         let learned = Weights {
             medication: 0.50,
+            pharmaceutical: 0.0,
             recency: 0.10,
             expiry: 0.10,
             supplier: 0.0,

@@ -90,15 +90,13 @@ export interface MatchRecordingSnapshot {
   offer: {
     id: string
     product: string
-    medicationRaw?: string | null
-    quantity: string | null
+    quantity?: string | null
     price?: string | null
   }
   request: {
     id: string
     product: string
-    medicationRaw?: string | null
-    quantity: string | null
+    quantity?: string | null
     maxPrice?: string | null
   }
   confidence: number

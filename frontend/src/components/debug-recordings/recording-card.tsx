@@ -341,16 +341,8 @@ export function RecordingCard({
                     </span>
                   </div>
                   <p className="text-xs text-foreground font-medium truncate">
-                    {firstSnapshot.offer.product}
+                    {firstSnapshot?.offer?.product || 'N/A'}
                   </p>
-                  {firstSnapshot.offer.medicationRaw && (
-                    <p
-                      className="text-[10px] text-muted-foreground truncate mt-0.5"
-                      dir="auto"
-                    >
-                      {firstSnapshot.offer.medicationRaw}
-                    </p>
-                  )}
                 </div>
                 <div className="p-3 rounded-xl bg-background/50 backdrop-blur-sm border border-border/30 hover:border-violet-500/30 transition-colors">
                   <div className="flex items-center gap-2 mb-1.5">
@@ -364,16 +356,8 @@ export function RecordingCard({
                     </span>
                   </div>
                   <p className="text-xs text-foreground font-medium truncate">
-                    {firstSnapshot.request.product}
+                    {firstSnapshot?.request?.product || 'N/A'}
                   </p>
-                  {firstSnapshot.request.medicationRaw && (
-                    <p
-                      className="text-[10px] text-muted-foreground truncate mt-0.5"
-                      dir="auto"
-                    >
-                      {firstSnapshot.request.medicationRaw}
-                    </p>
-                  )}
                 </div>
               </div>
             )}

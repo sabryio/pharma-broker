@@ -15,13 +15,6 @@ export function createMockOfferSummary(
   return {
     id: faker.string.uuid(),
     product: faker.commerce.productName(),
-    medicationRaw: faker.helpers.arrayElement([
-      'اوجمنتين 1 جرام',
-      'باراسيتامول 500',
-      'أموكسيسيلين',
-      'ايبوبروفين 400',
-      'اوميبرازول 20',
-    ]),
     source: 'whatsapp',
     sourceGroup: faker.company.name(),
     senderName: faker.person.fullName(),
@@ -43,13 +36,6 @@ export function createMockRequestSummary(
   return {
     id: faker.string.uuid(),
     product: faker.commerce.productName(),
-    medicationRaw: faker.helpers.arrayElement([
-      'محتاج اوجمنتين',
-      'عايز باراسيتامول',
-      'ابحث عن أموكسيسيلين',
-      'محتاج ايبوبروفين',
-      'عايز اوميبرازول',
-    ]),
     source: 'whatsapp',
     sourceGroup: faker.company.name(),
     senderName: faker.person.fullName(),
@@ -106,6 +92,8 @@ export function createMockMatchReviewStats(
       max: 0.9,
       fractionDigits: 2,
     }),
+    uniquePendingOffers: faker.number.int({ min: 10, max: 100 }),
+    uniquePendingRequests: faker.number.int({ min: 10, max: 150 }),
     ...overrides,
   }
 }
@@ -113,7 +101,7 @@ export function createMockMatchReviewStats(
 // Generate list of mock items
 export function createMockMatchReviewList(
   count: number = 20,
-): MatchReviewItem[] {
+): Array<MatchReviewItem> {
   return faker.helpers.multiple(() => createMockMatchReviewItem(), { count })
 }
 
