@@ -280,8 +280,31 @@ func registerRoutes(
 		Circuit:     circuit,
 	}))
 
+	// Sync groups endpoint
+	engine.POST("/sync-groups", syncGroupsHandler(bridge))
+
 	// QR endpoints
 	qrHandler.RegisterRoutes(engine.Group("/qr"))
+}
+
+func syncGroupsHandler(bridge *app.Bridge) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !bridge.IsConnected() {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"success": false,
+				"error":   "WhatsApp not connected",
+			})
+			return
+		}
+
+		// Trigger group sync in background
+		go bridge.TriggerGroupSync(context.Background())
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "Group sync triggered",
+		})
+	}
 }
 
 func healthHandler(deps HealthDeps) gin.HandlerFunc {

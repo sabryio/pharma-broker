@@ -435,6 +435,11 @@ export function RelatedMatchCarousel({
                     onRelatedIndexChange(0) // Reset related index
                   }
                 }}
+                otherParticipantJid={
+                  currentMatch
+                    ? (currentMatch as { request: any }).request.senderJid
+                    : null
+                }
               />
             ) : (
               <ReviewCard
@@ -460,6 +465,11 @@ export function RelatedMatchCarousel({
                     onRelatedIndexChange(0) // Reset related index
                   }
                 }}
+                otherParticipantJid={
+                  currentMatch
+                    ? (currentMatch as { offer: any }).offer.senderJid
+                    : null
+                }
               />
             )}
             {/* Fixed indicator badge */}
@@ -646,6 +656,9 @@ export function RelatedMatchCarousel({
                 carouselTotal={totalMatches}
                 onCarouselPrev={prevRelated}
                 onCarouselNext={nextRelated}
+                otherParticipantJid={
+                  (actualCurrentGroup as OfferWithMatches).offer.senderJid
+                }
               />
             ) : (
               <ReviewCard
@@ -662,6 +675,9 @@ export function RelatedMatchCarousel({
                 carouselTotal={totalMatches}
                 onCarouselPrev={prevRelated}
                 onCarouselNext={nextRelated}
+                otherParticipantJid={
+                  (actualCurrentGroup as RequestWithMatches).request.senderJid
+                }
               />
             )}
             {/* Carousel indicator badge */}

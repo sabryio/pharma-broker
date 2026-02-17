@@ -479,6 +479,10 @@ where
             "/api/participants/by-jid/{jid}",
             get(participants::get_participant_by_jid::<RQ, A, MM>),
         )
+        .route(
+            "/api/participants/common-groups/{jid1}/{jid2}",
+            get(participants::get_common_groups::<RQ, A, MM>),
+        )
         // Raw Messages
         .route(
             "/api/raw-messages",

@@ -794,6 +794,7 @@ where
                 name,
                 description,
                 member_count,
+                participants,
             } = proto_group;
 
             // Check if group exists
@@ -828,6 +829,50 @@ where
 
             if let Err(e) = self.group_repo.save(&group).await {
                 tracing::warn!(error = %e, jid = %jid, "Failed to save group");
+                continue;
+            }
+
+            // Link participants to this group
+            for participant_jid in participants {
+                // Get or create participant
+                let participant = match self.participant_repo.get_by_jid(&participant_jid).await {
+                    Ok(Some(p)) => p,
+                    Ok(None) => {
+                        // Create minimal participant record
+                        let new_participant = crate::domain::Participant {
+                            id: Uuid::new_v4(),
+                            jid: participant_jid.clone(),
+                            phone: participant_jid.clone(), // Use JID as phone for now
+                            display_name: None,
+                            push_name: None,
+                            label: None,
+                            notes: None,
+                            is_blocked: false,
+                            created_at: Utc::now(),
+                            updated_at: Utc::now(),
+                        };
+                        match self.participant_repo.save(&new_participant).await {
+                            Ok(p) => p,
+                            Err(e) => {
+                                tracing::warn!(error = %e, jid = %participant_jid, "Failed to create participant");
+                                continue;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, jid = %participant_jid, "Failed to get participant");
+                        continue;
+                    }
+                };
+
+                // Link participant to group
+                if let Err(e) = self
+                    .participant_repo
+                    .add_to_group(participant.id, group.id)
+                    .await
+                {
+                    tracing::warn!(error = %e, participant = %participant.id, group = %group.id, "Failed to link participant to group");
+                }
             }
         }
 
@@ -867,4 +912,3 @@ where
         .serve_with_shutdown(addr, shutdown)
         .await
 }
-

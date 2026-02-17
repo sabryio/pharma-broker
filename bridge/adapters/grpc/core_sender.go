@@ -142,11 +142,18 @@ func (s *CoreSender) SyncGroups(ctx context.Context, groups []domain.GroupInfo) 
 
 	protoGroups := make([]*pb.GroupInfo, len(groups))
 	for i, g := range groups {
+		// Convert participant JIDs to strings
+		participants := make([]string, len(g.Participants))
+		for j, p := range g.Participants {
+			participants[j] = p.String()
+		}
+
 		protoGroups[i] = &pb.GroupInfo{
-			Jid:         g.JID.String(),
-			Name:        g.Name,
-			Description: g.Description,
-			MemberCount: g.MemberCount,
+			Jid:          g.JID.String(),
+			Name:         g.Name,
+			Description:  g.Description,
+			MemberCount:  g.MemberCount,
+			Participants: participants,
 		}
 	}
 

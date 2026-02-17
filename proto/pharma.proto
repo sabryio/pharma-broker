@@ -93,6 +93,7 @@ message GroupInfo {
     string name = 2;
     string description = 3;
     int32 member_count = 4;
+    repeated string participants = 5;  // List of participant JIDs
 }
 
 // SyncGroupsRequest for syncing groups from Bridge to Core

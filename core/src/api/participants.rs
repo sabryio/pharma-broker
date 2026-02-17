@@ -112,3 +112,75 @@ where
         stats,
     }))
 }
+
+/// Get common groups between two participants
+/// GET /api/participants/common-groups/:jid1/:jid2
+pub async fn get_common_groups<RQ, A, MM>(
+    State(state): State<AppState<RQ, A, MM>>,
+    Path((jid1, jid2)): Path<(String, String)>,
+) -> Result<Json<CommonGroupsResponse>, (StatusCode, String)>
+where
+    RQ: ReviewQueueRepository + 'static,
+    A: AuditLogRepository + 'static,
+    MM: MedicationMasterRepository + 'static,
+{
+    // Get both participants
+    let participant1 = state
+        .participant_repo
+        .get_by_jid(&jid1)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("Participant with JID {} not found", jid1),
+            )
+        })?;
+
+    let participant2 = state
+        .participant_repo
+        .get_by_jid(&jid2)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("Participant with JID {} not found", jid2),
+            )
+        })?;
+
+    // Get groups for both participants
+    let groups1 = state
+        .participant_repo
+        .get_groups(participant1.id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let groups2 = state
+        .participant_repo
+        .get_groups(participant2.id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Find common groups (by JID)
+    let groups1_jids: std::collections::HashSet<_> = groups1.iter().map(|g| &g.jid).collect();
+    let common_groups: Vec<_> = groups2
+        .into_iter()
+        .filter(|g| groups1_jids.contains(&g.jid))
+        .collect();
+
+    let total = common_groups.len();
+
+    Ok(Json(CommonGroupsResponse {
+        success: true,
+        common_groups,
+        total,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct CommonGroupsResponse {
+    pub success: bool,
+    pub common_groups: Vec<crate::domain::Group>,
+    pub total: usize,
+}

@@ -1,10 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { AlertCircle, Loader2, Plus, Users } from 'lucide-react'
+import { AlertCircle, Loader2, Plus, RefreshCw, Users } from 'lucide-react'
 import type { Group } from '@/schema/groups'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { useGroups, useUpdateGroup } from '@/hooks/use-groups'
+import { useSyncGroups } from '@/hooks/use-sync-groups'
+import { toast } from 'sonner'
 
 export const Route = createFileRoute('/groups')({
   component: Groups,
@@ -13,9 +15,29 @@ export const Route = createFileRoute('/groups')({
 function Groups() {
   const { data, isLoading, error } = useGroups()
   const updateGroup = useUpdateGroup()
+  const syncGroupsMutation = useSyncGroups()
 
   const groups = data?.groups ?? []
   const monitoredCount = groups.filter((g) => g.monitoring).length
+
+  const handleSync = () => {
+    toast.info('Syncing groups from WhatsApp...', {
+      description: 'This may take a few seconds',
+    })
+
+    syncGroupsMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast.success('Groups synced successfully!', {
+          description: 'All WhatsApp groups have been updated',
+        })
+      },
+      onError: (error) => {
+        toast.error('Failed to sync groups', {
+          description: error.message,
+        })
+      },
+    })
+  }
 
   const toggleMonitoring = (group: Group) => {
     updateGroup.mutate({
@@ -65,10 +87,36 @@ function Groups() {
               Monitor and manage trading groups
             </p>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-primary-foreground font-medium hover:bg-teal/90 transition-colors">
-            <Plus className="w-4 h-4" />
-            Add Group
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSync}
+              disabled={syncGroupsMutation.isPending}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300',
+                'bg-linear-to-r from-violet-500/20 to-fuchsia-500/20',
+                'border border-violet-500/30 hover:border-violet-500/50',
+                'text-violet-400 hover:text-violet-300',
+                'hover:scale-105 active:scale-95',
+                'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100',
+              )}
+            >
+              {syncGroupsMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  Sync Groups
+                </>
+              )}
+            </button>
+            <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-primary-foreground font-medium hover:bg-teal/90 transition-colors">
+              <Plus className="w-4 h-4" />
+              Add Group
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
