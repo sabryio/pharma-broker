@@ -546,8 +546,6 @@ pub struct OfferSummary {
     pub sender_jid: Option<String>,
     /// Original raw message content
     pub raw_message: Option<String>,
-    pub quantity: Option<String>,
-    pub price: Option<String>,
     pub expiry: Option<String>,
     pub master_id: Option<Uuid>,
     pub medication_alias_id: Option<Uuid>,
@@ -569,8 +567,6 @@ pub struct RequestSummary {
     pub sender_jid: Option<String>,
     /// Original raw message content
     pub raw_message: Option<String>,
-    pub quantity: Option<String>,
-    pub max_price: Option<String>,
     pub urgency: String,
     pub master_id: Option<Uuid>,
     pub medication_alias_id: Option<Uuid>,

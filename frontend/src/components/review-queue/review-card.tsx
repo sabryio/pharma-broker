@@ -6,7 +6,6 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
-  DollarSign,
   Hash,
   Loader2,
   MessageSquare,
@@ -614,30 +613,14 @@ export function ReviewCard({
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-teal/30 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Hash className="w-3 h-3" />
-                <span>Qty</span>
-              </div>
-              <span className="text-sm font-bold text-teal">
-                {offer.quantity}
-              </span>
-            </div>
-            <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-teal/30 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <DollarSign className="w-3 h-3" />
-                <span>Price</span>
-              </div>
-              <span className="text-sm font-bold text-teal">{offer.price}</span>
-            </div>
+          <div className="grid grid-cols-1 gap-3 mb-4">
             <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-teal/30 transition-colors">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                 <Calendar className="w-3 h-3" />
                 <span>Expiry</span>
               </div>
               <span className="text-sm font-bold text-foreground">
-                {offer.expiry}
+                {offer.expiry || 'N/A'}
               </span>
             </div>
           </div>
@@ -777,25 +760,7 @@ export function ReviewCard({
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-amber/30 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Hash className="w-3 h-3" />
-                <span>Qty</span>
-              </div>
-              <span className="text-sm font-bold text-amber">
-                {request.quantity}
-              </span>
-            </div>
-            <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-amber/30 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <DollarSign className="w-3 h-3" />
-                <span>Max</span>
-              </div>
-              <span className="text-sm font-bold text-amber">
-                {request.maxPrice}
-              </span>
-            </div>
+          <div className="grid grid-cols-1 gap-3 mb-4">
             <div className="p-3 rounded-xl bg-secondary/40 border border-border/50 hover:border-amber/30 transition-colors">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                 <AlertCircle className="w-3 h-3" />
