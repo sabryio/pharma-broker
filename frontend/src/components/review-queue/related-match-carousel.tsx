@@ -95,6 +95,9 @@ export function RelatedMatchCarousel({
   // Anchor carousel state - for navigating between items with same medication name
   const [anchorCarouselIndex, setAnchorCarouselIndex] = useState(0)
 
+  // Go-to input state
+  const [goToInput, setGoToInput] = useState('')
+
   const handleReclassify = useCallback(
     (id: string, type: 'offer' | 'request', medication: string) => {
       setReclassifyItem({ id, type, medication })
@@ -264,6 +267,30 @@ export function RelatedMatchCarousel({
     }
   }, [anchorIndex, totalAnchors, onAnchorIndexChange, onRelatedIndexChange])
 
+  const handleGoTo = useCallback(() => {
+    const targetNumber = parseInt(goToInput, 10)
+    const maxNumber = isOfferMode
+      ? (apiStats?.uniquePendingOffers ?? totalAnchors)
+      : (apiStats?.uniquePendingRequests ?? totalAnchors)
+
+    if (
+      !isNaN(targetNumber) &&
+      targetNumber >= 1 &&
+      targetNumber <= maxNumber
+    ) {
+      onAnchorIndexChange(targetNumber - 1) // Convert to 0-indexed
+      onRelatedIndexChange(0) // Reset related index
+      setGoToInput('') // Clear input
+    }
+  }, [
+    goToInput,
+    isOfferMode,
+    apiStats,
+    totalAnchors,
+    onAnchorIndexChange,
+    onRelatedIndexChange,
+  ])
+
   const prevRelated = useCallback(() => {
     if (relatedIndex > 0) {
       onRelatedIndexChange(relatedIndex - 1)
@@ -343,6 +370,55 @@ export function RelatedMatchCarousel({
           >
             <ChevronRight className="w-5 h-5" />
           </button>
+
+          {/* Go To Input */}
+          <div className="flex items-center gap-1.5 ml-3 px-3 py-1.5 rounded-lg bg-secondary/30 border border-border/40">
+            <span className="text-xs text-muted-foreground font-medium">
+              Jump to:
+            </span>
+            <input
+              type="number"
+              min="1"
+              max={
+                isOfferMode
+                  ? (apiStats?.uniquePendingOffers ?? totalAnchors)
+                  : (apiStats?.uniquePendingRequests ?? totalAnchors)
+              }
+              value={goToInput}
+              onChange={(e) => setGoToInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleGoTo()
+                }
+              }}
+              placeholder="#"
+              className={cn(
+                'w-16 px-2 py-1 rounded-md text-sm font-medium text-center',
+                'bg-background/50 border border-border/60',
+                'focus:border-teal/60 focus:ring-2 focus:ring-teal/20 focus:outline-none',
+                'transition-all duration-200',
+                'placeholder:text-muted-foreground/40',
+                // Remove number input spinners
+                '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
+              )}
+            />
+            <button
+              onClick={handleGoTo}
+              disabled={!goToInput.trim()}
+              className={cn(
+                'px-2.5 py-1 rounded-md text-xs font-semibold',
+                'bg-linear-to-r from-teal/30 to-emerald/30',
+                'border border-teal/40',
+                'text-teal hover:text-teal/90',
+                'hover:from-teal/40 hover:to-emerald/40 hover:border-teal/60',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
+                'transition-all duration-200 hover:scale-105 active:scale-95',
+                'shadow-sm hover:shadow-teal/20',
+              )}
+            >
+              →
+            </button>
+          </div>
         </div>
 
         {/* Center: Mode Toggle */}
