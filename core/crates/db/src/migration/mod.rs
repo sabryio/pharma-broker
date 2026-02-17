@@ -30,6 +30,8 @@ mod m20260216_000020_create_bm25_indexes;
 mod m20260216_000021_update_weight_history_pharmaceutical;
 // Retry queue for failed message processing
 mod m20260217_000001_create_retry_queue;
+// Priority medications for fast-track processing
+mod m20260217_000002_create_priority_medications;
 
 pub struct Migrator;
 
@@ -65,6 +67,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260216_000021_update_weight_history_pharmaceutical::Migration),
             // Retry Queue for Failed Message Processing (Phase 6)
             Box::new(m20260217_000001_create_retry_queue::Migration),
+            // Priority Medications for Fast-Track Processing (Phase 7)
+            Box::new(m20260217_000002_create_priority_medications::Migration),
         ]
     }
 }

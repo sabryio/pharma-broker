@@ -105,6 +105,10 @@ async fn main() -> anyhow::Result<()> {
     let medication_alias_repo = Arc::new(SeaOrmMedicationAliasRepo::new(db.clone()));
     let retry_queue_repo = Arc::new(pharma_db::repo::SeaOrmRetryQueueRepo::new(db.clone()));
     tracing::info!("✅ Retry queue repository initialized");
+    let priority_medication_repo = Arc::new(pharma_db::repo::SeaOrmPriorityMedicationRepo::new(
+        db.clone(),
+    ));
+    tracing::info!("✅ Priority medication repository initialized");
 
     // Create AI client (reads AI_GATEWAY_URL from env)
     let ai_client = Arc::new(PharmaParser::from_env());
@@ -349,6 +353,12 @@ async fn main() -> anyhow::Result<()> {
         Some(client)
     };
 
+    // Create priority detector for fast-track processing
+    let priority_detector = Arc::new(pharma_core::priority::PriorityDetector::new(
+        priority_medication_repo.clone(),
+    ));
+    tracing::info!("🔥 Priority detector initialized");
+
     // Create application state for HTTP (with matching engine)
     let state = AppState {
         offer_repo: offer_repo.clone(),
@@ -361,6 +371,7 @@ async fn main() -> anyhow::Result<()> {
         medication_master_repo: medication_master_repo.clone(),
         medication_alias_repo: medication_alias_repo.clone(),
         match_queue_repo: match_queue_repo.clone(),
+        priority_medication_repo: priority_medication_repo.clone(),
         matching_engine: Some(matching_engine.clone()),
         ai_client: ai_client.clone(),
         alias_learner,
@@ -370,6 +381,7 @@ async fn main() -> anyhow::Result<()> {
         review_queue_repo: review_queue_repo.clone(),
         active_connections: active_connections.clone(),
         bridge_client, // Bridge client for sending messages via Go bridge
+        priority_detector: Some(priority_detector.clone()),
     };
 
     // Create HTTP router
@@ -434,7 +446,8 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let grpc_deps = GrpcDependencies::new(ai_client, ws_tx.clone(), matching_engine.clone())
-        .with_medication_resolver(medication_resolver);
+        .with_medication_resolver(medication_resolver)
+        .with_priority_detector(priority_detector.clone());
     let grpc_service = PharmaCoreService::new(grpc_repos, grpc_deps);
 
     // Shutdown signal for graceful termination (Ctrl+C and SIGTERM)

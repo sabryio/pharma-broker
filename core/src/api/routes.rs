@@ -17,8 +17,8 @@ use tower_http::cors::{Any, CorsLayer};
 use super::{
     analytics, audit_records, audit_trail, calibration, confidence, curation, diagnostics,
     embedding_cache, groups, handlers, match_filter, match_reviews, matching, messaging,
-    participants, pipeline_visualization, raw_messages, reclassify, reparse, review_queue,
-    supervision, uncertainty, weights,
+    participants, pipeline_visualization, priority_medications, raw_messages, reclassify, reparse,
+    review_queue, supervision, uncertainty, weights,
 };
 use crate::ai::PharmaParser;
 use crate::grpc::BridgeClient;
@@ -26,7 +26,7 @@ use crate::matching::{AliasLearner, MatchingEngine};
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
     MedicationAliasRepository, MedicationMasterRepository, OfferRepository, ParticipantRepository,
-    RawMessageRepository, RequestRepository, ReviewQueueRepository,
+    PriorityMedicationRepository, RawMessageRepository, RequestRepository, ReviewQueueRepository,
 };
 use crate::ws::{self, WsEvent};
 
@@ -49,6 +49,7 @@ where
     pub medication_master_repo: Arc<MM>,
     pub medication_alias_repo: Arc<dyn MedicationAliasRepository + Send + Sync>,
     pub match_queue_repo: Arc<dyn MatchQueueRepository + Send + Sync>,
+    pub priority_medication_repo: Arc<dyn PriorityMedicationRepository + Send + Sync>,
     pub matching_engine: Option<Arc<MatchingEngine>>,
     pub ai_client: Arc<PharmaParser>,
     pub alias_learner: Arc<AliasLearner>,
@@ -57,6 +58,8 @@ where
     pub active_connections: Arc<AtomicUsize>,
     /// Bridge client for sending WhatsApp messages (optional)
     pub bridge_client: Option<Arc<BridgeClient>>,
+    /// Priority detector for fast-track processing (optional)
+    pub priority_detector: Option<Arc<crate::priority::PriorityDetector>>,
 }
 
 impl<RQ, A, MM> Clone for AppState<RQ, A, MM>
@@ -79,6 +82,7 @@ where
             medication_master_repo: self.medication_master_repo.clone(),
             medication_alias_repo: self.medication_alias_repo.clone(),
             match_queue_repo: self.match_queue_repo.clone(),
+            priority_medication_repo: self.priority_medication_repo.clone(),
             matching_engine: self.matching_engine.clone(),
             ai_client: self.ai_client.clone(),
             alias_learner: self.alias_learner.clone(),
@@ -86,6 +90,7 @@ where
             metrics_handle: self.metrics_handle.clone(),
             active_connections: self.active_connections.clone(),
             bridge_client: self.bridge_client.clone(),
+            priority_detector: self.priority_detector.clone(),
         }
     }
 }
@@ -199,6 +204,35 @@ where
         .route(
             "/api/groups/{jid}",
             delete(groups::delete_group::<RQ, A, MM>),
+        )
+        // Priority Medications
+        .route(
+            "/api/priority-medications",
+            get(priority_medications::list_priorities::<RQ, A, MM>),
+        )
+        .route(
+            "/api/priority-medications",
+            post(priority_medications::create_priority::<RQ, A, MM>),
+        )
+        .route(
+            "/api/priority-medications/active",
+            get(priority_medications::list_active_priorities::<RQ, A, MM>),
+        )
+        .route(
+            "/api/priority-medications/check/{medication}",
+            get(priority_medications::check_priority::<RQ, A, MM>),
+        )
+        .route(
+            "/api/priority-medications/{id}",
+            get(priority_medications::get_priority::<RQ, A, MM>),
+        )
+        .route(
+            "/api/priority-medications/{id}",
+            put(priority_medications::update_priority::<RQ, A, MM>),
+        )
+        .route(
+            "/api/priority-medications/{id}",
+            delete(priority_medications::delete_priority::<RQ, A, MM>),
         )
         // Weights management
         .route("/api/weights", get(weights::get_weights::<RQ, A, MM>))

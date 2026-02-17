@@ -28,6 +28,7 @@ use crate::domain::{
 use crate::matching::AutoActionHandler;
 use crate::matching::MatchingEngine;
 use crate::matching::MedicationResolver;
+use crate::priority::PriorityDetector;
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, FindDuplicateParams, GroupRepository,
     MatchQueueRepository, MatchRepository, MedicationMasterRepository, OfferRepository,
@@ -66,6 +67,7 @@ where
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub matching_engine: Arc<MatchingEngine>,
     pub medication_resolver: Option<Arc<MedicationResolver>>,
+    pub priority_detector: Option<Arc<PriorityDetector>>,
     pub auto_action: AutoActionHandler,
     start_time: std::time::Instant,
 }
@@ -105,6 +107,7 @@ where
             ws_tx: deps.ws_tx,
             matching_engine: deps.matching_engine,
             medication_resolver: deps.medication_resolver,
+            priority_detector: deps.priority_detector,
             auto_action: AutoActionHandler::from_env(),
             start_time: std::time::Instant::now(),
         }
@@ -361,6 +364,7 @@ where
         let medication_master_repo = self.medication_master_repo.clone();
         let medication_resolver = self.medication_resolver.clone();
         let retry_queue_repo = self.retry_queue_repo.clone();
+        let priority_detector = self.priority_detector.clone();
 
         tokio::spawn(async move {
             tracing::info!(id = %msg_id, "🤖 Starting AI parsing (background)");
@@ -459,7 +463,7 @@ where
             let mut offers_created = 0;
             let mut requests_created = 0;
             let mut items_queued = 0;
-            let mut new_request_ids: Vec<_> = Vec::new();
+            let mut new_request_ids: Vec<(Uuid, i32)> = Vec::new(); // (request_id, priority_score)
 
             // Pre-filter medications that will be accepted (need embeddings)
             let accepted_meds: Vec<_> = parse_result
@@ -497,6 +501,21 @@ where
                 };
 
             for med in parse_result.medications {
+                // Check priority for this medication
+                let priority_score = if let Some(detector) = &priority_detector {
+                    detector.get_priority_score(&med.name).await.unwrap_or(0)
+                } else {
+                    0
+                };
+
+                if priority_score > 0 {
+                    tracing::info!(
+                        medication = %med.name,
+                        priority_score = priority_score,
+                        "🔥 Priority medication detected"
+                    );
+                }
+
                 // Task 3.3: Determine action based on AI confidence
                 let parse_action = auto_action.determine_parse_action(med.confidence);
 
@@ -686,7 +705,7 @@ where
                                 requests_created += 1;
                                 // Only enqueue non-duplicate requests for matching
                                 if !is_duplicate {
-                                    new_request_ids.push(request.id);
+                                    new_request_ids.push((request.id, priority_score));
                                 }
                                 let _ = ws_tx.send(WsEvent::NewRequest(request.clone()));
 
@@ -763,11 +782,19 @@ where
             }
 
             // Trigger matching engine for newly created requests only
-            for request_id in new_request_ids {
-                if let Err(e) = match_queue_repo.enqueue(request_id, 0).await {
+            for (request_id, priority_score) in new_request_ids {
+                if let Err(e) = match_queue_repo.enqueue(request_id, priority_score).await {
                     tracing::error!(error = %e, request_id = %request_id, "Failed to enqueue request for matching");
                 } else {
-                    tracing::debug!(request_id = %request_id, "Queued request for matching");
+                    if priority_score > 0 {
+                        tracing::info!(
+                            request_id = %request_id,
+                            priority_score = priority_score,
+                            "🔥 Priority request queued for matching"
+                        );
+                    } else {
+                        tracing::debug!(request_id = %request_id, "Queued request for matching");
+                    }
                 }
             }
         });

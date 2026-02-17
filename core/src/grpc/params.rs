@@ -8,6 +8,7 @@ use tokio::sync::broadcast;
 
 use crate::ai::PharmaParser;
 use crate::matching::{MatchingEngine, MedicationResolver};
+use crate::priority::PriorityDetector;
 use crate::repository::{
     AuditLogRepository, FeedbackRepository, GroupRepository, MatchQueueRepository, MatchRepository,
     MedicationAliasRepository, MedicationMasterRepository, OfferRepository, ParticipantRepository,
@@ -50,6 +51,7 @@ pub struct GrpcDependencies {
     pub ws_tx: broadcast::Sender<WsEvent>,
     pub matching_engine: Arc<MatchingEngine>,
     pub medication_resolver: Option<Arc<MedicationResolver>>,
+    pub priority_detector: Option<Arc<PriorityDetector>>,
 }
 
 impl GrpcDependencies {
@@ -63,11 +65,17 @@ impl GrpcDependencies {
             ws_tx,
             matching_engine,
             medication_resolver: None,
+            priority_detector: None,
         }
     }
 
     pub fn with_medication_resolver(mut self, resolver: Arc<MedicationResolver>) -> Self {
         self.medication_resolver = Some(resolver);
+        self
+    }
+
+    pub fn with_priority_detector(mut self, detector: Arc<PriorityDetector>) -> Self {
+        self.priority_detector = Some(detector);
         self
     }
 }

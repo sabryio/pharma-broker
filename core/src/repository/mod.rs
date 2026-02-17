@@ -22,17 +22,18 @@ pub use pharma_db::{Database, DatabaseConnection};
 pub use pharma_db::repo::{
     RetryQueueStats, SeaOrmAuditLogRepo, SeaOrmFeedbackRepo, SeaOrmGroupRepo,
     SeaOrmMatchAuditRecordRepo, SeaOrmMatchQueueRepo, SeaOrmMatchRepo, SeaOrmMedicationAliasRepo,
-    SeaOrmMedicationMasterRepo, SeaOrmOfferRepo, SeaOrmParticipantRepo, SeaOrmRawMessageRepo,
-    SeaOrmRequestRepo, SeaOrmRetryQueueRepo, SeaOrmReviewQueueRepo, SeaOrmWeightHistoryRepo,
+    SeaOrmMedicationMasterRepo, SeaOrmOfferRepo, SeaOrmParticipantRepo,
+    SeaOrmPriorityMedicationRepo, SeaOrmRawMessageRepo, SeaOrmRequestRepo, SeaOrmRetryQueueRepo,
+    SeaOrmReviewQueueRepo, SeaOrmWeightHistoryRepo,
 };
 
 // Re-export pharma_db traits
 pub use pharma_db::traits::{
     AuditLogRepository, EnrichedReviewItem, FeedbackRepository, FeedbackStats, GroupRepository,
     MatchAuditRecordRepository, MatchQueueRepository, MatchRepository, MedicationAliasRepository,
-    MedicationMasterRepository, OfferRepository, ParticipantRepository, RawMessageRepository,
-    RequestRepository, RetryQueueRepository, ReviewQueueRepository, ReviewQueueStats,
-    WeightHistoryRepository,
+    MedicationMasterRepository, OfferRepository, ParticipantRepository,
+    PriorityMedicationRepository, RawMessageRepository, RequestRepository, RetryQueueRepository,
+    ReviewQueueRepository, ReviewQueueStats, WeightHistoryRepository,
 };
 
 // Re-export entity types as type aliases for domain compatibility

@@ -110,6 +110,15 @@ impl MatchProcessor {
     async fn process_item(&self, item: MatchQueueItem) {
         let request_id = item.request_id;
 
+        // Log high-priority items
+        if item.priority >= 5 {
+            info!(
+                request_id = %request_id,
+                priority = item.priority,
+                "⚡ Processing high-priority item"
+            );
+        }
+
         // 1. Fetch the request
         let request = match self.repos.request.get_by_id(request_id).await {
             Ok(Some(req)) => req,

@@ -48,6 +48,9 @@ pub use crate::entity::common::{ItemStatus, MatchStatus, UrgencyLevel};
 pub use crate::entity::retry_queue::{FailureReason, Model as RetryQueueModel, RetryStatus};
 pub use crate::repo::RetryQueueStats;
 
+// Re-export priority medication types
+pub use crate::entity::priority_medication::{Model as PriorityMedicationModel, PriorityLevel};
+
 /// Offer repository trait
 #[async_trait]
 pub trait OfferRepository: Send + Sync {
@@ -653,4 +656,41 @@ pub trait RetryQueueRepository: Send + Sync {
 
     /// Clean up old completed/failed items
     async fn cleanup_old(&self, days: i64) -> Result<u64>;
+}
+
+/// Priority medication repository trait for fast-track processing
+#[async_trait]
+pub trait PriorityMedicationRepository: Send + Sync {
+    /// Save (create or update) a priority medication
+    async fn save(&self, model: &PriorityMedicationModel) -> Result<PriorityMedicationModel>;
+
+    /// Get a priority medication by ID
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<PriorityMedicationModel>>;
+
+    /// Get a priority medication by medication name
+    async fn get_by_medication_name(&self, name: &str) -> Result<Option<PriorityMedicationModel>>;
+
+    /// Delete a priority medication
+    async fn delete(&self, id: Uuid) -> Result<bool>;
+
+    /// Get all currently active priority medications
+    async fn get_all_active(&self) -> Result<Vec<PriorityMedicationModel>>;
+
+    /// Get all priority medications with pagination
+    async fn get_all(&self, limit: i64, offset: i64) -> Result<Vec<PriorityMedicationModel>>;
+
+    /// Count active priority medications
+    async fn count_active(&self) -> Result<i64>;
+
+    /// Get priority score for a medication (returns None if not priority)
+    async fn get_priority_for_medication(&self, medication: &str) -> Result<Option<i32>>;
+
+    /// Check if a medication is currently a priority
+    async fn check_is_priority(&self, medication: &str) -> Result<bool>;
+
+    /// Get priority scores for multiple medications (batch operation)
+    async fn get_priorities_for_medications(
+        &self,
+        medications: &[String],
+    ) -> Result<std::collections::HashMap<String, i32>>;
 }

@@ -20,6 +20,7 @@ pub mod messaging;
 pub mod middleware;
 pub mod participants;
 pub mod pipeline_visualization;
+pub mod priority_medications;
 pub mod rate_limit;
 pub mod raw_messages;
 pub mod reclassify;
